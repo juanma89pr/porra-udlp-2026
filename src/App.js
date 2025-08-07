@@ -25,7 +25,6 @@ const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
 
 // --- URLs de los escudos de los equipos ---
-// NOTA: Las claves (ej: "UD Las Palmas") deben coincidir EXACTAMENTE con los nombres de los equipos en la base de datos.
 const teamLogos = {
     "UD Las Palmas": "https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png",
     "FC Andorra": "https://upload.wikimedia.org/wikipedia/en/thumb/0/02/FC_Andorra_logo.svg/1200px-FC_Andorra_logo.svg.png",
@@ -48,7 +47,7 @@ const teamLogos = {
     "AD Ceuta FC": "https://upload.wikimedia.org/wikipedia/en/d/d4/AD_Ceuta_FC_logo.png",
     "CyD Leonesa": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b2/Cultural_y_Deportiva_Leonesa_logo.svg/1200px-Cultural_y_Deportiva_Leonesa_logo.svg.png",
     "Real Zaragoza": "https://upload.wikimedia.org/wikipedia/en/thumb/1/15/Real_Zaragoza_logo.svg/1200px-Real_Zaragoza_logo.svg.png",
-    "RC Deportivo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/RC_Deportivo_La_Coru%C3%B1a_logo.svg/1200px-RC_Deportivo_La_Coru%C3%B1a_logo.svg.png"
+    "RC Deportivo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/RC_Deportivo_La_Coru%C3%A1a_logo.svg/1200px-RC_Deportivo_La_Coru%C3%A1a_logo.svg.png"
 };
 
 // ============================================================================
@@ -160,7 +159,7 @@ const SplashScreen = ({ onEnter }) => {
 
     return (
         <div style={styles.splashContainer}>
-            <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
+            <h1 style={styles.splashTitle}>PORRA 2026</h1>
             {loading ? (
                 <p style={{color: styles.colors.lightText}}>Cargando información...</p>
             ) : jornadaInfo ? (
