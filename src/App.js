@@ -1286,6 +1286,11 @@ function App() {
           opacity: 0;
         }
       }
+      @keyframes highlight {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
     `;
     document.head.appendChild(styleSheet);
     
@@ -1339,7 +1344,7 @@ function App() {
             {activeTab === 'miJornada' && <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} />}
             {activeTab === 'laJornada' && <LaJornadaScreen />}
             {activeTab === 'calendario' && <CalendarioScreen onViewJornada={setViewingJornadaId} />}
-            {activeTab === 'clasificacion' && <ClasificacionScreen />}
+            {activeTab === 'clasificacion' && <ClasificacionScreen currentUser={currentUser} />}
             {activeTab === 'pagos' && <PagosScreen user={currentUser} />}
             {activeTab === 'admin' && isAdminAuthenticated && <AdminPanelScreen />}
           </div>
@@ -1403,9 +1408,11 @@ const styles = {
     tr: { backgroundColor: colors.darkUIAlt, transition: 'background-color 0.3s ease' },
     td: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontSize: '0.9rem' },
     tdRank: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1rem', textAlign: 'center' },
-    top1Row: { backgroundColor: `${colors.gold}40` },
-    top2Row: { backgroundColor: `${colors.silver}30` },
-    top3Row: { backgroundColor: `${colors.bronze}30` },
+    top1Row: { background: `linear-gradient(90deg, ${colors.gold}90, ${colors.darkUIAlt} 80%)` },
+    top2Row: { background: `linear-gradient(90deg, ${colors.silver}70, ${colors.darkUIAlt} 80%)` },
+    top3Row: { background: `linear-gradient(90deg, ${colors.bronze}70, ${colors.darkUIAlt} 80%)` },
+    currentUserRow: { animation: 'highlight 4s ease infinite', backgroundSize: '400% 400%', backgroundImage: `linear-gradient(to right, ${colors.blue}, ${colors.darkUIAlt}, ${colors.blue})` },
+    tdIcon: { width: '40px', textAlign: 'center' },
     laJornadaContainer: { textAlign: 'center', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' },
     matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', fontSize: '1.5rem', fontWeight: 'bold', margin: '20px 0', fontFamily: "'Orbitron', sans-serif", flexWrap: 'wrap' },
     matchInfoLogo: { width: '60px', height: '60px' },
