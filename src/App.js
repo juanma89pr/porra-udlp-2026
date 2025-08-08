@@ -70,7 +70,7 @@ const teamLogos = {
 };
 
 // ============================================================================
-// --- COMPONENTES REUTILIZABLES ---
+// --- COMPONENTES REUTILIZABLES Y DE ANIMACIÓN ---
 // ============================================================================
 
 const TeamDisplay = ({ teamName, shortName = false, imgStyle }) => (
@@ -88,22 +88,53 @@ const TeamDisplay = ({ teamName, shortName = false, imgStyle }) => (
 );
 
 const JokerAnimation = () => {
-    const jokers = Array.from({ length: 30 });
+    const [exploded, setExploded] = useState(false);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setExploded(true);
+        }, 5500); // Inicia la explosión un poco antes de que termine la animación
+        return () => clearTimeout(timer);
+    }, []);
+
+    const jokers = Array.from({ length: 80 }); // Aumentamos el número de jokers
     return (
         <div style={styles.jokerAnimationOverlay}>
             {jokers.map((_, i) => (
                 <span 
                     key={i} 
+                    className={exploded ? 'exploded' : ''}
                     style={{
                         ...styles.jokerIcon,
                         left: `${Math.random() * 100}vw`,
-                        animationDelay: `${Math.random() * 1.5}s`,
-                        animationDuration: `${2 + Math.random() * 2}s`
+                        animationDelay: `${Math.random() * 4}s`,
+                        animationDuration: `${3 + Math.random() * 3}s`,
+                        transform: exploded ? `translate(${Math.random() * 800 - 400}px, ${Math.random() * 800 - 400}px) rotate(720deg)` : 'translateY(-100px) rotate(0deg)',
+                        opacity: exploded ? 0 : 1
                     }}
                 >
                     🃏
                 </span>
             ))}
+        </div>
+    );
+};
+
+const WinnerAnimation = ({ winnerData, onClose }) => {
+    const { pronostico, prize } = winnerData;
+
+    return (
+        <div style={styles.winnerAnimationOverlay}>
+            <div style={styles.winnerModal}>
+                <div style={styles.trophy}>🏆</div>
+                <h2 style={styles.winnerTitle}>¡FELICIDADES, {pronostico.id}!</h2>
+                <p style={styles.winnerText}>¡Has ganado la porra de la jornada!</p>
+                <div style={styles.winnerStats}>
+                    <span>Puntos Obtenidos: <strong>{pronostico.puntosObtenidos}</strong></span>
+                    <span>Premio: <strong>{prize}€</strong></span>
+                </div>
+                <button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>CERRAR</button>
+            </div>
         </div>
     );
 };
@@ -522,7 +553,7 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
         }
         if (window.confirm("¿Seguro que quieres usar un JOKER para esta jornada? Esta acción no se puede deshacer y se descontará de tu total.")) {
             setShowJokerAnimation(true);
-            setTimeout(() => setShowJokerAnimation(false), 2500);
+            setTimeout(() => setShowJokerAnimation(false), 7000); // Duración extendida
 
             const userJokerRef = doc(db, "clasificacion", user);
             const userDoc = await getDoc(userJokerRef);
@@ -1133,8 +1164,6 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
         return () => { unsubJornada(); unsubPronosticos(); };
     }, [jornadaId]);
 
-    // Creamos un mapa para buscar rápidamente los pronósticos por el ID del jugador.
-    // `useMemo` evita que este mapa se recalcule en cada renderizado si los pronósticos no han cambiado.
     const pronosticosMap = useMemo(() =>
         pronosticos.reduce((acc, p) => {
             acc[p.id] = p;
@@ -1144,7 +1173,6 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
 
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando detalles...</p>;
 
-    // Determinamos si los pronósticos deben ser públicos.
     const showPronosticos = jornada?.estado === 'Cerrada' || jornada?.estado === 'Finalizada';
 
     return (
@@ -1180,7 +1208,6 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
                             {JUGADORES.map((jugadorId, index) => {
                                 const p = pronosticosMap[jugadorId];
 
-                                // Si el jugador no ha apostado, lo indicamos.
                                 if (!p) {
                                     return (
                                         <tr key={jugadorId} style={styles.tr}>
@@ -1192,7 +1219,6 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
                                     );
                                 }
 
-                                // Si las apuestas están cerradas/finalizadas, mostramos los datos.
                                 if (showPronosticos) {
                                     const esGanador = jornada.ganadores?.includes(p.id);
                                     return (
@@ -1219,7 +1245,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
                                             )}
                                         </React.Fragment>
                                     );
-                                } else { // Si las apuestas están abiertas, ocultamos el pronóstico.
+                                } else {
                                     const secretMessage = SECRET_MESSAGES[index % SECRET_MESSAGES.length];
                                     return (
                                          <tr key={p.id} style={styles.tr}>
@@ -1452,12 +1478,11 @@ function App() {
   
   const [porraAnualConfig, setPorraAnualConfig] = useState(null);
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
+  const [winnerData, setWinnerData] = useState(null);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-        if (user) {
-            console.log("Usuario autenticado anónimamente:", user.uid);
-        } else {
+        if (!user) {
             signInAnonymously(auth).catch((error) => {
                 console.error("Error de autenticación anónima:", error);
             });
@@ -1471,6 +1496,17 @@ function App() {
         0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
         100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
       }
+      .exploded {
+          transition: transform 1s ease-out, opacity 1s ease-out;
+      }
+      @keyframes trophy-grow {
+        from { transform: scale(0); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+      }
+      @keyframes text-fade-in {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
       @keyframes highlight {
         0% { background-position: 0% 50%; }
         50% { background-position: 100% 50%; }
@@ -1479,10 +1515,6 @@ function App() {
       @keyframes fadeIn {
         from { opacity: 0; }
         to { opacity: 1; }
-      }
-      @keyframes fadeOut {
-        from { opacity: 1; }
-        to { opacity: 0; }
       }
       #orientation-lock { display: none; }
       @media (orientation: portrait) {
@@ -1516,7 +1548,41 @@ function App() {
     }
   }, []);
 
-  const handleLogin = (user) => { setCurrentUser(user); setScreen('app'); };
+  const handleLogin = async (user) => {
+      setCurrentUser(user);
+      setScreen('app');
+
+      // Comprobar si el usuario es ganador de la última jornada finalizada
+      const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
+      const jornadaSnap = await getDocs(q);
+
+      if (!jornadaSnap.empty) {
+          const jornadaDoc = jornadaSnap.docs[0];
+          const jornada = { id: jornadaDoc.id, ...jornadaDoc.data() };
+
+          const lastSeenWinnerJornada = sessionStorage.getItem('lastSeenWinnerJornada');
+          
+          // Si el usuario está en la lista de ganadores y no ha visto la animación para esta jornada
+          if (jornada.id !== lastSeenWinnerJornada && jornada.ganadores?.includes(user)) {
+              const pronosticoRef = doc(db, "pronosticos", jornada.id, "jugadores", user);
+              const pronosticoSnap = await getDoc(pronosticoRef);
+              
+              const allPronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
+              const allPronosticosSnap = await getDocs(allPronosticosRef);
+              
+              const prize = (allPronosticosSnap.size * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL)) + (jornada.bote || 0);
+
+              if (pronosticoSnap.exists()) {
+                  setWinnerData({
+                      pronostico: { id: user, ...pronosticoSnap.data() },
+                      prize: prize / jornada.ganadores.length
+                  });
+                  sessionStorage.setItem('lastSeenWinnerJornada', jornada.id);
+              }
+          }
+      }
+  };
+
   const handleNavClick = (tab) => { setViewingJornadaId(null); setViewingPorraAnual(false); setActiveTab(tab); if (tab !== 'admin') { setIsAdminAuthenticated(false); } };
   const handleAdminClick = () => { if (isAdminAuthenticated) { setActiveTab('admin'); } else { setShowAdminLogin(true); } };
   const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
@@ -1566,6 +1632,7 @@ function App() {
   return (
     <>
         <OrientationLock />
+        {winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}
         <div id="app-container" style={styles.container}>
             <div style={styles.card}>{renderContent()}</div>
         </div>
@@ -1680,7 +1747,7 @@ const styles = {
     pinLockContainer: { backgroundColor: 'rgba(0,0,0,0.3)', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: `1px solid ${colors.yellow}` },
     statsIndicator: { display: 'block', textAlign: 'center', marginTop: '10px', fontWeight: 'bold' },
     jokerAnimationOverlay: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', zIndex: 9999, pointerEvents: 'none' },
-    jokerIcon: { position: 'absolute', top: '-50px', fontSize: '2rem', animationName: 'fall', animationTimingFunction: 'linear', animationIterationCount: '1' },
+    jokerIcon: { position: 'absolute', top: '-50px', fontSize: '3rem', animationName: 'fall', animationTimingFunction: 'linear', animationIterationCount: '1' },
     porraAnualBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70`, cursor: 'pointer' },
     porraAnualContainer: { marginTop: '30px', padding: '20px', borderTop: `2px solid ${colors.yellow}`, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px' },
     ascensoButtonsContainer: { display: 'flex', gap: '10px', justifyContent: 'center' },
@@ -1689,6 +1756,12 @@ const styles = {
     teamDisplay: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' },
     teamLogo: { width: '40px', height: '40px', objectFit: 'contain' },
     teamNameText: { fontSize: '0.9rem', fontWeight: 'bold' },
+    winnerAnimationOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000, backdropFilter: 'blur(8px)', animation: 'fadeIn 0.5s ease' },
+    winnerModal: { backgroundColor: colors.darkUI, padding: '40px', borderRadius: '20px', textAlign: 'center', border: `2px solid ${colors.gold}`, boxShadow: `0 0 40px ${colors.gold}80` },
+    trophy: { fontSize: '100px', animation: 'trophy-grow 1s cubic-bezier(0.25, 1, 0.5, 1) forwards' },
+    winnerTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.gold, fontSize: '2.5rem', margin: '10px 0', animation: 'text-fade-in 1s ease 0.5s forwards', opacity: 0 },
+    winnerText: { fontSize: '1.2rem', color: colors.lightText, animation: 'text-fade-in 1s ease 0.8s forwards', opacity: 0 },
+    winnerStats: { display: 'flex', justifyContent: 'center', gap: '30px', marginTop: '25px', fontSize: '1.3rem', animation: 'text-fade-in 1s ease 1.1s forwards', opacity: 0 }
 };
 
 export default App;
