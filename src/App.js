@@ -383,7 +383,7 @@ const LoginScreen = ({ onLogin }) => {
     );
 };
 
-const MiJornadaScreen = ({ user, setActiveTab }) => {
+const MiJornadaScreen = ({ user, setActiveTab, onActivateJoker }) => {
     const [jornadaActiva, setJornadaActiva] = useState(null);
     const [jornadaCerrada, setJornadaCerrada] = useState(null);
     const [proximaJornada, setProximaJornada] = useState(null);
@@ -399,8 +399,7 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
     const [panicButtonDisabled, setPanicButtonDisabled] = useState(false);
     const [allPronosticos, setAllPronosticos] = useState([]);
     const [jokerStats, setJokerStats] = useState(Array(10).fill(null));
-    const [showJokerAnimation, setShowJokerAnimation] = useState(false);
-
+    
     useEffect(() => {
         setLoading(true);
         const userJokerRef = doc(db, "clasificacion", user);
@@ -553,8 +552,7 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
             return;
         }
         if (window.confirm("¿Seguro que quieres usar un JOKER para esta jornada? Esta acción no se puede deshacer y se descontará de tu total.")) {
-            setShowJokerAnimation(true);
-            setTimeout(() => setShowJokerAnimation(false), 7000); // Duración extendida
+            onActivateJoker(); // Llama a la función del padre para mostrar la animación
 
             const userJokerRef = doc(db, "clasificacion", user);
             const userDoc = await getDoc(userJokerRef);
@@ -604,7 +602,6 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
 
     return (
         <div>
-            {showJokerAnimation && <JokerAnimation />}
             <h2 style={styles.title}>MI JORNADA</h2>
             <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <strong style={{color: styles.colors.yellow}}>{user}</strong>.</p>
             {jornadaActiva ? (
@@ -1527,6 +1524,7 @@ function App() {
   const [porraAnualConfig, setPorraAnualConfig] = useState(null);
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
   const [winnerData, setWinnerData] = useState(null);
+  const [showJokerAnimation, setShowJokerAnimation] = useState(false); // Estado para la animación del Joker
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -1636,6 +1634,14 @@ function App() {
   const handleAdminClick = () => { if (isAdminAuthenticated) { setActiveTab('admin'); } else { setShowAdminLogin(true); } };
   const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
 
+  // Función para controlar la animación del Joker
+  const handleActivateJokerAnimation = () => {
+      setShowJokerAnimation(true);
+      setTimeout(() => {
+          setShowJokerAnimation(false);
+      }, 7000); // La animación dura 7 segundos
+  };
+
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} />;
     if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} />;
@@ -1667,7 +1673,7 @@ function App() {
             <button onClick={() => { setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false); }} style={styles.logoutButton}>Salir</button>
           </nav>
           <div style={styles.content}>
-            {activeTab === 'miJornada' && <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} />}
+            {activeTab === 'miJornada' && <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} onActivateJoker={handleActivateJokerAnimation} />}
             {activeTab === 'laJornada' && <LaJornadaScreen />}
             {activeTab === 'calendario' && <CalendarioScreen onViewJornada={setViewingJornadaId} />}
             {activeTab === 'clasificacion' && <ClasificacionScreen currentUser={currentUser} />}
@@ -1682,6 +1688,7 @@ function App() {
     <>
         <OrientationLock />
         {winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}
+        {showJokerAnimation && <JokerAnimation />}
         <div id="app-container" style={styles.container}>
             <div style={styles.card}>{renderContent()}</div>
         </div>
