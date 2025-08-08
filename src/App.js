@@ -329,7 +329,11 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
     const [stats, setStats] = useState({ count: 0, color: styles.colors.success });
     const [jokersRestantes, setJokersRestantes] = useState(2);
     const [panicButtonDisabled, setPanicButtonDisabled] = useState(false);
+    // --- NUEVOS ESTADOS PARA JOKER ---
+    const [allPronosticos, setAllPronosticos] = useState([]);
+    const [jokerStats, setJokerStats] = useState(Array(10).fill(null));
 
+    // Efecto principal para obtener la jornada y el pronóstico del usuario
     useEffect(() => {
         setLoading(true);
         const userJokerRef = doc(db, "clasificacion", user);
@@ -369,6 +373,7 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
                 });
             } else {
                 setJornadaActiva(null);
+                setAllPronosticos([]); // Limpiar pronósticos si no hay jornada activa
                 const qCerrada = query(collection(db, "jornadas"), where("estado", "==", "Cerrada"), limit(1));
                 getDocs(qCerrada).then(cerradaSnap => {
                     if (!cerradaSnap.empty) {
@@ -396,24 +401,63 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
         return () => unsubscribe();
     }, [user]);
 
+    // Efecto para obtener TODOS los pronósticos de la jornada activa (para las estadísticas)
     useEffect(() => {
-        if (jornadaActiva && pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') {
-            const q = query(collection(db, "pronosticos", jornadaActiva.id, "jugadores"), 
-                where("golesLocal", "==", pronostico.golesLocal), 
-                where("golesVisitante", "==", pronostico.golesVisitante)
-            );
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                const count = snapshot.docs.some(doc => doc.id === user) ? snapshot.size - 1 : snapshot.size;
-                let color = styles.colors.success;
-                if (count >= 1 && count <= 2) color = styles.colors.warning;
-                if (count >= 3) color = styles.colors.danger;
-                setStats({ count, color });
+        if (jornadaActiva) {
+            const allPronosticosRef = collection(db, "pronosticos", jornadaActiva.id, "jugadores");
+            const unsubscribe = onSnapshot(allPronosticosRef, (snapshot) => {
+                const pronosticosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setAllPronosticos(pronosticosData);
             });
             return () => unsubscribe();
+        }
+    }, [jornadaActiva]);
+
+    // Efecto para calcular las estadísticas de la apuesta PRINCIPAL
+    useEffect(() => {
+        if (jornadaActiva && pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') {
+            const otherPlayersPronosticos = allPronosticos.filter(p => p.id !== user);
+            const count = otherPlayersPronosticos.filter(p => p.golesLocal === pronostico.golesLocal && p.golesVisitante === pronostico.golesVisitante).length;
+            let color = styles.colors.success;
+            if (count >= 1 && count <= 2) color = styles.colors.warning;
+            if (count >= 3) color = styles.colors.danger;
+            setStats({ count, color });
         } else {
             setStats({ count: 0, color: styles.colors.success });
         }
-    }, [jornadaActiva, pronostico.golesLocal, pronostico.golesVisitante, user]);
+    }, [pronostico.golesLocal, pronostico.golesVisitante, allPronosticos, user, jornadaActiva]);
+
+    // --- NUEVO EFECTO PARA ESTADÍSTICAS DE APUESTAS JOKER ---
+    useEffect(() => {
+        if (!pronostico.jokerActivo || allPronosticos.length === 0) {
+            setJokerStats(Array(10).fill(null));
+            return;
+        }
+
+        const otherPlayersPronosticos = allPronosticos.filter(p => p.id !== user);
+        
+        const newJokerStats = pronostico.jokerPronosticos.map(jokerBet => {
+            if (jokerBet.golesLocal === '' || jokerBet.golesVisitante === '') {
+                return null;
+            }
+
+            // Contar cuántos OTROS jugadores han puesto este resultado como apuesta PRINCIPAL
+            const count = otherPlayersPronosticos.filter(p => 
+                p.golesLocal === jokerBet.golesLocal && p.golesVisitante === jokerBet.golesVisitante
+            ).length;
+
+            let color = styles.colors.success;
+            if (count >= 1 && count <= 2) color = styles.colors.warning;
+            if (count >= 3) color = styles.colors.danger;
+            
+            const text = count > 0 ? `Resultado repetido ${count} vece(s)` : '¡Resultado único!';
+            
+            return { count, color, text };
+        });
+
+        setJokerStats(newJokerStats);
+
+    }, [pronostico.jokerPronosticos, allPronosticos, user, pronostico.jokerActivo]);
     
     const handlePronosticoChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -544,16 +588,24 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
                                 <div>
                                     <h3 style={styles.formSectionTitle}>Apuestas JOKER</h3>
                                     <p>Añade hasta 10 resultados exactos adicionales.</p>
-                                    {pronostico.jokerPronosticos.map((p, index) => (
-                                        <div key={index} style={{...styles.resultInputContainer, marginBottom: '10px'}}>
-                                            <span style={styles.teamNameText}>{jornadaActiva.equipoLocal}</span>
-                                            <input type="number" min="0" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={styles.resultInput} disabled={isLocked} />
-                                            <span style={styles.separator}>-</span>
-                                            <input type="number" min="0" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={styles.resultInput} disabled={isLocked} />
-                                            <span style={styles.teamNameText}>{jornadaActiva.equipoVisitante}</span>
-                                        </div>
-                                    ))}
-                                    <button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, ...styles.dangerButton}} disabled={isLocked || panicButtonDisabled}>
+                                    {/* --- NUEVO GRID PARA APUESTAS JOKER --- */}
+                                    <div style={styles.jokerGrid}>
+                                        {pronostico.jokerPronosticos.map((p, index) => (
+                                            <div key={index} style={styles.jokerBetRow}>
+                                                <div style={styles.resultInputContainer}>
+                                                    <input type="number" min="0" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} disabled={isLocked} />
+                                                    <span style={styles.separator}>-</span>
+                                                    <input type="number" min="0" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} disabled={isLocked} />
+                                                </div>
+                                                {jokerStats[index] && (
+                                                    <small style={{...styles.statsIndicator, color: jokerStats[index].color, fontSize: '0.8rem', textAlign: 'center', display: 'block', marginTop: '5px'}}>
+                                                        {jokerStats[index].text}
+                                                    </small>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, ...styles.dangerButton, marginTop: '20px'}} disabled={isLocked || panicButtonDisabled}>
                                         BOTÓN DEL PÁNICO
                                     </button>
                                     {panicButtonDisabled && <small style={{display: 'block', color: styles.colors.danger, marginTop: '5px'}}>El botón del pánico se ha desactivado (menos de 1h para el cierre).</small>}
@@ -608,7 +660,8 @@ const LaJornadaScreen = ({ onViewJornada }) => {
 
                 const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
                 onSnapshot(pronosticosRef, (pronosticosSnap) => {
-                    setParticipantes(pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                    const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setParticipantes(pronosticosData);
                 });
             } else {
                 setJornadaActiva(null);
@@ -635,19 +688,6 @@ const LaJornadaScreen = ({ onViewJornada }) => {
         }, 1000);
         return () => clearInterval(interval);
     }, [jornadaActiva]);
-
-    const groupPronosticos = (pronosticos, key) => {
-        return pronosticos.reduce((acc, p) => {
-            const value = key(p);
-            if (!acc[value]) acc[value] = [];
-            acc[value].push(p);
-            return acc;
-        }, {});
-    };
-
-    const resultadosExactos = jornadaCerrada ? groupPronosticos(participantes, p => `${p.golesLocal}-${p.golesVisitante}`) : {};
-    const resultados1x2 = jornadaCerrada ? groupPronosticos(participantes, p => p.resultado1x2) : {};
-    const goleadores = jornadaCerrada ? groupPronosticos(participantes, p => p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')) : {};
 
     if (loading) return <p style={{color: styles.colors.lightText}}>Buscando jornada...</p>;
 
@@ -683,35 +723,30 @@ const LaJornadaScreen = ({ onViewJornada }) => {
             ) : jornadaCerrada ? (
                 <div>
                     <h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3>
-                    <p>Las apuestas están cerradas. ¡Estos son los pronósticos!</p>
+                    <p style={{textAlign: 'center'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p>
+                    {/* --- NUEVO RESUMEN POR JUGADOR --- */}
                     <div style={styles.resumenContainer}>
-                        <div style={styles.resumenCategoria}>
-                            <h4 style={styles.resumenTitle}>Resultados Exactos</h4>
-                            {Object.entries(resultadosExactos).sort((a,b) => b[1].length - a[1].length).map(([resultado, jugadores]) => (
-                                <div key={resultado} style={styles.resumenItem}>
-                                    <strong>{resultado}:</strong>
-                                    <span>{jugadores.map(j => `${j.id} ${j.jokerActivo ? '🃏' : ''}`).join(', ')}</span>
+                        {participantes
+                            .sort((a, b) => a.id.localeCompare(b.id)) // Ordenar por nombre
+                            .map(p => (
+                                <div key={p.id} style={styles.resumenJugador}>
+                                    <h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4>
+                                    <div style={styles.resumenJugadorBets}>
+                                        <p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>
+                                        {p.jokerActivo && p.jokerPronosticos?.length > 0 && (
+                                            <div style={{marginTop: '10px'}}>
+                                                <strong>Apuestas Joker:</strong>
+                                                <div style={styles.jokerChipsContainer}>
+                                                    {p.jokerPronosticos.map((jp, index) => (
+                                                        <span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            ))}
-                        </div>
-                        <div style={styles.resumenCategoria}>
-                            <h4 style={styles.resumenTitle}>1X2</h4>
-                            {Object.entries(resultados1x2).sort((a,b) => b[1].length - a[1].length).map(([resultado, jugadores]) => (
-                                <div key={resultado} style={styles.resumenItem}>
-                                    <strong>{resultado}:</strong>
-                                    <span>{jugadores.map(j => `${j.id} ${j.jokerActivo ? '🃏' : ''}`).join(', ')}</span>
-                                </div>
-                            ))}
-                        </div>
-                        <div style={styles.resumenCategoria}>
-                            <h4 style={styles.resumenTitle}>Primer Goleador</h4>
-                            {Object.entries(goleadores).sort((a,b) => b[1].length - a[1].length).map(([goleador, jugadores]) => (
-                                <div key={goleador} style={styles.resumenItem}>
-                                    <strong>{goleador}:</strong>
-                                    <span>{jugadores.map(j => `${j.id} ${j.jokerActivo ? '🃏' : ''}`).join(', ')}</span>
-                                </div>
-                            ))}
-                        </div>
+                            ))
+                        }
                     </div>
                 </div>
             ) : (
@@ -1648,6 +1683,14 @@ const styles = {
         fontFamily: "'Orbitron', sans-serif",
         boxShadow: `0 0 20px ${colors.gold}70`
     },
+    jokerGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: '20px'
+    },
+    jokerBetRow: {
+        marginBottom: '10px'
+    },
     // Calendario
     jornadaList: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
     jornadaItem: { 
@@ -1763,8 +1806,9 @@ const styles = {
     jokerDetailChip: { 
         backgroundColor: colors.blue, 
         padding: '5px 10px', 
-        borderRadius: '5px', 
-        fontSize: '0.9rem' 
+        borderRadius: '15px', 
+        fontSize: '0.9rem',
+        fontFamily: "'Orbitron', sans-serif",
     },
     // Modal
     modalOverlay: { 
@@ -1786,40 +1830,33 @@ const styles = {
         border: `1px solid ${colors.yellow}` 
     },
     // Resumen Apuestas
-    resumenContainer: { display: 'flex', flexDirection: 'column', gap: '20px' },
-    resumenCategoria: { 
-        backgroundColor: 'rgba(0,0,0,0.2)', 
-        padding: '20px', 
-        borderRadius: '12px' 
-    },
-    resumenTitle: { 
-        borderBottom: `1px solid ${colors.blue}`, 
-        paddingBottom: '10px', 
-        marginBottom: '10px',
-        color: colors.yellow,
-        fontFamily: "'Orbitron', sans-serif",
-        textTransform: 'uppercase'
-    },
-    resumenItem: { 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        padding: '8px 5px', 
-        borderBottom: `1px solid ${colors.blue}55`,
-        flexWrap: 'wrap'
-    },
-    // Team Display
-    teamDisplay: { 
+    resumenContainer: { 
         display: 'flex', 
         flexDirection: 'column', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        gap: '10px', 
-        flex: 1 
+        gap: '15px',
+        marginTop: '20px'
     },
-    teamLogo: { 
-        width: '80px', 
-        height: '80px', 
-        objectFit: 'contain' 
+    resumenJugador: {
+        backgroundColor: 'rgba(0,0,0,0.2)', 
+        padding: '15px', 
+        borderRadius: '12px',
+        borderLeft: `4px solid ${colors.blue}`
+    },
+    resumenJugadorTitle: {
+        margin: '0 0 10px 0',
+        paddingBottom: '10px',
+        borderBottom: `1px solid ${colors.blue}80`,
+        color: colors.yellow,
+        fontFamily: "'Orbitron', sans-serif",
+    },
+    resumenJugadorBets: {
+        fontSize: '0.95rem'
+    },
+    jokerChipsContainer: {
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '8px',
+        marginTop: '8px'
     },
     pinLockContainer: { 
         backgroundColor: 'rgba(0,0,0,0.3)', 
