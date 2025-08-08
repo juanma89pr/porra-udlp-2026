@@ -676,30 +676,96 @@ const CalendarioScreen = ({ onViewJornada }) => {
     );
 };
 
-const ClasificacionScreen = () => {
+const ClasificacionScreen = ({ currentUser }) => {
     const [clasificacion, setClasificacion] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const q = query(collection(db, "clasificacion"), orderBy("puntosTotales", "desc"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const clasificacionData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setClasificacion(clasificacionData);
+        const fetchClasificacion = async () => {
+            setLoading(true);
+
+            // 1. Obtener datos de la colección 'clasificacion'
+            const q = query(collection(db, "clasificacion"));
+            const clasificacionSnap = await getDocs(q);
+            const clasificacionData = {};
+            clasificacionSnap.forEach(doc => {
+                clasificacionData[doc.id] = { id: doc.id, ...doc.data() };
+            });
+
+            // 2. Obtener todas las jornadas finalizadas
+            const jornadasQuery = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"));
+            const jornadasSnap = await getDocs(jornadasQuery);
+            const jornadasFinalizadas = jornadasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // 3. Obtener todos los pronósticos para esas jornadas
+            const pronosticosPromises = jornadasFinalizadas.map(j => getDocs(collection(db, "pronosticos", j.id, "jugadores")));
+            const pronosticosSnaps = await Promise.all(pronosticosPromises);
+            
+            const pronosticosPorJornada = {};
+            pronosticosSnaps.forEach((snap, index) => {
+                const jornadaId = jornadasFinalizadas[index].id;
+                pronosticosPorJornada[jornadaId] = {};
+                snap.forEach(doc => {
+                    pronosticosPorJornada[jornadaId][doc.id] = doc.data();
+                });
+            });
+
+            // 4. Procesar datos para cada jugador
+            const processedData = JUGADORES.map(jugadorId => {
+                const data = clasificacionData[jugadorId] || { id: jugadorId, puntosTotales: 0, jokersRestantes: 2 };
+
+                // Calcular rachas
+                let rachaAciertos = 0;
+                let malaRacha = 0;
+
+                if (jornadasFinalizadas.length >= 2) {
+                    // Racha de aciertos (resultado exacto)
+                    const ultimasDosJornadas = jornadasFinalizadas.slice(0, 2);
+                    const aciertoJ1 = pronosticosPorJornada[ultimasDosJornadas[0].id]?.[jugadorId]?.puntosObtenidos >= 3;
+                    const aciertoJ2 = pronosticosPorJornada[ultimasDosJornadas[1].id]?.[jugadorId]?.puntosObtenidos >= 3;
+                    if (aciertoJ1 && aciertoJ2) {
+                        rachaAciertos = 2;
+                    }
+
+                    // Mala racha (0 puntos)
+                    const puntosJ1 = pronosticosPorJornada[ultimasDosJornadas[0].id]?.[jugadorId]?.puntosObtenidos;
+                    const puntosJ2 = pronosticosPorJornada[ultimasDosJornadas[1].id]?.[jugadorId]?.puntosObtenidos;
+                    if (puntosJ1 === 0 && puntosJ2 === 0) {
+                        malaRacha = 2;
+                    }
+                }
+
+                return {
+                    ...data,
+                    rachaAciertos: rachaAciertos >= 2,
+                    malaRacha: malaRacha >= 2,
+                    sinJokers: data.jokersRestantes <= 0,
+                };
+            });
+
+            // 5. Ordenar por puntos
+            processedData.sort((a, b) => (b.puntosTotales || 0) - (a.puntosTotales || 0));
+            
+            setClasificacion(processedData);
             setLoading(false);
-        }, (error) => {
-            console.error("Error cargando clasificación: ", error);
-            setLoading(false);
-        });
-        return () => unsubscribe();
+        };
+
+        fetchClasificacion();
     }, []);
 
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando clasificación...</p>;
 
-    const getRankStyle = (index) => {
-        if (index === 0) return styles.top1Row;
-        if (index === 1) return styles.top2Row;
-        if (index === 2) return styles.top3Row;
-        return styles.tr;
+    const getRankStyle = (index, jugadorId) => {
+        let style = {};
+        if (index === 0) style = styles.top1Row;
+        else if (index === 1) style = styles.top2Row;
+        else if (index === 2) style = styles.top3Row;
+        else style = styles.tr;
+
+        if (jugadorId === currentUser) {
+            style = {...style, ...styles.currentUserRow};
+        }
+        return style;
     };
     
     const getRankIcon = (index) => {
@@ -712,10 +778,32 @@ const ClasificacionScreen = () => {
     return (
         <div>
             <h2 style={styles.title}>CLASIFICACIÓN</h2>
-            <table style={styles.table}>
-                <thead><tr><th style={styles.th}>POS</th><th style={styles.th}>JUGADOR</th><th style={styles.th}>PUNTOS</th></tr></thead>
-                <tbody>{clasificacion.map((jugador, index) => (<tr key={jugador.id} style={getRankStyle(index)}><td style={styles.tdRank}>{getRankIcon(index)}</td><td style={styles.td}>{jugador.id}</td><td style={styles.td}>{jugador.puntosTotales || 0}</td></tr>))}</tbody>
-            </table>
+            <div style={{overflowX: 'auto'}}>
+                <table style={styles.table}>
+                    <thead>
+                        <tr>
+                            <th style={styles.th}>POS</th>
+                            <th style={styles.th}>JUGADOR</th>
+                            <th style={styles.th}>PUNTOS</th>
+                            <th style={{...styles.th, textAlign: 'center'}}>ESTADO</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {clasificacion.map((jugador, index) => (
+                            <tr key={jugador.id} style={getRankStyle(index, jugador.id)}>
+                                <td style={styles.tdRank}>{getRankIcon(index)}</td>
+                                <td style={styles.td}>{jugador.id}</td>
+                                <td style={styles.td}>{jugador.puntosTotales || 0}</td>
+                                <td style={{...styles.td, ...styles.tdIcon}}>
+                                    {jugador.rachaAciertos && '⚡️'}
+                                    {jugador.malaRacha && '🥶'}
+                                    {jugador.sinJokers && '🃏'}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 };
