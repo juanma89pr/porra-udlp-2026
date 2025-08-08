@@ -25,6 +25,23 @@ const JUGADORES = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Him
 const ADMIN_PASSWORD = "porra2026lpa";
 const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
+const SECRET_MESSAGES = [
+    "Pronóstico Secreto 🤫",
+    "Aquí huele a BOTE...",
+    "Voy a ganar yo 😎",
+    "Top Secret",
+    "Clasificado ⭐",
+    "Me lo guardo para mí",
+    "Jugada Maestra en proceso...",
+    "Ni el VAR lo sabe",
+    "Consultando con el Oráculo",
+    "Shhh... es un secreto",
+    "Apuesta Fantasma 👻",
+    "Resultado 'Confidencial'",
+    "Cargando... 99%",
+    "El que lo sabe, lo sabe",
+    "Mejor no digo nada..."
+];
 
 // --- URLs de los escudos de los equipos (VERIFICADAS) ---
 const teamLogos = {
@@ -731,27 +748,16 @@ const ClasificacionScreen = ({ currentUser }) => {
     const [clasificacion, setClasificacion] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // ========================================================================
-    // --- FIX: Lógica de carga de clasificación ---
-    // Se ha reemplazado la lógica compleja de `getDocs` por un listener 
-    // en tiempo real (`onSnapshot`) que es más simple, eficiente y robusto.
-    // Ahora la tabla se cargará correctamente y se actualizará en tiempo real.
-    // ========================================================================
     useEffect(() => {
         setLoading(true);
-        // Creamos una consulta a la colección 'clasificacion', ordenando por puntos de mayor a menor.
         const q = query(collection(db, "clasificacion"), orderBy("puntosTotales", "desc"));
 
-        // onSnapshot establece un listener que se ejecuta cada vez que los datos cambian en la DB.
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const clasificacionData = {};
             querySnapshot.forEach((doc) => {
-                // Guardamos los datos de cada jugador en un objeto para fácil acceso.
                 clasificacionData[doc.id] = { id: doc.id, ...doc.data() };
             });
 
-            // Nos aseguramos de que todos los jugadores de la lista JUGADORES aparezcan en la tabla,
-            // incluso si aún no tienen puntos y no existen en la colección 'clasificacion'.
             const processedData = JUGADORES.map(jugadorId => {
                 return clasificacionData[jugadorId] || { 
                     id: jugadorId, 
@@ -761,21 +767,17 @@ const ClasificacionScreen = ({ currentUser }) => {
                 };
             });
 
-            // Ordenamos de nuevo en el cliente por si hemos añadido jugadores con 0 puntos.
             processedData.sort((a, b) => (b.puntosTotales || 0) - (a.puntosTotales || 0));
 
             setClasificacion(processedData);
             setLoading(false);
         }, (error) => {
-            // Manejo de errores en caso de que el listener falle.
             console.error("Error al cargar la clasificación: ", error);
             setLoading(false);
         });
 
-        // La función de limpieza se ejecuta cuando el componente se "desmonta",
-        // cancelando el listener para evitar fugas de memoria.
         return () => unsubscribe();
-    }, []); // El array vacío `[]` asegura que el listener se active solo una vez.
+    }, []);
 
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando clasificación...</p>;
 
@@ -819,7 +821,6 @@ const ClasificacionScreen = ({ currentUser }) => {
                                 <td style={styles.td}>{jugador.jugador || jugador.id}</td>
                                 <td style={styles.td}>{jugador.puntosTotales || 0}</td>
                                 <td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>
-                                    {/* Mostramos los jokers restantes o 2 por defecto si no está definido */}
                                     {jugador.jokersRestantes !== undefined ? jugador.jokersRestantes : 2} 🃏
                                 </td>
                             </tr>
@@ -940,19 +941,10 @@ const AdminPorraAnual = () => {
     const [calculating, setCalculating] = useState(false);
     const [message, setMessage] = useState('');
 
-    // Usamos useMemo para asegurar que la referencia al documento no cambie en cada render,
-    // lo que evita que useEffect se ejecute innecesariamente.
     const configRef = useMemo(() => doc(db, "configuracion", "porraAnual"), []);
 
-    // ========================================================================
-    // --- FIX: Lógica de carga y edición de la porra anual ---
-    // Se ha modificado el useEffect para que se ejecute solo una vez al montar
-    // el componente. Esto carga los datos iniciales sin sobreescribir los
-    // cambios que el administrador realice en los campos del formulario.
-    // ========================================================================
     useEffect(() => {
         setLoading(true);
-        // Usamos getDoc para obtener los datos una sola vez.
         getDoc(configRef).then((docSnap) => {
             if (docSnap.exists()) {
                 setConfig(docSnap.data());
@@ -962,12 +954,11 @@ const AdminPorraAnual = () => {
             console.error("Error al cargar config anual: ", error);
             setLoading(false);
         });
-    }, [configRef]); // Dependemos de configRef, que está memoizado y es estable.
+    }, [configRef]);
 
     const handleSaveConfig = async () => {
         setSaving(true);
         try {
-            // Usamos setDoc con { merge: true } para actualizar o crear el documento.
             await setDoc(configRef, config, { merge: true });
             setMessage('¡Configuración guardada!');
         } catch (error) {
@@ -1126,10 +1117,11 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        setLoading(true);
         const jornadaRef = doc(db, "jornadas", jornadaId);
         const unsubJornada = onSnapshot(jornadaRef, (docSnap) => {
             if (docSnap.exists()) {
-                setJornada(docSnap.data());
+                setJornada({ id: docSnap.id, ...docSnap.data() });
             }
         });
         const pronosticosRef = collection(db, "pronosticos", jornadaId, "jugadores");
@@ -1141,7 +1133,19 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
         return () => { unsubJornada(); unsubPronosticos(); };
     }, [jornadaId]);
 
+    // Creamos un mapa para buscar rápidamente los pronósticos por el ID del jugador.
+    // `useMemo` evita que este mapa se recalcule en cada renderizado si los pronósticos no han cambiado.
+    const pronosticosMap = useMemo(() =>
+        pronosticos.reduce((acc, p) => {
+            acc[p.id] = p;
+            return acc;
+        }, {}),
+    [pronosticos]);
+
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando detalles...</p>;
+
+    // Determinamos si los pronósticos deben ser públicos.
+    const showPronosticos = jornada?.estado === 'Cerrada' || jornada?.estado === 'Finalizada';
 
     return (
         <div>
@@ -1150,20 +1154,82 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
                 <>
                     <h2 style={styles.title}>DETALLE JORNADA {jornada.numeroJornada}</h2>
                     <h3 style={styles.formSectionTitle}>{jornada.equipoLocal} vs {jornada.equipoVisitante}</h3>
-                    {jornada.estado === 'Finalizada' ? (<p style={styles.finalResult}>Resultado Final: {jornada.resultadoLocal} - {jornada.resultadoVisitante}</p>) : ( <p>Esta jornada aún no ha finalizado.</p> )}
-                    {jornada.ganadores && jornada.ganadores.length > 0 && (<div style={styles.winnerBanner}>🏆 Ganador(es): {jornada.ganadores.join(', ')}</div>)}
-                    {jornada.ganadores && jornada.ganadores.length === 0 && (<div style={styles.boteBanner}>💰 ¡BOTE! Nadie acertó el resultado.</div>)}
+                    
+                    {jornada.estado === 'Finalizada' && (
+                        <p style={styles.finalResult}>Resultado Final: {jornada.resultadoLocal} - {jornada.resultadoVisitante}</p>
+                    )}
+                    
+                    {showPronosticos && jornada.ganadores && jornada.ganadores.length > 0 && (
+                        <div style={styles.winnerBanner}>🏆 Ganador(es): {jornada.ganadores.join(', ')}</div>
+                    )}
+                    
+                    {showPronosticos && jornada.ganadores && jornada.ganadores.length === 0 && (
+                         <div style={styles.boteBanner}>💰 ¡BOTE! Nadie acertó el resultado.</div>
+                    )}
+
                     <table style={styles.table}>
-                        <thead><tr><th style={styles.th}>Jugador</th><th style={styles.th}>Pronóstico</th><th style={styles.th}>Puntos</th><th style={styles.th}>Pagado</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th style={styles.th}>Jugador</th>
+                                <th style={styles.th}>Pronóstico</th>
+                                <th style={styles.th}>Puntos</th>
+                                <th style={styles.th}>Pagado</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            {pronosticos.map(p => {
-                                const esGanador = jornada.ganadores?.includes(p.id);
-                                return (
-                                    <React.Fragment key={p.id}>
-                                        <tr style={esGanador ? styles.winnerRow : styles.tr}><td style={styles.td}>{p.id} {p.jokerActivo && '🃏'}</td><td style={styles.td}>{p.golesLocal}-{p.golesVisitante} ({p.resultado1x2}) {p.goleador && `- ${p.goleador}`}</td><td style={styles.td}>{p.puntosObtenidos === undefined ? '-' : p.puntosObtenidos}</td><td style={styles.td}>{p.pagado ? '✅' : '❌'}</td></tr>
-                                        {p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0 && (<tr style={styles.jokerDetailRow}><td style={styles.td} colSpan="4"><div style={{paddingLeft: '20px'}}><strong>Apuestas JOKER:</strong><div style={{display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '5px'}}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div></td></tr>)}
-                                    </React.Fragment>
-                                );
+                            {JUGADORES.map((jugadorId, index) => {
+                                const p = pronosticosMap[jugadorId];
+
+                                // Si el jugador no ha apostado, lo indicamos.
+                                if (!p) {
+                                    return (
+                                        <tr key={jugadorId} style={styles.tr}>
+                                            <td style={styles.td}>{jugadorId}</td>
+                                            <td colSpan="3" style={{...styles.td, fontStyle: 'italic', opacity: 0.6, textAlign: 'center' }}>
+                                                No ha realizado pronóstico
+                                            </td>
+                                        </tr>
+                                    );
+                                }
+
+                                // Si las apuestas están cerradas/finalizadas, mostramos los datos.
+                                if (showPronosticos) {
+                                    const esGanador = jornada.ganadores?.includes(p.id);
+                                    return (
+                                        <React.Fragment key={p.id}>
+                                            <tr style={esGanador ? styles.winnerRow : styles.tr}>
+                                                <td style={styles.td}>{p.id} {p.jokerActivo && '🃏'}</td>
+                                                <td style={styles.td}>{p.golesLocal}-{p.golesVisitante} ({p.resultado1x2 || 'N/A'}) {p.goleador && `- ${p.goleador}`} {!p.goleador && p.sinGoleador && '- SG'}</td>
+                                                <td style={styles.td}>{p.puntosObtenidos === undefined ? '-' : p.puntosObtenidos}</td>
+                                                <td style={styles.td}>{p.pagado ? '✅' : '❌'}</td>
+                                            </tr>
+                                            {p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0 && (
+                                                <tr style={styles.jokerDetailRow}>
+                                                    <td style={styles.td} colSpan="4">
+                                                        <div style={{paddingLeft: '20px'}}>
+                                                            <strong>Apuestas JOKER:</strong>
+                                                            <div style={{display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '5px'}}>
+                                                                {p.jokerPronosticos.map((jp, index) => (
+                                                                    <span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                } else { // Si las apuestas están abiertas, ocultamos el pronóstico.
+                                    const secretMessage = SECRET_MESSAGES[index % SECRET_MESSAGES.length];
+                                    return (
+                                         <tr key={p.id} style={styles.tr}>
+                                            <td style={styles.td}>{p.id} {p.jokerActivo && '🃏'}</td>
+                                            <td style={styles.td}>{secretMessage}</td>
+                                            <td style={styles.td}>-</td>
+                                            <td style={styles.td}>-</td>
+                                        </tr>
+                                    );
+                                }
                             })}
                         </tbody>
                     </table>
