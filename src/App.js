@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth"; // AÑADIDO: Módulos de autenticación
+import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment } from "firebase/firestore";
 
 // --- CONFIGURACIÓN DE FIREBASE (sin cambios) ---
@@ -18,7 +18,7 @@ const firebaseConfig = {
 // --- INICIALIZACIÓN DE FIREBASE ---
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app); // AÑADIDO: Inicialización del servicio de Auth
+const auth = getAuth(app);
 
 // --- DATOS DE LA APLICACIÓN (sin cambios) ---
 const JUGADORES = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
@@ -100,8 +100,6 @@ const SplashScreen = ({ onEnter }) => {
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState([]);
     const [currentStatIndex, setCurrentStatIndex] = useState(0);
-    
-    // --- PORRA ANUAL ---
 
     useEffect(() => {
         setLoading(true);
@@ -129,6 +127,7 @@ const SplashScreen = ({ onEnter }) => {
                     // --- PORRA ANUAL: Combinar estadísticas ---
                     const configDocRef = doc(db, "configuracion", "porraAnual");
                     getDoc(configDocRef).then(configSnap => {
+                        // MODIFICADO: Ahora solo muestra las stats de la porra anual si está abierta y es antes de la jornada 6
                         if (configSnap.exists() && configSnap.data().estado === 'Abierta' && jornada.numeroJornada <= 5) {
                             const pronosticosAnualRef = collection(db, "porraAnualPronosticos");
                             getDocs(pronosticosAnualRef).then(pronosticosAnualSnap => {
@@ -154,7 +153,6 @@ const SplashScreen = ({ onEnter }) => {
                 });
                 return () => unsubscribePronosticos();
             } else {
-                // ... (resto del código sin cambios)
                 const qCerrada = query(collection(db, "jornadas"), where("estado", "==", "Cerrada"), orderBy("numeroJornada", "desc"), limit(1));
                 getDocs(qCerrada).then(cerradaSnap => {
                     if (!cerradaSnap.empty) {
@@ -630,22 +628,26 @@ const LaJornadaScreen = ({ onViewJornada }) => {
             {/* --- PORRA ANUAL: Sección de visualización --- */}
             <div style={styles.porraAnualContainer}>
                 <h3 style={styles.formSectionTitle}>⭐ PORRA DEL AÑO ⭐</h3>
-                {porraAnualConfig?.estado === 'Abierta' && <p>Las apuestas son secretas hasta la Jornada 5. ¡Haz la tuya!</p>}
+                 {/* MODIFICADO: Lógica para mostrar los pronósticos solo si la porra está cerrada o finalizada */}
+                {porraAnualConfig?.estado === 'Abierta' && <p style={{textAlign: 'center'}}>Las apuestas de los demás serán secretas hasta la Jornada 5. ¡Haz la tuya desde el banner superior!</p>}
                 {(porraAnualConfig?.estado === 'Cerrada' || porraAnualConfig?.estado === 'Finalizada') && (
                     <div>
-                        <p>Apuestas cerradas. Estos son los pronósticos para final de temporada:</p>
+                        <p style={{textAlign: 'center'}}>Apuestas cerradas. Estos son los pronósticos para final de temporada:</p>
                         <div style={styles.resumenContainer}>
                             {pronosticosAnuales.sort((a, b) => a.id.localeCompare(b.id)).map(p => (
                                 <div key={p.id} style={styles.resumenJugador}>
                                     <h4 style={styles.resumenJugadorTitle}>{p.id}</h4>
-                                    <p><strong>¿Asciende?:</strong> <span style={{color: p.ascenso === 'SI' ? colors.success : colors.danger, fontWeight: 'bold'}}>{p.ascenso}</span></p>
-                                    <p><strong>Posición Final:</strong> <span style={{color: colors.yellow, fontWeight: 'bold'}}>{p.posicion}º</span></p>
-                                    {porraAnualConfig.estado === 'Finalizada' && <p><strong>Puntos Obtenidos:</strong> {p.puntosObtenidos || 0}</p>}
+                                    <div style={styles.resumenJugadorBets}>
+                                        <p><strong>¿Asciende?:</strong> <span style={{color: p.ascenso === 'SI' ? styles.colors.success : styles.colors.danger, fontWeight: 'bold'}}>{p.ascenso}</span></p>
+                                        <p><strong>Posición Final:</strong> <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{p.posicion}º</span></p>
+                                        {porraAnualConfig.estado === 'Finalizada' && <p><strong>Puntos Obtenidos:</strong> <span style={{fontWeight: 'bold', color: styles.colors.gold}}>{p.puntosObtenidos || 0}</span></p>}
+                                    </div>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
+                 {porraAnualConfig?.estado !== 'Abierta' && porraAnualConfig?.estado !== 'Cerrada' && porraAnualConfig?.estado !== 'Finalizada' && <p style={{textAlign: 'center'}}>El administrador no ha abierto la porra anual todavía.</p>}
             </div>
         </div>
     );
@@ -823,6 +825,150 @@ const JornadaAdminItem = ({ jornada }) => {
     );
 };
 
+// --- NUEVO COMPONENTE: AdminPorraAnual ---
+const AdminPorraAnual = () => {
+    const [config, setConfig] = useState({ estado: '', ascensoFinal: '', posicionFinal: '' });
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [calculating, setCalculating] = useState(false);
+    const [message, setMessage] = useState('');
+
+    const configRef = doc(db, "configuracion", "porraAnual");
+
+    useEffect(() => {
+        const unsub = onSnapshot(configRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setConfig(docSnap.data());
+            }
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+    const handleSaveConfig = async () => {
+        setSaving(true);
+        try {
+            await setDoc(configRef, config, { merge: true });
+            setMessage('¡Configuración guardada!');
+        } catch (error) {
+            console.error("Error guardando config anual", error);
+            setMessage('Error al guardar.');
+        } finally {
+            setSaving(false);
+            setTimeout(() => setMessage(''), 3000);
+        }
+    };
+
+    const handleCalcularPuntosAnual = async () => {
+        if (!config.ascensoFinal || !config.posicionFinal) {
+            alert("Debes establecer el resultado de Ascenso y la Posición Final antes de calcular.");
+            return;
+        }
+        if (!window.confirm("¿Seguro que quieres calcular y repartir los puntos de la Porra Anual? Esta acción es irreversible.")) {
+            return;
+        }
+
+        setCalculating(true);
+        const pronosticosRef = collection(db, "porraAnualPronosticos");
+        const pronosticosSnap = await getDocs(pronosticosRef);
+        const pronosticos = pronosticosSnap.docs.map(p => ({ id: p.id, ...p.data() }));
+        const batch = writeBatch(db);
+
+        for (const p of pronosticos) {
+            let puntosObtenidos = 0;
+            const aciertoAscenso = p.ascenso === config.ascensoFinal;
+            const aciertoPosicion = parseInt(p.posicion) === parseInt(config.posicionFinal);
+
+            if (aciertoAscenso && aciertoPosicion) {
+                puntosObtenidos = 20;
+            } else if (aciertoAscenso) {
+                puntosObtenidos = 5;
+            } else if (aciertoPosicion) {
+                puntosObtenidos = 10;
+            }
+
+            if (puntosObtenidos > 0) {
+                const clasificacionRef = doc(db, "clasificacion", p.id);
+                batch.update(clasificacionRef, { puntosTotales: increment(puntosObtenidos) });
+            }
+            
+            const pronosticoAnualRef = doc(db, "porraAnualPronosticos", p.id);
+            batch.update(pronosticoAnualRef, { puntosObtenidos });
+        }
+        
+        batch.update(configRef, { estado: "Finalizada" });
+
+        try {
+            await batch.commit();
+            setMessage("¡Puntos de la Porra Anual calculados y repartidos con éxito!");
+        } catch (error) {
+            console.error("Error al calcular puntos anuales:", error);
+            setMessage("Error al calcular los puntos.");
+        } finally {
+            setCalculating(false);
+        }
+    };
+
+    if (loading) return <p>Cargando configuración de la Porra Anual...</p>;
+
+    return (
+        <div style={styles.adminJornadaItem}>
+            <h3 style={styles.formSectionTitle}>Gestión Porra del Año</h3>
+            <div style={styles.adminControls}>
+                <div>
+                    <label style={styles.label}>Estado de la Porra</label>
+                    <select 
+                        value={config.estado || ''} 
+                        onChange={(e) => setConfig(c => ({ ...c, estado: e.target.value }))}
+                        style={styles.adminSelect}
+                    >
+                        <option value="Inactiva">Inactiva</option>
+                        <option value="Abierta">Abierta</option>
+                        <option value="Cerrada">Cerrada</option>
+                        <option value="Finalizada">Finalizada</option>
+                    </select>
+                </div>
+                 <div>
+                    <label style={styles.label}>Resultado Ascenso</label>
+                    <select 
+                        value={config.ascensoFinal || ''} 
+                        onChange={(e) => setConfig(c => ({ ...c, ascensoFinal: e.target.value }))}
+                        style={styles.adminSelect}
+                    >
+                        <option value="">-- Pendiente --</option>
+                        <option value="SI">SI</option>
+                        <option value="NO">NO</option>
+                    </select>
+                </div>
+                 <div>
+                    <label style={styles.label}>Posición Final</label>
+                    <input 
+                        type="number"
+                        min="1"
+                        max="22"
+                        value={config.posicionFinal || ''}
+                        onChange={(e) => setConfig(c => ({ ...c, posicionFinal: e.target.value }))}
+                        style={styles.adminInput}
+                    />
+                </div>
+            </div>
+            <div style={{marginTop: '20px'}}>
+                <button onClick={handleSaveConfig} disabled={saving} style={styles.saveButton}>
+                    {saving ? 'Guardando...' : 'Guardar Configuración'}
+                </button>
+                <button 
+                    onClick={handleCalcularPuntosAnual} 
+                    disabled={calculating || config.estado !== 'Cerrada'} 
+                    style={{...styles.saveButton, backgroundColor: styles.colors.gold, color: styles.colors.deepBlue}}
+                >
+                    {calculating ? 'Calculando...' : 'Calcular Puntos Finales'}
+                </button>
+            </div>
+             {message && <p style={{...styles.message, marginTop: '15px'}}>{message}</p>}
+        </div>
+    );
+};
+
 const AdminPanelScreen = () => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -845,6 +991,9 @@ const AdminPanelScreen = () => {
     return (
         <div>
             <h2 style={styles.title}>PANEL DE ADMINISTRADOR</h2>
+            {/* AÑADIDO: Componente de admin para la porra anual */}
+            <AdminPorraAnual />
+            <h3 style={{...styles.title, fontSize: '1.5rem', marginTop: '40px'}}>Gestión de Jornadas</h3>
             <div style={styles.jornadaList}>
                 {jornadas.map(jornada => (<JornadaAdminItem key={jornada.id} jornada={jornada} />))}
             </div>
@@ -996,7 +1145,7 @@ const PagosScreen = ({ user }) => {
     );
 };
 
-// --- NUEVO COMPONENTE: PorraAnualScreen ---
+// --- COMPONENTE MEJORADO: PorraAnualScreen ---
 const PorraAnualScreen = ({ user, onBack, config }) => {
     const [pronostico, setPronostico] = useState({ ascenso: '', posicion: '' });
     const [miPronostico, setMiPronostico] = useState(null);
@@ -1029,11 +1178,11 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
                 jugador: user,
                 lastUpdated: new Date()
             });
-            setMessage("¡Tu pronóstico anual ha sido guardado!");
+            setMessage("¡Tu pronóstico anual ha sido guardado! Suerte al final de la liga.");
             setMiPronostico(pronostico);
             setTimeout(() => {
                 onBack();
-            }, 2000);
+            }, 2500);
         } catch (error) {
             console.error("Error al guardar pronóstico anual:", error);
             setMessage("Hubo un error al guardar tu pronóstico.");
@@ -1053,10 +1202,11 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
                 <div style={styles.placeholder}>
                     {miPronostico ? (
                         <>
-                            <h3>Ya has realizado tu pronóstico</h3>
+                            <h3>Ya has hecho tu apuesta especial</h3>
+                            <p>Tu pronóstico guardado es:</p>
                             <p><strong>¿Asciende?:</strong> {miPronostico.ascenso}</p>
                             <p><strong>Posición Final:</strong> {miPronostico.posicion}º</p>
-                            <p>Las apuestas de los demás serán visibles a partir de la Jornada 5.</p>
+                            <p style={{marginTop: '20px', fontStyle: 'italic'}}>¡Suerte al final de la liga!</p>
                         </>
                     ) : (
                         <h3>Las apuestas para la Porra del Año están cerradas.</h3>
@@ -1066,30 +1216,23 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
         );
     }
 
-
     return (
         <div>
             <button onClick={onBack} style={styles.backButton}>&larr; Volver</button>
             <h2 style={styles.title}>⭐ PORRA DEL AÑO ⭐</h2>
             <form onSubmit={handleGuardar} style={styles.form}>
-                <p style={{textAlign: 'center', marginBottom: '20px'}}>
+                <p style={{textAlign: 'center', marginBottom: '30px', fontSize: '1.1rem'}}>
                     Haz tu pronóstico para el final de la temporada. ¡Solo puedes hacerlo una vez!
                 </p>
                 <div style={styles.formGroup}>
-                    <label style={styles.label}>¿Asciende la UD Las Palmas a Primera División?</label>
-                    <select 
-                        name="ascenso" 
-                        value={pronostico.ascenso} 
-                        onChange={(e) => setPronostico(p => ({...p, ascenso: e.target.value}))} 
-                        style={styles.input}
-                    >
-                        <option value="">-- Elige una opción --</option>
-                        <option value="SI">SÍ</option>
-                        <option value="NO">NO</option>
-                    </select>
+                    <label style={styles.label}>1. ¿Asciende la UD Las Palmas a Primera División?</label>
+                    <div style={styles.ascensoButtonsContainer}>
+                         <button type="button" onClick={() => setPronostico(p => ({...p, ascenso: 'SI'}))} style={pronostico.ascenso === 'SI' ? styles.ascensoButtonActive : styles.ascensoButton}>SÍ</button>
+                         <button type="button" onClick={() => setPronostico(p => ({...p, ascenso: 'NO'}))} style={pronostico.ascenso === 'NO' ? styles.ascensoButtonActive : styles.ascensoButton}>NO</button>
+                    </div>
                 </div>
                 <div style={styles.formGroup}>
-                    <label style={styles.label}>¿En qué posición terminará la temporada?</label>
+                    <label style={styles.label}>2. ¿En qué posición terminará la temporada?</label>
                     <input 
                         type="number" 
                         min="1" 
@@ -1097,14 +1240,14 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
                         name="posicion"
                         value={pronostico.posicion}
                         onChange={(e) => setPronostico(p => ({...p, posicion: e.target.value}))}
-                        style={styles.input}
-                        placeholder="Introduce un número del 1 al 22"
+                        style={{...styles.input, textAlign: 'center', fontSize: '2rem', fontFamily: "'Orbitron', sans-serif"}}
+                        placeholder="1-22"
                     />
                 </div>
                 <button type="submit" disabled={isSaving} style={styles.mainButton}>
                     {isSaving ? 'GUARDANDO...' : 'GUARDAR PRONÓSTICO ANUAL'}
                 </button>
-                {message && <p style={styles.message}>{message}</p>}
+                {message && <p style={{...styles.message, backgroundColor: styles.colors.success}}>{message}</p>}
             </form>
         </div>
     );
@@ -1124,18 +1267,12 @@ function App() {
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
 
   useEffect(() => {
-    // --- AÑADIDO: Autenticación anónima de Firebase ---
-    // Esto se ejecuta una sola vez cuando la app carga.
-    // Inicia sesión de forma anónima para obtener permisos de lectura/escritura.
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
         if (user) {
-            // El usuario ya está autenticado anónimamente.
             console.log("Usuario autenticado anónimamente:", user.uid);
         } else {
-            // El usuario no está autenticado, procedemos a hacerlo.
             signInAnonymously(auth).catch((error) => {
                 console.error("Error de autenticación anónima:", error);
-                // Aquí se podría mostrar un mensaje de error al usuario si falla la conexión inicial.
             });
         }
     });
@@ -1156,7 +1293,6 @@ function App() {
     `;
     document.head.appendChild(styleSheet);
     
-    // --- PORRA ANUAL: Listener para la configuración ---
     const configRef = doc(db, "configuracion", "porraAnual");
     const unsubscribeConfig = onSnapshot(configRef, (doc) => {
         setPorraAnualConfig(doc.exists() ? doc.data() : null);
@@ -1165,12 +1301,12 @@ function App() {
     return () => {
         document.head.removeChild(styleSheet);
         unsubscribeConfig();
-        unsubscribeAuth(); // Limpiamos el listener de autenticación al desmontar el componente.
+        unsubscribeAuth();
     }
   }, []);
 
   const handleLogin = (user) => { setCurrentUser(user); setScreen('app'); };
-  const handleNavClick = (tab) => { setActiveTab(tab); setViewingPorraAnual(false); if (tab !== 'admin') { setIsAdminAuthenticated(false); } };
+  const handleNavClick = (tab) => { setViewingJornadaId(null); setViewingPorraAnual(false); setActiveTab(tab); if (tab !== 'admin') { setIsAdminAuthenticated(false); } };
   const handleAdminClick = () => { if (isAdminAuthenticated) { setActiveTab('admin'); } else { setShowAdminLogin(true); } };
   const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
 
@@ -1181,7 +1317,6 @@ function App() {
         if (viewingJornadaId) {
             return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} />;
         }
-        // --- PORRA ANUAL: Renderizado de la pantalla de apuesta (CORREGIDO) ---
         if (viewingPorraAnual) {
             return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
         }
@@ -1323,6 +1458,9 @@ const styles = {
     jokerIcon: { position: 'absolute', top: '-50px', fontSize: '2rem', animationName: 'fall', animationTimingFunction: 'linear', animationIterationCount: '1' },
     porraAnualBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70`, cursor: 'pointer' },
     porraAnualContainer: { marginTop: '30px', padding: '20px', borderTop: `2px solid ${colors.yellow}`, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px' },
+    ascensoButtonsContainer: { display: 'flex', gap: '10px', justifyContent: 'center' },
+    ascensoButton: { flex: 1, padding: '20px', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease' },
+    ascensoButtonActive: { flex: 1, padding: '20px', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.deepBlue, transition: 'all 0.3s ease' },
 };
 
 export default App;
