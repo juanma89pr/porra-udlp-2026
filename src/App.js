@@ -102,7 +102,6 @@ const SplashScreen = ({ onEnter }) => {
     const [currentStatIndex, setCurrentStatIndex] = useState(0);
     
     // --- PORRA ANUAL ---
-    const [porraAnualStats, setPorraAnualStats] = useState([]);
 
     useEffect(() => {
         setLoading(true);
