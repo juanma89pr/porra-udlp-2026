@@ -66,9 +66,8 @@ const TeamDisplay = ({ teamName }) => (
     </div>
 );
 
-// --- NUEVO COMPONENTE: JOKER ANIMATION ---
 const JokerAnimation = () => {
-    const jokers = Array.from({ length: 30 }); // Generar 30 jokers
+    const jokers = Array.from({ length: 30 });
     return (
         <div style={styles.jokerAnimationOverlay}>
             {jokers.map((_, i) => (
@@ -76,9 +75,9 @@ const JokerAnimation = () => {
                     key={i} 
                     style={{
                         ...styles.jokerIcon,
-                        left: `${Math.random() * 100}vw`, // Posición horizontal aleatoria
-                        animationDelay: `${Math.random() * 1.5}s`, // Retraso aleatorio para que no caigan todos a la vez
-                        animationDuration: `${2 + Math.random() * 2}s` // Duración aleatoria
+                        left: `${Math.random() * 100}vw`,
+                        animationDelay: `${Math.random() * 1.5}s`,
+                        animationDuration: `${2 + Math.random() * 2}s`
                     }}
                 >
                     🃏
@@ -99,6 +98,9 @@ const SplashScreen = ({ onEnter }) => {
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState([]);
     const [currentStatIndex, setCurrentStatIndex] = useState(0);
+    
+    // --- PORRA ANUAL ---
+    const [porraAnualStats, setPorraAnualStats] = useState([]);
 
     useEffect(() => {
         setLoading(true);
@@ -122,11 +124,36 @@ const SplashScreen = ({ onEnter }) => {
                     if (faltan.length > 0) dynamicStats.push({ label: 'Faltan por Apostar', value: faltan.join(', '), color: styles.colors.warning });
                     if (jokerUsers.length > 0) dynamicStats.push({ label: 'Jokers Activados', value: jokerUsers.join(', '), color: styles.colors.gold });
                     if (resultadosMasPuestos) dynamicStats.push({ label: 'Resultados Populares', value: resultadosMasPuestos, color: styles.colors.silver });
-                    setStats(dynamicStats.length > 0 ? dynamicStats : [{ label: 'Info', value: '¡Sé el primero en apostar!', color: styles.colors.yellow }]);
+                    
+                    // --- PORRA ANUAL: Combinar estadísticas ---
+                    const configDocRef = doc(db, "configuracion", "porraAnual");
+                    getDoc(configDocRef).then(configSnap => {
+                        if (configSnap.exists() && configSnap.data().estado === 'Abierta' && jornada.numeroJornada <= 5) {
+                            const pronosticosAnualRef = collection(db, "porraAnualPronosticos");
+                            getDocs(pronosticosAnualRef).then(pronosticosAnualSnap => {
+                                const pronosticosAnual = pronosticosAnualSnap.docs.map(d => d.data());
+                                const hanApostadoAnual = pronosticosAnualSnap.docs.map(d => d.id);
+                                const siCount = pronosticosAnual.filter(p => p.ascenso === 'SI').length;
+                                const noCount = pronosticosAnual.filter(p => p.ascenso === 'NO').length;
+                                const posCounts = pronosticosAnual.reduce((acc, p) => ({...acc, [p.posicion]: (acc[p.posicion] || 0) + 1}), {});
+                                const posMasPuestas = Object.entries(posCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([pos, count]) => `${pos}º (${count})`).join(', ');
+
+                                const anualStats = [];
+                                if (hanApostadoAnual.length > 0) anualStats.push({ label: 'Porra Anual: Han apostado', value: hanApostadoAnual.join(', ') });
+                                if (siCount > 0 || noCount > 0) anualStats.push({ label: 'Porra Anual: Ascenso', value: `SI: ${siCount} - NO: ${noCount}` });
+                                if (posMasPuestas) anualStats.push({ label: 'Porra Anual: Posición Popular', value: posMasPuestas });
+                                
+                                setStats([...dynamicStats, ...anualStats]);
+                            });
+                        } else {
+                            setStats(dynamicStats.length > 0 ? dynamicStats : [{ label: 'Info', value: '¡Sé el primero en apostar!', color: styles.colors.yellow }]);
+                        }
+                    });
                     setLoading(false);
                 });
                 return () => unsubscribePronosticos();
             } else {
+                // ... (resto del código sin cambios)
                 const qCerrada = query(collection(db, "jornadas"), where("estado", "==", "Cerrada"), orderBy("numeroJornada", "desc"), limit(1));
                 getDocs(qCerrada).then(cerradaSnap => {
                     if (!cerradaSnap.empty) {
@@ -284,7 +311,6 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
     const [panicButtonDisabled, setPanicButtonDisabled] = useState(false);
     const [allPronosticos, setAllPronosticos] = useState([]);
     const [jokerStats, setJokerStats] = useState(Array(10).fill(null));
-    // --- NUEVO ESTADO PARA ANIMACIÓN ---
     const [showJokerAnimation, setShowJokerAnimation] = useState(false);
 
     useEffect(() => {
@@ -436,9 +462,8 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
             return;
         }
         if (window.confirm("¿Seguro que quieres usar un JOKER para esta jornada? Esta acción no se puede deshacer y se descontará de tu total.")) {
-            // --- INICIA ANIMACIÓN ---
             setShowJokerAnimation(true);
-            setTimeout(() => setShowJokerAnimation(false), 2500); // Oculta la animación después de 2.5 segundos
+            setTimeout(() => setShowJokerAnimation(false), 2500);
 
             const userJokerRef = doc(db, "clasificacion", user);
             const userDoc = await getDoc(userJokerRef);
@@ -479,7 +504,6 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
 
     const isVip = jornadaActiva?.esVip;
 
-    // --- NUEVO COMPONENTE INTERNO PARA MOSTRAR EQUIPO CON LOGO ---
     const TeamBetDisplay = ({ teamName }) => (
         <div style={styles.betTeamContainer}>
             <img src={teamLogos[teamName]} style={styles.betTeamLogo} alt={`${teamName} logo`} />
@@ -531,6 +555,10 @@ const LaJornadaScreen = ({ onViewJornada }) => {
     const [participantes, setParticipantes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [countdown, setCountdown] = useState('');
+    
+    // --- PORRA ANUAL ---
+    const [porraAnualConfig, setPorraAnualConfig] = useState(null);
+    const [pronosticosAnuales, setPronosticosAnuales] = useState([]);
 
     useEffect(() => {
         const q = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada"]), limit(1));
@@ -556,7 +584,23 @@ const LaJornadaScreen = ({ onViewJornada }) => {
             }
             setLoading(false);
         });
-        return () => unsubscribe();
+        
+        // --- PORRA ANUAL: Listeners ---
+        const configRef = doc(db, "configuracion", "porraAnual");
+        const unsubConfig = onSnapshot(configRef, (doc) => {
+            setPorraAnualConfig(doc.exists() ? doc.data() : null);
+        });
+
+        const pronosticosAnualesRef = collection(db, "porraAnualPronosticos");
+        const unsubPronosticos = onSnapshot(pronosticosAnualesRef, (snapshot) => {
+            setPronosticosAnuales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+
+        return () => {
+            unsubscribe();
+            unsubConfig();
+            unsubPronosticos();
+        };
     }, []);
 
     useEffect(() => {
@@ -581,6 +625,27 @@ const LaJornadaScreen = ({ onViewJornada }) => {
         <div>
             <h2 style={styles.title}>LA JORNADA</h2>
             {jornadaActiva ? (<div style={styles.laJornadaContainer}><h3>Jornada {jornadaActiva.numeroJornada}</h3><div style={styles.matchInfo}><TeamDisplay teamName={jornadaActiva.equipoLocal} /><span style={styles.vs}>VS</span><TeamDisplay teamName={jornadaActiva.equipoVisitante} /></div><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></div>) : jornadaCerrada ? (<div><h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3><p style={{textAlign: 'center'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div></div>) : (<div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>)}
+            
+            {/* --- PORRA ANUAL: Sección de visualización --- */}
+            <div style={styles.porraAnualContainer}>
+                <h3 style={styles.formSectionTitle}>⭐ PORRA DEL AÑO ⭐</h3>
+                {porraAnualConfig?.estado === 'Abierta' && <p>Las apuestas son secretas hasta la Jornada 5. ¡Haz la tuya!</p>}
+                {(porraAnualConfig?.estado === 'Cerrada' || porraAnualConfig?.estado === 'Finalizada') && (
+                    <div>
+                        <p>Apuestas cerradas. Estos son los pronósticos para final de temporada:</p>
+                        <div style={styles.resumenContainer}>
+                            {pronosticosAnuales.sort((a, b) => a.id.localeCompare(b.id)).map(p => (
+                                <div key={p.id} style={styles.resumenJugador}>
+                                    <h4 style={styles.resumenJugadorTitle}>{p.id}</h4>
+                                    <p><strong>¿Asciende?:</strong> <span style={{color: p.ascenso === 'SI' ? colors.success : colors.danger, fontWeight: 'bold'}}>{p.ascenso}</span></p>
+                                    <p><strong>Posición Final:</strong> <span style={{color: colors.yellow, fontWeight: 'bold'}}>{p.posicion}º</span></p>
+                                    {porraAnualConfig.estado === 'Finalizada' && <p><strong>Puntos Obtenidos:</strong> {p.puntosObtenidos || 0}</p>}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
@@ -703,9 +768,8 @@ const JornadaAdminItem = ({ jornada }) => {
             if (p.resultado1x2 === resultado1x2) { puntosJornada += esVip ? 2 : 1; }
             const goleadorReal = goleador.trim().toLowerCase();
             const goleadorApostado = p.goleador ? p.goleador.trim().toLowerCase() : '';
-            // --- CAMBIO LÓGICA PUNTUACIÓN SG ---
             if (p.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) { 
-                puntosJornada += 1; // SG siempre vale 1 punto
+                puntosJornada += 1;
             } 
             else if (!p.sinGoleador && goleadorApostado === goleadorReal && goleadorReal !== "") { 
                 puntosJornada += esVip ? 4 : 2; 
@@ -939,8 +1003,11 @@ function App() {
   const [viewingJornadaId, setViewingJornadaId] = useState(null);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  
+  // --- PORRA ANUAL ---
+  const [porraAnualConfig, setPorraAnualConfig] = useState(null);
+  const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
 
-  // --- NUEVO: Inyectar keyframes de animación globalmente ---
   useEffect(() => {
     const styleSheet = document.createElement("style");
     styleSheet.type = "text/css";
@@ -957,13 +1024,21 @@ function App() {
       }
     `;
     document.head.appendChild(styleSheet);
+    
+    // --- PORRA ANUAL: Listener para la configuración ---
+    const configRef = doc(db, "configuracion", "porraAnual");
+    const unsubscribe = onSnapshot(configRef, (doc) => {
+        setPorraAnualConfig(doc.exists() ? doc.data() : null);
+    });
+
     return () => {
         document.head.removeChild(styleSheet);
+        unsubscribe();
     }
   }, []);
 
   const handleLogin = (user) => { setCurrentUser(user); setScreen('app'); };
-  const handleNavClick = (tab) => { setActiveTab(tab); if (tab !== 'admin') { setIsAdminAuthenticated(false); } };
+  const handleNavClick = (tab) => { setActiveTab(tab); setViewingPorraAnual(false); if (tab !== 'admin') { setIsAdminAuthenticated(false); } };
   const handleAdminClick = () => { if (isAdminAuthenticated) { setActiveTab('admin'); } else { setShowAdminLogin(true); } };
   const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
 
@@ -974,9 +1049,21 @@ function App() {
         if (viewingJornadaId) {
             return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} />;
         }
+        // --- PORRA ANUAL: Renderizado de la pantalla de apuesta ---
+        if (viewingPorraAnual) {
+            return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
+        }
       return (
         <>
           {showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}
+          
+          {/* --- PORRA ANUAL: Banner Global --- */}
+          {porraAnualConfig?.estado === 'Abierta' && (
+            <div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>
+                ⭐ ¡PORRA DEL AÑO ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!
+            </div>
+          )}
+
           <nav style={styles.navbar}>
             <button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button>
             <button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button>
@@ -1102,6 +1189,8 @@ const styles = {
     statsIndicator: { display: 'block', textAlign: 'center', marginTop: '10px', fontWeight: 'bold' },
     jokerAnimationOverlay: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', zIndex: 9999, pointerEvents: 'none' },
     jokerIcon: { position: 'absolute', top: '-50px', fontSize: '2rem', animationName: 'fall', animationTimingFunction: 'linear', animationIterationCount: '1' },
+    porraAnualBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70`, cursor: 'pointer' },
+    porraAnualContainer: { marginTop: '30px', padding: '20px', borderTop: `2px solid ${colors.yellow}`, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px' },
 };
 
 export default App;
