@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment } from "firebase/firestore";
 
-// --- CONFIGURACIÓN DE FIREBASE ---
+// --- CONFIGURACIÓN DE FIREBASE (sin cambios) ---
 const firebaseConfig = {
     apiKey: "AIzaSyDyxwLEkH36_7uXNeBYayIwZYI8IuAsDm4",
     authDomain: "porra-udlp-2026-v2.firebaseapp.com",
@@ -14,17 +14,17 @@ const firebaseConfig = {
     measurementId: "G-J9T3S8SZT6"
 };
 
-// --- INICIALIZACIÓN DE FIREBASE ---
+// --- INICIALIZACIÓN DE FIREBASE (sin cambios) ---
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// --- DATOS DE LA APLICACIÓN ---
+// --- DATOS DE LA APLICACIÓN (sin cambios) ---
 const JUGADORES = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
 const ADMIN_PASSWORD = "porra2026lpa";
 const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
 
-// --- URLs de los escudos de los equipos ---
+// --- URLs de los escudos de los equipos (sin cambios) ---
 const teamLogos = {
     "UD Las Palmas": "https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png",
     "FC Andorra": "https://upload.wikimedia.org/wikipedia/en/thumb/0/02/FC_Andorra_logo.svg/1200px-FC_Andorra_logo.svg.png",
@@ -51,7 +51,7 @@ const teamLogos = {
 };
 
 // ============================================================================
-// --- COMPONENTES REUTILIZABLES ---
+// --- COMPONENTES REUTILIZABLES (Lógica sin cambios) ---
 // ============================================================================
 
 const TeamDisplay = ({ teamName }) => (
@@ -62,13 +62,13 @@ const TeamDisplay = ({ teamName }) => (
             alt={`${teamName} logo`}
             onError={(e) => { e.target.src = 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'; }} // Fallback image
         />
-        <span>{teamName}</span>
+        <span style={styles.teamNameText}>{teamName}</span>
     </div>
 );
 
 
 // ============================================================================
-// --- COMPONENTES DE LAS PANTALLAS ---
+// --- COMPONENTES DE LAS PANTALLAS (Lógica sin cambios) ---
 // ============================================================================
 
 const SplashScreen = ({ onEnter }) => {
@@ -145,7 +145,7 @@ const SplashScreen = ({ onEnter }) => {
         const interval = setInterval(() => {
             const now = new Date();
             const diff = targetDate - now;
-            if (diff <= 0) { setCountdown("¡Tiempo finalizado!"); clearInterval(interval); return; }
+            if (diff <= 0) { setCountdown("¡TIEMPO FINALIZADO!"); clearInterval(interval); return; }
             const d = Math.floor(diff / (1000 * 60 * 60 * 24));
             const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -159,16 +159,19 @@ const SplashScreen = ({ onEnter }) => {
 
     return (
         <div style={styles.splashContainer}>
-            <h1 style={styles.splashTitle}>PORRA 2026</h1>
+            <div style={styles.splashLogoContainer}>
+                <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
+                <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
+            </div>
             {loading ? (
-                <p style={{color: styles.colors.lightText}}>Cargando información...</p>
+                <p style={{color: styles.colors.lightText}}>Cargando información de la jornada...</p>
             ) : jornadaInfo ? (
                 <div style={styles.splashInfoBox}>
                     {jornadaInfo.type === 'activa' ? (
                         <>
-                            <h3 style={styles.splashInfoTitle}>Apuestas Abiertas</h3>
-                            <p>{jornadaInfo.equipoLocal} vs {jornadaInfo.equipoVisitante}</p>
-                            <div style={styles.countdownContainer}><p>Cierre en:</p><div style={styles.countdown}>{countdown}</div></div>
+                            <h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3>
+                            <p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>
+                            <div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div>
                             {currentStat && (
                                 <div style={styles.carouselStat}>
                                     <span style={{color: currentStat.color || styles.colors.lightText}}>{currentStat.label}: </span>
@@ -179,20 +182,20 @@ const SplashScreen = ({ onEnter }) => {
                         </>
                     ) : (
                          <>
-                            <h3 style={styles.splashInfoTitle}>Próxima Jornada</h3>
-                            <p>{jornadaInfo.equipoLocal} vs {jornadaInfo.equipoVisitante}</p>
+                            <h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3>
+                            <p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>
                             {jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}
-                            {countdown && <div style={styles.countdownContainer}><p>El partido comienza en:</p><div style={styles.countdown}>{countdown}</div></div>}
+                            {countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}
                         </>
                     )}
                 </div>
             ) : (
                 <div style={styles.splashInfoBox}>
-                    <h3 style={styles.splashInfoTitle}>Temporada en Pausa</h3>
+                    <h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3>
                     <p>El administrador aún no ha configurado la próxima jornada.</p>
                 </div>
             )}
-            <button onClick={onEnter} style={styles.mainButton}>Entrar</button>
+            <button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>
         </div>
     );
 };
@@ -202,7 +205,7 @@ const LoginScreen = ({ onLogin }) => {
 
     return (
         <div style={styles.loginContainer}>
-            <h2 style={styles.title}>Selecciona tu Perfil</h2>
+            <h2 style={styles.title}>SELECCIONA TU PERFIL</h2>
             <div style={styles.userList}>
                 {JUGADORES.map(jugador => (
                     <button 
@@ -212,7 +215,7 @@ const LoginScreen = ({ onLogin }) => {
                         onMouseEnter={() => setHoveredUser(jugador)}
                         onMouseLeave={() => setHoveredUser(null)}
                     >
-                        {jugador.toUpperCase()}
+                        {jugador}
                     </button>
                 ))}
             </div>
@@ -399,8 +402,8 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
 
     return (
         <div>
-            <h2 style={styles.title}>Mi Jornada</h2>
-            <p style={{color: styles.colors.lightText}}>Bienvenido, <strong>{user}</strong>.</p>
+            <h2 style={styles.title}>MI JORNADA</h2>
+            <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.2rem'}}>Bienvenido, <strong style={{color: styles.colors.yellow}}>{user}</strong>.</p>
             {jornadaActiva ? (
                 <form onSubmit={handleGuardarPronostico} style={styles.form}>
                     {jornadaActiva.esVip && (
@@ -408,7 +411,7 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
                             ⭐ JORNADA VIP ⭐ (Apuesta: 2€ - Puntos Dobles)
                         </div>
                     )}
-                    <h3>Jornada {jornadaActiva.numeroJornada}: {jornadaActiva.equipoLocal} vs {jornadaActiva.equipoVisitante}</h3>
+                    <h3 style={styles.formSectionTitle}>Jornada {jornadaActiva.numeroJornada}: {jornadaActiva.equipoLocal} vs {jornadaActiva.equipoVisitante}</h3>
                     {isLocked && pronostico.pin && (
                         <div style={styles.pinLockContainer}>
                             <p>🔒 Tu pronóstico está bloqueado. Introduce tu PIN para modificarlo.</p>
@@ -418,13 +421,13 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
                     )}
                     <fieldset disabled={isLocked} style={{border: 'none', padding: 0, margin: 0}}>
                         <div style={styles.formGroup}>
-                            <label style={styles.label}>Resultado Exacto</label>
+                            <label style={styles.label}>RESULTADO EXACTO</label>
                             <div style={styles.resultInputContainer}>
-                                <span style={styles.teamName}>{jornadaActiva.equipoLocal}</span>
+                                <span style={styles.teamNameText}>{jornadaActiva.equipoLocal}</span>
                                 <input type="number" min="0" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} />
                                 <span style={styles.separator}>-</span>
                                 <input type="number" min="0" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} />
-                                <span style={styles.teamName}>{jornadaActiva.equipoVisitante}</span>
+                                <span style={styles.teamNameText}>{jornadaActiva.equipoVisitante}</span>
                             </div>
                             {(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && 
                                 <small style={{...styles.statsIndicator, color: stats.color}}>
@@ -432,9 +435,9 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
                                 </small>
                             }
                         </div>
-                        <div style={styles.formGroup}><label style={styles.label}>Resultado 1X2</label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
-                        <div style={styles.formGroup}><label style={styles.label}>Primer Goleador</label><input type="text" name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador} /><div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG)</label></div></div>
-                        <div style={styles.formGroup}><label style={styles.label}>PIN de Seguridad (4 dígitos, opcional)</label><input type="password" name="pin" value={pronostico.pin} onChange={handlePronosticoChange} maxLength="4" style={styles.input} placeholder="Deja en blanco para no bloquear" /></div>
+                        <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2</label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
+                        <div style={styles.formGroup}><label style={styles.label}>PRIMER GOLEADOR</label><input type="text" name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador} /><div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG)</label></div></div>
+                        <div style={styles.formGroup}><label style={styles.label}>PIN DE SEGURIDAD (4 dígitos, opcional)</label><input type="password" name="pin" value={pronostico.pin} onChange={handlePronosticoChange} maxLength="4" style={styles.input} placeholder="Deja en blanco para no bloquear" /></div>
                         
                         <div style={styles.jokerContainer}>
                             {!pronostico.jokerActivo ? (
@@ -442,29 +445,29 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
                                     <button type="button" onClick={handleActivarJoker} style={styles.jokerButton} disabled={isLocked || jokersRestantes <= 0}>
                                         🃏 Activar JOKER
                                     </button>
-                                    <span style={{marginLeft: '15px'}}>Te quedan: {jokersRestantes}</span>
+                                    <span style={{marginLeft: '15px', color: styles.colors.lightText}}>Te quedan: <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{jokersRestantes}</span></span>
                                 </>
                             ) : (
                                 <div>
-                                    <h3 style={styles.title}>Apuestas JOKER</h3>
+                                    <h3 style={styles.formSectionTitle}>Apuestas JOKER</h3>
                                     <p>Añade hasta 10 resultados exactos adicionales.</p>
                                     {pronostico.jokerPronosticos.map((p, index) => (
                                         <div key={index} style={{...styles.resultInputContainer, marginBottom: '10px'}}>
-                                            <span style={styles.teamName}>{jornadaActiva.equipoLocal}</span>
+                                            <span style={styles.teamNameText}>{jornadaActiva.equipoLocal}</span>
                                             <input type="number" min="0" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={styles.resultInput} disabled={isLocked} />
                                             <span style={styles.separator}>-</span>
                                             <input type="number" min="0" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={styles.resultInput} disabled={isLocked} />
-                                            <span style={styles.teamName}>{jornadaActiva.equipoVisitante}</span>
+                                            <span style={styles.teamNameText}>{jornadaActiva.equipoVisitante}</span>
                                         </div>
                                     ))}
-                                    <button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, backgroundColor: styles.colors.danger}} disabled={isLocked || panicButtonDisabled}>
+                                    <button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, ...styles.dangerButton}} disabled={isLocked || panicButtonDisabled}>
                                         BOTÓN DEL PÁNICO
                                     </button>
                                     {panicButtonDisabled && <small style={{display: 'block', color: styles.colors.danger, marginTop: '5px'}}>El botón del pánico se ha desactivado (menos de 1h para el cierre).</small>}
                                 </div>
                             )}
                         </div>
-                        <button type="submit" disabled={isSaving || isLocked} style={styles.mainButton}>{isSaving ? 'Guardando...' : 'Guardar y Bloquear'}</button>
+                        <button type="submit" disabled={isSaving || isLocked} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR Y BLOQUEAR'}</button>
                     </fieldset>
                     {message && <p style={styles.message}>{message}</p>}
                 </form>
@@ -474,9 +477,9 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
                     <p>Las apuestas para este partido han finalizado. Esperando resultados.</p>
                     <p>Tu pronóstico fue: {pronostico.golesLocal}-{pronostico.golesVisitante}</p>
                     <button onClick={handleMarcarComoPagado} disabled={pronostico.pagado} style={styles.mainButton}>
-                        {pronostico.pagado ? 'Pago Registrado ✓' : 'Marcar como Pagado'}
+                        {pronostico.pagado ? 'PAGO REGISTRADO ✓' : 'MARCAR COMO PAGADO'}
                     </button>
-                    <button onClick={() => setActiveTab('laJornada')} style={{...styles.mainButton, marginLeft: '10px', backgroundColor: styles.colors.lightBlue}}>
+                    <button onClick={() => setActiveTab('laJornada')} style={{...styles.mainButton, marginLeft: '10px', backgroundColor: styles.colors.blue}}>
                         Ver Resumen de Apuestas
                     </button>
                     {message && <p style={styles.message}>{message}</p>}
@@ -530,7 +533,7 @@ const LaJornadaScreen = ({ onViewJornada }) => {
             const now = new Date();
             const deadline = jornadaActiva.fechaCierre.toDate();
             const diff = deadline - now;
-            if (diff <= 0) { setCountdown("¡Apuestas cerradas!"); clearInterval(interval); return; }
+            if (diff <= 0) { setCountdown("¡APUESTAS CERRADAS!"); clearInterval(interval); return; }
             const d = Math.floor(diff / (1000 * 60 * 60 * 24));
             const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -557,7 +560,7 @@ const LaJornadaScreen = ({ onViewJornada }) => {
 
     return (
         <div>
-            <h2 style={styles.title}>La Jornada</h2>
+            <h2 style={styles.title}>LA JORNADA</h2>
             {jornadaActiva ? (
                 <div style={styles.laJornadaContainer}>
                     <h3>Jornada {jornadaActiva.numeroJornada}</h3>
@@ -566,10 +569,10 @@ const LaJornadaScreen = ({ onViewJornada }) => {
                         <span style={styles.vs}>VS</span>
                         <TeamDisplay teamName={jornadaActiva.equipoVisitante} />
                     </div>
-                    <div style={styles.countdownContainer}><p>Cierre de apuestas en:</p><div style={styles.countdown}>{countdown}</div></div>
+                    <div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div>
                     <h3 style={styles.callToAction}>¡Hagan sus porras!</h3>
                     <div style={styles.apostadoresContainer}>
-                        <h4>Apuestas Realizadas ({participantes.length}/{JUGADORES.length})</h4>
+                        <h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4>
                         <div style={styles.apostadoresGrid}>
                             {JUGADORES.map(jugador => {
                                 const participante = participantes.find(p => p.id === jugador);
@@ -586,12 +589,12 @@ const LaJornadaScreen = ({ onViewJornada }) => {
                 </div>
             ) : jornadaCerrada ? (
                 <div>
-                    <h3>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3>
+                    <h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3>
                     <p>Las apuestas están cerradas. ¡Estos son los pronósticos!</p>
                     <div style={styles.resumenContainer}>
                         <div style={styles.resumenCategoria}>
                             <h4 style={styles.resumenTitle}>Resultados Exactos</h4>
-                            {Object.entries(resultadosExactos).map(([resultado, jugadores]) => (
+                            {Object.entries(resultadosExactos).sort((a,b) => b[1].length - a[1].length).map(([resultado, jugadores]) => (
                                 <div key={resultado} style={styles.resumenItem}>
                                     <strong>{resultado}:</strong>
                                     <span>{jugadores.map(j => `${j.id} ${j.jokerActivo ? '🃏' : ''}`).join(', ')}</span>
@@ -600,7 +603,7 @@ const LaJornadaScreen = ({ onViewJornada }) => {
                         </div>
                         <div style={styles.resumenCategoria}>
                             <h4 style={styles.resumenTitle}>1X2</h4>
-                            {Object.entries(resultados1x2).map(([resultado, jugadores]) => (
+                            {Object.entries(resultados1x2).sort((a,b) => b[1].length - a[1].length).map(([resultado, jugadores]) => (
                                 <div key={resultado} style={styles.resumenItem}>
                                     <strong>{resultado}:</strong>
                                     <span>{jugadores.map(j => `${j.id} ${j.jokerActivo ? '🃏' : ''}`).join(', ')}</span>
@@ -609,7 +612,7 @@ const LaJornadaScreen = ({ onViewJornada }) => {
                         </div>
                         <div style={styles.resumenCategoria}>
                             <h4 style={styles.resumenTitle}>Primer Goleador</h4>
-                            {Object.entries(goleadores).map(([goleador, jugadores]) => (
+                            {Object.entries(goleadores).sort((a,b) => b[1].length - a[1].length).map(([goleador, jugadores]) => (
                                 <div key={goleador} style={styles.resumenItem}>
                                     <strong>{goleador}:</strong>
                                     <span>{jugadores.map(j => `${j.id} ${j.jokerActivo ? '🃏' : ''}`).join(', ')}</span>
@@ -643,7 +646,7 @@ const CalendarioScreen = ({ onViewJornada }) => {
 
     return (
         <div>
-            <h2 style={styles.title}>Calendario</h2>
+            <h2 style={styles.title}>CALENDARIO</h2>
             <div style={styles.jornadaList}>
                 {jornadas.map(jornada => (
                     <div key={jornada.id} style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip} : styles.jornadaItem} onClick={() => onViewJornada(jornada.id)}>
@@ -685,22 +688,24 @@ const ClasificacionScreen = () => {
         if (index === 0) return styles.top1Row;
         if (index === 1) return styles.top2Row;
         if (index === 2) return styles.top3Row;
-        return {};
+        return styles.tr;
+    };
+    
+    const getRankIcon = (index) => {
+        if (index === 0) return '🥇';
+        if (index === 1) return '🥈';
+        if (index === 2) return '🥉';
+        return `${index + 1}º`;
     };
 
     return (
         <div>
-            <h2 style={styles.title}>Clasificación</h2>
+            <h2 style={styles.title}>CLASIFICACIÓN</h2>
             <table style={styles.table}>
-                <thead><tr><th style={styles.th}>Pos.</th><th style={styles.th}>Jugador</th><th style={styles.th}>Puntos</th></tr></thead>
+                <thead><tr><th style={styles.th}>POS</th><th style={styles.th}>JUGADOR</th><th style={styles.th}>PUNTOS</th></tr></thead>
                 <tbody>{clasificacion.map((jugador, index) => (
                     <tr key={jugador.id} style={getRankStyle(index)}>
-                        <td style={styles.td}>
-                            {index === 0 && '🥇 '}
-                            {index === 1 && '🥈 '}
-                            {index === 2 && '🥉 '}
-                            {index + 1}º
-                        </td>
+                        <td style={styles.tdRank}>{getRankIcon(index)}</td>
                         <td style={styles.td}>{jugador.id}</td>
                         <td style={styles.td}>{jugador.puntosTotales || 0}</td>
                     </tr>
@@ -805,7 +810,7 @@ const JornadaAdminItem = ({ jornada }) => {
                 <p><strong>Jornada {jornada.numeroJornada || 'Copa'}:</strong> {jornada.equipoLocal} vs {jornada.equipoVisitante}</p>
                 <div style={styles.vipToggleContainer}>
                     <label htmlFor={`vip-toggle-${jornada.id}`}>⭐ VIP</label>
-                    <input id={`vip-toggle-${jornada.id}`} type="checkbox" checked={esVip} onChange={(e) => setEsVip(e.target.checked)} />
+                    <input id={`vip-toggle-${jornada.id}`} type="checkbox" checked={esVip} onChange={(e) => setEsVip(e.target.checked)} style={styles.checkbox}/>
                 </div>
             </div>
             <div style={styles.adminControls}>
@@ -850,7 +855,7 @@ const AdminPanelScreen = () => {
 
     return (
         <div>
-            <h2 style={styles.title}>Panel de Administrador</h2>
+            <h2 style={styles.title}>PANEL DE ADMINISTRADOR</h2>
             <div style={styles.jornadaList}>
                 {jornadas.map(jornada => (<JornadaAdminItem key={jornada.id} jornada={jornada} />))}
             </div>
@@ -887,8 +892,8 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
             <button onClick={onBack} style={styles.backButton}>&larr; Volver al Calendario</button>
             {jornada && (
                 <>
-                    <h2 style={styles.title}>Detalle Jornada {jornada.numeroJornada}</h2>
-                    <h3>{jornada.equipoLocal} vs {jornada.equipoVisitante}</h3>
+                    <h2 style={styles.title}>DETALLE JORNADA {jornada.numeroJornada}</h2>
+                    <h3 style={styles.formSectionTitle}>{jornada.equipoLocal} vs {jornada.equipoVisitante}</h3>
                     {jornada.estado === 'Finalizada' ? (
                         <p style={styles.finalResult}>Resultado Final: {jornada.resultadoLocal} - {jornada.resultadoVisitante}</p>
                     ) : ( <p>Esta jornada aún no ha finalizado.</p> )}
@@ -907,7 +912,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
                                 const esGanador = jornada.ganadores?.includes(p.id);
                                 return (
                                     <React.Fragment key={p.id}>
-                                        <tr style={esGanador ? styles.winnerRow : {}}>
+                                        <tr style={esGanador ? styles.winnerRow : styles.tr}>
                                             <td style={styles.td}>{p.id} {p.jokerActivo && '🃏'}</td>
                                             <td style={styles.td}>{p.golesLocal}-{p.golesVisitante} ({p.resultado1x2}) {p.goleador && `- ${p.goleador}`}</td>
                                             <td style={styles.td}>{p.puntosObtenidos === undefined ? '-' : p.puntosObtenidos}</td>
@@ -954,7 +959,7 @@ const AdminLoginModal = ({ onClose, onSuccess }) => {
     return (
         <div style={styles.modalOverlay}>
             <div style={styles.modalContent}>
-                <h3 style={styles.title}>Acceso de Administrador</h3>
+                <h3 style={styles.title}>ACCESO ADMIN</h3>
                 <form onSubmit={handleSubmit}>
                     <label style={styles.label}>Contraseña:</label>
                     <input 
@@ -965,8 +970,8 @@ const AdminLoginModal = ({ onClose, onSuccess }) => {
                     />
                     {error && <p style={{color: styles.colors.danger}}>{error}</p>}
                     <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '20px'}}>
-                        <button type="button" onClick={onClose} style={{...styles.mainButton, backgroundColor: styles.colors.lightBlue}}>Cancelar</button>
-                        <button type="submit" style={styles.mainButton}>Entrar</button>
+                        <button type="button" onClick={onClose} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>CANCELAR</button>
+                        <button type="submit" style={styles.mainButton}>ENTRAR</button>
                     </div>
                 </form>
             </div>
@@ -993,7 +998,7 @@ const PagosScreen = ({ user }) => {
 
             Promise.all(promises).then(pronosticosSnaps => {
                 pronosticosSnaps.forEach((pronosticosSnap, index) => {
-                    jornadasData[index].pronosticos = pronosticosSnap.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                    jornadasData[index].pronosticos = pronosticosSnaps.docs.map(doc => ({id: doc.id, ...doc.data()}));
                 });
                 setJornadas(jornadasData);
                 setLoading(false);
@@ -1016,10 +1021,10 @@ const PagosScreen = ({ user }) => {
 
     return (
         <div>
-            <h2 style={styles.title}>Gestión de Pagos</h2>
+            <h2 style={styles.title}>GESTIÓN DE PAGOS</h2>
             {jornadas.map(jornada => (
                 <div key={jornada.id} style={styles.adminJornadaItem}>
-                    <h4>Jornada {jornada.numeroJornada}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</h4>
+                    <h4 style={styles.formSectionTitle}>Jornada {jornada.numeroJornada}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</h4>
                     <table style={styles.table}>
                         <thead><tr><th style={styles.th}>Jugador</th><th style={styles.th}>Pagado</th><th style={styles.th}>Verificado (Admin)</th></tr></thead>
                         <tbody>
@@ -1027,13 +1032,13 @@ const PagosScreen = ({ user }) => {
                                 const pronostico = jornada.pronosticos.find(p => p.id === jugadorId);
                                 if (!pronostico) return null;
                                 return (
-                                    <tr key={jugadorId}>
+                                    <tr key={jugadorId} style={styles.tr}>
                                         <td style={styles.td}>{jugadorId}</td>
                                         <td style={styles.td}>
-                                            <input type="checkbox" checked={pronostico.pagado || false} onChange={(e) => handlePagoChange(jornada.id, jugadorId, e.target.checked)} disabled={user !== jugadorId} />
+                                            <input type="checkbox" checked={pronostico.pagado || false} onChange={(e) => handlePagoChange(jornada.id, jugadorId, e.target.checked)} disabled={user !== jugadorId} style={styles.checkbox}/>
                                         </td>
                                         <td style={styles.td}>
-                                            <input type="checkbox" checked={pronostico.verificado || false} onChange={(e) => handleVerificacionChange(jornada.id, jugadorId, e.target.checked)} disabled={user !== 'Juanma'} />
+                                            <input type="checkbox" checked={pronostico.verificado || false} onChange={(e) => handleVerificacionChange(jornada.id, jugadorId, e.target.checked)} disabled={user !== 'Juanma'} style={styles.checkbox}/>
                                         </td>
                                     </tr>
                                 );
@@ -1113,99 +1118,621 @@ function App() {
 }
 
 // ============================================================================
-// --- ESTILOS (CSS-in-JS) ---
+// --- ESTILOS (CSS-in-JS) - ¡NUEVO DISEÑO DE VIDEOJUEGO! ---
 // ============================================================================
-// NOTA: Para usar las fuentes 'Cinzel' y 'Lato', añádelas a tu archivo public/index.html:
+// NOTA: Para usar las fuentes 'Exo 2' y 'Orbitron', añádelas a tu archivo public/index.html:
 // <link rel="preconnect" href="https://fonts.googleapis.com">
 // <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-// <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Lato:wght@400;700&display=swap" rel="stylesheet">
+// <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,100..900;1,100..900&family=Orbitron:wght@400..900&display=swap" rel="stylesheet">
+
 const colors = {
-    darkBlue: '#0d1b2a', midBlue: '#1b263b', lightBlue: '#415a77', lightText: '#e0e1dd',
-    gold: '#D4AF37',
-    danger: '#d00000', success: '#40916c', warning: '#ff9f1c',
-    status: { 'Próximamente': '#6c757d', 'Abierta': '#40916c', 'Cerrada': '#d00000', 'Finalizada': '#415a77' }
+    // Paleta UD Las Palmas con toque de Videojuego
+    deepBlue: '#001d3d',      // Un azul más oscuro y profundo
+    blue: '#0055A4',          // Azul oficial UDLP
+    yellow: '#FFC72C',        // Amarillo oficial UDLP
+    gold: '#FFD700',          // Dorado para acentos y victorias
+    silver: '#C0C0C0',        // Plata para el segundo puesto
+    bronze: '#CD7F32',        // Bronce para el tercer puesto
+    lightText: '#f0f0f0',     // Texto principal, casi blanco
+    darkText: '#0a0a0a',      // Texto sobre fondos claros
+    danger: '#e63946',        // Rojo para errores o alertas
+    success: '#52b788',       // Verde para éxito
+    warning: '#fca311',       // Naranja para advertencias
+    darkUI: 'rgba(10, 25, 47, 0.85)', // Color base para tarjetas y modales
+    darkUIAlt: 'rgba(23, 42, 69, 0.85)', // Alternativa para hover o elementos activos
+    status: { 'Próximamente': '#6c757d', 'Abierta': '#52b788', 'Cerrada': '#e63946', 'Finalizada': '#0055A4' }
 };
 
 const styles = {
     colors,
-    container: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: `linear-gradient(135deg, ${colors.darkBlue} 0%, #000 100%)`, padding: '20px', fontFamily: "'Lato', sans-serif" },
-    card: { width: '100%', maxWidth: '800px', backgroundColor: colors.midBlue, color: colors.lightText, padding: '25px', borderRadius: '12px', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)', minHeight: '80vh' },
-    splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center' },
-    splashTitle: { color: colors.gold, fontSize: '3.5rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '4px', textShadow: `0 0 15px ${colors.gold}`, fontFamily: "'Cinzel', serif" },
-    splashInfoBox: { border: `2px solid ${colors.gold}`, padding: '20px', borderRadius: '10px', marginTop: '30px', backgroundColor: `${colors.darkBlue}80`, width: '90%', minHeight: '150px' },
-    splashInfoTitle: { margin: '0 0 10px 0', fontFamily: "'Cinzel', serif", color: colors.gold },
-    splashAdminMessage: { fontStyle: 'italic', marginTop: '15px', borderTop: `1px solid ${colors.lightBlue}`, paddingTop: '15px' },
-    splashBote: { color: colors.success, fontWeight: 'bold', fontSize: '1.2rem' },
-    splashStats: { display: 'flex', justifyContent: 'space-around', marginTop: '10px' },
-    carouselStat: { padding: '10px', fontSize: '1.1rem' },
+    // Estilos Globales
+    container: { 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        minHeight: '100vh', 
+        background: `linear-gradient(145deg, ${colors.deepBlue} 0%, #000 100%)`, 
+        padding: '20px', 
+        fontFamily: "'Exo 2', sans-serif" 
+    },
+    card: { 
+        width: '100%', 
+        maxWidth: '850px', 
+        backgroundColor: colors.darkUI, 
+        color: colors.lightText, 
+        padding: '25px', 
+        borderRadius: '16px', 
+        boxShadow: `0 0 25px ${colors.blue}30, 0 10px 30px rgba(0, 0, 0, 0.5)`, 
+        minHeight: '80vh',
+        border: `1px solid ${colors.blue}80`,
+        backdropFilter: 'blur(10px)',
+    },
+    title: { 
+        fontFamily: "'Orbitron', sans-serif",
+        color: colors.yellow, 
+        textTransform: 'uppercase',
+        letterSpacing: '2px',
+        textAlign: 'center',
+        borderBottom: `2px solid ${colors.yellow}`, 
+        paddingBottom: '10px', 
+        marginBottom: '25px',
+        textShadow: `0 0 10px ${colors.yellow}90`
+    },
+    mainButton: { 
+        fontFamily: "'Orbitron', sans-serif",
+        padding: '12px 30px', 
+        fontSize: '1.2rem', 
+        fontWeight: 'bold', 
+        cursor: 'pointer', 
+        border: `2px solid ${colors.yellow}`, 
+        borderRadius: '8px', 
+        backgroundColor: colors.yellow, 
+        color: colors.darkText, 
+        marginTop: '20px', 
+        transition: 'all 0.3s ease',
+        textTransform: 'uppercase',
+        letterSpacing: '1px',
+        boxShadow: `0 0 15px ${colors.yellow}50`,
+        ':hover': {
+            backgroundColor: 'transparent',
+            color: colors.yellow,
+            transform: 'scale(1.05)'
+        }
+    },
+    placeholder: { 
+        padding: '40px 20px', 
+        backgroundColor: 'rgba(0,0,0,0.2)', 
+        border: `2px dashed ${colors.blue}`, 
+        borderRadius: '12px', 
+        textAlign: 'center',
+        color: colors.lightText
+    },
+    // Splash Screen
+    splashContainer: { 
+        display: 'flex', 
+        flexDirection: 'column', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100%', 
+        textAlign: 'center' 
+    },
+    splashLogoContainer: {
+        marginBottom: '20px',
+    },
+    splashLogo: {
+        width: '120px',
+        height: '120px',
+        marginBottom: '10px',
+    },
+    splashTitle: { 
+        fontFamily: "'Orbitron', sans-serif",
+        color: colors.yellow, 
+        fontSize: '3rem', 
+        fontWeight: '900', 
+        textTransform: 'uppercase', 
+        letterSpacing: '4px', 
+        textShadow: `0 0 20px ${colors.yellow}, 0 0 10px ${colors.blue}` 
+    },
+    splashInfoBox: { 
+        border: `2px solid ${colors.yellow}80`,
+        padding: '20px', 
+        borderRadius: '10px', 
+        marginTop: '30px', 
+        backgroundColor: 'rgba(0,0,0,0.3)', 
+        width: '90%', 
+        minHeight: '150px' 
+    },
+    splashInfoTitle: { 
+        margin: '0 0 15px 0', 
+        fontFamily: "'Orbitron', sans-serif", 
+        color: colors.yellow,
+        textTransform: 'uppercase'
+    },
+    splashMatch: {
+        fontSize: '1.5rem',
+        fontWeight: 'bold'
+    },
+    splashAdminMessage: { 
+        fontStyle: 'italic', 
+        marginTop: '15px', 
+        borderTop: `1px solid ${colors.blue}`, 
+        paddingTop: '15px',
+        color: colors.silver
+    },
+    splashBote: { 
+        color: colors.success, 
+        fontWeight: 'bold', 
+        fontSize: '1.2rem' 
+    },
+    carouselStat: { 
+        padding: '10px', 
+        fontSize: '1.1rem',
+        animation: 'fadeIn 1s'
+    },
+    // Login Screen
     loginContainer: { textAlign: 'center' },
-    userList: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', marginTop: '30px' },
-    userButton: { width: '90%', maxWidth: '400px', padding: '15px 10px', fontSize: '1.2rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.lightBlue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Cinzel', serif", letterSpacing: '2px' },
-    userButtonHover: { borderColor: colors.gold, color: colors.gold, transform: 'scale(1.05)', boxShadow: `0 0 20px ${colors.gold}33` },
-    navbar: { display: 'flex', flexWrap: 'wrap', gap: '10px', borderBottom: `2px solid ${colors.lightBlue}`, paddingBottom: '15px', marginBottom: '20px' },
-    navButton: { padding: '10px 15px', fontSize: '1rem', border: `1px solid ${colors.lightBlue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, cursor: 'pointer', transition: 'all 0.2s' },
-    navButtonActive: { padding: '10px 15px', fontSize: '1rem', border: `1px solid ${colors.gold}`, borderRadius: '8px', backgroundColor: colors.lightBlue, color: colors.gold, cursor: 'pointer' },
-    logoutButton: { padding: '10px 15px', fontSize: '1rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.danger, cursor: 'pointer', marginLeft: 'auto', transition: 'all 0.2s' },
+    userList: { 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: '15px', 
+        marginTop: '30px' 
+    },
+    userButton: { 
+        width: '100%',
+        padding: '20px 10px', 
+        fontSize: '1.1rem', 
+        fontWeight: 'bold', 
+        cursor: 'pointer', 
+        border: `2px solid ${colors.blue}`, 
+        borderRadius: '8px', 
+        backgroundColor: 'transparent', 
+        color: colors.lightText, 
+        transition: 'all 0.3s ease', 
+        boxShadow: '0 4px 15px rgba(0,0,0,0.2)', 
+        fontFamily: "'Exo 2', sans-serif", 
+        textTransform: 'uppercase',
+        letterSpacing: '1px'
+    },
+    userButtonHover: { 
+        borderColor: colors.yellow, 
+        color: colors.yellow, 
+        transform: 'translateY(-5px)', 
+        boxShadow: `0 0 20px ${colors.yellow}50` 
+    },
+    // Navegación
+    navbar: { 
+        display: 'flex', 
+        flexWrap: 'wrap', 
+        gap: '5px', 
+        borderBottom: `2px solid ${colors.blue}`, 
+        paddingBottom: '15px', 
+        marginBottom: '20px' 
+    },
+    navButton: { 
+        padding: '10px 15px', 
+        fontSize: '1rem', 
+        border: 'none',
+        borderBottom: '3px solid transparent',
+        borderRadius: '6px 6px 0 0', 
+        backgroundColor: 'transparent', 
+        color: colors.lightText, 
+        cursor: 'pointer', 
+        transition: 'all 0.3s',
+        textTransform: 'uppercase',
+        fontWeight: '600'
+    },
+    navButtonActive: { 
+        padding: '10px 15px', 
+        fontSize: '1rem', 
+        border: 'none',
+        borderBottom: `3px solid ${colors.yellow}`,
+        borderRadius: '6px 6px 0 0', 
+        backgroundColor: colors.darkUIAlt, 
+        color: colors.yellow, 
+        cursor: 'pointer',
+        textTransform: 'uppercase',
+        fontWeight: '600'
+    },
+    logoutButton: { 
+        padding: '10px 15px', 
+        fontSize: '1rem', 
+        border: `1px solid ${colors.danger}`, 
+        borderRadius: '8px', 
+        backgroundColor: 'transparent', 
+        color: colors.danger, 
+        cursor: 'pointer', 
+        marginLeft: 'auto', 
+        transition: 'all 0.2s',
+        fontWeight: '600',
+        textTransform: 'uppercase'
+    },
     content: { padding: '10px 0' },
-    title: { color: colors.gold, borderBottom: `3px solid ${colors.gold}`, paddingBottom: '5px', display: 'inline-block', fontFamily: "'Cinzel', serif" },
-    mainButton: { padding: '12px 25px', fontSize: '1.2rem', fontWeight: 'bold', cursor: 'pointer', border: 'none', borderRadius: '8px', backgroundColor: colors.gold, color: colors.darkBlue, marginTop: '20px', transition: 'transform 0.2s' },
-    placeholder: { padding: '20px', backgroundColor: colors.darkBlue, border: '1px dashed #415a77', borderRadius: '8px', textAlign: 'center' },
-    jornadaList: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
-    jornadaItem: { cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', border: '1px solid #1b263b', borderRadius: '8px', backgroundColor: colors.lightBlue, transition: 'all 0.2s ease' },
-    jornadaVip: { borderColor: colors.gold, borderWidth: '2px', boxShadow: `0 0 10px ${colors.gold}55` },
-    jornadaInfo: { display: 'flex', flexDirection: 'column', color: colors.lightText },
-    statusBadge: { color: 'white', padding: '5px 10px', borderRadius: '15px', fontSize: '0.8rem', fontWeight: 'bold' },
-    adminJornadaItem: { padding: '20px', backgroundColor: colors.darkBlue, border: `1px solid ${colors.lightBlue}`, borderRadius: '8px', marginBottom: '15px' },
-    adminControls: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', margin: '15px 0' },
-    adminInput: { width: '90%', padding: '8px', border: '1px solid #415a77', borderRadius: '4px', backgroundColor: colors.lightBlue, color: colors.lightText },
-    adminSelect: { width: '95%', padding: '8px', border: '1px solid #415a77', borderRadius: '4px', backgroundColor: colors.lightBlue, color: colors.lightText },
-    saveButton: { padding: '8px 15px', border: 'none', borderRadius: '5px', backgroundColor: colors.success, color: 'white', cursor: 'pointer', marginRight: '10px' },
-    form: { backgroundColor: colors.darkBlue, padding: '20px', borderRadius: '8px', marginTop: '20px' },
-    formGroup: { marginBottom: '20px' },
-    label: { display: 'block', marginBottom: '8px', color: colors.gold, fontWeight: 'bold' },
-    input: { width: 'calc(100% - 22px)', padding: '10px', border: '1px solid #415a77', borderRadius: '4px', backgroundColor: colors.lightBlue, color: colors.lightText, fontSize: '1rem' },
-    resultInputContainer: { display: 'flex', alignItems: 'center', gap: '10px' },
-    resultInput: { width: '50px', textAlign: 'center', padding: '10px', border: '1px solid #415a77', borderRadius: '4px', backgroundColor: colors.lightBlue, color: colors.lightText, fontSize: '1.2rem' },
-    teamName: { flex: 1, textAlign: 'center' },
-    separator: { fontSize: '1.2rem', fontWeight: 'bold' },
-    message: { marginTop: '15px', padding: '10px', borderRadius: '5px', backgroundColor: colors.lightBlue, color: colors.lightText },
-    table: { width: '100%', marginTop: '20px', borderCollapse: 'collapse', color: colors.lightText },
-    th: { backgroundColor: colors.lightBlue, color: colors.gold, padding: '12px', border: `1px solid ${colors.darkBlue}`, textAlign: 'left' },
-    td: { padding: '10px 12px', border: `1px solid ${colors.lightBlue}` },
-    laJornadaContainer: { textAlign: 'center', padding: '30px', backgroundColor: colors.darkBlue, borderRadius: '12px' },
-    matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', fontSize: '2rem', fontWeight: 'bold', margin: '20px 0' },
-    vs: { color: colors.gold },
+    // Formularios
+    form: { 
+        backgroundColor: 'rgba(0,0,0,0.2)', 
+        padding: '25px', 
+        borderRadius: '12px', 
+        marginTop: '20px',
+        border: `1px solid ${colors.blue}50`
+    },
+    formSectionTitle: {
+        fontFamily: "'Orbitron', sans-serif",
+        color: colors.lightText,
+        fontSize: '1.5rem',
+        textAlign: 'center',
+        marginBottom: '20px'
+    },
+    formGroup: { marginBottom: '25px' },
+    label: { 
+        display: 'block', 
+        marginBottom: '10px', 
+        color: colors.yellow, 
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+        fontSize: '0.9rem',
+        letterSpacing: '1px'
+    },
+    input: { 
+        width: 'calc(100% - 24px)', 
+        padding: '12px', 
+        border: `1px solid ${colors.blue}`, 
+        borderRadius: '6px', 
+        backgroundColor: colors.deepBlue, 
+        color: colors.lightText, 
+        fontSize: '1rem',
+        transition: 'all 0.3s ease'
+    },
+    resultInputContainer: { 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '15px' 
+    },
+    resultInput: { 
+        width: '60px', 
+        textAlign: 'center', 
+        padding: '12px', 
+        border: `1px solid ${colors.blue}`, 
+        borderRadius: '6px', 
+        backgroundColor: colors.deepBlue, 
+        color: colors.lightText, 
+        fontSize: '1.5rem',
+        fontFamily: "'Orbitron', sans-serif",
+    },
+    teamNameText: { flex: 1, textAlign: 'center', fontWeight: '600', fontSize: '1.1rem' },
+    separator: { fontSize: '1.5rem', fontWeight: 'bold', color: colors.yellow },
+    checkbox: {
+        width: '20px',
+        height: '20px',
+        accentColor: colors.yellow
+    },
+    message: { 
+        marginTop: '20px', 
+        padding: '12px', 
+        borderRadius: '8px', 
+        backgroundColor: colors.darkUIAlt, 
+        color: colors.lightText,
+        textAlign: 'center',
+        fontWeight: 'bold'
+    },
+    // Clasificación y Tablas
+    table: { 
+        width: '100%', 
+        marginTop: '20px', 
+        borderCollapse: 'separate', 
+        borderSpacing: '0 5px',
+        color: colors.lightText 
+    },
+    th: { 
+        backgroundColor: 'transparent', 
+        color: colors.yellow, 
+        padding: '15px', 
+        borderBottom: `2px solid ${colors.yellow}`, 
+        textAlign: 'left',
+        textTransform: 'uppercase',
+        fontFamily: "'Orbitron', sans-serif",
+    },
+    tr: {
+        backgroundColor: colors.darkUIAlt,
+        transition: 'background-color 0.3s ease'
+    },
+    td: { 
+        padding: '15px', 
+        border: 'none',
+        borderBottom: `1px solid ${colors.deepBlue}`
+    },
+    tdRank: {
+        padding: '15px', 
+        border: 'none',
+        borderBottom: `1px solid ${colors.deepBlue}`,
+        fontFamily: "'Orbitron', sans-serif",
+        fontWeight: 'bold',
+        fontSize: '1.2rem',
+        textAlign: 'center'
+    },
+    top1Row: { backgroundColor: `${colors.gold}40` },
+    top2Row: { backgroundColor: `${colors.silver}30` },
+    top3Row: { backgroundColor: `${colors.bronze}30` },
+    // La Jornada
+    laJornadaContainer: { 
+        textAlign: 'center', 
+        padding: '30px', 
+        backgroundColor: 'rgba(0,0,0,0.2)', 
+        borderRadius: '12px' 
+    },
+    matchInfo: { 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        gap: '20px', 
+        fontSize: '2.5rem', 
+        fontWeight: 'bold', 
+        margin: '20px 0',
+        fontFamily: "'Orbitron', sans-serif",
+    },
+    vs: { color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}` },
     countdownContainer: { margin: '30px 0' },
-    countdown: { fontSize: '2.5rem', fontWeight: 'bold', color: colors.gold, backgroundColor: colors.lightBlue, padding: '15px', borderRadius: '8px', display: 'inline-block' },
-    callToAction: { fontSize: '1.5rem', fontStyle: 'italic', color: colors.lightText },
-    pinLockContainer: { backgroundColor: colors.darkBlue, padding: '15px', borderRadius: '8px', marginBottom: '20px', border: `1px solid ${colors.gold}` },
-    apostadoresContainer: { marginTop: '30px', borderTop: `1px solid ${colors.lightBlue}`, paddingTop: '20px' },
-    apostadoresGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px', marginTop: '10px' },
-    apostadorHecho: { padding: '8px', backgroundColor: colors.success, color: 'white', borderRadius: '5px', textAlign: 'center' },
-    apostadorPendiente: { padding: '8px', backgroundColor: colors.lightBlue, color: colors.lightText, borderRadius: '5px', textAlign: 'center', opacity: 0.6 },
-    jokerContainer: { marginTop: '30px', paddingTop: '20px', borderTop: `1px solid ${colors.lightBlue}` },
-    jokerButton: { padding: '10px 20px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: 'none', borderRadius: '8px', backgroundColor: colors.gold, color: colors.darkBlue, transition: 'all 0.2s' },
-    vipBanner: { backgroundColor: colors.gold, color: colors.darkBlue, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1.2rem' },
+    countdown: { 
+        fontFamily: "'Orbitron', sans-serif",
+        fontSize: '2.5rem', 
+        fontWeight: 'bold', 
+        color: colors.yellow, 
+        backgroundColor: colors.deepBlue, 
+        padding: '15px 25px', 
+        borderRadius: '8px', 
+        display: 'inline-block',
+        border: `1px solid ${colors.blue}`
+    },
+    callToAction: { 
+        fontSize: '1.5rem', 
+        fontStyle: 'italic', 
+        color: colors.lightText,
+        marginTop: '20px'
+    },
+    apostadoresContainer: { marginTop: '30px', borderTop: `1px solid ${colors.blue}`, paddingTop: '20px' },
+    apostadoresGrid: { 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', 
+        gap: '10px', 
+        marginTop: '10px' 
+    },
+    apostadorHecho: { 
+        padding: '10px', 
+        backgroundColor: colors.success, 
+        color: colors.darkText, 
+        borderRadius: '5px', 
+        textAlign: 'center',
+        fontWeight: 'bold'
+    },
+    apostadorPendiente: { 
+        padding: '10px', 
+        backgroundColor: colors.darkUIAlt, 
+        color: colors.lightText, 
+        borderRadius: '5px', 
+        textAlign: 'center', 
+        opacity: 0.6 
+    },
+    // Joker y VIP
+    jokerContainer: { 
+        marginTop: '30px', 
+        padding: '20px', 
+        borderTop: `2px solid ${colors.blue}`,
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        borderRadius: '8px'
+    },
+    jokerButton: { 
+        padding: '10px 20px', 
+        fontSize: '1rem', 
+        fontWeight: 'bold', 
+        cursor: 'pointer', 
+        border: `2px solid ${colors.gold}`,
+        borderRadius: '8px', 
+        backgroundColor: 'transparent', 
+        color: colors.gold, 
+        transition: 'all 0.3s ease',
+        textTransform: 'uppercase'
+    },
+    dangerButton: {
+        borderColor: colors.danger,
+        color: colors.danger
+    },
+    vipBanner: { 
+        background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, 
+        color: colors.darkText, 
+        fontWeight: 'bold', 
+        padding: '15px', 
+        borderRadius: '8px', 
+        textAlign: 'center', 
+        marginBottom: '20px', 
+        fontSize: '1.2rem',
+        fontFamily: "'Orbitron', sans-serif",
+        boxShadow: `0 0 20px ${colors.gold}70`
+    },
+    // Calendario
+    jornadaList: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
+    jornadaItem: { 
+        cursor: 'pointer', 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        padding: '20px', 
+        border: '1px solid transparent',
+        borderLeft: `5px solid ${colors.blue}`,
+        borderRadius: '8px', 
+        backgroundColor: colors.darkUIAlt, 
+        transition: 'all 0.3s ease' 
+    },
+    jornadaVip: { 
+        borderLeft: `5px solid ${colors.yellow}`,
+        boxShadow: `0 0 15px ${colors.yellow}30` 
+    },
+    jornadaInfo: { display: 'flex', flexDirection: 'column', color: colors.lightText },
+    statusBadge: { 
+        color: 'white', 
+        padding: '5px 12px', 
+        borderRadius: '15px', 
+        fontSize: '0.8rem', 
+        fontWeight: 'bold',
+        textTransform: 'uppercase'
+    },
+    // Admin
+    adminJornadaItem: { 
+        padding: '20px', 
+        backgroundColor: 'rgba(0,0,0,0.2)', 
+        border: `1px solid ${colors.blue}`, 
+        borderRadius: '12px', 
+        marginBottom: '20px' 
+    },
+    adminControls: { 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+        gap: '20px', 
+        margin: '15px 0' 
+    },
+    adminInput: { 
+        width: '90%', 
+        padding: '10px', 
+        border: `1px solid ${colors.blue}`, 
+        borderRadius: '6px', 
+        backgroundColor: colors.deepBlue, 
+        color: colors.lightText 
+    },
+    adminSelect: { 
+        width: '95%', 
+        padding: '10px', 
+        border: `1px solid ${colors.blue}`, 
+        borderRadius: '6px', 
+        backgroundColor: colors.deepBlue, 
+        color: colors.lightText 
+    },
+    saveButton: { 
+        padding: '10px 18px', 
+        border: 'none', 
+        borderRadius: '5px', 
+        backgroundColor: colors.success, 
+        color: 'white', 
+        cursor: 'pointer', 
+        marginRight: '10px',
+        textTransform: 'uppercase',
+        fontWeight: 'bold'
+    },
     vipToggleContainer: { display: 'flex', alignItems: 'center', gap: '10px' },
-    backButton: { padding: '10px 15px', fontSize: '1rem', border: `1px solid ${colors.lightBlue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, cursor: 'pointer', transition: 'all 0.2s', marginBottom: '20px' },
-    finalResult: { fontSize: '1.5rem', fontWeight: 'bold', color: colors.gold, textAlign: 'center', margin: '20px 0' },
-    statsIndicator: { display: 'block', textAlign: 'center', marginTop: '10px', fontWeight: 'bold' },
-    jokerDetailRow: { backgroundColor: `${colors.darkBlue}99` },
-    jokerDetailChip: { backgroundColor: colors.lightBlue, padding: '5px 10px', borderRadius: '5px', fontSize: '0.9rem' },
-    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-    modalContent: { backgroundColor: colors.midBlue, padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: `1px solid ${colors.gold}` },
-    winnerBanner: { backgroundColor: colors.gold, color: colors.darkBlue, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', margin: '20px 0', fontSize: '1.2rem' },
-    boteBanner: { backgroundColor: colors.danger, color: 'white', fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', margin: '20px 0', fontSize: '1.2rem' },
-    winnerRow: { backgroundColor: `${colors.gold}33` },
-    top1Row: { backgroundColor: `${colors.gold}4D`, fontWeight: 'bold' },
-    top2Row: { backgroundColor: `#C0C0C04D` },
-    top3Row: { backgroundColor: `#CD7F324D` },
+    // Detalles Jornada
+    backButton: { 
+        padding: '10px 15px', 
+        fontSize: '1rem', 
+        border: `1px solid ${colors.blue}`, 
+        borderRadius: '8px', 
+        backgroundColor: 'transparent', 
+        color: colors.lightText, 
+        cursor: 'pointer', 
+        transition: 'all 0.2s', 
+        marginBottom: '20px' 
+    },
+    finalResult: { 
+        fontSize: '2rem', 
+        fontWeight: 'bold', 
+        color: colors.yellow, 
+        textAlign: 'center', 
+        margin: '20px 0',
+        fontFamily: "'Orbitron', sans-serif",
+    },
+    winnerBanner: { 
+        background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, 
+        color: colors.darkText, 
+        fontWeight: 'bold', 
+        padding: '15px', 
+        borderRadius: '8px', 
+        textAlign: 'center', 
+        margin: '20px 0', 
+        fontSize: '1.2rem',
+        boxShadow: `0 0 20px ${colors.gold}70`
+    },
+    boteBanner: { 
+        backgroundColor: colors.danger, 
+        color: 'white', 
+        fontWeight: 'bold', 
+        padding: '15px', 
+        borderRadius: '8px', 
+        textAlign: 'center', 
+        margin: '20px 0', 
+        fontSize: '1.2rem' 
+    },
+    winnerRow: { backgroundColor: `${colors.gold}30` },
+    jokerDetailRow: { backgroundColor: `${colors.deepBlue}99` },
+    jokerDetailChip: { 
+        backgroundColor: colors.blue, 
+        padding: '5px 10px', 
+        borderRadius: '5px', 
+        fontSize: '0.9rem' 
+    },
+    // Modal
+    modalOverlay: { 
+        position: 'fixed', 
+        top: 0, left: 0, right: 0, bottom: 0, 
+        backgroundColor: 'rgba(0,0,0,0.8)', 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        zIndex: 1000,
+        backdropFilter: 'blur(5px)'
+    },
+    modalContent: { 
+        backgroundColor: colors.darkUI, 
+        padding: '30px', 
+        borderRadius: '12px', 
+        width: '90%', 
+        maxWidth: '450px', 
+        border: `1px solid ${colors.yellow}` 
+    },
+    // Resumen Apuestas
     resumenContainer: { display: 'flex', flexDirection: 'column', gap: '20px' },
-    resumenCategoria: { backgroundColor: colors.darkBlue, padding: '15px', borderRadius: '8px' },
-    resumenTitle: { borderBottom: `1px solid ${colors.lightBlue}`, paddingBottom: '10px', marginBottom: '10px' },
-    resumenItem: { display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${colors.lightBlue}55` },
-    teamDisplay: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', flex: 1 },
-    teamLogo: { width: '50px', height: '50px', objectFit: 'contain' }
+    resumenCategoria: { 
+        backgroundColor: 'rgba(0,0,0,0.2)', 
+        padding: '20px', 
+        borderRadius: '12px' 
+    },
+    resumenTitle: { 
+        borderBottom: `1px solid ${colors.blue}`, 
+        paddingBottom: '10px', 
+        marginBottom: '10px',
+        color: colors.yellow,
+        fontFamily: "'Orbitron', sans-serif",
+        textTransform: 'uppercase'
+    },
+    resumenItem: { 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        padding: '8px 5px', 
+        borderBottom: `1px solid ${colors.blue}55`,
+        flexWrap: 'wrap'
+    },
+    // Team Display
+    teamDisplay: { 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        gap: '10px', 
+        flex: 1 
+    },
+    teamLogo: { 
+        width: '80px', 
+        height: '80px', 
+        objectFit: 'contain' 
+    },
+    pinLockContainer: { 
+        backgroundColor: 'rgba(0,0,0,0.3)', 
+        padding: '20px', 
+        borderRadius: '12px', 
+        marginBottom: '20px', 
+        border: `1px solid ${colors.yellow}` 
+    },
+    statsIndicator: { 
+        display: 'block', 
+        textAlign: 'center', 
+        marginTop: '10px', 
+        fontWeight: 'bold' 
+    },
 };
 
 export default App;
