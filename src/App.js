@@ -121,7 +121,7 @@ const InitialSplashScreen = ({ onFinish }) => {
 };
 
 const OrientationLock = () => (
-    <div style={styles.orientationLock}>
+    <div id="orientation-lock" style={styles.orientationLock}>
         <div style={styles.rotateMessage}>
             <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}>
                 <path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/>
@@ -783,7 +783,7 @@ const ClasificacionScreen = ({ currentUser }) => {
                     ...data,
                     rachaAciertos: rachaAciertos >= 2,
                     malaRacha: malaRacha >= 2,
-                    sinJokers: (data.jokersRestantes || 2) <= 0,
+                    sinJokers: (data.jokersRestantes === undefined ? 2 : data.jokersRestantes) <= 0,
                 };
             });
 
