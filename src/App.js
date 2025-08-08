@@ -479,6 +479,14 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
 
     const isVip = jornadaActiva?.esVip;
 
+    // --- NUEVO COMPONENTE INTERNO PARA MOSTRAR EQUIPO CON LOGO ---
+    const TeamBetDisplay = ({ teamName }) => (
+        <div style={styles.betTeamContainer}>
+            <img src={teamLogos[teamName]} style={styles.betTeamLogo} alt={`${teamName} logo`} />
+            <span style={styles.betTeamName}>{teamName}</span>
+        </div>
+    );
+
     return (
         <div>
             {showJokerAnimation && <JokerAnimation />}
@@ -492,11 +500,17 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
                     <fieldset disabled={isLocked} style={{border: 'none', padding: 0, margin: 0}}>
                         <div style={styles.formGroup}>
                             <label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label>
-                            <div style={styles.resultInputContainer}><span style={styles.teamNameText}>{jornadaActiva.equipoLocal}</span><input type="number" min="0" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="number" min="0" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} /><span style={styles.teamNameText}>{jornadaActiva.equipoVisitante}</span></div>
+                            <div style={styles.resultInputContainer}>
+                                <TeamBetDisplay teamName={jornadaActiva.equipoLocal} />
+                                <input type="number" min="0" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} />
+                                <span style={styles.separator}>-</span>
+                                <input type="number" min="0" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} />
+                                <TeamBetDisplay teamName={jornadaActiva.equipoVisitante} />
+                            </div>
                             {(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}
                         </div>
                         <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
-                        <div style={styles.formGroup}><label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label><input type="text" name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador} /><div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>({isVip ? '2' : '1'} Punto)</span></label></div></div>
+                        <div style={styles.formGroup}><label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label><input type="text" name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador} /><div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>(1 Punto)</span></label></div></div>
                         <div style={styles.formGroup}><label style={styles.label}>PIN DE SEGURIDAD (4 dígitos, opcional)</label><input type="password" name="pin" value={pronostico.pin} onChange={handlePronosticoChange} maxLength="4" style={styles.input} placeholder="Deja en blanco para no bloquear" /></div>
                         
                         <div style={styles.jokerContainer}>
@@ -689,8 +703,13 @@ const JornadaAdminItem = ({ jornada }) => {
             if (p.resultado1x2 === resultado1x2) { puntosJornada += esVip ? 2 : 1; }
             const goleadorReal = goleador.trim().toLowerCase();
             const goleadorApostado = p.goleador ? p.goleador.trim().toLowerCase() : '';
-            if (p.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) { puntosJornada += esVip ? 2 : 1; } 
-            else if (!p.sinGoleador && goleadorApostado === goleadorReal && goleadorReal !== "") { puntosJornada += esVip ? 4 : 2; }
+            // --- CAMBIO LÓGICA PUNTUACIÓN SG ---
+            if (p.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) { 
+                puntosJornada += 1; // SG siempre vale 1 punto
+            } 
+            else if (!p.sinGoleador && goleadorApostado === goleadorReal && goleadorReal !== "") { 
+                puntosJornada += esVip ? 4 : 2; 
+            }
             if (p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0) {
                 for (const jokerP of p.jokerPronosticos) {
                     if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === parseInt(resultadoLocal) && parseInt(jokerP.golesVisitante) === parseInt(resultadoVisitante)) {
@@ -1024,7 +1043,9 @@ const styles = {
     input: { width: 'calc(100% - 24px)', padding: '12px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText, fontSize: '1rem', transition: 'all 0.3s ease' },
     resultInputContainer: { display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center' },
     resultInput: { width: '60px', textAlign: 'center', padding: '12px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText, fontSize: '1.5rem', fontFamily: "'Orbitron', sans-serif", },
-    teamNameText: { flex: 1, textAlign: 'center', fontWeight: '600', fontSize: '1.1rem' },
+    betTeamContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', flex: 1 },
+    betTeamLogo: { width: '30px', height: '30px', objectFit: 'contain' },
+    betTeamName: { fontSize: '1rem', fontWeight: '600', textAlign: 'center' },
     separator: { fontSize: '1.5rem', fontWeight: 'bold', color: colors.yellow },
     checkbox: { width: '20px', height: '20px', accentColor: colors.yellow },
     message: { marginTop: '20px', padding: '12px', borderRadius: '8px', backgroundColor: colors.darkUIAlt, color: colors.lightText, textAlign: 'center', fontWeight: 'bold' },
@@ -1050,8 +1071,8 @@ const styles = {
     jokerButton: { padding: '10px 20px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.gold}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.gold, transition: 'all 0.3s ease', textTransform: 'uppercase' },
     dangerButton: { borderColor: colors.danger, color: colors.danger },
     vipBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1.2rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70` },
-    jokerGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '20px' },
-    jokerBetRow: { marginBottom: '10px' },
+    jokerGrid: { display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' },
+    jokerBetRow: { marginBottom: '10px', width: '100%', maxWidth: '250px' },
     jornadaList: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
     jornadaItem: { cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', border: '1px solid transparent', borderLeft: `5px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: colors.darkUIAlt, transition: 'all 0.3s ease' },
     jornadaVip: { borderLeft: `5px solid ${colors.yellow}`, boxShadow: `0 0 15px ${colors.yellow}30` },
