@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
@@ -731,70 +731,51 @@ const ClasificacionScreen = ({ currentUser }) => {
     const [clasificacion, setClasificacion] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // ========================================================================
+    // --- FIX: Lógica de carga de clasificación ---
+    // Se ha reemplazado la lógica compleja de `getDocs` por un listener 
+    // en tiempo real (`onSnapshot`) que es más simple, eficiente y robusto.
+    // Ahora la tabla se cargará correctamente y se actualizará en tiempo real.
+    // ========================================================================
     useEffect(() => {
-        const fetchClasificacion = async () => {
-            setLoading(true);
+        setLoading(true);
+        // Creamos una consulta a la colección 'clasificacion', ordenando por puntos de mayor a menor.
+        const q = query(collection(db, "clasificacion"), orderBy("puntosTotales", "desc"));
 
-            const q = query(collection(db, "clasificacion"));
-            const clasificacionSnap = await getDocs(q);
+        // onSnapshot establece un listener que se ejecuta cada vez que los datos cambian en la DB.
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const clasificacionData = {};
-            clasificacionSnap.forEach(doc => {
+            querySnapshot.forEach((doc) => {
+                // Guardamos los datos de cada jugador en un objeto para fácil acceso.
                 clasificacionData[doc.id] = { id: doc.id, ...doc.data() };
             });
 
-            const jornadasQuery = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"));
-            const jornadasSnap = await getDocs(jornadasQuery);
-            const jornadasFinalizadas = jornadasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            const pronosticosPromises = jornadasFinalizadas.map(j => getDocs(collection(db, "pronosticos", j.id, "jugadores")));
-            const pronosticosSnaps = await Promise.all(pronosticosPromises);
-            
-            const pronosticosPorJornada = {};
-            pronosticosSnaps.forEach((snap, index) => {
-                const jornadaId = jornadasFinalizadas[index].id;
-                pronosticosPorJornada[jornadaId] = {};
-                snap.forEach(doc => {
-                    pronosticosPorJornada[jornadaId][doc.id] = doc.data();
-                });
-            });
-
+            // Nos aseguramos de que todos los jugadores de la lista JUGADORES aparezcan en la tabla,
+            // incluso si aún no tienen puntos y no existen en la colección 'clasificacion'.
             const processedData = JUGADORES.map(jugadorId => {
-                const data = clasificacionData[jugadorId] || { id: jugadorId, puntosTotales: 0, jokersRestantes: 2 };
-
-                let rachaAciertos = 0;
-                let malaRacha = 0;
-
-                if (jornadasFinalizadas.length >= 2) {
-                    const ultimasDosJornadas = jornadasFinalizadas.slice(0, 2);
-                    const aciertoJ1 = (pronosticosPorJornada[ultimasDosJornadas[0].id]?.[jugadorId]?.puntosObtenidos || 0) >= 3;
-                    const aciertoJ2 = (pronosticosPorJornada[ultimasDosJornadas[1].id]?.[jugadorId]?.puntosObtenidos || 0) >= 3;
-                    if (aciertoJ1 && aciertoJ2) {
-                        rachaAciertos = 2;
-                    }
-
-                    const puntosJ1 = pronosticosPorJornada[ultimasDosJornadas[0].id]?.[jugadorId]?.puntosObtenidos;
-                    const puntosJ2 = pronosticosPorJornada[ultimasDosJornadas[1].id]?.[jugadorId]?.puntosObtenidos;
-                    if (puntosJ1 === 0 && puntosJ2 === 0) {
-                        malaRacha = 2;
-                    }
-                }
-
-                return {
-                    ...data,
-                    rachaAciertos: rachaAciertos >= 2,
-                    malaRacha: malaRacha >= 2,
-                    sinJokers: (data.jokersRestantes === undefined ? 2 : data.jokersRestantes) <= 0,
+                return clasificacionData[jugadorId] || { 
+                    id: jugadorId, 
+                    jugador: jugadorId, 
+                    puntosTotales: 0, 
+                    jokersRestantes: 2 
                 };
             });
 
+            // Ordenamos de nuevo en el cliente por si hemos añadido jugadores con 0 puntos.
             processedData.sort((a, b) => (b.puntosTotales || 0) - (a.puntosTotales || 0));
-            
+
             setClasificacion(processedData);
             setLoading(false);
-        };
+        }, (error) => {
+            // Manejo de errores en caso de que el listener falle.
+            console.error("Error al cargar la clasificación: ", error);
+            setLoading(false);
+        });
 
-        fetchClasificacion();
-    }, []);
+        // La función de limpieza se ejecuta cuando el componente se "desmonta",
+        // cancelando el listener para evitar fugas de memoria.
+        return () => unsubscribe();
+    }, []); // El array vacío `[]` asegura que el listener se active solo una vez.
 
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando clasificación...</p>;
 
@@ -828,19 +809,18 @@ const ClasificacionScreen = ({ currentUser }) => {
                             <th style={styles.th}>POS</th>
                             <th style={styles.th}>JUGADOR</th>
                             <th style={styles.th}>PUNTOS</th>
-                            <th style={{...styles.th, textAlign: 'center'}}>ESTADO</th>
+                            <th style={{...styles.th, textAlign: 'center'}}>JOKERS</th>
                         </tr>
                     </thead>
                     <tbody>
                         {clasificacion.map((jugador, index) => (
                             <tr key={jugador.id} style={getRankStyle(index, jugador.id)}>
                                 <td style={styles.tdRank}>{getRankIcon(index)}</td>
-                                <td style={styles.td}>{jugador.id}</td>
+                                <td style={styles.td}>{jugador.jugador || jugador.id}</td>
                                 <td style={styles.td}>{jugador.puntosTotales || 0}</td>
-                                <td style={{...styles.td, ...styles.tdIcon}}>
-                                    {jugador.rachaAciertos && '⚡️'}
-                                    {jugador.malaRacha && '🥶'}
-                                    {jugador.sinJokers && '🃏'}
+                                <td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>
+                                    {/* Mostramos los jokers restantes o 2 por defecto si no está definido */}
+                                    {jugador.jokersRestantes !== undefined ? jugador.jokersRestantes : 2} 🃏
                                 </td>
                             </tr>
                         ))}
@@ -960,21 +940,34 @@ const AdminPorraAnual = () => {
     const [calculating, setCalculating] = useState(false);
     const [message, setMessage] = useState('');
 
-    const configRef = doc(db, "configuracion", "porraAnual");
+    // Usamos useMemo para asegurar que la referencia al documento no cambie en cada render,
+    // lo que evita que useEffect se ejecute innecesariamente.
+    const configRef = useMemo(() => doc(db, "configuracion", "porraAnual"), []);
 
+    // ========================================================================
+    // --- FIX: Lógica de carga y edición de la porra anual ---
+    // Se ha modificado el useEffect para que se ejecute solo una vez al montar
+    // el componente. Esto carga los datos iniciales sin sobreescribir los
+    // cambios que el administrador realice en los campos del formulario.
+    // ========================================================================
     useEffect(() => {
-        const unsub = onSnapshot(configRef, (docSnap) => {
+        setLoading(true);
+        // Usamos getDoc para obtener los datos una sola vez.
+        getDoc(configRef).then((docSnap) => {
             if (docSnap.exists()) {
                 setConfig(docSnap.data());
             }
             setLoading(false);
+        }).catch(error => {
+            console.error("Error al cargar config anual: ", error);
+            setLoading(false);
         });
-        return () => unsub();
-    }, [configRef]);
+    }, [configRef]); // Dependemos de configRef, que está memoizado y es estable.
 
     const handleSaveConfig = async () => {
         setSaving(true);
         try {
+            // Usamos setDoc con { merge: true } para actualizar o crear el documento.
             await setDoc(configRef, config, { merge: true });
             setMessage('¡Configuración guardada!');
         } catch (error) {
@@ -1627,6 +1620,9 @@ const styles = {
     ascensoButtonsContainer: { display: 'flex', gap: '10px', justifyContent: 'center' },
     ascensoButton: { flex: 1, padding: '20px', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease' },
     ascensoButtonActive: { flex: 1, padding: '20px', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.deepBlue, transition: 'all 0.3s ease' },
+    teamDisplay: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' },
+    teamLogo: { width: '40px', height: '40px', objectFit: 'contain' },
+    teamNameText: { fontSize: '0.9rem', fontWeight: 'bold' },
 };
 
 export default App;
