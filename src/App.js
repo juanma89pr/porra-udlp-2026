@@ -125,7 +125,6 @@ const SplashScreen = ({ onEnter }) => {
                     if (jokerUsers.length > 0) dynamicStats.push({ label: 'Jokers Activados', value: jokerUsers.join(', '), color: styles.colors.gold });
                     if (resultadosMasPuestos) dynamicStats.push({ label: 'Resultados Populares', value: resultadosMasPuestos, color: styles.colors.silver });
                     
-                    // --- PORRA ANUAL: Combinar estadísticas ---
                     const configDocRef = doc(db, "configuracion", "porraAnual");
                     getDoc(configDocRef).then(configSnap => {
                         if (configSnap.exists() && configSnap.data().estado === 'Abierta' && jornada.numeroJornada <= 5) {
@@ -153,7 +152,6 @@ const SplashScreen = ({ onEnter }) => {
                 });
                 return () => unsubscribePronosticos();
             } else {
-                // ... (resto del código sin cambios)
                 const qCerrada = query(collection(db, "jornadas"), where("estado", "==", "Cerrada"), orderBy("numeroJornada", "desc"), limit(1));
                 getDocs(qCerrada).then(cerradaSnap => {
                     if (!cerradaSnap.empty) {
