@@ -125,6 +125,7 @@ const SplashScreen = ({ onEnter }) => {
                     if (jokerUsers.length > 0) dynamicStats.push({ label: 'Jokers Activados', value: jokerUsers.join(', '), color: styles.colors.gold });
                     if (resultadosMasPuestos) dynamicStats.push({ label: 'Resultados Populares', value: resultadosMasPuestos, color: styles.colors.silver });
                     
+                    // --- PORRA ANUAL: Combinar estadísticas ---
                     const configDocRef = doc(db, "configuracion", "porraAnual");
                     getDoc(configDocRef).then(configSnap => {
                         if (configSnap.exists() && configSnap.data().estado === 'Abierta' && jornada.numeroJornada <= 5) {
@@ -152,6 +153,7 @@ const SplashScreen = ({ onEnter }) => {
                 });
                 return () => unsubscribePronosticos();
             } else {
+                // ... (resto del código sin cambios)
                 const qCerrada = query(collection(db, "jornadas"), where("estado", "==", "Cerrada"), orderBy("numeroJornada", "desc"), limit(1));
                 getDocs(qCerrada).then(cerradaSnap => {
                     if (!cerradaSnap.empty) {
@@ -993,6 +995,120 @@ const PagosScreen = ({ user }) => {
     );
 };
 
+// --- NUEVO COMPONENTE: PorraAnualScreen ---
+const PorraAnualScreen = ({ user, onBack, config }) => {
+    const [pronostico, setPronostico] = useState({ ascenso: '', posicion: '' });
+    const [miPronostico, setMiPronostico] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [message, setMessage] = useState('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const pronosticoRef = doc(db, "porraAnualPronosticos", user);
+        getDoc(pronosticoRef).then(docSnap => {
+            if (docSnap.exists()) {
+                setMiPronostico(docSnap.data());
+                setPronostico(docSnap.data());
+            }
+            setLoading(false);
+        });
+    }, [user]);
+
+    const handleGuardar = async (e) => {
+        e.preventDefault();
+        if (!pronostico.ascenso || !pronostico.posicion) {
+            setMessage("Debes rellenar ambos campos.");
+            return;
+        }
+        setIsSaving(true);
+        const pronosticoRef = doc(db, "porraAnualPronosticos", user);
+        try {
+            await setDoc(pronosticoRef, { 
+                ...pronostico, 
+                jugador: user,
+                lastUpdated: new Date()
+            });
+            setMessage("¡Tu pronóstico anual ha sido guardado!");
+            setMiPronostico(pronostico);
+            setTimeout(() => {
+                onBack();
+            }, 2000);
+        } catch (error) {
+            console.error("Error al guardar pronóstico anual:", error);
+            setMessage("Hubo un error al guardar tu pronóstico.");
+        }
+        setIsSaving(false);
+    };
+
+    if (loading) {
+        return <p style={{color: styles.colors.lightText}}>Cargando tu pronóstico...</p>;
+    }
+
+    if (config?.estado !== 'Abierta' || miPronostico) {
+        return (
+            <div>
+                <button onClick={onBack} style={styles.backButton}>&larr; Volver</button>
+                <h2 style={styles.title}>⭐ PORRA DEL AÑO ⭐</h2>
+                <div style={styles.placeholder}>
+                    {miPronostico ? (
+                        <>
+                            <h3>Ya has realizado tu pronóstico</h3>
+                            <p><strong>¿Asciende?:</strong> {miPronostico.ascenso}</p>
+                            <p><strong>Posición Final:</strong> {miPronostico.posicion}º</p>
+                            <p>Las apuestas de los demás serán visibles a partir de la Jornada 5.</p>
+                        </>
+                    ) : (
+                        <h3>Las apuestas para la Porra del Año están cerradas.</h3>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+
+    return (
+        <div>
+            <button onClick={onBack} style={styles.backButton}>&larr; Volver</button>
+            <h2 style={styles.title}>⭐ PORRA DEL AÑO ⭐</h2>
+            <form onSubmit={handleGuardar} style={styles.form}>
+                <p style={{textAlign: 'center', marginBottom: '20px'}}>
+                    Haz tu pronóstico para el final de la temporada. ¡Solo puedes hacerlo una vez!
+                </p>
+                <div style={styles.formGroup}>
+                    <label style={styles.label}>¿Asciende la UD Las Palmas a Primera División?</label>
+                    <select 
+                        name="ascenso" 
+                        value={pronostico.ascenso} 
+                        onChange={(e) => setPronostico(p => ({...p, ascenso: e.target.value}))} 
+                        style={styles.input}
+                    >
+                        <option value="">-- Elige una opción --</option>
+                        <option value="SI">SÍ</option>
+                        <option value="NO">NO</option>
+                    </select>
+                </div>
+                <div style={styles.formGroup}>
+                    <label style={styles.label}>¿En qué posición terminará la temporada?</label>
+                    <input 
+                        type="number" 
+                        min="1" 
+                        max="22" 
+                        name="posicion"
+                        value={pronostico.posicion}
+                        onChange={(e) => setPronostico(p => ({...p, posicion: e.target.value}))}
+                        style={styles.input}
+                        placeholder="Introduce un número del 1 al 22"
+                    />
+                </div>
+                <button type="submit" disabled={isSaving} style={styles.mainButton}>
+                    {isSaving ? 'GUARDANDO...' : 'GUARDAR PRONÓSTICO ANUAL'}
+                </button>
+                {message && <p style={styles.message}>{message}</p>}
+            </form>
+        </div>
+    );
+};
+
 
 function App() {
   const [screen, setScreen] = useState('splash');
@@ -1047,7 +1163,7 @@ function App() {
         if (viewingJornadaId) {
             return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} />;
         }
-        // --- PORRA ANUAL: Renderizado de la pantalla de apuesta ---
+        // --- PORRA ANUAL: Renderizado de la pantalla de apuesta (CORREGIDO) ---
         if (viewingPorraAnual) {
             return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
         }
