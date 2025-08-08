@@ -131,7 +131,7 @@ const WinnerAnimation = ({ winnerData, onClose }) => {
                 <p style={styles.winnerText}>¡Has ganado la porra de la jornada!</p>
                 <div style={styles.winnerStats}>
                     <span>Puntos Obtenidos: <strong>{pronostico.puntosObtenidos}</strong></span>
-                    <span>Premio: <strong>{prize}€</strong></span>
+                    <span>Premio: <strong>{prize.toFixed(2)}€</strong></span>
                 </div>
                 <button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>CERRAR</button>
             </div>
@@ -248,8 +248,9 @@ const SplashScreen = ({ onEnter }) => {
                         const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
                         getDocs(pronosticosRef).then(pronosticosSnap => {
                             const pronosticosCount = pronosticosSnap.size;
+                            const jokersUsados = pronosticosSnap.docs.filter(doc => doc.data().jokerActivo).length;
                             const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
-                            const dineroEnJuego = (jornada.bote || 0) + (pronosticosCount * costeApuesta);
+                            const dineroEnJuego = (jornada.bote || 0) + (pronosticosCount * costeApuesta) + jokersUsados;
                             setStats([{ label: 'Dinero Total en Juego', value: `${dineroEnJuego}€`, color: styles.colors.success }]);
                             setLoading(false);
                         });
@@ -894,21 +895,60 @@ const JornadaAdminItem = ({ jornada }) => {
     };
 
     const handleCalcularPuntos = async () => {
-        if (resultadoLocal === '' || resultadoVisitante === '' || !resultado1x2) { alert("Introduce los goles de ambos equipos y el Resultado 1X2."); return; }
+        if (resultadoLocal === '' || resultadoVisitante === '' || !resultado1x2) {
+            alert("Introduce los goles de ambos equipos y el Resultado 1X2.");
+            return;
+        }
         setIsCalculating(true);
         const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
         const pronosticosSnap = await getDocs(pronosticosRef);
         const pronosticos = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const batch = writeBatch(db);
         const ganadores = [];
+        let jokersUsados = 0; // Contamos los jokers para el bote
+
         for (const p of pronosticos) {
             let puntosJornada = 0;
             const esVip = jornada.esVip || false;
+            let aciertoResultadoExacto = false;
+
+            if (p.jokerActivo) {
+                jokersUsados++;
+            }
+
+            // 1. Comprobamos si el pronóstico principal es correcto
             if (p.golesLocal !== '' && p.golesVisitante !== '' && parseInt(p.golesLocal) === parseInt(resultadoLocal) && parseInt(p.golesVisitante) === parseInt(resultadoVisitante)) {
                 puntosJornada += esVip ? 6 : 3;
-                ganadores.push(p.id);
+                aciertoResultadoExacto = true;
             }
+
+            // 2. Comprobamos los pronósticos del Joker
+            // Un jugador gana la porra si acierta con su apuesta principal O con una de sus apuestas Joker.
+            if (p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0) {
+                for (const jokerP of p.jokerPronosticos) {
+                    if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === parseInt(resultadoLocal) && parseInt(jokerP.golesVisitante) === parseInt(resultadoVisitante)) {
+                        // Si el pronóstico Joker es correcto, se marca como acierto para la porra.
+                        // Solo se suman los puntos por resultado exacto UNA VEZ.
+                        if (!aciertoResultadoExacto) {
+                           puntosJornada += esVip ? 6 : 3;
+                        }
+                        aciertoResultadoExacto = true;
+                        break; // Salimos del bucle de jokers, ya ha acertado.
+                    }
+                }
+            }
+
+            // 3. Si acertó el resultado exacto (principal o con Joker), se añade a la lista de ganadores de la porra
+            if (aciertoResultadoExacto) {
+                if (!ganadores.includes(p.id)) {
+                    ganadores.push(p.id);
+                }
+            }
+
+            // 4. Comprobamos el resultado 1X2 (esto suma puntos independientemente del resultado exacto)
             if (p.resultado1x2 === resultado1x2) { puntosJornada += esVip ? 2 : 1; }
+            
+            // 5. Comprobamos el goleador (esto suma puntos independientemente del resultado exacto)
             const goleadorReal = goleador.trim().toLowerCase();
             const goleadorApostado = p.goleador ? p.goleador.trim().toLowerCase() : '';
             if (p.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) { 
@@ -917,25 +957,26 @@ const JornadaAdminItem = ({ jornada }) => {
             else if (!p.sinGoleador && goleadorApostado === goleadorReal && goleadorReal !== "") { 
                 puntosJornada += esVip ? 4 : 2; 
             }
-            if (p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0) {
-                for (const jokerP of p.jokerPronosticos) {
-                    if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === parseInt(resultadoLocal) && parseInt(jokerP.golesVisitante) === parseInt(resultadoVisitante)) {
-                        puntosJornada += esVip ? 6 : 3;
-                        break; 
-                    }
-                }
-            }
+
+            // Actualizamos los documentos en el batch
             const pronosticoDocRef = doc(db, "pronosticos", jornada.id, "jugadores", p.id);
             batch.update(pronosticoDocRef, { puntosObtenidos: puntosJornada });
             const clasificacionDocRef = doc(db, "clasificacion", p.id);
             batch.set(clasificacionDocRef, { puntosTotales: increment(puntosJornada), jugador: p.id }, { merge: true });
         }
+
         const jornadaRef = doc(db, "jornadas", jornada.id);
+        // Guardamos los ganadores y marcamos la jornada como Finalizada
         batch.update(jornadaRef, { estado: "Finalizada", ganadores });
+
+        // Si no hay ganadores, el bote se acumula para la siguiente jornada
         if (ganadores.length === 0) {
             const boteActual = jornada.bote || 0;
             const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
-            const nuevoBote = boteActual + (pronosticos.length * costeApuesta);
+            // El dinero recaudado incluye las apuestas normales/VIP y 1€ por cada Joker usado
+            const dineroRecaudado = (pronosticos.length * costeApuesta) + jokersUsados;
+            const nuevoBote = boteActual + dineroRecaudado;
+            
             const qProxima = query(collection(db, "jornadas"), where("numeroJornada", ">", jornada.numeroJornada), orderBy("numeroJornada"), limit(1));
             const proximaJornadaSnap = await getDocs(qProxima);
             if (!proximaJornadaSnap.empty) {
@@ -943,8 +984,15 @@ const JornadaAdminItem = ({ jornada }) => {
                 batch.update(proximaJornadaRef, { bote: nuevoBote });
             }
         }
-        try { await batch.commit(); alert("¡Puntos calculados y jornada cerrada!"); } 
-        catch (error) { console.error("Error al calcular: ", error); alert("Error al calcular puntos."); }
+
+        try { 
+            await batch.commit(); 
+            alert("¡Puntos calculados y jornada cerrada!"); 
+        } 
+        catch (error) { 
+            console.error("Error al calcular: ", error); 
+            alert("Error al calcular puntos."); 
+        }
         setIsCalculating(false);
     };
 
@@ -1570,7 +1618,8 @@ function App() {
               const allPronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
               const allPronosticosSnap = await getDocs(allPronosticosRef);
               
-              const prize = (allPronosticosSnap.size * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL)) + (jornada.bote || 0);
+              const jokersUsados = allPronosticosSnap.docs.filter(doc => doc.data().jokerActivo).length;
+              const prize = (allPronosticosSnap.size * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL)) + (jornada.bote || 0) + jokersUsados;
 
               if (pronosticoSnap.exists()) {
                   setWinnerData({
