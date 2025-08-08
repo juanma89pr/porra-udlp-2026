@@ -96,6 +96,43 @@ const JokerAnimation = () => {
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
 
+const InitialSplashScreen = ({ onFinish }) => {
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            onFinish();
+        }, 6000);
+        return () => clearTimeout(timer);
+    }, [onFinish]);
+
+    return (
+        <div style={styles.initialSplashContainer}>
+            <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
+            <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
+            <div style={styles.rotateMessage}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}>
+                    <path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/>
+                    <path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/>
+                    <path d="m15 5-3 3-3-3"/>
+                </svg>
+                <p>Para una mejor experiencia, gira tu dispositivo.</p>
+            </div>
+        </div>
+    );
+};
+
+const OrientationLock = () => (
+    <div style={styles.orientationLock}>
+        <div style={styles.rotateMessage}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}>
+                <path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/>
+                <path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/>
+                <path d="m15 5-3 3-3-3"/>
+            </svg>
+            <p style={{fontSize: '1.2rem', marginTop: '20px'}}>Por favor, gira tu dispositivo a modo horizontal.</p>
+        </div>
+    </div>
+);
+
 const SplashScreen = ({ onEnter }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
@@ -698,7 +735,6 @@ const ClasificacionScreen = ({ currentUser }) => {
         const fetchClasificacion = async () => {
             setLoading(true);
 
-            // 1. Obtener datos de la colección 'clasificacion'
             const q = query(collection(db, "clasificacion"));
             const clasificacionSnap = await getDocs(q);
             const clasificacionData = {};
@@ -706,12 +742,10 @@ const ClasificacionScreen = ({ currentUser }) => {
                 clasificacionData[doc.id] = { id: doc.id, ...doc.data() };
             });
 
-            // 2. Obtener todas las jornadas finalizadas
             const jornadasQuery = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"));
             const jornadasSnap = await getDocs(jornadasQuery);
             const jornadasFinalizadas = jornadasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // 3. Obtener todos los pronósticos para esas jornadas
             const pronosticosPromises = jornadasFinalizadas.map(j => getDocs(collection(db, "pronosticos", j.id, "jugadores")));
             const pronosticosSnaps = await Promise.all(pronosticosPromises);
             
@@ -724,24 +758,20 @@ const ClasificacionScreen = ({ currentUser }) => {
                 });
             });
 
-            // 4. Procesar datos para cada jugador
             const processedData = JUGADORES.map(jugadorId => {
                 const data = clasificacionData[jugadorId] || { id: jugadorId, puntosTotales: 0, jokersRestantes: 2 };
 
-                // Calcular rachas
                 let rachaAciertos = 0;
                 let malaRacha = 0;
 
                 if (jornadasFinalizadas.length >= 2) {
-                    // Racha de aciertos (resultado exacto)
                     const ultimasDosJornadas = jornadasFinalizadas.slice(0, 2);
-                    const aciertoJ1 = pronosticosPorJornada[ultimasDosJornadas[0].id]?.[jugadorId]?.puntosObtenidos >= 3;
-                    const aciertoJ2 = pronosticosPorJornada[ultimasDosJornadas[1].id]?.[jugadorId]?.puntosObtenidos >= 3;
+                    const aciertoJ1 = (pronosticosPorJornada[ultimasDosJornadas[0].id]?.[jugadorId]?.puntosObtenidos || 0) >= 3;
+                    const aciertoJ2 = (pronosticosPorJornada[ultimasDosJornadas[1].id]?.[jugadorId]?.puntosObtenidos || 0) >= 3;
                     if (aciertoJ1 && aciertoJ2) {
                         rachaAciertos = 2;
                     }
 
-                    // Mala racha (0 puntos)
                     const puntosJ1 = pronosticosPorJornada[ultimasDosJornadas[0].id]?.[jugadorId]?.puntosObtenidos;
                     const puntosJ2 = pronosticosPorJornada[ultimasDosJornadas[1].id]?.[jugadorId]?.puntosObtenidos;
                     if (puntosJ1 === 0 && puntosJ2 === 0) {
@@ -753,11 +783,10 @@ const ClasificacionScreen = ({ currentUser }) => {
                     ...data,
                     rachaAciertos: rachaAciertos >= 2,
                     malaRacha: malaRacha >= 2,
-                    sinJokers: data.jokersRestantes <= 0,
+                    sinJokers: (data.jokersRestantes || 2) <= 0,
                 };
             });
 
-            // 5. Ordenar por puntos
             processedData.sort((a, b) => (b.puntosTotales || 0) - (a.puntosTotales || 0));
             
             setClasificacion(processedData);
@@ -1354,6 +1383,7 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
 
 
 function App() {
+  const [showInitialSplash, setShowInitialSplash] = useState(true);
   const [screen, setScreen] = useState('splash');
   const [activeTab, setActiveTab] = useState('miJornada');
   const [currentUser, setCurrentUser] = useState(null);
@@ -1379,19 +1409,38 @@ function App() {
     styleSheet.type = "text/css";
     styleSheet.innerText = `
       @keyframes fall {
-        0% {
-          transform: translateY(-100px) rotate(0deg);
-          opacity: 1;
-        }
-        100% {
-          transform: translateY(100vh) rotate(360deg);
-          opacity: 0;
-        }
+        0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
       }
       @keyframes highlight {
         0% { background-position: 0% 50%; }
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
+      #orientation-lock { display: none; }
+      @media (orientation: portrait) {
+        #app-container { display: none !important; }
+        #orientation-lock { 
+            display: flex; 
+            justify-content: center;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: ${colors.deepBlue};
+            color: ${colors.lightText};
+            z-index: 9999;
+        }
       }
     `;
     document.head.appendChild(styleSheet);
@@ -1414,6 +1463,7 @@ function App() {
   const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
 
   const renderContent = () => {
+    if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} />;
     if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} />;
     if (screen === 'app') {
@@ -1454,7 +1504,14 @@ function App() {
       );
     }
   };
-  return ( <div style={styles.container}><div style={styles.card}>{renderContent()}</div></div> );
+  return (
+    <>
+        <OrientationLock />
+        <div id="app-container" style={styles.container}>
+            <div style={styles.card}>{renderContent()}</div>
+        </div>
+    </>
+  );
 }
 
 // ============================================================================
@@ -1472,6 +1529,9 @@ const styles = {
     title: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', borderBottom: `2px solid ${colors.yellow}`, paddingBottom: '10px', marginBottom: '25px', textShadow: `0 0 10px ${colors.yellow}90`, fontSize: '1.8rem' },
     mainButton: { fontFamily: "'Orbitron', sans-serif", padding: '10px 25px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.darkText, marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: `0 0 15px ${colors.yellow}50`, ':hover': { backgroundColor: 'transparent', color: colors.yellow, transform: 'scale(1.05)' } },
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
+    initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: colors.deepBlue, animation: 'fadeIn 1s ease' },
+    orientationLock: { textAlign: 'center' },
+    rotateMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out' },
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center' },
     splashLogoContainer: { marginBottom: '20px', },
     splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain', },
