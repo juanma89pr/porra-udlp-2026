@@ -26,7 +26,7 @@ const ADMIN_PASSWORD = "porra2026lpa";
 const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
 
-// --- URLs de los escudos de los equipos (sin cambios) ---
+// --- URLs de los escudos de los equipos (VERIFICADAS) ---
 const teamLogos = {
     "UD Las Palmas": "https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png",
     "FC Andorra": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Escudo_del_F%C3%BAtbol_Club_Andorra.svg/1011px-Escudo_del_F%C3%BAtbol_Club_Andorra.svg.png",
@@ -56,11 +56,11 @@ const teamLogos = {
 // --- COMPONENTES REUTILIZABLES ---
 // ============================================================================
 
-const TeamDisplay = ({ teamName }) => (
+const TeamDisplay = ({ teamName, imgStyle }) => (
     <div style={styles.teamDisplay}>
         <img 
             src={teamLogos[teamName]} 
-            style={styles.teamLogo} 
+            style={{...styles.teamLogo, ...imgStyle}} 
             alt={`${teamName} logo`}
             onError={(e) => { e.target.src = 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'; }}
         />
@@ -553,7 +553,6 @@ const LaJornadaScreen = ({ onViewJornada }) => {
     const [loading, setLoading] = useState(true);
     const [countdown, setCountdown] = useState('');
     
-    // --- PORRA ANUAL ---
     const [porraAnualConfig, setPorraAnualConfig] = useState(null);
     const [pronosticosAnuales, setPronosticosAnuales] = useState([]);
 
@@ -620,7 +619,7 @@ const LaJornadaScreen = ({ onViewJornada }) => {
     return (
         <div>
             <h2 style={styles.title}>LA JORNADA</h2>
-            {jornadaActiva ? (<div style={styles.laJornadaContainer}><h3>Jornada {jornadaActiva.numeroJornada}</h3><div style={styles.matchInfo}><TeamDisplay teamName={jornadaActiva.equipoLocal} /><span style={styles.vs}>VS</span><TeamDisplay teamName={jornadaActiva.equipoVisitante} /></div><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></div>) : jornadaCerrada ? (<div><h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3><p style={{textAlign: 'center'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div></div>) : (<div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>)}
+            {jornadaActiva ? (<div style={styles.laJornadaContainer}><h3>Jornada {jornadaActiva.numeroJornada}</h3><div style={styles.matchInfo}><TeamDisplay teamName={jornadaActiva.equipoLocal} imgStyle={styles.matchInfoLogo} /><span style={styles.vs}>VS</span><TeamDisplay teamName={jornadaActiva.equipoVisitante} imgStyle={styles.matchInfoLogo} /></div><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></div>) : jornadaCerrada ? (<div><h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3><p style={{textAlign: 'center'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div></div>) : (<div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>)}
             
             <div style={styles.porraAnualContainer}>
                 <h3 style={styles.formSectionTitle}>⭐ PORRA ANUAL ⭐</h3>
@@ -837,7 +836,7 @@ const AdminPorraAnual = () => {
             setLoading(false);
         });
         return () => unsub();
-    }, [configRef]);
+    }, []);
 
     const handleSaveConfig = async () => {
         setSaving(true);
@@ -1089,7 +1088,7 @@ const PagosScreen = ({ user }) => {
             const promises = jornadasData.map(jornada => getDocs(collection(db, "pronosticos", jornada.id, "jugadores")));
             Promise.all(promises).then(pronosticosSnaps => {
                 pronosticosSnaps.forEach((pronosticosSnap, index) => {
-                    jornadasData[index].pronosticos = pronosticosSnaps.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                    jornadasData[index].pronosticos = pronosticosSnap.docs.map(doc => ({id: doc.id, ...doc.data()}));
                 });
                 setJornadas(jornadasData);
                 setLoading(false);
@@ -1174,7 +1173,7 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
             setMiPronostico(pronostico);
             setTimeout(() => {
                 onBack();
-            }, 2500);
+            }, 4000);
         } catch (error) {
             console.error("Error al guardar pronóstico anual:", error);
             setMessage("Hubo un error al guardar tu pronóstico.");
@@ -1217,14 +1216,14 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
                     Haz tu pronóstico para el final de la temporada. ¡Solo puedes hacerlo una vez!
                 </p>
                 <div style={styles.formGroup}>
-                    <label style={styles.label}>1. ¿Asciende la UD Las Palmas a Primera División?</label>
+                    <label style={styles.label}>1. ¿Asciende la UD Las Palmas? <span style={styles.pointsReminder}>(5 Puntos)</span></label>
                     <div style={styles.ascensoButtonsContainer}>
                          <button type="button" onClick={() => setPronostico(p => ({...p, ascenso: 'SI'}))} style={pronostico.ascenso === 'SI' ? styles.ascensoButtonActive : styles.ascensoButton}>SÍ</button>
                          <button type="button" onClick={() => setPronostico(p => ({...p, ascenso: 'NO'}))} style={pronostico.ascenso === 'NO' ? styles.ascensoButtonActive : styles.ascensoButton}>NO</button>
                     </div>
                 </div>
                 <div style={styles.formGroup}>
-                    <label style={styles.label}>2. ¿En qué posición terminará la temporada?</label>
+                    <label style={styles.label}>2. ¿En qué posición terminará? <span style={styles.pointsReminder}>(10 Puntos)</span></label>
                     <input 
                         type="number" 
                         min="1" 
@@ -1236,6 +1235,9 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
                         placeholder="1-22"
                     />
                 </div>
+                <p style={{textAlign: 'center', color: styles.colors.gold, fontWeight: 'bold', fontStyle: 'italic'}}>
+                    ⭐ ¡Si aciertas las dos preguntas ganarás 20 PUNTOS! ⭐
+                </p>
                 <button type="submit" disabled={isSaving} style={styles.mainButton}>
                     {isSaving ? 'GUARDANDO...' : 'GUARDAR PRONÓSTICO ANUAL'}
                 </button>
@@ -1385,9 +1387,9 @@ const styles = {
     label: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginBottom: '10px', color: colors.yellow, fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.9rem', letterSpacing: '1px' },
     pointsReminder: { color: colors.silver, fontWeight: 'normal', fontSize: '0.8rem', textTransform: 'none' },
     input: { width: 'calc(100% - 24px)', padding: '12px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText, fontSize: '1rem', transition: 'all 0.3s ease' },
-    resultInputContainer: { display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center' },
+    resultInputContainer: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', justifyContent: 'center' },
     resultInput: { width: '60px', textAlign: 'center', padding: '12px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText, fontSize: '1.5rem', fontFamily: "'Orbitron', sans-serif", },
-    betTeamContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', flex: 1 },
+    betTeamContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', flex: 1, minWidth: '100px' },
     betTeamLogo: { width: '30px', height: '30px', objectFit: 'contain' },
     betTeamName: { fontSize: '1rem', fontWeight: '600', textAlign: 'center' },
     separator: { fontSize: '1.5rem', fontWeight: 'bold', color: colors.yellow },
@@ -1403,6 +1405,7 @@ const styles = {
     top3Row: { backgroundColor: `${colors.bronze}30` },
     laJornadaContainer: { textAlign: 'center', padding: '30px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' },
     matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', fontSize: '2.5rem', fontWeight: 'bold', margin: '20px 0', fontFamily: "'Orbitron', sans-serif", },
+    matchInfoLogo: { width: '80px', height: '80px' },
     vs: { color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}` },
     countdownContainer: { margin: '30px 0' },
     countdown: { fontFamily: "'Orbitron', sans-serif", fontSize: '2.5rem', fontWeight: 'bold', color: colors.yellow, backgroundColor: colors.deepBlue, padding: '15px 25px', borderRadius: '8px', display: 'inline-block', border: `1px solid ${colors.blue}` },
