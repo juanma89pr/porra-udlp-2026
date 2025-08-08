@@ -836,7 +836,7 @@ const AdminPorraAnual = () => {
             setLoading(false);
         });
         return () => unsub();
-    }, []);
+    }, [configRef]);
 
     const handleSaveConfig = async () => {
         setSaving(true);
