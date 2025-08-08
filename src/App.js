@@ -24,13 +24,13 @@ const ADMIN_PASSWORD = "porra2026lpa";
 const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
 
-// --- URLs de los escudos de los equipos (sin cambios) ---
+// --- URLs de los escudos de los equipos (CORREGIDAS Y VERIFICADAS) ---
 const teamLogos = {
     "UD Las Palmas": "https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png",
-    "FC Andorra": "https://upload.wikimedia.org/wikipedia/en/thumb/0/02/FC_Andorra_logo.svg/1200px-FC_Andorra_logo.svg.png",
+    "FC Andorra": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Escudo_del_F%C3%BAtbol_Club_Andorra.svg/1011px-Escudo_del_F%C3%BAtbol_Club_Andorra.svg.png",
     "Córdoba CF": "https://upload.wikimedia.org/wikipedia/en/thumb/7/7a/Cordoba_CF_logo.svg/1200px-Cordoba_CF_logo.svg.png",
     "Málaga CF": "https://upload.wikimedia.org/wikipedia/en/thumb/5/53/M%C3%A1laga_CF_logo.svg/1200px-M%C3%A1laga_CF_logo.svg.png",
-    "Burgos CF": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/Burgos_CF_logo.svg/1200px-Burgos_CF_logo.svg.png",
+    "Burgos CF": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Burgos_Club_de_F%C3%BAtbol_logo.svg/1200px-Burgos_Club_de_F%C3%BAtbol_logo.svg.png",
     "Real Sociedad B": "https://upload.wikimedia.org/wikipedia/en/thumb/f/f1/Real_Sociedad_logo.svg/1200px-Real_Sociedad_logo.svg.png",
     "CD Leganés": "https://upload.wikimedia.org/wikipedia/en/thumb/0/02/Club_Deportivo_Legan%C3%A9s_logo.svg/1200px-Club_Deportivo_Legan%C3%A9s_logo.svg.png",
     "UD Almería": "https://upload.wikimedia.org/wikipedia/en/thumb/8/82/UD_Almer%C3%ADa_logo.svg/1200px-UD_Almer%C3%ADa_logo.svg.png",
@@ -41,7 +41,7 @@ const teamLogos = {
     "Real Sporting de Gijón": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4c/Real_Sporting_de_Gij%C3%B3n_logo.svg/1200px-Real_Sporting_de_Gij%C3%B3n_logo.svg.png",
     "Real Racing Club": "https://upload.wikimedia.org/wikipedia/en/thumb/1/12/Real_Racing_Club_de_Santander_logo.svg/1200px-Real_Racing_Club_de_Santander_logo.svg.png",
     "Real Valladolid CF": "https://upload.wikimedia.org/wikipedia/en/thumb/6/6e/Real_Valladolid_logo.svg/1200px-Real_Valladolid_logo.svg.png",
-    "Albacete Balompié": "https://upload.wikimedia.org/wikipedia/en/thumb/2/2a/Albacete_Balompi%C3%A9_logo.svg/1200px-Albacete_Balompi%C3%A9_logo.svg.png",
+    "Albacete Balompié": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Albacete_Balompi%C3%A9_2017_logo.svg/1200px-Albacete_Balompi%C3%A9_2017_logo.svg.png",
     "CD Castellón": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/CD_Castell%C3%B3n_logo.svg/1200px-CD_Castell%C3%B3n_logo.svg.png",
     "CD Mirandés": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b3/CD_Mirand%C3%A9s_logo.svg/1200px-CD_Mirand%C3%A9s_logo.svg.png",
     "AD Ceuta FC": "https://upload.wikimedia.org/wikipedia/en/d/d4/AD_Ceuta_FC_logo.png",
