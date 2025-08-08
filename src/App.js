@@ -56,7 +56,7 @@ const teamLogos = {
 // --- COMPONENTES REUTILIZABLES ---
 // ============================================================================
 
-const TeamDisplay = ({ teamName, imgStyle }) => (
+const TeamDisplay = ({ teamName, shortName = false, imgStyle }) => (
     <div style={styles.teamDisplay}>
         <img 
             src={teamLogos[teamName]} 
@@ -64,7 +64,9 @@ const TeamDisplay = ({ teamName, imgStyle }) => (
             alt={`${teamName} logo`}
             onError={(e) => { e.target.src = 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'; }}
         />
-        <span style={styles.teamNameText}>{teamName}</span>
+        <span style={styles.teamNameText}>
+            {shortName && teamName === "UD Las Palmas" ? "UDLP" : teamName}
+        </span>
     </div>
 );
 
@@ -619,7 +621,7 @@ const LaJornadaScreen = ({ onViewJornada }) => {
     return (
         <div>
             <h2 style={styles.title}>LA JORNADA</h2>
-            {jornadaActiva ? (<div style={styles.laJornadaContainer}><h3>Jornada {jornadaActiva.numeroJornada}</h3><div style={styles.matchInfo}><TeamDisplay teamName={jornadaActiva.equipoLocal} imgStyle={styles.matchInfoLogo} /><span style={styles.vs}>VS</span><TeamDisplay teamName={jornadaActiva.equipoVisitante} imgStyle={styles.matchInfoLogo} /></div><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></div>) : jornadaCerrada ? (<div><h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3><p style={{textAlign: 'center'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div></div>) : (<div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>)}
+            {jornadaActiva ? (<div style={styles.laJornadaContainer}><h3>Jornada {jornadaActiva.numeroJornada}</h3><div style={styles.matchInfo}><TeamDisplay teamName={jornadaActiva.equipoLocal} shortName={true} imgStyle={styles.matchInfoLogo} /><span style={styles.vs}>VS</span><TeamDisplay teamName={jornadaActiva.equipoVisitante} imgStyle={styles.matchInfoLogo} /></div><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></div>) : jornadaCerrada ? (<div><h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3><p style={{textAlign: 'center'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div></div>) : (<div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>)}
             
             <div style={styles.porraAnualContainer}>
                 <h3 style={styles.formSectionTitle}>⭐ PORRA ANUAL ⭐</h3>
@@ -1359,71 +1361,71 @@ const styles = {
     colors,
     container: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: `linear-gradient(145deg, ${colors.deepBlue} 0%, #000 100%)`, padding: '20px', fontFamily: "'Exo 2', sans-serif" },
     card: { width: '100%', maxWidth: '850px', backgroundColor: colors.darkUI, color: colors.lightText, padding: '25px', borderRadius: '16px', boxShadow: `0 0 25px ${colors.blue}30, 0 10px 30px rgba(0, 0, 0, 0.5)`, minHeight: '80vh', border: `1px solid ${colors.blue}80`, backdropFilter: 'blur(10px)', },
-    title: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', letterSpacing: '2px', textAlign: 'center', borderBottom: `2px solid ${colors.yellow}`, paddingBottom: '10px', marginBottom: '25px', textShadow: `0 0 10px ${colors.yellow}90` },
-    mainButton: { fontFamily: "'Orbitron', sans-serif", padding: '12px 30px', fontSize: '1.2rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.darkText, marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: `0 0 15px ${colors.yellow}50`, ':hover': { backgroundColor: 'transparent', color: colors.yellow, transform: 'scale(1.05)' } },
+    title: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', borderBottom: `2px solid ${colors.yellow}`, paddingBottom: '10px', marginBottom: '25px', textShadow: `0 0 10px ${colors.yellow}90`, fontSize: '1.8rem' },
+    mainButton: { fontFamily: "'Orbitron', sans-serif", padding: '10px 25px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.darkText, marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: `0 0 15px ${colors.yellow}50`, ':hover': { backgroundColor: 'transparent', color: colors.yellow, transform: 'scale(1.05)' } },
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center' },
     splashLogoContainer: { marginBottom: '20px', },
     splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain', },
-    splashTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, fontSize: '3rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '4px', textShadow: `0 0 20px ${colors.yellow}, 0 0 10px ${colors.blue}` },
+    splashTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, fontSize: '2.5rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '4px', textShadow: `0 0 20px ${colors.yellow}, 0 0 10px ${colors.blue}` },
     splashInfoBox: { border: `2px solid ${colors.yellow}80`, padding: '20px', borderRadius: '10px', marginTop: '30px', backgroundColor: 'rgba(0,0,0,0.3)', width: '90%', minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'center' },
-    splashInfoTitle: { margin: '0 0 15px 0', fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase' },
-    splashMatch: { fontSize: '1.5rem', fontWeight: 'bold' },
+    splashInfoTitle: { margin: '0 0 15px 0', fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', fontSize: '1.2rem' },
+    splashMatch: { fontSize: '1.3rem', fontWeight: 'bold' },
     splashAdminMessage: { fontStyle: 'italic', marginTop: '15px', borderTop: `1px solid ${colors.blue}`, paddingTop: '15px', color: colors.silver },
-    splashBote: { color: colors.success, fontWeight: 'bold', fontSize: '1.2rem' },
-    carouselStat: { padding: '10px', fontSize: '1.1rem', minHeight: '50px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' },
+    splashBote: { color: colors.success, fontWeight: 'bold', fontSize: '1.1rem' },
+    carouselStat: { padding: '10px', fontSize: '1rem', minHeight: '50px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' },
     loginContainer: { textAlign: 'center' },
-    userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginTop: '30px' },
-    userButton: { width: '100%', padding: '20px 10px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px' },
+    userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginTop: '30px' },
+    userButton: { width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
     navbar: { display: 'flex', flexWrap: 'wrap', gap: '5px', borderBottom: `2px solid ${colors.blue}`, paddingBottom: '15px', marginBottom: '20px' },
-    navButton: { padding: '10px 15px', fontSize: '1rem', border: 'none', borderBottom: '3px solid transparent', borderRadius: '6px 6px 0 0', backgroundColor: 'transparent', color: colors.lightText, cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
-    navButtonActive: { padding: '10px 15px', fontSize: '1rem', border: 'none', borderBottom: `3px solid ${colors.yellow}`, borderRadius: '6px 6px 0 0', backgroundColor: colors.darkUIAlt, color: colors.yellow, cursor: 'pointer', textTransform: 'uppercase', fontWeight: '600' },
-    logoutButton: { padding: '10px 15px', fontSize: '1rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.danger, cursor: 'pointer', marginLeft: 'auto', transition: 'all 0.2s', fontWeight: '600', textTransform: 'uppercase' },
+    navButton: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: '3px solid transparent', borderRadius: '6px 6px 0 0', backgroundColor: 'transparent', color: colors.lightText, cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
+    navButtonActive: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: `3px solid ${colors.yellow}`, borderRadius: '6px 6px 0 0', backgroundColor: colors.darkUIAlt, color: colors.yellow, cursor: 'pointer', textTransform: 'uppercase', fontWeight: '600' },
+    logoutButton: { padding: '8px 12px', fontSize: '0.9rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.danger, cursor: 'pointer', marginLeft: 'auto', transition: 'all 0.2s', fontWeight: '600', textTransform: 'uppercase' },
     content: { padding: '10px 0' },
     form: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '25px', borderRadius: '12px', marginTop: '20px', border: `1px solid ${colors.blue}50` },
-    formSectionTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.lightText, fontSize: '1.5rem', textAlign: 'center', marginBottom: '20px' },
+    formSectionTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.lightText, fontSize: '1.3rem', textAlign: 'center', marginBottom: '20px' },
     formGroup: { marginBottom: '25px' },
     label: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginBottom: '10px', color: colors.yellow, fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.9rem', letterSpacing: '1px' },
     pointsReminder: { color: colors.silver, fontWeight: 'normal', fontSize: '0.8rem', textTransform: 'none' },
     input: { width: 'calc(100% - 24px)', padding: '12px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText, fontSize: '1rem', transition: 'all 0.3s ease' },
     resultInputContainer: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', justifyContent: 'center' },
-    resultInput: { width: '60px', textAlign: 'center', padding: '12px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText, fontSize: '1.5rem', fontFamily: "'Orbitron', sans-serif", },
-    betTeamContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', flex: 1, minWidth: '100px' },
+    resultInput: { width: '50px', textAlign: 'center', padding: '10px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText, fontSize: '1.3rem', fontFamily: "'Orbitron', sans-serif", },
+    betTeamContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', flex: 1, minWidth: '80px' },
     betTeamLogo: { width: '30px', height: '30px', objectFit: 'contain' },
-    betTeamName: { fontSize: '1rem', fontWeight: '600', textAlign: 'center' },
-    separator: { fontSize: '1.5rem', fontWeight: 'bold', color: colors.yellow },
+    betTeamName: { fontSize: '0.9rem', fontWeight: '600', textAlign: 'center' },
+    separator: { fontSize: '1.3rem', fontWeight: 'bold', color: colors.yellow },
     checkbox: { width: '20px', height: '20px', accentColor: colors.yellow },
     message: { marginTop: '20px', padding: '12px', borderRadius: '8px', backgroundColor: colors.darkUIAlt, color: colors.lightText, textAlign: 'center', fontWeight: 'bold' },
     table: { width: '100%', marginTop: '20px', borderCollapse: 'separate', borderSpacing: '0 5px', color: colors.lightText },
-    th: { backgroundColor: 'transparent', color: colors.yellow, padding: '15px', borderBottom: `2px solid ${colors.yellow}`, textAlign: 'left', textTransform: 'uppercase', fontFamily: "'Orbitron', sans-serif", },
+    th: { backgroundColor: 'transparent', color: colors.yellow, padding: '12px', borderBottom: `2px solid ${colors.yellow}`, textAlign: 'left', textTransform: 'uppercase', fontFamily: "'Orbitron', sans-serif", fontSize: '0.9rem' },
     tr: { backgroundColor: colors.darkUIAlt, transition: 'background-color 0.3s ease' },
-    td: { padding: '15px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}` },
-    tdRank: { padding: '15px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center' },
+    td: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontSize: '0.9rem' },
+    tdRank: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1rem', textAlign: 'center' },
     top1Row: { backgroundColor: `${colors.gold}40` },
     top2Row: { backgroundColor: `${colors.silver}30` },
     top3Row: { backgroundColor: `${colors.bronze}30` },
-    laJornadaContainer: { textAlign: 'center', padding: '30px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' },
-    matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', fontSize: '2.5rem', fontWeight: 'bold', margin: '20px 0', fontFamily: "'Orbitron', sans-serif", },
-    matchInfoLogo: { width: '80px', height: '80px' },
-    vs: { color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}` },
-    countdownContainer: { margin: '30px 0' },
-    countdown: { fontFamily: "'Orbitron', sans-serif", fontSize: '2.5rem', fontWeight: 'bold', color: colors.yellow, backgroundColor: colors.deepBlue, padding: '15px 25px', borderRadius: '8px', display: 'inline-block', border: `1px solid ${colors.blue}` },
-    callToAction: { fontSize: '1.5rem', fontStyle: 'italic', color: colors.lightText, marginTop: '20px' },
+    laJornadaContainer: { textAlign: 'center', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' },
+    matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', fontSize: '1.5rem', fontWeight: 'bold', margin: '20px 0', fontFamily: "'Orbitron', sans-serif", flexWrap: 'wrap' },
+    matchInfoLogo: { width: '60px', height: '60px' },
+    vs: { color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}`, fontSize: '1.5rem' },
+    countdownContainer: { margin: '20px 0' },
+    countdown: { fontFamily: "'Orbitron', sans-serif", fontSize: '2rem', fontWeight: 'bold', color: colors.yellow, backgroundColor: colors.deepBlue, padding: '10px 20px', borderRadius: '8px', display: 'inline-block', border: `1px solid ${colors.blue}` },
+    callToAction: { fontSize: '1.2rem', fontStyle: 'italic', color: colors.lightText, marginTop: '20px' },
     apostadoresContainer: { marginTop: '30px', borderTop: `1px solid ${colors.blue}`, paddingTop: '20px' },
-    apostadoresGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px', marginTop: '10px' },
-    apostadorHecho: { padding: '10px', backgroundColor: colors.success, color: colors.darkText, borderRadius: '5px', textAlign: 'center', fontWeight: 'bold' },
-    apostadorPendiente: { padding: '10px', backgroundColor: colors.darkUIAlt, color: colors.lightText, borderRadius: '5px', textAlign: 'center', opacity: 0.6 },
+    apostadoresGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '8px', marginTop: '10px' },
+    apostadorHecho: { padding: '8px', fontSize: '0.9rem', backgroundColor: colors.success, color: colors.darkText, borderRadius: '5px', textAlign: 'center', fontWeight: 'bold' },
+    apostadorPendiente: { padding: '8px', fontSize: '0.9rem', backgroundColor: colors.darkUIAlt, color: colors.lightText, borderRadius: '5px', textAlign: 'center', opacity: 0.6 },
     jokerContainer: { marginTop: '30px', padding: '20px', borderTop: `2px solid ${colors.blue}`, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px' },
     jokerButton: { padding: '10px 20px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.gold}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.gold, transition: 'all 0.3s ease', textTransform: 'uppercase' },
     dangerButton: { borderColor: colors.danger, color: colors.danger },
-    vipBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1.2rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70` },
+    vipBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1.1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70` },
     jokerGrid: { display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' },
     jokerBetRow: { marginBottom: '10px', width: '100%', maxWidth: '250px' },
     jornadaList: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
-    jornadaItem: { cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', border: '1px solid transparent', borderLeft: `5px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: colors.darkUIAlt, transition: 'all 0.3s ease' },
+    jornadaItem: { cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', border: '1px solid transparent', borderLeft: `5px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: colors.darkUIAlt, transition: 'all 0.3s ease' },
     jornadaVip: { borderLeft: `5px solid ${colors.yellow}`, boxShadow: `0 0 15px ${colors.yellow}30` },
-    jornadaInfo: { display: 'flex', flexDirection: 'column', color: colors.lightText },
+    jornadaInfo: { display: 'flex', flexDirection: 'column', color: colors.lightText, fontSize: '0.9rem' },
     statusBadge: { color: 'white', padding: '5px 12px', borderRadius: '15px', fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase' },
     adminJornadaItem: { padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `1px solid ${colors.blue}`, borderRadius: '12px', marginBottom: '20px' },
     adminControls: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', margin: '15px 0' },
