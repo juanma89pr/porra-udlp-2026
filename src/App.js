@@ -68,7 +68,7 @@ const TeamDisplay = ({ teamName }) => (
 
 
 // ============================================================================
-// --- COMPONENTES DE LAS PANTALLAS (Lógica sin cambios) ---
+// --- COMPONENTES DE LAS PANTALLAS (SplashScreen actualizado) ---
 // ============================================================================
 
 const SplashScreen = ({ onEnter }) => {
@@ -79,54 +79,112 @@ const SplashScreen = ({ onEnter }) => {
     const [currentStatIndex, setCurrentStatIndex] = useState(0);
 
     useEffect(() => {
+        setLoading(true);
+
+        // 1. Escuchar en tiempo real si hay una jornada "Abierta"
         const qActiva = query(collection(db, "jornadas"), where("estado", "==", "Abierta"), limit(1));
-        const unsubscribe = onSnapshot(qActiva, (snapshot) => {
-            if (!snapshot.empty) {
-                const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data(), type: 'activa' };
+        const unsubscribeActiva = onSnapshot(qActiva, (activaSnap) => {
+            if (!activaSnap.empty) {
+                const jornada = { id: activaSnap.docs[0].id, ...activaSnap.docs[0].data(), type: 'activa' };
                 setJornadaInfo(jornada);
 
+                // Escuchar en tiempo real los pronósticos para esta jornada abierta
                 const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
-                onSnapshot(pronosticosRef, (pronosticosSnap) => {
+                const unsubscribePronosticos = onSnapshot(pronosticosRef, (pronosticosSnap) => {
                     const pronosticos = pronosticosSnap.docs.map(d => ({id: d.id, ...d.data()}));
-                    const faltan = JUGADORES.length - pronosticosSnap.size;
+                    const hanApostado = pronosticos.map(p => p.id);
+                    const faltan = JUGADORES.filter(j => !hanApostado.includes(j));
+                    const jokerUsers = pronosticos.filter(p => p.jokerActivo).map(p => p.id);
                     
                     const resultados = pronosticos.map(p => `${p.golesLocal}-${p.golesVisitante}`);
                     const counts = resultados.reduce((acc, value) => ({...acc, [value]: (acc[value] || 0) + 1}), {});
-                    const resultadoMasPuesto = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b, 'N/A');
+                    const resultadosMasPuestos = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([res, count]) => `${res} (${count})`).join(', ');
 
-                    const jokerUsers = pronosticos.filter(p => p.jokerActivo).map(p => p.id);
-                    
                     const dynamicStats = [];
-                    if (jornada.bote > 0) dynamicStats.push({ label: 'Bote en Juego', value: `${jornada.bote}€`, color: styles.colors.success });
-                    if (jokerUsers.length > 0) dynamicStats.push({ label: '¡JOKER ACTIVADO!', value: jokerUsers.join(', '), color: styles.colors.gold });
-                    if (resultadoMasPuesto !== 'N/A') dynamicStats.push({ label: 'Resultado más repetido', value: resultadoMasPuesto, color: styles.colors.danger });
-                    dynamicStats.push({ label: 'Faltan por apostar', value: faltan });
+                    if (jornada.bote > 0) dynamicStats.push({ label: 'Bote Acumulado', value: `${jornada.bote}€`, color: styles.colors.success });
+                    if (hanApostado.length > 0) dynamicStats.push({ label: 'Han Apostado', value: hanApostado.join(', ') });
+                    if (faltan.length > 0) dynamicStats.push({ label: 'Faltan por Apostar', value: faltan.join(', '), color: styles.colors.warning });
+                    if (jokerUsers.length > 0) dynamicStats.push({ label: 'Jokers Activados', value: jokerUsers.join(', '), color: styles.colors.gold });
+                    if (resultadosMasPuestos) dynamicStats.push({ label: 'Resultados Populares', value: resultadosMasPuestos, color: styles.colors.silver });
                     
-                    setStats(dynamicStats);
+                    setStats(dynamicStats.length > 0 ? dynamicStats : [{ label: 'Info', value: '¡Sé el primero en apostar!', color: styles.colors.yellow }]);
+                    setLoading(false);
                 });
-                setLoading(false);
+                // Devolver la función de desuscripción para los pronósticos
+                return () => unsubscribePronosticos();
             } else {
-                const qProxima = query(collection(db, "jornadas"), where("estado", "==", "Próximamente"), orderBy("numeroJornada"), limit(1));
-                getDocs(qProxima).then(proximaSnap => {
-                    if (!proximaSnap.empty) {
-                        const data = { id: proximaSnap.docs[0].id, ...proximaSnap.docs[0].data(), type: 'proxima' };
-                        setJornadaInfo(data);
+                // Si no hay jornada "Abierta", buscar otros estados (esto se ejecuta una vez)
+                // 2. Buscar jornada "Cerrada"
+                const qCerrada = query(collection(db, "jornadas"), where("estado", "==", "Cerrada"), orderBy("numeroJornada", "desc"), limit(1));
+                getDocs(qCerrada).then(cerradaSnap => {
+                    if (!cerradaSnap.empty) {
+                        const jornada = { id: cerradaSnap.docs[0].id, ...cerradaSnap.docs[0].data(), type: 'cerrada' };
+                        setJornadaInfo(jornada);
+                        
+                        const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
+                        getDocs(pronosticosRef).then(pronosticosSnap => {
+                            const pronosticosCount = pronosticosSnap.size;
+                            const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+                            const dineroEnJuego = (jornada.bote || 0) + (pronosticosCount * costeApuesta);
+
+                            setStats([{ label: 'Dinero Total en Juego', value: `${dineroEnJuego}€`, color: styles.colors.success }]);
+                            setLoading(false);
+                        });
                     } else {
-                        setJornadaInfo(null);
+                        // 3. Buscar última jornada "Finalizada"
+                        const qFinalizada = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
+                        getDocs(qFinalizada).then(finalizadaSnap => {
+                            if (!finalizadaSnap.empty) {
+                                const jornada = { id: finalizadaSnap.docs[0].id, ...finalizadaSnap.docs[0].data(), type: 'finalizada' };
+                                setJornadaInfo(jornada);
+
+                                const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
+                                getDocs(pronosticosRef).then(pronosticosSnap => {
+                                    const pronosticos = pronosticosSnap.docs.map(d => ({id: d.id, ...d.data()}));
+                                    const jokersUsados = pronosticos.filter(p => p.jokerActivo).length;
+                                    const ganadoresPuntos = pronosticos.filter(p => p.puntosObtenidos > 0).map(p => `${p.id} (${p.puntosObtenidos} pts)`).join(', ');
+
+                                    const dynamicStats = [];
+                                    if (jornada.ganadores && jornada.ganadores.length > 0) {
+                                        dynamicStats.push({ label: `Ganador(es) del Bote`, value: jornada.ganadores.join(', '), color: styles.colors.gold });
+                                    } else {
+                                        dynamicStats.push({ label: 'Resultado del Bote', value: '¡BOTE ACUMULADO!', color: styles.colors.danger });
+                                    }
+                                    if (ganadoresPuntos) {
+                                        dynamicStats.push({ label: 'Sumaron Puntos', value: ganadoresPuntos, color: styles.colors.silver });
+                                    }
+                                    dynamicStats.push({ label: 'Jokers Usados', value: `${jokersUsados} jugador(es)` });
+
+                                    setStats(dynamicStats);
+                                    setLoading(false);
+                                });
+                            } else {
+                                // 4. Buscar jornada "Próximamente"
+                                const qProxima = query(collection(db, "jornadas"), where("estado", "==", "Próximamente"), orderBy("numeroJornada"), limit(1));
+                                getDocs(qProxima).then(proximaSnap => {
+                                    if (!proximaSnap.empty) {
+                                        const jornada = { id: proximaSnap.docs[0].id, ...proximaSnap.docs[0].data(), type: 'proxima' };
+                                        setJornadaInfo(jornada);
+                                        setStats([]); 
+                                    } else {
+                                        setJornadaInfo(null);
+                                        setStats([]);
+                                    }
+                                    setLoading(false);
+                                });
+                            }
+                        });
                     }
-                    setLoading(false);
-                }).catch(error => {
-                    console.error("Error fetching próxima jornada: ", error);
-                    setJornadaInfo(null);
-                    setLoading(false);
                 });
             }
         }, (error) => {
-            console.error("Error fetching jornada activa: ", error);
+            console.error("Error fetching jornada: ", error);
             setJornadaInfo(null);
             setLoading(false);
         });
-        return () => unsubscribe();
+
+        // Devolver la función de desuscripción principal para la jornada activa
+        return () => unsubscribeActiva();
     }, []);
 
     useEffect(() => {
@@ -145,7 +203,11 @@ const SplashScreen = ({ onEnter }) => {
         const interval = setInterval(() => {
             const now = new Date();
             const diff = targetDate - now;
-            if (diff <= 0) { setCountdown("¡TIEMPO FINALIZADO!"); clearInterval(interval); return; }
+            if (diff <= 0) { 
+                setCountdown(jornadaInfo.type === 'activa' ? "¡APUESTAS CERRADAS!" : "¡PARTIDO EN JUEGO!"); 
+                clearInterval(interval); 
+                return; 
+            }
             const d = Math.floor(diff / (1000 * 60 * 60 * 24));
             const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -157,6 +219,55 @@ const SplashScreen = ({ onEnter }) => {
 
     const currentStat = stats[currentStatIndex];
 
+    const renderJornadaInfo = () => {
+        if (!jornadaInfo) {
+            return (
+                <div style={styles.splashInfoBox}>
+                    <h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3>
+                    <p>El administrador aún no ha configurado la próxima jornada.</p>
+                </div>
+            );
+        }
+
+        switch (jornadaInfo.type) {
+            case 'activa':
+                return (
+                    <>
+                        <h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3>
+                        <p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>
+                        <div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div>
+                    </>
+                );
+            case 'cerrada':
+                return (
+                     <>
+                        <h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3>
+                        <p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>
+                        <p>Esperando el resultado del partido...</p>
+                    </>
+                );
+            case 'finalizada':
+                 return (
+                     <>
+                        <h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3>
+                        <p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>
+                        <p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p>
+                    </>
+                );
+            case 'proxima':
+                return (
+                    <>
+                        <h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3>
+                        <p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>
+                        {jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}
+                        {countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}
+                    </>
+                );
+            default:
+                return null;
+        }
+    };
+
     return (
         <div style={styles.splashContainer}>
             <div style={styles.splashLogoContainer}>
@@ -165,34 +276,16 @@ const SplashScreen = ({ onEnter }) => {
             </div>
             {loading ? (
                 <p style={{color: styles.colors.lightText}}>Cargando información de la jornada...</p>
-            ) : jornadaInfo ? (
-                <div style={styles.splashInfoBox}>
-                    {jornadaInfo.type === 'activa' ? (
-                        <>
-                            <h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3>
-                            <p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>
-                            <div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div>
-                            {currentStat && (
-                                <div style={styles.carouselStat}>
-                                    <span style={{color: currentStat.color || styles.colors.lightText}}>{currentStat.label}: </span>
-                                    <strong style={{color: currentStat.color || styles.colors.gold}}>{currentStat.value}</strong>
-                                </div>
-                            )}
-                            {jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}
-                        </>
-                    ) : (
-                         <>
-                            <h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3>
-                            <p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>
-                            {jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}
-                            {countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}
-                        </>
-                    )}
-                </div>
             ) : (
                 <div style={styles.splashInfoBox}>
-                    <h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3>
-                    <p>El administrador aún no ha configurado la próxima jornada.</p>
+                    {renderJornadaInfo()}
+                    {currentStat && (
+                        <div style={styles.carouselStat}>
+                            <span style={{color: currentStat.color || styles.colors.lightText, fontWeight: 'bold'}}>{currentStat.label}: </span>
+                            <span style={{color: styles.colors.lightText}}>{currentStat.value}</span>
+                        </div>
+                    )}
+                    {jornadaInfo && jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}
                 </div>
             )}
             <button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>
@@ -1223,6 +1316,7 @@ const styles = {
         width: '120px',
         height: '120px',
         marginBottom: '10px',
+        objectFit: 'contain', // FIX: Evita la distorsión del escudo
     },
     splashTitle: { 
         fontFamily: "'Orbitron', sans-serif",
@@ -1240,7 +1334,10 @@ const styles = {
         marginTop: '30px', 
         backgroundColor: 'rgba(0,0,0,0.3)', 
         width: '90%', 
-        minHeight: '150px' 
+        minHeight: '220px', // Aumentado para dar espacio a la info
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center'
     },
     splashInfoTitle: { 
         margin: '0 0 15px 0', 
@@ -1267,7 +1364,11 @@ const styles = {
     carouselStat: { 
         padding: '10px', 
         fontSize: '1.1rem',
-        animation: 'fadeIn 1s'
+        minHeight: '50px', // Asegura altura consistente
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center'
     },
     // Login Screen
     loginContainer: { textAlign: 'center' },
