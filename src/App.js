@@ -124,10 +124,8 @@ const SplashScreen = ({ onEnter }) => {
                     if (jokerUsers.length > 0) dynamicStats.push({ label: 'Jokers Activados', value: jokerUsers.join(', '), color: styles.colors.gold });
                     if (resultadosMasPuestos) dynamicStats.push({ label: 'Resultados Populares', value: resultadosMasPuestos, color: styles.colors.silver });
                     
-                    // --- PORRA ANUAL: Combinar estadísticas ---
                     const configDocRef = doc(db, "configuracion", "porraAnual");
                     getDoc(configDocRef).then(configSnap => {
-                        // MODIFICADO: Ahora solo muestra las stats de la porra anual si está abierta y es antes de la jornada 6
                         if (configSnap.exists() && configSnap.data().estado === 'Abierta' && jornada.numeroJornada <= 5) {
                             const pronosticosAnualRef = collection(db, "porraAnualPronosticos");
                             getDocs(pronosticosAnualRef).then(pronosticosAnualSnap => {
@@ -584,7 +582,6 @@ const LaJornadaScreen = ({ onViewJornada }) => {
             setLoading(false);
         });
         
-        // --- PORRA ANUAL: Listeners ---
         const configRef = doc(db, "configuracion", "porraAnual");
         const unsubConfig = onSnapshot(configRef, (doc) => {
             setPorraAnualConfig(doc.exists() ? doc.data() : null);
@@ -625,10 +622,8 @@ const LaJornadaScreen = ({ onViewJornada }) => {
             <h2 style={styles.title}>LA JORNADA</h2>
             {jornadaActiva ? (<div style={styles.laJornadaContainer}><h3>Jornada {jornadaActiva.numeroJornada}</h3><div style={styles.matchInfo}><TeamDisplay teamName={jornadaActiva.equipoLocal} /><span style={styles.vs}>VS</span><TeamDisplay teamName={jornadaActiva.equipoVisitante} /></div><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></div>) : jornadaCerrada ? (<div><h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3><p style={{textAlign: 'center'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div></div>) : (<div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>)}
             
-            {/* --- PORRA ANUAL: Sección de visualización --- */}
             <div style={styles.porraAnualContainer}>
-                <h3 style={styles.formSectionTitle}>⭐ PORRA DEL AÑO ⭐</h3>
-                 {/* MODIFICADO: Lógica para mostrar los pronósticos solo si la porra está cerrada o finalizada */}
+                <h3 style={styles.formSectionTitle}>⭐ PORRA ANUAL ⭐</h3>
                 {porraAnualConfig?.estado === 'Abierta' && <p style={{textAlign: 'center'}}>Las apuestas de los demás serán secretas hasta la Jornada 5. ¡Haz la tuya desde el banner superior!</p>}
                 {(porraAnualConfig?.estado === 'Cerrada' || porraAnualConfig?.estado === 'Finalizada') && (
                     <div>
@@ -825,7 +820,6 @@ const JornadaAdminItem = ({ jornada }) => {
     );
 };
 
-// --- NUEVO COMPONENTE: AdminPorraAnual ---
 const AdminPorraAnual = () => {
     const [config, setConfig] = useState({ estado: '', ascensoFinal: '', posicionFinal: '' });
     const [loading, setLoading] = useState(true);
@@ -843,7 +837,7 @@ const AdminPorraAnual = () => {
             setLoading(false);
         });
         return () => unsub();
-    }, []);
+    }, [configRef]);
 
     const handleSaveConfig = async () => {
         setSaving(true);
@@ -913,7 +907,7 @@ const AdminPorraAnual = () => {
 
     return (
         <div style={styles.adminJornadaItem}>
-            <h3 style={styles.formSectionTitle}>Gestión Porra del Año</h3>
+            <h3 style={styles.formSectionTitle}>Gestión Porra Anual</h3>
             <div style={styles.adminControls}>
                 <div>
                     <label style={styles.label}>Estado de la Porra</label>
@@ -991,7 +985,6 @@ const AdminPanelScreen = () => {
     return (
         <div>
             <h2 style={styles.title}>PANEL DE ADMINISTRADOR</h2>
-            {/* AÑADIDO: Componente de admin para la porra anual */}
             <AdminPorraAnual />
             <h3 style={{...styles.title, fontSize: '1.5rem', marginTop: '40px'}}>Gestión de Jornadas</h3>
             <div style={styles.jornadaList}>
@@ -1145,7 +1138,6 @@ const PagosScreen = ({ user }) => {
     );
 };
 
-// --- COMPONENTE MEJORADO: PorraAnualScreen ---
 const PorraAnualScreen = ({ user, onBack, config }) => {
     const [pronostico, setPronostico] = useState({ ascenso: '', posicion: '' });
     const [miPronostico, setMiPronostico] = useState(null);
@@ -1198,7 +1190,7 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
         return (
             <div>
                 <button onClick={onBack} style={styles.backButton}>&larr; Volver</button>
-                <h2 style={styles.title}>⭐ PORRA DEL AÑO ⭐</h2>
+                <h2 style={styles.title}>⭐ PORRA ANUAL ⭐</h2>
                 <div style={styles.placeholder}>
                     {miPronostico ? (
                         <>
@@ -1209,7 +1201,7 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
                             <p style={{marginTop: '20px', fontStyle: 'italic'}}>¡Suerte al final de la liga!</p>
                         </>
                     ) : (
-                        <h3>Las apuestas para la Porra del Año están cerradas.</h3>
+                        <h3>Las apuestas para la Porra Anual están cerradas.</h3>
                     )}
                 </div>
             </div>
@@ -1219,7 +1211,7 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
     return (
         <div>
             <button onClick={onBack} style={styles.backButton}>&larr; Volver</button>
-            <h2 style={styles.title}>⭐ PORRA DEL AÑO ⭐</h2>
+            <h2 style={styles.title}>⭐ PORRA ANUAL ⭐</h2>
             <form onSubmit={handleGuardar} style={styles.form}>
                 <p style={{textAlign: 'center', marginBottom: '30px', fontSize: '1.1rem'}}>
                     Haz tu pronóstico para el final de la temporada. ¡Solo puedes hacerlo una vez!
@@ -1262,7 +1254,6 @@ function App() {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   
-  // --- PORRA ANUAL ---
   const [porraAnualConfig, setPorraAnualConfig] = useState(null);
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
 
@@ -1324,10 +1315,9 @@ function App() {
         <>
           {showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}
           
-          {/* --- PORRA ANUAL: Banner Global --- */}
           {porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (
             <div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>
-                ⭐ ¡PORRA DEL AÑO ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!
+                ⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!
             </div>
           )}
 
