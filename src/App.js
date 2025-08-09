@@ -2073,7 +2073,22 @@ function App() {
     styleSheet.type = "text/css";
     styleSheet.innerText = `
       @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap');
-      html { font-size: 16px; } /* ** NUEVO: Base de fuente estable ** */
+      
+      /* --- NUEVO: Reset y Estabilidad Visual --- */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box; /* Clave para un layout predecible */
+      }
+      html {
+        font-size: 16px; /* Ignora la configuración de fuente del móvil */
+      }
+      body {
+        width: 100%;
+        overflow-x: hidden; /* Previene el desbordamiento horizontal */
+      }
+      /* --- Fin del nuevo código --- */
+
       @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
       .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
       @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
