@@ -608,13 +608,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos }) => {
 
     const isVip = jornadaActiva?.esVip;
 
-    const TeamBetDisplay = ({ teamName }) => (
-        <div style={styles.betTeamContainer}>
-            <img src={teamLogos[teamName]} style={styles.betTeamLogo} alt={`${teamName} logo`} />
-            <span style={styles.betTeamName}>{teamName}</span>
-        </div>
-    );
-
     return (
         <div>
             {showJokerAnimation && <JokerAnimation />}
