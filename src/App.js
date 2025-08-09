@@ -129,18 +129,52 @@ const WinnerAnimation = ({ winnerData, onClose }) => {
 // ============================================================================
 
 const InitialSplashScreen = ({ onFinish }) => {
+    // Estado para saber si la pantalla está en modo vertical (portrait)
+    const [isPortrait, setIsPortrait] = useState(window.matchMedia("(orientation: portrait)").matches);
+
     useEffect(() => {
-        const timer = setTimeout(() => onFinish(), 6000);
-        return () => clearTimeout(timer);
+        // El splash dura 4 segundos
+        const timer = setTimeout(() => {
+            onFinish();
+        }, 4000);
+
+        // Creamos una consulta de medios para detectar la orientación
+        const mediaQuery = window.matchMedia("(orientation: portrait)");
+        
+        // Función que se ejecutará cada vez que la orientación cambie
+        const handleChange = (e) => setIsPortrait(e.matches);
+        
+        // Añadimos el listener para el evento 'change'
+        mediaQuery.addEventListener('change', handleChange);
+
+        // Limpieza: se ejecuta cuando el componente se desmonta
+        return () => {
+            clearTimeout(timer);
+            mediaQuery.removeEventListener('change', handleChange);
+        };
     }, [onFinish]);
+
     return (
         <div style={styles.initialSplashContainer}>
             <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
             <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
-            <div style={styles.rotateMessage}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}><path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="m15 5-3 3-3-3"/></svg>
-                <p>Para una mejor experiencia, gira tu dispositivo.</p>
-            </div>
+            {isPortrait ? (
+                // Si está en vertical, mostramos el mensaje para girar
+                <div style={styles.rotateMessage}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}>
+                        <path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="m15 5-3 3-3-3"/>
+                    </svg>
+                    <p>Para una mejor experiencia, gira tu dispositivo.</p>
+                </div>
+            ) : (
+                // Si ya está en horizontal, mostramos el mensaje de carga
+                <div style={styles.loadingMessage}>
+                     <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner">
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
+                    <p>Cargando apuestas...</p>
+                </div>
+            )}
         </div>
     );
 };
@@ -1523,12 +1557,13 @@ function App() {
       @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
       @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-      .content-enter { opacity: 0; } .content-enter-active { opacity: 1; transition: opacity 300ms; }
-      .content-exit { opacity: 1; } .content-exit-active { opacity: 0; transition: opacity 300ms; }
+      .content-enter-active { animation: fadeIn 0.3s ease-in-out; }
       @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
       .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
       @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } }
       .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; }
+      @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      .spinner { animation: spin 1.5s linear infinite; }
       #orientation-lock { display: none; }
       @media (orientation: portrait) {
         #app-container { display: none !important; }
@@ -1648,7 +1683,8 @@ const styles = {
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
     initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: colors.deepBlue, animation: 'fadeIn 1s ease' },
     orientationLock: { textAlign: 'center' },
-    rotateMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out' },
+    rotateMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' },
+    loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' },
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center' },
     splashLogoContainer: { marginBottom: '20px', },
     splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain', },
