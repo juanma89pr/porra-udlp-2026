@@ -721,7 +721,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla })
                             </div>
                         ) : (
                             <fieldset disabled={isLocked} style={{border: 'none', padding: 0, margin: 0}}>
-                                {/* ** NUEVO: Layout de resultado rediseñado ** */}
                                 <div style={styles.formGroup}>
                                     <label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label>
                                     <div style={styles.miJornadaMatchInfo}>
@@ -736,7 +735,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla })
                                     {(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}
                                 </div>
                                 <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
-                                {/* ** NUEVO: Desplegable de goleadores ** */}
                                 <div style={styles.formGroup}>
                                     <label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label>
                                     <select name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador}>
@@ -2075,6 +2073,7 @@ function App() {
     styleSheet.type = "text/css";
     styleSheet.innerText = `
       @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap');
+      html { font-size: 16px; } /* ** NUEVO: Base de fuente estable ** */
       @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
       .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
       @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
