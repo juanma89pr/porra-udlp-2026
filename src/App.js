@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
@@ -20,27 +20,16 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// --- DATOS DE LA APLICACIÓN (sin cambios) ---
+// --- DATOS DE LA APLICACIÓN ---
 const JUGADORES = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
 const ADMIN_PASSWORD = "porra2026lpa";
 const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
 const SECRET_MESSAGES = [
-    "Pronóstico Secreto 🤫",
-    "Aquí huele a BOTE...",
-    "Voy a ganar yo 😎",
-    "Top Secret",
-    "Clasificado ⭐",
-    "Me lo guardo para mí",
-    "Jugada Maestra en proceso...",
-    "Ni el VAR lo sabe",
-    "Consultando con el Oráculo",
-    "Shhh... es un secreto",
-    "Apuesta Fantasma 👻",
-    "Resultado 'Confidencial'",
-    "Cargando... 99%",
-    "El que lo sabe, lo sabe",
-    "Mejor no digo nada..."
+    "Pronóstico Secreto 🤫", "Aquí huele a BOTE...", "Voy a ganar yo 😎", "Top Secret",
+    "Clasificado ⭐", "Me lo guardo para mí", "Jugada Maestra en proceso...", "Ni el VAR lo sabe",
+    "Consultando con el Oráculo", "Shhh... es un secreto", "Apuesta Fantasma 👻",
+    "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
 
 // --- URLs de los escudos de los equipos (VERIFICADAS) ---
@@ -66,7 +55,7 @@ const teamLogos = {
     "AD Ceuta FC": "https://upload.wikimedia.org/wikipedia/en/d/d4/AD_Ceuta_FC_logo.png",
     "CyD Leonesa": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b2/Cultural_y_Deportiva_Leonesa_logo.svg/1200px-Cultural_y_Deportiva_Leonesa_logo.svg.png",
     "Real Zaragoza": "https://upload.wikimedia.org/wikipedia/en/thumb/1/15/Real_Zaragoza_logo.svg/1200px-Real_Zaragoza_logo.svg.png",
-    "RC Deportivo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/RC_Deportivo_La_Coru%C3%A1a_logo.svg/1200px-RC_Deportivo_La_Coru%C3%A1a_logo.svg.png"
+    "RC Deportivo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/RC_Deportivo_La_Coru%C3%A4a_logo.svg/1200px-RC_Deportivo_La_Coru%C3%A4a_logo.svg.png"
 };
 
 // ============================================================================
@@ -75,46 +64,42 @@ const teamLogos = {
 
 const TeamDisplay = ({ teamName, shortName = false, imgStyle }) => (
     <div style={styles.teamDisplay}>
-        <img 
-            src={teamLogos[teamName]} 
-            style={{...styles.teamLogo, ...imgStyle}} 
-            alt={`${teamName} logo`}
-            onError={(e) => { e.target.src = 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'; }}
-        />
-        <span style={styles.teamNameText}>
-            {shortName && teamName === "UD Las Palmas" ? "UDLP" : teamName}
-        </span>
+        <img src={teamLogos[teamName]} style={{...styles.teamLogo, ...imgStyle}} alt={`${teamName} logo`} onError={(e) => { e.target.src = 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'; }} />
+        <span style={styles.teamNameText}>{shortName && teamName === "UD Las Palmas" ? "UDLP" : teamName}</span>
     </div>
 );
 
 const JokerAnimation = () => {
     const [exploded, setExploded] = useState(false);
-
     useEffect(() => {
-        const timer = setTimeout(() => {
-            setExploded(true);
-        }, 5500); // Inicia la explosión un poco antes de que termine la animación
+        const timer = setTimeout(() => setExploded(true), 5500);
         return () => clearTimeout(timer);
     }, []);
-
-    const jokers = Array.from({ length: 80 }); // Aumentamos el número de jokers
+    const jokers = Array.from({ length: 80 });
     return (
         <div style={styles.jokerAnimationOverlay}>
             {jokers.map((_, i) => (
-                <span 
-                    key={i} 
-                    className={exploded ? 'exploded' : ''}
-                    style={{
-                        ...styles.jokerIcon,
-                        left: `${Math.random() * 100}vw`,
-                        animationDelay: `${Math.random() * 4}s`,
-                        animationDuration: `${3 + Math.random() * 3}s`,
-                        transform: exploded ? `translate(${Math.random() * 800 - 400}px, ${Math.random() * 800 - 400}px) rotate(720deg)` : 'translateY(-100px) rotate(0deg)',
-                        opacity: exploded ? 0 : 1
-                    }}
-                >
-                    🃏
-                </span>
+                <span key={i} className={exploded ? 'exploded' : ''} style={{
+                    ...styles.jokerIcon, left: `${Math.random() * 100}vw`, animationDelay: `${Math.random() * 4}s`, animationDuration: `${3 + Math.random() * 3}s`,
+                    transform: exploded ? `translate(${Math.random() * 800 - 400}px, ${Math.random() * 800 - 400}px) rotate(720deg)` : 'translateY(-100px) rotate(0deg)',
+                    opacity: exploded ? 0 : 1
+                }}>🃏</span>
+            ))}
+        </div>
+    );
+};
+
+const Confetti = () => {
+    const particles = Array.from({ length: 150 });
+    return (
+        <div style={styles.confettiOverlay}>
+            {particles.map((_, i) => (
+                <div key={i} className="confetti-particle" style={{
+                    '--x': `${Math.random() * 100}vw`,
+                    '--angle': `${Math.random() * 360}deg`,
+                    '--delay': `${Math.random() * 5}s`,
+                    '--color': i % 2 === 0 ? styles.colors.yellow : styles.colors.blue,
+                }} />
             ))}
         </div>
     );
@@ -122,9 +107,9 @@ const JokerAnimation = () => {
 
 const WinnerAnimation = ({ winnerData, onClose }) => {
     const { pronostico, prize } = winnerData;
-
     return (
         <div style={styles.winnerAnimationOverlay}>
+            <Confetti />
             <div style={styles.winnerModal}>
                 <div style={styles.trophy}>🏆</div>
                 <h2 style={styles.winnerTitle}>¡FELICIDADES, {pronostico.id}!</h2>
@@ -139,29 +124,21 @@ const WinnerAnimation = ({ winnerData, onClose }) => {
     );
 };
 
-
 // ============================================================================
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
 
 const InitialSplashScreen = ({ onFinish }) => {
     useEffect(() => {
-        const timer = setTimeout(() => {
-            onFinish();
-        }, 6000);
+        const timer = setTimeout(() => onFinish(), 6000);
         return () => clearTimeout(timer);
     }, [onFinish]);
-
     return (
         <div style={styles.initialSplashContainer}>
             <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
             <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
             <div style={styles.rotateMessage}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}>
-                    <path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/>
-                    <path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/>
-                    <path d="m15 5-3 3-3-3"/>
-                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}><path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="m15 5-3 3-3-3"/></svg>
                 <p>Para una mejor experiencia, gira tu dispositivo.</p>
             </div>
         </div>
@@ -171,11 +148,7 @@ const InitialSplashScreen = ({ onFinish }) => {
 const OrientationLock = () => (
     <div id="orientation-lock" style={styles.orientationLock}>
         <div style={styles.rotateMessage}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}>
-                <path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/>
-                <path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/>
-                <path d="m15 5-3 3-3-3"/>
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}><path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="m15 5-3 3-3-3"/></svg>
             <p style={{fontSize: '1.2rem', marginTop: '20px'}}>Por favor, gira tu dispositivo a modo horizontal.</p>
         </div>
     </div>
@@ -248,9 +221,8 @@ const SplashScreen = ({ onEnter }) => {
                         const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
                         getDocs(pronosticosRef).then(pronosticosSnap => {
                             const pronosticosCount = pronosticosSnap.size;
-                            const jokersUsados = pronosticosSnap.docs.filter(doc => doc.data().jokerActivo).length;
                             const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
-                            const dineroEnJuego = (jornada.bote || 0) + (pronosticosCount * costeApuesta) + jokersUsados;
+                            const dineroEnJuego = (jornada.bote || 0) + (pronosticosCount * costeApuesta);
                             setStats([{ label: 'Dinero Total en Juego', value: `${dineroEnJuego}€`, color: styles.colors.success }]);
                             setLoading(false);
                         });
@@ -383,7 +355,7 @@ const LoginScreen = ({ onLogin }) => {
     );
 };
 
-const MiJornadaScreen = ({ user, setActiveTab, onActivateJoker }) => {
+const MiJornadaScreen = ({ user, setActiveTab }) => {
     const [jornadaActiva, setJornadaActiva] = useState(null);
     const [jornadaCerrada, setJornadaCerrada] = useState(null);
     const [proximaJornada, setProximaJornada] = useState(null);
@@ -399,7 +371,8 @@ const MiJornadaScreen = ({ user, setActiveTab, onActivateJoker }) => {
     const [panicButtonDisabled, setPanicButtonDisabled] = useState(false);
     const [allPronosticos, setAllPronosticos] = useState([]);
     const [jokerStats, setJokerStats] = useState(Array(10).fill(null));
-    
+    const [showJokerAnimation, setShowJokerAnimation] = useState(false);
+
     useEffect(() => {
         setLoading(true);
         const userJokerRef = doc(db, "clasificacion", user);
@@ -552,7 +525,8 @@ const MiJornadaScreen = ({ user, setActiveTab, onActivateJoker }) => {
             return;
         }
         if (window.confirm("¿Seguro que quieres usar un JOKER para esta jornada? Esta acción no se puede deshacer y se descontará de tu total.")) {
-            onActivateJoker(); // Llama a la función del padre para mostrar la animación
+            setShowJokerAnimation(true);
+            setTimeout(() => setShowJokerAnimation(false), 7000); // Duración extendida
 
             const userJokerRef = doc(db, "clasificacion", user);
             const userDoc = await getDoc(userJokerRef);
@@ -602,6 +576,7 @@ const MiJornadaScreen = ({ user, setActiveTab, onActivateJoker }) => {
 
     return (
         <div>
+            {showJokerAnimation && <JokerAnimation />}
             <h2 style={styles.title}>MI JORNADA</h2>
             <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <strong style={{color: styles.colors.yellow}}>{user}</strong>.</p>
             {jornadaActiva ? (
@@ -627,7 +602,7 @@ const MiJornadaScreen = ({ user, setActiveTab, onActivateJoker }) => {
                                     <input type="number" min="0" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} />
                                     <TeamBetDisplay teamName={jornadaActiva.equipoVisitante} />
                                 </div>
-                                {(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}
+                                {(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}
                             </div>
                             <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
                             <div style={styles.formGroup}><label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label><input type="text" name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador} /><div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>(1 Punto)</span></label></div></div>
@@ -773,31 +748,87 @@ const CalendarioScreen = ({ onViewJornada }) => {
     );
 };
 
+const AnimatedPoints = ({ value }) => {
+    const [currentValue, setCurrentValue] = useState(0);
+    const prevValueRef = useRef(0);
+
+    useEffect(() => {
+        const startValue = prevValueRef.current;
+        const endValue = value || 0;
+        let startTime = null;
+
+        const animation = (currentTime) => {
+            if (!startTime) startTime = currentTime;
+            const progress = Math.min((currentTime - startTime) / 1000, 1); // 1 segundo de animación
+            const newDisplayValue = Math.floor(progress * (endValue - startValue) + startValue);
+            setCurrentValue(newDisplayValue);
+
+            if (progress < 1) {
+                requestAnimationFrame(animation);
+            } else {
+                 prevValueRef.current = endValue;
+            }
+        };
+        
+        requestAnimationFrame(animation);
+
+        return () => { prevValueRef.current = value || 0; };
+    }, [value]);
+
+    return <span>{currentValue}</span>;
+};
+
 const ClasificacionScreen = ({ currentUser }) => {
     const [clasificacion, setClasificacion] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [rachas, setRachas] = useState({});
 
     useEffect(() => {
-        setLoading(true);
-        const q = query(collection(db, "clasificacion"), orderBy("puntosTotales", "desc"));
+        const fetchRachas = async () => {
+            const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(2));
+            const jornadasSnap = await getDocs(q);
+            if (jornadasSnap.docs.length < 2) return;
 
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const [jornada1, jornada2] = jornadasSnap.docs.map(d => ({id: d.id, ...d.data()}));
+            
+            const [pronosticos1Snap, pronosticos2Snap] = await Promise.all([
+                getDocs(collection(db, "pronosticos", jornada1.id, "jugadores")),
+                getDocs(collection(db, "pronosticos", jornada2.id, "jugadores"))
+            ]);
+            
+            const pronosticos1 = Object.fromEntries(pronosticos1Snap.docs.map(d => [d.id, d.data()]));
+            const pronosticos2 = Object.fromEntries(pronosticos2Snap.docs.map(d => [d.id, d.data()]));
+
+            const newRachas = {};
+            JUGADORES.forEach(jugador => {
+                const p1 = pronosticos1[jugador];
+                const p2 = pronosticos2[jugador];
+                const aciertoExacto1 = p1 && parseInt(p1.golesLocal) === jornada1.resultadoLocal && parseInt(p1.golesVisitante) === jornada1.resultadoVisitante;
+                const aciertoExacto2 = p2 && parseInt(p2.golesLocal) === jornada2.resultadoLocal && parseInt(p2.golesVisitante) === jornada2.resultadoVisitante;
+                
+                if (aciertoExacto1 && aciertoExacto2) {
+                    newRachas[jugador] = '🔥';
+                } else if ((p1?.puntosObtenidos === 0 || !p1) && (p2?.puntosObtenidos === 0 || !p2)) {
+                    newRachas[jugador] = '🥶';
+                }
+            });
+            setRachas(newRachas);
+        };
+
+        fetchRachas();
+
+        const qClasificacion = query(collection(db, "clasificacion"), orderBy("puntosTotales", "desc"));
+        const unsubscribe = onSnapshot(qClasificacion, (querySnapshot) => {
             const clasificacionData = {};
             querySnapshot.forEach((doc) => {
                 clasificacionData[doc.id] = { id: doc.id, ...doc.data() };
             });
 
             const processedData = JUGADORES.map(jugadorId => {
-                return clasificacionData[jugadorId] || { 
-                    id: jugadorId, 
-                    jugador: jugadorId, 
-                    puntosTotales: 0, 
-                    jokersRestantes: 2 
-                };
+                return clasificacionData[jugadorId] || { id: jugadorId, jugador: jugadorId, puntosTotales: 0, jokersRestantes: 2 };
             });
 
             processedData.sort((a, b) => (b.puntosTotales || 0) - (a.puntosTotales || 0));
-
             setClasificacion(processedData);
             setLoading(false);
         }, (error) => {
@@ -809,17 +840,14 @@ const ClasificacionScreen = ({ currentUser }) => {
     }, []);
 
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando clasificación...</p>;
-
+    
     const getRankStyle = (index, jugadorId) => {
         let style = {};
         if (index === 0) style = styles.top1Row;
         else if (index === 1) style = styles.top2Row;
         else if (index === 2) style = styles.top3Row;
         else style = styles.tr;
-
-        if (jugadorId === currentUser) {
-            style = {...style, ...styles.currentUserRow};
-        }
+        if (jugadorId === currentUser) style = {...style, ...styles.currentUserRow};
         return style;
     };
     
@@ -847,8 +875,8 @@ const ClasificacionScreen = ({ currentUser }) => {
                         {clasificacion.map((jugador, index) => (
                             <tr key={jugador.id} style={getRankStyle(index, jugador.id)}>
                                 <td style={styles.tdRank}>{getRankIcon(index)}</td>
-                                <td style={styles.td}>{jugador.jugador || jugador.id}</td>
-                                <td style={styles.td}>{jugador.puntosTotales || 0}</td>
+                                <td style={styles.td}>{jugador.jugador || jugador.id} {rachas[jugador.id]}</td>
+                                <td style={styles.td}><AnimatedPoints value={jugador.puntosTotales} /></td>
                                 <td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>
                                     {jugador.jokersRestantes !== undefined ? jugador.jokersRestantes : 2} 🃏
                                 </td>
@@ -892,60 +920,21 @@ const JornadaAdminItem = ({ jornada }) => {
     };
 
     const handleCalcularPuntos = async () => {
-        if (resultadoLocal === '' || resultadoVisitante === '' || !resultado1x2) {
-            alert("Introduce los goles de ambos equipos y el Resultado 1X2.");
-            return;
-        }
+        if (resultadoLocal === '' || resultadoVisitante === '' || !resultado1x2) { alert("Introduce los goles de ambos equipos y el Resultado 1X2."); return; }
         setIsCalculating(true);
         const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
         const pronosticosSnap = await getDocs(pronosticosRef);
         const pronosticos = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const batch = writeBatch(db);
         const ganadores = [];
-        let jokersUsados = 0; // Contamos los jokers para el bote
-
         for (const p of pronosticos) {
             let puntosJornada = 0;
             const esVip = jornada.esVip || false;
-            let aciertoResultadoExacto = false;
-
-            if (p.jokerActivo) {
-                jokersUsados++;
-            }
-
-            // 1. Comprobamos si el pronóstico principal es correcto
             if (p.golesLocal !== '' && p.golesVisitante !== '' && parseInt(p.golesLocal) === parseInt(resultadoLocal) && parseInt(p.golesVisitante) === parseInt(resultadoVisitante)) {
                 puntosJornada += esVip ? 6 : 3;
-                aciertoResultadoExacto = true;
+                ganadores.push(p.id);
             }
-
-            // 2. Comprobamos los pronósticos del Joker
-            // Un jugador gana la porra si acierta con su apuesta principal O con una de sus apuestas Joker.
-            if (p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0) {
-                for (const jokerP of p.jokerPronosticos) {
-                    if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === parseInt(resultadoLocal) && parseInt(jokerP.golesVisitante) === parseInt(resultadoVisitante)) {
-                        // Si el pronóstico Joker es correcto, se marca como acierto para la porra.
-                        // Solo se suman los puntos por resultado exacto UNA VEZ.
-                        if (!aciertoResultadoExacto) {
-                           puntosJornada += esVip ? 6 : 3;
-                        }
-                        aciertoResultadoExacto = true;
-                        break; // Salimos del bucle de jokers, ya ha acertado.
-                    }
-                }
-            }
-
-            // 3. Si acertó el resultado exacto (principal o con Joker), se añade a la lista de ganadores de la porra
-            if (aciertoResultadoExacto) {
-                if (!ganadores.includes(p.id)) {
-                    ganadores.push(p.id);
-                }
-            }
-
-            // 4. Comprobamos el resultado 1X2 (esto suma puntos independientemente del resultado exacto)
             if (p.resultado1x2 === resultado1x2) { puntosJornada += esVip ? 2 : 1; }
-            
-            // 5. Comprobamos el goleador (esto suma puntos independientemente del resultado exacto)
             const goleadorReal = goleador.trim().toLowerCase();
             const goleadorApostado = p.goleador ? p.goleador.trim().toLowerCase() : '';
             if (p.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) { 
@@ -954,26 +943,25 @@ const JornadaAdminItem = ({ jornada }) => {
             else if (!p.sinGoleador && goleadorApostado === goleadorReal && goleadorReal !== "") { 
                 puntosJornada += esVip ? 4 : 2; 
             }
-
-            // Actualizamos los documentos en el batch
+            if (p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0) {
+                for (const jokerP of p.jokerPronosticos) {
+                    if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === parseInt(resultadoLocal) && parseInt(jokerP.golesVisitante) === parseInt(resultadoVisitante)) {
+                        puntosJornada += esVip ? 6 : 3;
+                        break; 
+                    }
+                }
+            }
             const pronosticoDocRef = doc(db, "pronosticos", jornada.id, "jugadores", p.id);
             batch.update(pronosticoDocRef, { puntosObtenidos: puntosJornada });
             const clasificacionDocRef = doc(db, "clasificacion", p.id);
             batch.set(clasificacionDocRef, { puntosTotales: increment(puntosJornada), jugador: p.id }, { merge: true });
         }
-
         const jornadaRef = doc(db, "jornadas", jornada.id);
-        // Guardamos los ganadores y marcamos la jornada como Finalizada
         batch.update(jornadaRef, { estado: "Finalizada", ganadores });
-
-        // Si no hay ganadores, el bote se acumula para la siguiente jornada
         if (ganadores.length === 0) {
             const boteActual = jornada.bote || 0;
             const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
-            // El dinero recaudado incluye las apuestas normales/VIP y 1€ por cada Joker usado
-            const dineroRecaudado = (pronosticos.length * costeApuesta) + jokersUsados;
-            const nuevoBote = boteActual + dineroRecaudado;
-            
+            const nuevoBote = boteActual + (pronosticos.length * costeApuesta);
             const qProxima = query(collection(db, "jornadas"), where("numeroJornada", ">", jornada.numeroJornada), orderBy("numeroJornada"), limit(1));
             const proximaJornadaSnap = await getDocs(qProxima);
             if (!proximaJornadaSnap.empty) {
@@ -981,15 +969,8 @@ const JornadaAdminItem = ({ jornada }) => {
                 batch.update(proximaJornadaRef, { bote: nuevoBote });
             }
         }
-
-        try { 
-            await batch.commit(); 
-            alert("¡Puntos calculados y jornada cerrada!"); 
-        } 
-        catch (error) { 
-            console.error("Error al calcular: ", error); 
-            alert("Error al calcular puntos."); 
-        }
+        try { await batch.commit(); alert("¡Puntos calculados y jornada cerrada!"); } 
+        catch (error) { console.error("Error al calcular: ", error); alert("Error al calcular puntos."); }
         setIsCalculating(false);
     };
 
@@ -1524,60 +1505,34 @@ function App() {
   const [porraAnualConfig, setPorraAnualConfig] = useState(null);
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
   const [winnerData, setWinnerData] = useState(null);
-  const [showJokerAnimation, setShowJokerAnimation] = useState(false); // Estado para la animación del Joker
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
         if (!user) {
-            signInAnonymously(auth).catch((error) => {
-                console.error("Error de autenticación anónima:", error);
-            });
+            signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error));
         }
     });
 
     const styleSheet = document.createElement("style");
     styleSheet.type = "text/css";
     styleSheet.innerText = `
-      @keyframes fall {
-        0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
-        100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
-      }
-      .exploded {
-          transition: transform 1s ease-out, opacity 1s ease-out;
-      }
-      @keyframes trophy-grow {
-        from { transform: scale(0); opacity: 0; }
-        to { transform: scale(1); opacity: 1; }
-      }
-      @keyframes text-fade-in {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      @keyframes highlight {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-      }
-      @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-      }
+      @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
+      .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
+      @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+      @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+      .content-enter { opacity: 0; } .content-enter-active { opacity: 1; transition: opacity 300ms; }
+      .content-exit { opacity: 1; } .content-exit-active { opacity: 0; transition: opacity 300ms; }
+      @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+      .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+      @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } }
+      .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; }
       #orientation-lock { display: none; }
       @media (orientation: portrait) {
         #app-container { display: none !important; }
-        #orientation-lock { 
-            display: flex; 
-            justify-content: center;
-            align-items: center;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: ${colors.deepBlue};
-            color: ${colors.lightText};
-            z-index: 9999;
-        }
+        #orientation-lock { display: flex; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: ${colors.deepBlue}; color: ${colors.lightText}; z-index: 9999; }
       }
     `;
     document.head.appendChild(styleSheet);
@@ -1597,28 +1552,17 @@ function App() {
   const handleLogin = async (user) => {
       setCurrentUser(user);
       setScreen('app');
-
-      // Comprobar si el usuario es ganador de la última jornada finalizada
       const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
       const jornadaSnap = await getDocs(q);
-
       if (!jornadaSnap.empty) {
           const jornadaDoc = jornadaSnap.docs[0];
           const jornada = { id: jornadaDoc.id, ...jornadaDoc.data() };
-
           const lastSeenWinnerJornada = sessionStorage.getItem('lastSeenWinnerJornada');
-          
-          // Si el usuario está en la lista de ganadores y no ha visto la animación para esta jornada
           if (jornada.id !== lastSeenWinnerJornada && jornada.ganadores?.includes(user)) {
               const pronosticoRef = doc(db, "pronosticos", jornada.id, "jugadores", user);
               const pronosticoSnap = await getDoc(pronosticoRef);
-              
-              const allPronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
-              const allPronosticosSnap = await getDocs(allPronosticosRef);
-              
-              const jokersUsados = allPronosticosSnap.docs.filter(doc => doc.data().jokerActivo).length;
-              const prize = (allPronosticosSnap.size * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL)) + (jornada.bote || 0) + jokersUsados;
-
+              const allPronosticosSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
+              const prize = (allPronosticosSnap.size * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL)) + (jornada.bote || 0);
               if (pronosticoSnap.exists()) {
                   setWinnerData({
                       pronostico: { id: user, ...pronosticoSnap.data() },
@@ -1634,35 +1578,32 @@ function App() {
   const handleAdminClick = () => { if (isAdminAuthenticated) { setActiveTab('admin'); } else { setShowAdminLogin(true); } };
   const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
 
-  // Función para controlar la animación del Joker
-  const handleActivateJokerAnimation = () => {
-      setShowJokerAnimation(true);
-      setTimeout(() => {
-          setShowJokerAnimation(false);
-      }, 7000); // La animación dura 7 segundos
-  };
-
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} />;
     if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} />;
     if (screen === 'app') {
-        if (viewingJornadaId) {
-            return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} />;
-        }
-        if (viewingPorraAnual) {
-            return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
-        }
+        const CurrentScreen = () => {
+            if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} />;
+            if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
+            switch (activeTab) {
+                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} />;
+                case 'laJornada': return <LaJornadaScreen />;
+                case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} />;
+                case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} />;
+                case 'pagos': return <PagosScreen user={currentUser} />;
+                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen /> : null;
+                default: return null;
+            }
+        };
       return (
         <>
           {showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}
-          
           {porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (
             <div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>
                 ⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!
             </div>
           )}
-
           <nav style={styles.navbar}>
             <button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button>
             <button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button>
@@ -1672,13 +1613,8 @@ function App() {
             {currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}
             <button onClick={() => { setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false); }} style={styles.logoutButton}>Salir</button>
           </nav>
-          <div style={styles.content}>
-            {activeTab === 'miJornada' && <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} onActivateJoker={handleActivateJokerAnimation} />}
-            {activeTab === 'laJornada' && <LaJornadaScreen />}
-            {activeTab === 'calendario' && <CalendarioScreen onViewJornada={setViewingJornadaId} />}
-            {activeTab === 'clasificacion' && <ClasificacionScreen currentUser={currentUser} />}
-            {activeTab === 'pagos' && <PagosScreen user={currentUser} />}
-            {activeTab === 'admin' && isAdminAuthenticated && <AdminPanelScreen />}
+          <div key={activeTab} className="content-enter-active" style={styles.content}>
+            <CurrentScreen />
           </div>
         </>
       );
@@ -1688,7 +1624,6 @@ function App() {
     <>
         <OrientationLock />
         {winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}
-        {showJokerAnimation && <JokerAnimation />}
         <div id="app-container" style={styles.container}>
             <div style={styles.card}>{renderContent()}</div>
         </div>
@@ -1732,7 +1667,7 @@ const styles = {
     navButton: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: '3px solid transparent', borderRadius: '6px 6px 0 0', backgroundColor: 'transparent', color: colors.lightText, cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
     navButtonActive: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: `3px solid ${colors.yellow}`, borderRadius: '6px 6px 0 0', backgroundColor: colors.darkUIAlt, color: colors.yellow, cursor: 'pointer', textTransform: 'uppercase', fontWeight: '600' },
     logoutButton: { padding: '8px 12px', fontSize: '0.9rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.danger, cursor: 'pointer', marginLeft: 'auto', transition: 'all 0.2s', fontWeight: '600', textTransform: 'uppercase' },
-    content: { padding: '10px 0' },
+    content: { padding: '10px 0', animation: 'fadeIn 0.5s' },
     form: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '25px', borderRadius: '12px', marginTop: '20px', border: `1px solid ${colors.blue}50` },
     formSectionTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.lightText, fontSize: '1.3rem', textAlign: 'center', marginBottom: '20px' },
     formGroup: { marginBottom: '25px' },
@@ -1817,7 +1752,8 @@ const styles = {
     trophy: { fontSize: '100px', animation: 'trophy-grow 1s cubic-bezier(0.25, 1, 0.5, 1) forwards' },
     winnerTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.gold, fontSize: '2.5rem', margin: '10px 0', animation: 'text-fade-in 1s ease 0.5s forwards', opacity: 0 },
     winnerText: { fontSize: '1.2rem', color: colors.lightText, animation: 'text-fade-in 1s ease 0.8s forwards', opacity: 0 },
-    winnerStats: { display: 'flex', justifyContent: 'center', gap: '30px', marginTop: '25px', fontSize: '1.3rem', animation: 'text-fade-in 1s ease 1.1s forwards', opacity: 0 }
+    winnerStats: { display: 'flex', justifyContent: 'center', gap: '30px', marginTop: '25px', fontSize: '1.3rem', animation: 'text-fade-in 1s ease 1.1s forwards', opacity: 0 },
+    confettiOverlay: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }
 };
 
 export default App;
