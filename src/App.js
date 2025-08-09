@@ -208,48 +208,27 @@ const InstallGuideModal = ({ onClose }) => {
 // ============================================================================
 
 const InitialSplashScreen = ({ onFinish, teamLogos }) => {
-    const [isPortrait, setIsPortrait] = useState(window.matchMedia("(orientation: portrait)").matches);
-
     useEffect(() => {
         const timer = setTimeout(() => onFinish(), 4000);
-        const mediaQuery = window.matchMedia("(orientation: portrait)");
-        const handleChange = (e) => setIsPortrait(e.matches);
-        mediaQuery.addEventListener('change', handleChange);
-        return () => {
-            clearTimeout(timer);
-            mediaQuery.removeEventListener('change', handleChange);
-        };
+        return () => clearTimeout(timer);
     }, [onFinish]);
 
     return (
         <div style={styles.initialSplashContainer}>
             <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
             <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
-            {isPortrait ? (
-                <div style={styles.rotateMessage}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}><path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="m15 5-3 3-3-3"/></svg>
-                    <p>Para una mejor experiencia, gira tu dispositivo.</p>
-                </div>
-            ) : (
-                <div style={styles.loadingMessage}>
-                     <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner">
-                        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                    </svg>
-                    <p>Cargando apuestas...</p>
-                </div>
-            )}
+            {/* ** CORRECCIÓN: Eliminado el mensaje de rotación de pantalla ** */}
+            <div style={styles.loadingMessage}>
+                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+                <p>Cargando apuestas...</p>
+            </div>
         </div>
     );
 };
 
-const OrientationLock = () => (
-    <div id="orientation-lock" style={styles.orientationLock}>
-        <div style={styles.rotateMessage}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}><path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="m15 5-3 3-3-3"/></svg>
-            <p style={{fontSize: '1.2rem', marginTop: '20px'}}>Por favor, gira tu dispositivo a modo horizontal.</p>
-        </div>
-    </div>
-);
+// ** CORRECCIÓN: Componente OrientationLock eliminado por completo **
 
 const SplashScreen = ({ onEnter, teamLogos }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
@@ -2026,6 +2005,7 @@ function App() {
 
     const styleSheet = document.createElement("style");
     styleSheet.type = "text/css";
+    // ** CORRECCIÓN: Eliminada la media query de orientación **
     styleSheet.innerText = `
       @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&display=swap');
       @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
@@ -2043,11 +2023,6 @@ function App() {
       @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       .spinner { animation: spin 1.5s linear infinite; }
       @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
-      #orientation-lock { display: none; }
-      @media (orientation: portrait) {
-        #app-container { display: none !important; }
-        #orientation-lock { display: flex; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: ${styles.colors.deepBlue}; color: ${styles.colors.lightText}; z-index: 9999; }
-      }
       @keyframes blink-live { 50% { background-color: #a11d27; } }
     `;
     document.head.appendChild(styleSheet);
@@ -2158,7 +2133,7 @@ function App() {
   };
   return (
     <>
-        <OrientationLock />
+        {/* ** CORRECCIÓN: Eliminada la instancia de <OrientationLock /> ** */}
         {winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}
         <div id="app-container" style={styles.container}>
             <div style={styles.card}>{renderContent()}</div>
@@ -2177,21 +2152,20 @@ const colors = {
 
 const styles = {
     colors,
-    container: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: `linear-gradient(145deg, ${colors.deepBlue} 0%, #000 100%)`, padding: '20px', fontFamily: "'Exo 2', sans-serif" },
-    card: { width: '100%', maxWidth: '850px', backgroundColor: colors.darkUI, color: colors.lightText, padding: '25px', borderRadius: '16px', boxShadow: `0 0 25px ${colors.blue}30, 0 10px 30px rgba(0, 0, 0, 0.5)`, minHeight: '80vh', border: `1px solid ${colors.blue}80`, backdropFilter: 'blur(10px)', },
-    title: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', borderBottom: `2px solid ${colors.yellow}`, paddingBottom: '10px', marginBottom: '25px', textShadow: `0 0 10px ${colors.yellow}90`, fontSize: '1.8rem' },
+    // ** CORRECCIÓN: Ajustes para responsividad **
+    container: { display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minHeight: '100vh', background: `linear-gradient(145deg, ${colors.deepBlue} 0%, #000 100%)`, padding: '15px', fontFamily: "'Exo 2', sans-serif" },
+    card: { width: '100%', maxWidth: '900px', backgroundColor: colors.darkUI, color: colors.lightText, padding: '25px', borderRadius: '16px', boxShadow: `0 0 25px ${colors.blue}30, 0 10px 30px rgba(0, 0, 0, 0.5)`, minHeight: 'calc(100vh - 30px)', border: `1px solid ${colors.blue}80`, backdropFilter: 'blur(10px)', },
+    title: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', borderBottom: `2px solid ${colors.yellow}`, paddingBottom: '10px', marginBottom: '25px', textShadow: `0 0 10px ${colors.yellow}90`, fontSize: 'clamp(1.5rem, 5vw, 1.8rem)' },
     mainButton: { fontFamily: "'Orbitron', sans-serif", padding: '10px 25px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.darkText, marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: `0 0 15px ${colors.yellow}50`, ':hover': { backgroundColor: 'transparent', color: colors.yellow, transform: 'scale(1.05)' } },
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
     initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: colors.deepBlue, animation: 'fadeIn 1s ease' },
-    orientationLock: { textAlign: 'center' },
-    rotateMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' },
     loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' },
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center' },
     splashLogoContainer: { marginBottom: '20px', },
     splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain' },
     splashTitle: { 
         fontFamily: "'Teko', sans-serif", 
-        fontSize: '4.5rem', 
+        fontSize: 'clamp(2.5rem, 10vw, 4.5rem)', 
         fontWeight: '700', 
         textTransform: 'uppercase', 
         letterSpacing: '2px',
@@ -2210,7 +2184,7 @@ const styles = {
     splashBote: { color: colors.success, fontWeight: 'bold', fontSize: '1.1rem' },
     carouselStat: { padding: '10px', fontSize: '1rem', minHeight: '50px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' },
     loginContainer: { textAlign: 'center' },
-    userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginTop: '30px' },
+    userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px', marginTop: '30px' },
     userButton: { width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
     navbar: { display: 'flex', flexWrap: 'wrap', gap: '5px', borderBottom: `2px solid ${colors.blue}`, paddingBottom: '15px', marginBottom: '20px' },
