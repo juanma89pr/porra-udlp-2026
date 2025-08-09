@@ -463,7 +463,6 @@ const LoginScreen = ({ onLogin }) => {
 };
 
 const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData }) => {
-    // ** CORRECCIÓN: Unificar estado de la jornada actual **
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
     const [pronostico, setPronostico] = useState({ golesLocal: '', golesVisitante: '', resultado1x2: '', goleador: '', sinGoleador: false, pin: '', jokerActivo: false, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) });
@@ -491,7 +490,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData }) => {
             }
         });
 
-        // ** CORRECCIÓN: Listener unificado para la jornada relevante (Abierta o Cerrada) **
         const qJornada = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada"]), orderBy("numeroJornada", "desc"), limit(1));
         const unsubscribe = onSnapshot(qJornada, (querySnapshot) => {
             if (!querySnapshot.empty) {
@@ -526,7 +524,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData }) => {
                 });
 
             } else {
-                // Si no hay jornada Abierta ni Cerrada, buscamos la próxima
                 const qProxima = query(collection(db, "jornadas"), where("estado", "==", "Próximamente"), orderBy("numeroJornada"), limit(1));
                 getDocs(qProxima).then(proximaSnap => {
                     if (!proximaSnap.empty) setCurrentJornada({ id: proximaSnap.docs[0].id, ...proximaSnap.docs[0].data() });
@@ -778,7 +775,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData }) => {
 };
 
 const LaJornadaScreen = ({ teamLogos, liveData }) => {
-    // ** CORRECCIÓN: Unificar estado de la jornada actual **
     const [jornadaActual, setJornadaActual] = useState(null);
     const [participantes, setParticipantes] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -788,7 +784,6 @@ const LaJornadaScreen = ({ teamLogos, liveData }) => {
     const [provisionalRanking, setProvisionalRanking] = useState([]);
 
     useEffect(() => {
-        // ** CORRECCIÓN: Listener unificado para la jornada relevante (Abierta o Cerrada) **
         const q = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada"]), orderBy("numeroJornada", "desc"), limit(1));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             if (!snapshot.empty) {
@@ -878,7 +873,6 @@ const LaJornadaScreen = ({ teamLogos, liveData }) => {
                         <span>🗓️ {jornadaActual.fechaStr || 'Fecha por confirmar'}</span>
                     </div>
 
-                    {/* ** CORRECCIÓN: Lógica de renderizado condicional ** */}
                     {jornadaActual.estado === 'Abierta' && (
                         <>
                             <div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div>
@@ -977,7 +971,7 @@ const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
                         <div style={styles.jornadaInfo}>
                             <div style={styles.jornadaTeams}>
                                 <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 25, height: 25}} />
-                                <span style={{color: colors.yellow, margin: '0 10px'}}>vs</span>
+                                <span style={{color: styles.colors.yellow, margin: '0 10px'}}>vs</span>
                                 <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 25, height: 25}} />
                             </div>
                             <strong>{jornada.esVip && '⭐ '}{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}</strong>
@@ -1337,7 +1331,6 @@ const JornadaAdminItem = ({ jornada }) => {
     );
 };
 
-// ** NUEVO: Componente para gestionar la jornada de prueba **
 const AdminTestJornada = () => {
     const [isActive, setIsActive] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -1355,12 +1348,10 @@ const AdminTestJornada = () => {
     const handleToggleTestJornada = async () => {
         setLoading(true);
         if (isActive) {
-            // Desactivar: borrar la jornada
             await deleteDoc(testJornadaRef);
             setIsActive(false);
             alert("Jornada de prueba desactivada.");
         } else {
-            // Activar: crear la jornada
             const testJornadaData = {
                 numeroJornada: 99,
                 equipoLocal: "Real Zaragoza",
