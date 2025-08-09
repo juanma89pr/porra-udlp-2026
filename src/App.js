@@ -695,9 +695,9 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData }) => {
                                     <label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label>
                                     <div style={styles.resultInputContainer}>
                                         <TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} />
-                                        <input type="number" min="0" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} />
+                                        <input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} />
                                         <span style={styles.separator}>-</span>
-                                        <input type="number" min="0" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} />
+                                        <input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} />
                                         <TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} />
                                     </div>
                                     {(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}
@@ -707,7 +707,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData }) => {
                                 <div style={styles.formGroup}><label style={styles.label}>PIN DE SEGURIDAD (4 dígitos, opcional)</label><input type="password" name="pin" value={pronostico.pin} onChange={handlePronosticoChange} maxLength="4" style={styles.input} placeholder="Deja en blanco para no bloquear" /></div>
                                 
                                 <div style={styles.jokerContainer}>
-                                    {!pronostico.jokerActivo ? (<><button type="button" onClick={handleActivarJoker} style={styles.jokerButton} disabled={isLocked || jokersRestantes <= 0}>🃏 Activar JOKER</button><span style={{marginLeft: '15px', color: styles.colors.lightText}}>Te quedan: <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{jokersRestantes}</span></span></>) : (<div><h3 style={styles.formSectionTitle}>Apuestas JOKER</h3><p>Añade hasta 10 resultados exactos adicionales.</p><div style={styles.jokerGrid}>{pronostico.jokerPronosticos.map((p, index) => (<div key={index} style={styles.jokerBetRow}><div style={styles.resultInputContainer}><input type="number" min="0" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} disabled={isLocked} /><span style={styles.separator}>-</span><input type="number" min="0" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} disabled={isLocked} /></div>{jokerStats[index] && (<small style={{...styles.statsIndicator, color: jokerStats[index].color, fontSize: '0.8rem', textAlign: 'center', display: 'block', marginTop: '5px'}}>{jokerStats[index].text}</small>)}</div>))}</div><button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, ...styles.dangerButton, marginTop: '20px'}} disabled={isLocked || panicButtonDisabled}>BOTÓN DEL PÁNICO</button>{panicButtonDisabled && <small style={{display: 'block', color: styles.colors.danger, marginTop: '5px'}}>El botón del pánico se ha desactivado (menos de 1h para el cierre).</small>}</div>)}
+                                    {!pronostico.jokerActivo ? (<><button type="button" onClick={handleActivarJoker} style={styles.jokerButton} disabled={isLocked || jokersRestantes <= 0}>🃏 Activar JOKER</button><span style={{marginLeft: '15px', color: styles.colors.lightText}}>Te quedan: <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{jokersRestantes}</span></span></>) : (<div><h3 style={styles.formSectionTitle}>Apuestas JOKER</h3><p>Añade hasta 10 resultados exactos adicionales.</p><div style={styles.jokerGrid}>{pronostico.jokerPronosticos.map((p, index) => (<div key={index} style={styles.jokerBetRow}><div style={styles.resultInputContainer}><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} disabled={isLocked} /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} disabled={isLocked} /></div>{jokerStats[index] && (<small style={{...styles.statsIndicator, color: jokerStats[index].color, fontSize: '0.8rem', textAlign: 'center', display: 'block', marginTop: '5px'}}>{jokerStats[index].text}</small>)}</div>))}</div><button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, ...styles.dangerButton, marginTop: '20px'}} disabled={isLocked || panicButtonDisabled}>BOTÓN DEL PÁNICO</button>{panicButtonDisabled && <small style={{display: 'block', color: styles.colors.danger, marginTop: '5px'}}>El botón del pánico se ha desactivado (menos de 1h para el cierre).</small>}</div>)}
                                 </div>
                                 <button type="submit" disabled={isSaving || isLocked} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR Y BLOQUEAR'}</button>
                             </fieldset>
@@ -1291,7 +1291,7 @@ const JornadaAdminItem = ({ jornada }) => {
     };
 
     return (
-        <div style={jornada.esVip ? {...styles.adminJornadaItem, ...styles.jornadaVip} : styles.adminJornadaItem}>
+        <div style={jornada.id === 'jornada_test' ? {...styles.adminJornadaItem, ...styles.testJornadaAdminItem} : (jornada.esVip ? {...styles.adminJornadaItem, ...styles.jornadaVip} : styles.adminJornadaItem)}>
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap'}}><p><strong>{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}:</strong> {jornada.equipoLocal} vs {jornada.equipoVisitante}</p><div style={styles.vipToggleContainer}><label htmlFor={`vip-toggle-${jornada.id}`}>⭐ VIP</label><input id={`vip-toggle-${jornada.id}`} type="checkbox" checked={esVip} onChange={(e) => setEsVip(e.target.checked)} style={styles.checkbox}/></div></div>
             <div style={styles.adminControls}>
                 <div><label style={styles.label}>Estado:</label><select value={estado} onChange={(e) => setEstado(e.target.value)} style={styles.adminSelect}><option value="Próximamente">Próximamente</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="Finalizada">Finalizada</option></select></div>
@@ -1334,6 +1334,7 @@ const JornadaAdminItem = ({ jornada }) => {
 const AdminTestJornada = () => {
     const [isActive, setIsActive] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [populating, setPopulating] = useState(false);
     const testJornadaRef = useMemo(() => doc(db, "jornadas", "jornada_test"), []);
 
     useEffect(() => {
@@ -1349,8 +1350,15 @@ const AdminTestJornada = () => {
         setLoading(true);
         if (isActive) {
             await deleteDoc(testJornadaRef);
+            // Opcional: borrar también los pronósticos de prueba
+            const pronosticosRef = collection(db, "pronosticos", "jornada_test", "jugadores");
+            const pronosticosSnap = await getDocs(pronosticosRef);
+            const batch = writeBatch(db);
+            pronosticosSnap.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+
             setIsActive(false);
-            alert("Jornada de prueba desactivada.");
+            alert("Jornada de prueba desactivada y apuestas borradas.");
         } else {
             const testJornadaData = {
                 numeroJornada: 99,
@@ -1365,22 +1373,62 @@ const AdminTestJornada = () => {
             };
             await setDoc(testJornadaRef, testJornadaData);
             setIsActive(true);
-            alert("Jornada de prueba activada. Ahora está en estado 'Cerrada' y visible en el panel.");
+            alert("Jornada de prueba activada. Ahora está en estado 'Cerrada' y visible en el panel. Puedes generar apuestas falsas.");
         }
         setLoading(false);
     };
 
+    const handlePopulateBets = async () => {
+        setPopulating(true);
+        const batch = writeBatch(db);
+        const resultados1x2 = ["Gana UD Las Palmas", "Empate", "Pierde UD Las Palmas"];
+
+        JUGADORES.forEach(jugador => {
+            const pronosticoRef = doc(db, "pronosticos", "jornada_test", "jugadores", jugador);
+            const fakePronostico = {
+                golesLocal: Math.floor(Math.random() * 4),
+                golesVisitante: Math.floor(Math.random() * 4),
+                resultado1x2: resultados1x2[Math.floor(Math.random() * 3)],
+                goleador: `Jugador ${Math.floor(Math.random() * 10)}`,
+                sinGoleador: false,
+                jokerActivo: false,
+                pagado: true,
+            };
+            batch.set(pronosticoRef, fakePronostico);
+        });
+
+        try {
+            await batch.commit();
+            alert("¡Apuestas falsas generadas para todos los jugadores en la jornada de prueba!");
+        } catch (error) {
+            console.error("Error al generar apuestas falsas:", error);
+            alert("Error al generar apuestas.");
+        }
+        setPopulating(false);
+    };
+
     return (
-        <div style={styles.adminJornadaItem}>
+        <div style={{...styles.adminJornadaItem, ...styles.testJornadaAdminItem}}>
             <h3 style={styles.formSectionTitle}>🧪 Jornada de Prueba</h3>
             <p style={{textAlign: 'center', margin: '10px 0'}}>Usa esta opción para crear una jornada falsa en estado "Cerrada" y probar la funcionalidad del marcador en vivo sin afectar a las jornadas reales.</p>
-            <button 
-                onClick={handleToggleTestJornada} 
-                disabled={loading} 
-                style={{...styles.mainButton, backgroundColor: isActive ? colors.danger : colors.success, borderColor: isActive ? colors.danger : colors.success, margin: '10px auto', display: 'block'}}
-            >
-                {loading ? 'Cargando...' : (isActive ? 'Desactivar Jornada de Prueba' : 'Activar Jornada de Prueba')}
-            </button>
+            <div style={{display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap'}}>
+                <button 
+                    onClick={handleToggleTestJornada} 
+                    disabled={loading} 
+                    style={{...styles.mainButton, backgroundColor: isActive ? colors.danger : colors.success, borderColor: isActive ? colors.danger : colors.success, margin: '10px 0'}}
+                >
+                    {loading ? 'Cargando...' : (isActive ? 'Desactivar Jornada' : 'Activar Jornada')}
+                </button>
+                {isActive && (
+                    <button
+                        onClick={handlePopulateBets}
+                        disabled={populating}
+                        style={{...styles.mainButton, backgroundColor: colors.blue, borderColor: colors.blue, margin: '10px 0'}}
+                    >
+                        {populating ? 'Generando...' : 'Generar Apuestas Falsas'}
+                    </button>
+                )}
+            </div>
         </div>
     );
 }
@@ -1998,7 +2046,7 @@ function App() {
       #orientation-lock { display: none; }
       @media (orientation: portrait) {
         #app-container { display: none !important; }
-        #orientation-lock { display: flex; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: ${colors.deepBlue}; color: ${colors.lightText}; z-index: 9999; }
+        #orientation-lock { display: flex; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: ${styles.colors.deepBlue}; color: ${styles.colors.lightText}; z-index: 9999; }
       }
       @keyframes blink-live { 50% { background-color: #a11d27; } }
     `;
@@ -2220,6 +2268,7 @@ const styles = {
     jornadaTeams: { display: 'flex', alignItems: 'center' },
     statusBadge: { color: 'white', padding: '5px 12px', borderRadius: '15px', fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase' },
     adminJornadaItem: { padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `1px solid ${colors.blue}`, borderRadius: '12px', marginBottom: '20px' },
+    testJornadaAdminItem: { border: `2px dashed ${colors.success}` },
     adminControls: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', margin: '15px 0' },
     adminInput: { width: '90%', padding: '10px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText },
     adminSelect: { width: '95%', padding: '10px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText },
