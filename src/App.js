@@ -124,30 +124,47 @@ const WinnerAnimation = ({ winnerData, onClose }) => {
     );
 };
 
+const InstallGuideModal = ({ onClose }) => {
+    return (
+        <div style={styles.modalOverlay} onClick={onClose}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <h3 style={styles.title}>Instalar App</h3>
+                <div style={styles.installInstructions}>
+                    <div style={styles.installSection}>
+                        <h4>iPhone (Safari)</h4>
+                        <ol>
+                            <li>Pulsa el botón de <strong>Compartir</strong> (un cuadrado con una flecha hacia arriba).</li>
+                            <li>Busca y pulsa en <strong>"Añadir a pantalla de inicio"</strong>.</li>
+                            <li>¡Listo! Ya tienes la app en tu móvil.</li>
+                        </ol>
+                    </div>
+                    <div style={styles.installSection}>
+                        <h4>Android (Chrome)</h4>
+                        <ol>
+                            <li>Pulsa el botón de <strong>Menú</strong> (tres puntos verticales).</li>
+                            <li>Busca y pulsa en <strong>"Instalar aplicación"</strong> o "Añadir a pantalla de inicio".</li>
+                            <li>¡Listo! Ya tienes la app en tu móvil.</li>
+                        </ol>
+                    </div>
+                </div>
+                <button onClick={onClose} style={styles.mainButton}>Entendido</button>
+            </div>
+        </div>
+    );
+};
+
 // ============================================================================
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
 
 const InitialSplashScreen = ({ onFinish }) => {
-    // Estado para saber si la pantalla está en modo vertical (portrait)
     const [isPortrait, setIsPortrait] = useState(window.matchMedia("(orientation: portrait)").matches);
 
     useEffect(() => {
-        // El splash dura 4 segundos
-        const timer = setTimeout(() => {
-            onFinish();
-        }, 4000);
-
-        // Creamos una consulta de medios para detectar la orientación
+        const timer = setTimeout(() => onFinish(), 4000);
         const mediaQuery = window.matchMedia("(orientation: portrait)");
-        
-        // Función que se ejecutará cada vez que la orientación cambie
         const handleChange = (e) => setIsPortrait(e.matches);
-        
-        // Añadimos el listener para el evento 'change'
         mediaQuery.addEventListener('change', handleChange);
-
-        // Limpieza: se ejecuta cuando el componente se desmonta
         return () => {
             clearTimeout(timer);
             mediaQuery.removeEventListener('change', handleChange);
@@ -159,15 +176,11 @@ const InitialSplashScreen = ({ onFinish }) => {
             <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
             <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
             {isPortrait ? (
-                // Si está en vertical, mostramos el mensaje para girar
                 <div style={styles.rotateMessage}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}>
-                        <path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="m15 5-3 3-3-3"/>
-                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}><path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="m15 5-3 3-3-3"/></svg>
                     <p>Para una mejor experiencia, gira tu dispositivo.</p>
                 </div>
             ) : (
-                // Si ya está en horizontal, mostramos el mensaje de carga
                 <div style={styles.loadingMessage}>
                      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner">
                         <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
@@ -194,6 +207,8 @@ const SplashScreen = ({ onEnter }) => {
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState([]);
     const [currentStatIndex, setCurrentStatIndex] = useState(0);
+    const [showInstallGuide, setShowInstallGuide] = useState(false);
+    const isMobile = useMemo(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
 
     useEffect(() => {
         setLoading(true);
@@ -366,14 +381,22 @@ const SplashScreen = ({ onEnter }) => {
     };
 
     return (
-        <div style={styles.splashContainer}>
-            <div style={styles.splashLogoContainer}>
-                <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
-                <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
+        <>
+            {showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}
+            <div style={styles.splashContainer}>
+                <div style={styles.splashLogoContainer}>
+                    <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
+                    <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
+                </div>
+                {loading ? (<p style={{color: styles.colors.lightText}}>Cargando información de la jornada...</p>) : (<div style={styles.splashInfoBox}>{renderJornadaInfo()}{currentStat && (<div style={styles.carouselStat}><span style={{color: currentStat.color || styles.colors.lightText, fontWeight: 'bold'}}>{currentStat.label}: </span><span style={{color: styles.colors.lightText}}>{currentStat.value}</span></div>)}{jornadaInfo && jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}</div>)}
+                <button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>
+                {isMobile && (
+                    <button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>
+                        ¿Cómo instalar la App?
+                    </button>
+                )}
             </div>
-            {loading ? (<p style={{color: styles.colors.lightText}}>Cargando información de la jornada...</p>) : (<div style={styles.splashInfoBox}>{renderJornadaInfo()}{currentStat && (<div style={styles.carouselStat}><span style={{color: currentStat.color || styles.colors.lightText, fontWeight: 'bold'}}>{currentStat.label}: </span><span style={{color: styles.colors.lightText}}>{currentStat.value}</span></div>)}{jornadaInfo && jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}</div>)}
-            <button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>
-        </div>
+        </>
     );
 };
 
@@ -645,7 +668,7 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
                             <div style={styles.jokerContainer}>
                                 {!pronostico.jokerActivo ? (<><button type="button" onClick={handleActivarJoker} style={styles.jokerButton} disabled={isLocked || jokersRestantes <= 0}>🃏 Activar JOKER</button><span style={{marginLeft: '15px', color: styles.colors.lightText}}>Te quedan: <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{jokersRestantes}</span></span></>) : (<div><h3 style={styles.formSectionTitle}>Apuestas JOKER</h3><p>Añade hasta 10 resultados exactos adicionales.</p><div style={styles.jokerGrid}>{pronostico.jokerPronosticos.map((p, index) => (<div key={index} style={styles.jokerBetRow}><div style={styles.resultInputContainer}><input type="number" min="0" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} disabled={isLocked} /><span style={styles.separator}>-</span><input type="number" min="0" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} disabled={isLocked} /></div>{jokerStats[index] && (<small style={{...styles.statsIndicator, color: jokerStats[index].color, fontSize: '0.8rem', textAlign: 'center', display: 'block', marginTop: '5px'}}>{jokerStats[index].text}</small>)}</div>))}</div><button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, ...styles.dangerButton, marginTop: '20px'}} disabled={isLocked || panicButtonDisabled}>BOTÓN DEL PÁNICO</button>{panicButtonDisabled && <small style={{display: 'block', color: styles.colors.danger, marginTop: '5px'}}>El botón del pánico se ha desactivado (menos de 1h para el cierre).</small>}</div>)}
                             </div>
-                            <button type="submit" disabled={isSaving || isLocked} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR Y BLOQUEAR'}</button>
+                            <button type="submit" disabled={isSaving || isLocked} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR E BLOQUEAR'}</button>
                         </fieldset>
                     )}
                     {message && <p style={styles.message}>{message}</p>}
@@ -1550,6 +1573,7 @@ function App() {
     const styleSheet = document.createElement("style");
     styleSheet.type = "text/css";
     styleSheet.innerText = `
+      @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&display=swap');
       @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
       .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
       @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -1564,6 +1588,7 @@ function App() {
       .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; }
       @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       .spinner { animation: spin 1.5s linear infinite; }
+      @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
       #orientation-lock { display: none; }
       @media (orientation: portrait) {
         #app-container { display: none !important; }
@@ -1688,7 +1713,20 @@ const styles = {
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center' },
     splashLogoContainer: { marginBottom: '20px', },
     splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain', },
-    splashTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, fontSize: '2.5rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '4px', textShadow: `0 0 20px ${colors.yellow}, 0 0 10px ${colors.blue}` },
+    splashTitle: { 
+        fontFamily: "'Teko', sans-serif", 
+        fontSize: '4.5rem', 
+        fontWeight: '700', 
+        textTransform: 'uppercase', 
+        letterSpacing: '2px',
+        background: `linear-gradient(90deg, ${colors.silver}, ${colors.lightText}, ${colors.yellow}, ${colors.lightText}, ${colors.silver})`,
+        backgroundSize: '200% auto',
+        color: 'transparent',
+        backgroundClip: 'text',
+        WebkitBackgroundClip: 'text',
+        animation: 'title-shine 5s linear infinite',
+        textShadow: `0 2px 4px rgba(0,0,0,0.5)`
+    },
     splashInfoBox: { border: `2px solid ${colors.yellow}80`, padding: '20px', borderRadius: '10px', marginTop: '30px', backgroundColor: 'rgba(0,0,0,0.3)', width: '90%', minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'center' },
     splashInfoTitle: { margin: '0 0 15px 0', fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', fontSize: '1.2rem' },
     splashMatch: { fontSize: '1.3rem', fontWeight: 'bold' },
@@ -1765,7 +1803,7 @@ const styles = {
     jokerDetailRow: { backgroundColor: `${colors.deepBlue}99` },
     jokerDetailChip: { backgroundColor: colors.blue, padding: '5px 10px', borderRadius: '15px', fontSize: '0.9rem', fontFamily: "'Orbitron', sans-serif", },
     modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, backdropFilter: 'blur(5px)' },
-    modalContent: { backgroundColor: colors.darkUI, padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '450px', border: `1px solid ${colors.yellow}` },
+    modalContent: { backgroundColor: colors.darkUI, padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '500px', border: `1px solid ${colors.yellow}` },
     resumenContainer: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
     resumenJugador: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px', borderLeft: `4px solid ${colors.blue}` },
     resumenJugadorTitle: { margin: '0 0 10px 0', paddingBottom: '10px', borderBottom: `1px solid ${colors.blue}80`, color: colors.yellow, fontFamily: "'Orbitron', sans-serif", },
@@ -1789,7 +1827,10 @@ const styles = {
     winnerTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.gold, fontSize: '2.5rem', margin: '10px 0', animation: 'text-fade-in 1s ease 0.5s forwards', opacity: 0 },
     winnerText: { fontSize: '1.2rem', color: colors.lightText, animation: 'text-fade-in 1s ease 0.8s forwards', opacity: 0 },
     winnerStats: { display: 'flex', justifyContent: 'center', gap: '30px', marginTop: '25px', fontSize: '1.3rem', animation: 'text-fade-in 1s ease 1.1s forwards', opacity: 0 },
-    confettiOverlay: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }
+    confettiOverlay: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' },
+    installButton: { background: 'none', border: 'none', color: colors.silver, textDecoration: 'underline', cursor: 'pointer', marginTop: '15px', fontSize: '0.9rem' },
+    installInstructions: { display: 'flex', gap: '20px', textAlign: 'left', marginBottom: '20px' },
+    installSection: { flex: 1, '& h4': { color: colors.yellow, borderBottom: `1px solid ${colors.blue}`, paddingBottom: '5px' }, '& ol': { paddingLeft: '20px' }, '& li': { marginBottom: '10px' } },
 };
 
 export default App;
