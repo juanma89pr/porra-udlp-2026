@@ -34,7 +34,7 @@ const SECRET_MESSAGES = [
 
 const EQUIPOS_LIGA = [
     "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF", 
-    "Real Sociedad B", "CD Leganés", "UD Almería", "Cádiz CF", "Granada CF", 
+    "Real Sociedad B", "CD Leganes", "UD Almería", "Cádiz CF", "Granada CF", 
     "SD Eibar", "SD Huesca", "Real Sporting de Gijón", "Real Racing Club", 
     "Real Valladolid CF", "Albacete Balompié", "CD Castellón", "CD Mirandés", 
     "AD Ceuta FC", "CyD Leonesa", "Real Zaragoza", "RC Deportivo"
@@ -2074,20 +2074,22 @@ function App() {
     styleSheet.innerText = `
       @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap');
       
-      /* --- NUEVO: Reset y Estabilidad Visual --- */
+      /* --- INICIO: Reset y Estabilidad Visual --- */
       * {
         margin: 0;
         padding: 0;
-        box-sizing: border-box; /* Clave para un layout predecible */
+        box-sizing: border-box;
       }
       html {
-        font-size: 16px; /* Ignora la configuración de fuente del móvil */
+        font-size: 16px !important; /* Ignora la configuración de fuente del móvil */
+        -webkit-text-size-adjust: 100%; /* Previene el ajuste de texto en iOS */
       }
-      body {
+      body, #root {
         width: 100%;
+        min-width: 100%;
         overflow-x: hidden; /* Previene el desbordamiento horizontal */
       }
-      /* --- Fin del nuevo código --- */
+      /* --- FIN: Reset y Estabilidad Visual --- */
 
       @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
       .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
@@ -2244,17 +2246,17 @@ const colors = {
 
 const styles = {
     colors,
-    container: { display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minHeight: '100vh', background: `linear-gradient(145deg, ${colors.deepBlue} 0%, #000 100%)`, padding: '15px', fontFamily: "'Exo 2', sans-serif" },
-    card: { width: '100%', maxWidth: '900px', backgroundColor: colors.darkUI, color: colors.lightText, padding: '25px', borderRadius: '16px', boxShadow: `0 0 25px ${colors.blue}30, 0 10px 30px rgba(0, 0, 0, 0.5)`, minHeight: 'calc(100vh - 30px)', border: `1px solid ${colors.blue}80`, backdropFilter: 'blur(10px)', },
+    container: { display: 'flex', justifyContent: 'center', alignItems: 'flex-start', width: '100%', minHeight: '100dvh', background: `linear-gradient(145deg, ${colors.deepBlue} 0%, #000 100%)`, padding: '15px', fontFamily: "'Exo 2', sans-serif" },
+    card: { width: '100%', maxWidth: '900px', backgroundColor: colors.darkUI, color: colors.lightText, padding: '25px', borderRadius: '16px', boxShadow: `0 0 25px ${colors.blue}30, 0 10px 30px rgba(0, 0, 0, 0.5)`, minHeight: 'calc(100dvh - 30px)', border: `1px solid ${colors.blue}80`, backdropFilter: 'blur(10px)', },
     title: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', borderBottom: `2px solid ${colors.yellow}`, paddingBottom: '10px', marginBottom: '25px', textShadow: `0 0 10px ${colors.yellow}90`, fontSize: 'clamp(1.5rem, 5vw, 1.8rem)' },
     mainButton: { fontFamily: "'Orbitron', sans-serif", padding: '10px 25px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.darkText, marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: `0 0 15px ${colors.yellow}50`, ':hover': { backgroundColor: 'transparent', color: colors.yellow, transform: 'scale(1.05)' } },
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
-    initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: colors.deepBlue, animation: 'fadeIn 0.5s ease', transition: 'opacity 0.5s ease' },
+    initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', width: '100%', backgroundColor: colors.deepBlue, animation: 'fadeIn 0.5s ease', transition: 'opacity 0.5s ease' },
     fadeOut: { opacity: 0 },
     fadeIn: { animation: 'fadeIn 0.5s ease' },
     orientationSuggestionBox: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', textAlign: 'center', padding: '20px', maxWidth: '400px' },
     loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', fontFamily: "'Exo 2', sans-serif" },
-    splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center' },
+    splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center', width: '100%' },
     splashLogoContainer: { marginBottom: '20px', },
     splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain' },
     splashTitleContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 0.8 },
