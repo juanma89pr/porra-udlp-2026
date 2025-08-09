@@ -35,32 +35,32 @@ const SECRET_MESSAGES = [
 // ============================================================================
 // --- FIX: URLs de los escudos de los equipos (VERIFICADAS Y ESTABLES) ---
 // Se han reemplazado todas las URLs problemáticas por enlaces directos a
-// imágenes PNG transparentes de alta calidad desde una CDN fiable (ssl.gstatic.com)
+// imágenes PNG transparentes de alta calidad desde una CDN fiable (a.espncdn.com)
 // para garantizar que todos los escudos se muestren correctamente.
 // ============================================================================
 const teamLogos = {
-    "UD Las Palmas": "https://ssl.gstatic.com/onebox/media/sports/logos/QslgD4dMR_K5gI_3z_6CBw_96x96.png",
-    "FC Andorra": "https://ssl.gstatic.com/onebox/media/sports/logos/1iJk2ThOqH_2l0g_VEsPaA_96x96.png",
-    "Córdoba CF": "https://ssl.gstatic.com/onebox/media/sports/logos/p3Tj2P2p_v_a8c9_tSg21w_96x96.png",
-    "Málaga CF": "https://ssl.gstatic.com/onebox/media/sports/logos/4c3zltj2v2O45M6d2j5BJA_96x96.png",
-    "Burgos CF": "https://ssl.gstatic.com/onebox/media/sports/logos/P3f_F2t0W__f9pE7LSvIJA_96x96.png",
-    "Real Sociedad B": "https://ssl.gstatic.com/onebox/media/sports/logos/6f2k-P50k-vS23gYsn4eSA_96x96.png",
-    "CD Leganés": "https://ssl.gstatic.com/onebox/media/sports/logos/609B0s6D1gHNI5-3-g21qQ_96x96.png",
-    "UD Almería": "https://ssl.gstatic.com/onebox/media/sports/logos/3Svl-v0sBE1533xd2c2c5g_96x96.png",
-    "Cádiz CF": "https://ssl.gstatic.com/onebox/media/sports/logos/wJj2j_h5tO83F-6h0svchg_96x96.png",
-    "Granada CF": "https://ssl.gstatic.com/onebox/media/sports/logos/dIpkAttgMLl1P-2d-p22YA_96x96.png",
-    "SD Eibar": "https://ssl.gstatic.com/onebox/media/sports/logos/G-L_AB5gC5yW-4v1z4sfWg_96x96.png",
-    "SD Huesca": "https://ssl.gstatic.com/onebox/media/sports/logos/cQk4-L8-qr-3w2RCf91a5A_96x96.png",
-    "Real Sporting de Gijón": "https://ssl.gstatic.com/onebox/media/sports/logos/nS86c2lT03uS-I6l2nZQWQ_96x96.png",
-    "Real Racing Club": "https://ssl.gstatic.com/onebox/media/sports/logos/v-gV1L2eB5g2-SjGz9l5OA_96x96.png",
-    "Real Valladolid CF": "https://ssl.gstatic.com/onebox/media/sports/logos/L1N0k2u2YNArEf3b2-K3sQ_96x96.png",
-    "Albacete Balompié": "https://ssl.gstatic.com/onebox/media/sports/logos/5J6J-TC16r5aP-51i-N2hA_96x96.png",
-    "CD Castellón": "https://ssl.gstatic.com/onebox/media/sports/logos/j1Vp8g00Ge7zWk20KHMp6Q_96x96.png",
-    "CD Mirandés": "https://ssl.gstatic.com/onebox/media/sports/logos/i47oI4-9t6c_z4LNuds-5g_96x96.png",
-    "AD Ceuta FC": "https://ssl.gstatic.com/onebox/media/sports/logos/b4A3v34y72hTKB-41LT3NQ_96x96.png",
-    "CyD Leonesa": "https://ssl.gstatic.com/onebox/media/sports/logos/p26eGgA5y2Wz0g5JAgk-YA_96x96.png",
-    "Real Zaragoza": "https://ssl.gstatic.com/onebox/media/sports/logos/2d2-2g-67gTnD-0-XmH27A_96x96.png",
-    "RC Deportivo": "https://ssl.gstatic.com/onebox/media/sports/logos/2-r5-BOLrB-Hj0g3-cswbQ_96x96.png"
+    "UD Las Palmas": "https://a.espncdn.com/i/teamlogos/soccer/500/96.png",
+    "FC Andorra": "https://a.espncdn.com/i/teamlogos/soccer/500/1803.png",
+    "Córdoba CF": "https://a.espncdn.com/i/teamlogos/soccer/500/94.png",
+    "Málaga CF": "https://a.espncdn.com/i/teamlogos/soccer/500/97.png",
+    "Burgos CF": "https://a.espncdn.com/i/teamlogos/soccer/500/3811.png",
+    "Real Sociedad B": "https://a.espncdn.com/i/teamlogos/soccer/500/89.png",
+    "CD Leganés": "https://a.espncdn.com/i/teamlogos/soccer/500/3819.png",
+    "UD Almería": "https://a.espncdn.com/i/teamlogos/soccer/500/3810.png",
+    "Cádiz CF": "https://a.espncdn.com/i/teamlogos/soccer/500/3816.png",
+    "Granada CF": "https://a.espncdn.com/i/teamlogos/soccer/500/3818.png",
+    "SD Eibar": "https://a.espncdn.com/i/teamlogos/soccer/500/3815.png",
+    "SD Huesca": "https://a.espncdn.com/i/teamlogos/soccer/500/4022.png",
+    "Real Sporting de Gijón": "https://a.espncdn.com/i/teamlogos/soccer/500/90.png",
+    "Real Racing Club": "https://a.espncdn.com/i/teamlogos/soccer/500/3823.png",
+    "Real Valladolid CF": "https://a.espncdn.com/i/teamlogos/soccer/500/101.png",
+    "Albacete Balompié": "https://a.espncdn.com/i/teamlogos/soccer/500/3809.png",
+    "CD Castellón": "https://a.espncdn.com/i/teamlogos/soccer/500/3813.png",
+    "CD Mirandés": "https://a.espncdn.com/i/teamlogos/soccer/500/3821.png",
+    "AD Ceuta FC": "https://a.espncdn.com/i/teamlogos/soccer/500/10543.png",
+    "CyD Leonesa": "https://a.espncdn.com/i/teamlogos/soccer/500/3814.png",
+    "Real Zaragoza": "https://a.espncdn.com/i/teamlogos/soccer/500/92.png",
+    "RC Deportivo": "https://a.espncdn.com/i/teamlogos/soccer/500/85.png"
 };
 
 // ============================================================================
