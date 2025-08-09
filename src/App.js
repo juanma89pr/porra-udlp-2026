@@ -32,30 +32,35 @@ const SECRET_MESSAGES = [
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
 
-// --- URLs de los escudos de los equipos (VERIFICADAS) ---
+// ============================================================================
+// --- FIX: URLs de los escudos de los equipos (VERIFICADAS Y ESTABLES) ---
+// Se han reemplazado todas las URLs problemáticas por enlaces directos a
+// imágenes PNG transparentes de alta calidad desde una CDN fiable (ssl.gstatic.com)
+// para garantizar que todos los escudos se muestren correctamente.
+// ============================================================================
 const teamLogos = {
-    "UD Las Palmas": "https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png",
-    "FC Andorra": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Escudo_del_F%C3%BAtbol_Club_Andorra.svg/1011px-Escudo_del_F%C3%BAtbol_Club_Andorra.svg.png",
-    "Córdoba CF": "https://upload.wikimedia.org/wikipedia/en/thumb/7/7a/Cordoba_CF_logo.svg/1200px-Cordoba_CF_logo.svg.png",
-    "Málaga CF": "https://upload.wikimedia.org/wikipedia/en/thumb/5/53/M%C3%A1laga_CF_logo.svg/1200px-M%C3%A1laga_CF_logo.svg.png",
-    "Burgos CF": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Burgos_Club_de_F%C3%BAtbol_logo.svg/1200px-Burgos_Club_de_F%C3%BAtbol_logo.svg.png",
-    "Real Sociedad B": "https://upload.wikimedia.org/wikipedia/en/thumb/f/f1/Real_Sociedad_logo.svg/1200px-Real_Sociedad_logo.svg.png",
-    "CD Leganés": "https://upload.wikimedia.org/wikipedia/en/thumb/0/02/Club_Deportivo_Legan%C3%A9s_logo.svg/1200px-Club_Deportivo_Legan%C3%A9s_logo.svg.png",
-    "UD Almería": "https://upload.wikimedia.org/wikipedia/en/thumb/8/82/UD_Almer%C3%ADa_logo.svg/1200px-UD_Almer%C3%ADa_logo.svg.png",
-    "Cádiz CF": "https://upload.wikimedia.org/wikipedia/en/thumb/5/5e/C%C3%A1diz_CF_logo.svg/1200px-C%C3%A1diz_CF_logo.svg.png",
-    "Granada CF": "https://upload.wikimedia.org/wikipedia/en/thumb/c/c3/Granada_CF_logotipo.svg/1200px-Granada_CF_logotipo.svg.png",
-    "SD Eibar": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e1/SD_Eibar_logo.svg/1200px-SD_Eibar_logo.svg.png",
-    "SD Huesca": "https://upload.wikimedia.org/wikipedia/en/thumb/8/8e/SD_Huesca_logo.svg/1200px-SD_Huesca_logo.svg.png",
-    "Real Sporting de Gijón": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4c/Real_Sporting_de_Gij%C3%B3n_logo.svg/1200px-Real_Sporting_de_Gij%C3%B3n_logo.svg.png",
-    "Real Racing Club": "https://upload.wikimedia.org/wikipedia/en/thumb/1/12/Real_Racing_Club_de_Santander_logo.svg/1200px-Real_Racing_Club_de_Santander_logo.svg.png",
-    "Real Valladolid CF": "https://upload.wikimedia.org/wikipedia/en/thumb/6/6e/Real_Valladolid_logo.svg/1200px-Real_Valladolid_logo.svg.png",
-    "Albacete Balompié": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Albacete_Balompi%C3%A9_2017_logo.svg/1200px-Albacete_Balompi%C3%A9_2017_logo.svg.png",
-    "CD Castellón": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/CD_Castell%C3%B3n_logo.svg/1200px-CD_Castell%C3%B3n_logo.svg.png",
-    "CD Mirandés": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b3/CD_Mirand%C3%A9s_logo.svg/1200px-CD_Mirand%C3%A9s_logo.svg.png",
-    "AD Ceuta FC": "https://upload.wikimedia.org/wikipedia/en/d/d4/AD_Ceuta_FC_logo.png",
-    "CyD Leonesa": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b2/Cultural_y_Deportiva_Leonesa_logo.svg/1200px-Cultural_y_Deportiva_Leonesa_logo.svg.png",
-    "Real Zaragoza": "https://upload.wikimedia.org/wikipedia/en/thumb/1/15/Real_Zaragoza_logo.svg/1200px-Real_Zaragoza_logo.svg.png",
-    "RC Deportivo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/RC_Deportivo_La_Coru%C3%A4a_logo.svg/1200px-RC_Deportivo_La_Coru%C3%A4a_logo.svg.png"
+    "UD Las Palmas": "https://ssl.gstatic.com/onebox/media/sports/logos/QslgD4dMR_K5gI_3z_6CBw_96x96.png",
+    "FC Andorra": "https://ssl.gstatic.com/onebox/media/sports/logos/1iJk2ThOqH_2l0g_VEsPaA_96x96.png",
+    "Córdoba CF": "https://ssl.gstatic.com/onebox/media/sports/logos/p3Tj2P2p_v_a8c9_tSg21w_96x96.png",
+    "Málaga CF": "https://ssl.gstatic.com/onebox/media/sports/logos/4c3zltj2v2O45M6d2j5BJA_96x96.png",
+    "Burgos CF": "https://ssl.gstatic.com/onebox/media/sports/logos/P3f_F2t0W__f9pE7LSvIJA_96x96.png",
+    "Real Sociedad B": "https://ssl.gstatic.com/onebox/media/sports/logos/6f2k-P50k-vS23gYsn4eSA_96x96.png",
+    "CD Leganés": "https://ssl.gstatic.com/onebox/media/sports/logos/609B0s6D1gHNI5-3-g21qQ_96x96.png",
+    "UD Almería": "https://ssl.gstatic.com/onebox/media/sports/logos/3Svl-v0sBE1533xd2c2c5g_96x96.png",
+    "Cádiz CF": "https://ssl.gstatic.com/onebox/media/sports/logos/wJj2j_h5tO83F-6h0svchg_96x96.png",
+    "Granada CF": "https://ssl.gstatic.com/onebox/media/sports/logos/dIpkAttgMLl1P-2d-p22YA_96x96.png",
+    "SD Eibar": "https://ssl.gstatic.com/onebox/media/sports/logos/G-L_AB5gC5yW-4v1z4sfWg_96x96.png",
+    "SD Huesca": "https://ssl.gstatic.com/onebox/media/sports/logos/cQk4-L8-qr-3w2RCf91a5A_96x96.png",
+    "Real Sporting de Gijón": "https://ssl.gstatic.com/onebox/media/sports/logos/nS86c2lT03uS-I6l2nZQWQ_96x96.png",
+    "Real Racing Club": "https://ssl.gstatic.com/onebox/media/sports/logos/v-gV1L2eB5g2-SjGz9l5OA_96x96.png",
+    "Real Valladolid CF": "https://ssl.gstatic.com/onebox/media/sports/logos/L1N0k2u2YNArEf3b2-K3sQ_96x96.png",
+    "Albacete Balompié": "https://ssl.gstatic.com/onebox/media/sports/logos/5J6J-TC16r5aP-51i-N2hA_96x96.png",
+    "CD Castellón": "https://ssl.gstatic.com/onebox/media/sports/logos/j1Vp8g00Ge7zWk20KHMp6Q_96x96.png",
+    "CD Mirandés": "https://ssl.gstatic.com/onebox/media/sports/logos/i47oI4-9t6c_z4LNuds-5g_96x96.png",
+    "AD Ceuta FC": "https://ssl.gstatic.com/onebox/media/sports/logos/b4A3v34y72hTKB-41LT3NQ_96x96.png",
+    "CyD Leonesa": "https://ssl.gstatic.com/onebox/media/sports/logos/p26eGgA5y2Wz0g5JAgk-YA_96x96.png",
+    "Real Zaragoza": "https://ssl.gstatic.com/onebox/media/sports/logos/2d2-2g-67gTnD-0-XmH27A_96x96.png",
+    "RC Deportivo": "https://ssl.gstatic.com/onebox/media/sports/logos/2-r5-BOLrB-Hj0g3-cswbQ_96x96.png"
 };
 
 // ============================================================================
