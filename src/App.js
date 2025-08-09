@@ -637,11 +637,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos }) => {
                             <div style={styles.formGroup}>
                                 <label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label>
                                 <div style={styles.resultInputContainer}>
-                                    <TeamBetDisplay teamLogos={teamLogos} teamName={jornadaActiva.equipoLocal} />
+                                    <TeamDisplay teamLogos={teamLogos} teamName={jornadaActiva.equipoLocal} />
                                     <input type="number" min="0" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} />
                                     <span style={styles.separator}>-</span>
                                     <input type="number" min="0" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} />
-                                    <TeamBetDisplay teamLogos={teamLogos} teamName={jornadaActiva.equipoVisitante} />
+                                    <TeamDisplay teamLogos={teamLogos} teamName={jornadaActiva.equipoVisitante} />
                                 </div>
                                 {(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}
                             </div>
@@ -731,11 +731,41 @@ const LaJornadaScreen = ({ teamLogos }) => {
     }, [jornadaActiva]);
 
     if (loading) return <p style={{color: styles.colors.lightText}}>Buscando jornada...</p>;
+    
+    const jornadaActual = jornadaActiva || jornadaCerrada;
 
     return (
         <div>
             <h2 style={styles.title}>LA JORNADA</h2>
-            {jornadaActiva ? (<div style={styles.laJornadaContainer}><h3>Jornada {jornadaActiva.numeroJornada}</h3><div style={styles.matchInfo}><TeamDisplay teamLogos={teamLogos} teamName={jornadaActiva.equipoLocal} shortName={true} imgStyle={styles.matchInfoLogo} /><span style={styles.vs}>VS</span><TeamDisplay teamLogos={teamLogos} teamName={jornadaActiva.equipoVisitante} imgStyle={styles.matchInfoLogo} /></div><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></div>) : jornadaCerrada ? (<div><h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3><p style={{textAlign: 'center'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div></div>) : (<div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>)}
+            {jornadaActual ? (
+                <div style={{...styles.laJornadaContainer, backgroundImage: `linear-gradient(rgba(10, 25, 47, 0.85), rgba(10, 25, 47, 0.85)), url(${jornadaActual.estadioImageUrl})`}}>
+                    <h3>Jornada {jornadaActual.numeroJornada}</h3>
+                    <div style={styles.matchInfo}>
+                        <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoLocal} shortName={true} imgStyle={styles.matchInfoLogo} />
+                        <span style={styles.vs}>VS</span>
+                        <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoVisitante} imgStyle={styles.matchInfoLogo} />
+                    </div>
+                    <div style={styles.matchDetails}>
+                        <span>📍 {jornadaActual.estadio || 'Estadio por confirmar'}</span>
+                        <span>🗓️ {jornadaActual.fechaStr || 'Fecha por confirmar'}</span>
+                    </div>
+                    {jornadaActiva && (
+                        <>
+                            <div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div>
+                            <h3 style={styles.callToAction}>¡Hagan sus porras!</h3>
+                            <div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div>
+                        </>
+                    )}
+                    {jornadaCerrada && (
+                        <div>
+                            <p style={{textAlign: 'center', marginTop: '20px'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p>
+                            <div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>
+            )}
             
             <div style={styles.porraAnualContainer}>
                 <h3 style={styles.formSectionTitle}>⭐ PORRA ANUAL ⭐</h3>
@@ -763,7 +793,7 @@ const LaJornadaScreen = ({ teamLogos }) => {
     );
 };
 
-const CalendarioScreen = ({ onViewJornada }) => {
+const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -783,7 +813,24 @@ const CalendarioScreen = ({ onViewJornada }) => {
         <div>
             <h2 style={styles.title}>CALENDARIO</h2>
             <div style={styles.jornadaList}>
-                {jornadas.map(jornada => (<div key={jornada.id} style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip} : styles.jornadaItem} onClick={() => onViewJornada(jornada.id)}><div style={styles.jornadaInfo}><strong>{jornada.esVip && '⭐ '}Jornada {jornada.numeroJornada || 'Copa'}:</strong> {jornada.equipoLocal} vs {jornada.equipoVisitante}<br/><small>{jornada.fechaStr || 'Fecha por confirmar'} - {jornada.estadio || 'Estadio por confirmar'}</small></div><div style={{...styles.statusBadge, backgroundColor: styles.colors.status[jornada.estado]}}>{jornada.estado}</div></div>))}
+                {jornadas.map(jornada => (
+                    <div 
+                        key={jornada.id} 
+                        style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`} : {...styles.jornadaItem, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`}} 
+                        onClick={() => onViewJornada(jornada.id)}
+                    >
+                        <div style={styles.jornadaInfo}>
+                            <div style={styles.jornadaTeams}>
+                                <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 25, height: 25}} />
+                                <span style={{color: colors.yellow, margin: '0 10px'}}>vs</span>
+                                <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 25, height: 25}} />
+                            </div>
+                            <strong>{jornada.esVip && '⭐ '}Jornada {jornada.numeroJornada || 'Copa'}</strong>
+                            <small>{jornada.fechaStr || 'Fecha por confirmar'} - {jornada.estadio || 'Estadio por confirmar'}</small>
+                        </div>
+                        <div style={{...styles.statusBadge, backgroundColor: styles.colors.status[jornada.estado]}}>{jornada.estado}</div>
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -941,6 +988,7 @@ const JornadaAdminItem = ({ jornada }) => {
     const toInputFormat = (date) => date && date.seconds ? new Date(date.seconds * 1000).toISOString().slice(0, 16) : '';
     const [fechaApertura, setFechaApertura] = useState(toInputFormat(jornada.fechaApertura));
     const [fechaCierre, setFechaCierre] = useState(toInputFormat(jornada.fechaCierre));
+    const [estadioImageUrl, setEstadioImageUrl] = useState(jornada.estadioImageUrl || '');
     const [isSaving, setIsSaving] = useState(false);
     const [isCalculating, setIsCalculating] = useState(false);
     const [message, setMessage] = useState('');
@@ -953,6 +1001,7 @@ const JornadaAdminItem = ({ jornada }) => {
                 estado, resultadoLocal, resultadoVisitante, goleador: goleador.trim(), resultado1x2, esVip, splashMessage,
                 fechaApertura: fechaApertura ? new Date(fechaApertura) : null,
                 fechaCierre: fechaCierre ? new Date(fechaCierre) : null,
+                estadioImageUrl
             });
             setMessage('¡Guardado!');
             setTimeout(() => setMessage(''), 2000);
@@ -1027,6 +1076,7 @@ const JornadaAdminItem = ({ jornada }) => {
                 <div><label style={styles.label}>Cierre Apuestas:</label><input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={styles.adminInput} /></div>
             </div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>Mensaje para la Pantalla Principal:</label><textarea value={splashMessage} onChange={(e) => setSplashMessage(e.target.value)} style={{...styles.input, width: '95%', height: '50px'}} /></div>
+            <div style={{marginTop: '10px'}}><label style={styles.label}>URL Imagen del Estadio:</label><input type="text" value={estadioImageUrl} onChange={(e) => setEstadioImageUrl(e.target.value)} style={{...styles.input, width: '95%'}} /></div>
             <div style={{marginTop: '20px'}}><button onClick={handleSaveChanges} disabled={isSaving} style={styles.saveButton}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</button><button onClick={handleCalcularPuntos} disabled={isCalculating || jornada.estado === 'Finalizada'} style={styles.saveButton}>{isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar'}</button>{message && <span style={{marginLeft: '10px', color: styles.colors.success}}>{message}</span>}</div>
         </div>
     );
@@ -1275,7 +1325,7 @@ const AdminPanelScreen = ({ teamLogos }) => {
     );
 };
 
-const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
+const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos }) => {
     const [jornada, setJornada] = useState(null);
     const [pronosticos, setPronosticos] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1314,7 +1364,11 @@ const JornadaDetalleScreen = ({ jornadaId, onBack }) => {
             {jornada && (
                 <>
                     <h2 style={styles.title}>DETALLE JORNADA {jornada.numeroJornada}</h2>
-                    <h3 style={styles.formSectionTitle}>{jornada.equipoLocal} vs {jornada.equipoVisitante}</h3>
+                    <div style={styles.matchHeader}>
+                        <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 40, height: 40}} />
+                        <h3 style={styles.formSectionTitle}>{jornada.equipoLocal} vs {jornada.equipoVisitante}</h3>
+                        <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 40, height: 40}} />
+                    </div>
                     
                     {jornada.estado === 'Finalizada' && (
                         <p style={styles.finalResult}>Resultado Final: {jornada.resultadoLocal} - {jornada.resultadoVisitante}</p>
@@ -1703,12 +1757,12 @@ function App() {
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} />;
     if (screen === 'app') {
         const CurrentScreen = () => {
-            if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} />;
+            if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} teamLogos={teamLogos} />;
             if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
             switch (activeTab) {
                 case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} />;
                 case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} />;
-                case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} />;
+                case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
                 case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} />;
                 case 'pagos': return <PagosScreen user={currentUser} />;
                 case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} /> : null;
@@ -1825,10 +1879,11 @@ const styles = {
     top3Row: { background: `linear-gradient(90deg, ${colors.bronze}70, ${colors.darkUIAlt} 80%)` },
     currentUserRow: { animation: 'highlight 4s ease infinite', backgroundSize: '400% 400%', backgroundImage: `linear-gradient(to right, ${colors.blue}, ${colors.darkUIAlt}, ${colors.blue})` },
     tdIcon: { width: '40px', textAlign: 'center' },
-    laJornadaContainer: { textAlign: 'center', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' },
+    laJornadaContainer: { textAlign: 'center', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px', backgroundSize: 'cover', backgroundPosition: 'center' },
     matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', fontSize: '1.5rem', fontWeight: 'bold', margin: '20px 0', fontFamily: "'Orbitron', sans-serif", flexWrap: 'wrap' },
-    matchInfoLogo: { width: '60px', height: '60px' },
-    vs: { color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}`, fontSize: '1.5rem' },
+    matchDetails: { display: 'flex', justifyContent: 'center', gap: '20px', color: colors.silver, marginBottom: '20px' },
+    matchInfoLogo: { width: '80px', height: '80px' },
+    vs: { color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}`, fontSize: '2rem' },
     countdownContainer: { margin: '20px 0' },
     countdown: { fontFamily: "'Orbitron', sans-serif", fontSize: '2rem', fontWeight: 'bold', color: colors.yellow, backgroundColor: colors.deepBlue, padding: '10px 20px', borderRadius: '8px', display: 'inline-block', border: `1px solid ${colors.blue}` },
     callToAction: { fontSize: '1.2rem', fontStyle: 'italic', color: colors.lightText, marginTop: '20px' },
@@ -1844,9 +1899,10 @@ const styles = {
     jokerGrid: { display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' },
     jokerBetRow: { marginBottom: '10px', width: '100%', maxWidth: '250px' },
     jornadaList: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
-    jornadaItem: { cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', border: '1px solid transparent', borderLeft: `5px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: colors.darkUIAlt, transition: 'all 0.3s ease' },
+    jornadaItem: { cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', border: '1px solid transparent', borderLeft: `5px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: colors.darkUIAlt, transition: 'all 0.3s ease', backgroundSize: 'cover', backgroundPosition: 'center' },
     jornadaVip: { borderLeft: `5px solid ${colors.yellow}`, boxShadow: `0 0 15px ${colors.yellow}30` },
-    jornadaInfo: { display: 'flex', flexDirection: 'column', color: colors.lightText, fontSize: '0.9rem' },
+    jornadaInfo: { display: 'flex', flexDirection: 'column', color: colors.lightText, fontSize: '0.9rem', gap: '5px' },
+    jornadaTeams: { display: 'flex', alignItems: 'center' },
     statusBadge: { color: 'white', padding: '5px 12px', borderRadius: '15px', fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase' },
     adminJornadaItem: { padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `1px solid ${colors.blue}`, borderRadius: '12px', marginBottom: '20px' },
     adminControls: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', margin: '15px 0' },
@@ -1896,6 +1952,7 @@ const styles = {
     escudoCardName: { fontSize: '0.9rem', color: colors.lightText, textAlign: 'center', margin: 0, fontWeight: 'bold' },
     escudoInput: { width: '90%', padding: '8px', borderRadius: '4px', border: '1px solid #0055A4', backgroundColor: '#001d3d', color: '#f0f0f0', fontSize: '0.8rem' },
     escudoSaveButton: { padding: '5px 10px', fontSize: '0.8rem', backgroundColor: colors.success, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginTop: '5px' },
+    matchHeader: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', marginBottom: '20px' },
 };
 
 export default App;
