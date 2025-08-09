@@ -1334,7 +1334,7 @@ const JornadaAdminItem = ({ jornada }) => {
 const AdminTestJornada = () => {
     const [isActive, setIsActive] = useState(false);
     const [loading, setLoading] = useState(true);
-    const testJornadaRef = doc(db, "jornadas", "jornada_test");
+    const testJornadaRef = useMemo(() => doc(db, "jornadas", "jornada_test"), []);
 
     useEffect(() => {
         const checkStatus = async () => {
@@ -1343,7 +1343,7 @@ const AdminTestJornada = () => {
             setLoading(false);
         }
         checkStatus();
-    }, []);
+    }, [testJornadaRef]);
 
     const handleToggleTestJornada = async () => {
         setLoading(true);
