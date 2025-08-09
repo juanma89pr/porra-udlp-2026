@@ -40,7 +40,6 @@ const EQUIPOS_LIGA = [
     "AD Ceuta FC", "CyD Leonesa", "Real Zaragoza", "RC Deportivo"
 ];
 
-// ** NUEVO: Lista inicial de la plantilla **
 const PLANTILLA_INICIAL = [
     { dorsal: 13, nombre: "Dinko Horkas" },
     { dorsal: 0, nombre: "Adri Suárez" },
@@ -247,7 +246,11 @@ const InitialSplashScreen = ({ onFinish, teamLogos }) => {
     return (
         <div style={styles.initialSplashContainer}>
             <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
-            <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
+            {/* ** NUEVO: Título rediseñado y centrado ** */}
+            <div style={styles.splashTitleContainer}>
+                <span style={styles.splashTitle}>PORRA UDLP</span>
+                <span style={styles.splashYear}>2026</span>
+            </div>
             <div style={styles.loadingMessage}>
                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner">
                     <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
@@ -443,7 +446,10 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
             <div style={styles.splashContainer}>
                 <div style={styles.splashLogoContainer}>
                     <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
-                    <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
+                    <div style={styles.splashTitleContainer}>
+                        <span style={styles.splashTitle}>PORRA UDLP</span>
+                        <span style={styles.splashYear}>2026</span>
+                    </div>
                 </div>
                 {loading ? (<p style={{color: styles.colors.lightText}}>Cargando información de la jornada...</p>) : (<div style={styles.splashInfoBox}>{renderJornadaInfo()}{currentStat && (<div style={styles.carouselStat}><span style={{color: currentStat.color || styles.colors.lightText, fontWeight: 'bold'}}>{currentStat.label}: </span><span style={{color: styles.colors.lightText}}>{currentStat.value}</span></div>)}{jornadaInfo && jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}</div>)}
                 <button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>
@@ -2038,7 +2044,6 @@ function App() {
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
   const [winnerData, setWinnerData] = useState(null);
   const [liveJornada, setLiveJornada] = useState(null);
-  // ** NUEVO: Estado para la plantilla de jugadores **
   const [plantilla, setPlantilla] = useState([]);
 
   useEffect(() => {
@@ -2050,8 +2055,9 @@ function App() {
 
     const styleSheet = document.createElement("style");
     styleSheet.type = "text/css";
+    // ** NUEVO: Añadida la fuente Russo One para el año **
     styleSheet.innerText = `
-      @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap');
       @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
       .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
       @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -2093,13 +2099,11 @@ function App() {
         }
     });
 
-    // ** NUEVO: Listener para la plantilla de jugadores **
     const plantillaRef = doc(db, "configuracion", "plantilla");
     const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => {
         if (docSnap.exists() && docSnap.data().jugadores) {
             setPlantilla(docSnap.data().jugadores);
         } else {
-            // Si no existe en BD, la creamos con la lista inicial
             setDoc(plantillaRef, { jugadores: PLANTILLA_INICIAL });
             setPlantilla(PLANTILLA_INICIAL);
         }
@@ -2214,13 +2218,15 @@ const styles = {
     mainButton: { fontFamily: "'Orbitron', sans-serif", padding: '10px 25px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.darkText, marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: `0 0 15px ${colors.yellow}50`, ':hover': { backgroundColor: 'transparent', color: colors.yellow, transform: 'scale(1.05)' } },
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
     initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: colors.deepBlue, animation: 'fadeIn 1s ease' },
-    loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' },
+    loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', fontFamily: "'Exo 2', sans-serif" },
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center' },
     splashLogoContainer: { marginBottom: '20px', },
     splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain' },
+    // ** NUEVO: Estilos para el título rediseñado **
+    splashTitleContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 0.8 },
     splashTitle: { 
         fontFamily: "'Teko', sans-serif", 
-        fontSize: 'clamp(2.5rem, 10vw, 4.5rem)', 
+        fontSize: 'clamp(3.5rem, 15vw, 5.5rem)', 
         fontWeight: '700', 
         textTransform: 'uppercase', 
         letterSpacing: '2px',
@@ -2231,6 +2237,13 @@ const styles = {
         WebkitBackgroundClip: 'text',
         animation: 'title-shine 5s linear infinite',
         textShadow: `0 2px 4px rgba(0,0,0,0.5)`
+    },
+    splashYear: {
+        fontFamily: "'Russo One', sans-serif",
+        fontSize: 'clamp(1.8rem, 8vw, 2.8rem)',
+        color: colors.lightText,
+        textShadow: `0 1px 1px ${colors.deepBlue}, 0 2px 3px rgba(0,0,0,0.5)`,
+        marginTop: '-15px',
     },
     splashInfoBox: { border: `2px solid ${colors.yellow}80`, padding: '20px', borderRadius: '10px', marginTop: '30px', backgroundColor: 'rgba(0,0,0,0.3)', width: '90%', minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'center' },
     splashInfoTitle: { margin: '0 0 15px 0', fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', fontSize: '1.2rem' },
@@ -2359,7 +2372,6 @@ const styles = {
     liveInfoItem: { textAlign: 'center' },
     liveInfoLabel: { display: 'block', fontSize: '0.9rem', color: colors.silver, textTransform: 'uppercase' },
     liveInfoValue: { display: 'block', fontSize: '1.8rem', color: colors.yellow, fontWeight: 'bold', fontFamily: "'Orbitron', sans-serif" },
-    // ** NUEVOS ESTILOS PARA MI JORNADA Y ADMIN PLANTILLA **
     miJornadaMatchInfo: { display: 'flex', justifyContent: 'space-around', alignItems: 'center', gap: '10px', marginBottom: '20px' },
     miJornadaTeamLogo: { width: '60px', height: '60px' },
     miJornadaScoreInputs: { display: 'flex', alignItems: 'center', gap: '10px' },
