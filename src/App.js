@@ -32,7 +32,6 @@ const SECRET_MESSAGES = [
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
 
-// Lista de equipos de la liga para la gestión de escudos
 const EQUIPOS_LIGA = [
     "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF", 
     "Real Sociedad B", "CD Leganés", "UD Almería", "Cádiz CF", "Granada CF", 
@@ -41,10 +40,72 @@ const EQUIPOS_LIGA = [
     "AD Ceuta FC", "CyD Leonesa", "Real Zaragoza", "RC Deportivo"
 ];
 
+// ============================================================================
+// --- LÓGICA DE CÁLCULO DE PUNTOS PROVISIONALES (NUEVO) ---
+// ============================================================================
+const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
+    if (!pronostico || !liveData) return 0;
+
+    let puntosJornada = 0;
+    const esVip = jornada.esVip || false;
+    const resultadoLocal = liveData.golesLocal;
+    const resultadoVisitante = liveData.golesVisitante;
+
+    // Acierto Resultado Exacto
+    if (pronostico.golesLocal !== '' && pronostico.golesVisitante !== '' && parseInt(pronostico.golesLocal) === resultadoLocal && parseInt(pronostico.golesVisitante) === resultadoVisitante) {
+        puntosJornada += esVip ? 6 : 3;
+    }
+
+    // Acierto 1X2
+    let resultado1x2Real = '';
+    if (resultadoLocal > resultadoVisitante) resultado1x2Real = 'Gana UD Las Palmas';
+    else if (resultadoLocal < resultadoVisitante) resultado1x2Real = 'Pierde UD Las Palmas';
+    else resultado1x2Real = 'Empate';
+    
+    if (pronostico.resultado1x2 === resultado1x2Real) {
+        puntosJornada += esVip ? 2 : 1;
+    }
+
+    // Acierto Goleador
+    const goleadorReal = (liveData.ultimoGoleador || '').trim().toLowerCase();
+    const goleadorApostado = (pronostico.goleador || '').trim().toLowerCase();
+    if (pronostico.sinGoleador && goleadorReal === "sg") {
+        puntosJornada += 1;
+    } else if (!pronostico.sinGoleador && goleadorApostado !== "" && goleadorApostado === goleadorReal) {
+        puntosJornada += esVip ? 4 : 2;
+    }
+    
+    // Acierto Joker
+    if (pronostico.jokerActivo && pronostico.jokerPronosticos && pronostico.jokerPronosticos.length > 0) {
+        for (const jokerP of pronostico.jokerPronosticos) {
+            if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === resultadoLocal && parseInt(jokerP.golesVisitante) === resultadoVisitante) {
+                puntosJornada += esVip ? 6 : 3;
+                break;
+            }
+        }
+    }
+
+    return puntosJornada;
+};
+
 
 // ============================================================================
 // --- COMPONENTES REUTILIZABLES Y DE ANIMACIÓN ---
 // ============================================================================
+
+// --- NUEVO COMPONENTE: BANNER EN VIVO ---
+const LiveBanner = ({ liveData, jornada }) => {
+    if (!liveData || !liveData.isLive) return null;
+    return (
+        <div style={styles.liveBanner}>
+            <span style={styles.liveIndicator}>🔴 EN VIVO</span>
+            <span style={styles.liveMatchInfo}>
+                {jornada.equipoLocal} <strong>{liveData.golesLocal} - {liveData.golesVisitante}</strong> {jornada.equipoVisitante}
+            </span>
+            {liveData.ultimoGoleador && <span style={styles.liveGoalScorer}>Último Gol: {liveData.ultimoGoleador}</span>}
+        </div>
+    );
+};
 
 const TeamDisplay = ({ teamLogos, teamName, shortName = false, imgStyle }) => (
     <div style={styles.teamDisplay}>
@@ -396,7 +457,8 @@ const LoginScreen = ({ onLogin }) => {
     );
 };
 
-const MiJornadaScreen = ({ user, setActiveTab, teamLogos }) => {
+// --- MODIFICADO: MiJornadaScreen ---
+const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData }) => {
     const [jornadaActiva, setJornadaActiva] = useState(null);
     const [jornadaCerrada, setJornadaCerrada] = useState(null);
     const [proximaJornada, setProximaJornada] = useState(null);
@@ -413,6 +475,9 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos }) => {
     const [allPronosticos, setAllPronosticos] = useState([]);
     const [jokerStats, setJokerStats] = useState(Array(10).fill(null));
     const [showJokerAnimation, setShowJokerAnimation] = useState(false);
+    
+    // --- NUEVO: Estado para puntos y posición provisional ---
+    const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
 
     useEffect(() => {
         setLoading(true);
@@ -454,7 +519,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos }) => {
             } else {
                 setJornadaActiva(null);
                 setAllPronosticos([]);
-                const qCerrada = query(collection(db, "jornadas"), where("estado", "==", "Cerrada"), limit(1));
+                const qCerrada = query(collection(db, "jornadas"), where("estado", "in", ["Cerrada", "Finalizada"]), orderBy("numeroJornada", "desc"), limit(1));
                 getDocs(qCerrada).then(cerradaSnap => {
                     if (!cerradaSnap.empty) {
                         const jornadaData = { id: cerradaSnap.docs[0].id, ...cerradaSnap.docs[0].data() };
@@ -464,6 +529,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos }) => {
                             if (pronosticoSnap.exists()) {
                                 setPronostico(pronosticoSnap.data());
                             }
+                        });
+                        // --- NUEVO: Escuchar todos los pronósticos para la jornada cerrada ---
+                        const allPronosticosRef = collection(db, "pronosticos", jornadaData.id, "jugadores");
+                        onSnapshot(allPronosticosRef, (snapshot) => {
+                            setAllPronosticos(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
                         });
                         setLoading(false);
                     } else {
@@ -480,6 +550,27 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos }) => {
         }, (error) => { console.error("Error: ", error); setLoading(false); });
         return () => unsubscribe();
     }, [user]);
+    
+    // --- NUEVO: useEffect para calcular puntos y posición provisional ---
+    useEffect(() => {
+        if (jornadaCerrada && liveData && liveData.isLive && allPronosticos.length > 0) {
+            const ranking = allPronosticos.map(p => {
+                const puntos = calculateProvisionalPoints(p, liveData, jornadaCerrada);
+                return { id: p.id, puntos };
+            }).sort((a, b) => b.puntos - a.puntos);
+
+            const miRanking = ranking.find(r => r.id === user);
+            const miPosicion = ranking.findIndex(r => r.id === user) + 1;
+
+            setProvisionalData({
+                puntos: miRanking ? miRanking.puntos : 0,
+                posicion: miRanking ? `${miPosicion}º` : '-'
+            });
+        } else {
+            setProvisionalData({ puntos: 0, posicion: '-' });
+        }
+    }, [liveData, jornadaCerrada, allPronosticos, user]);
+
 
     useEffect(() => {
         if (jornadaActiva) {
@@ -613,6 +704,21 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos }) => {
             {showJokerAnimation && <JokerAnimation />}
             <h2 style={styles.title}>MI JORNADA</h2>
             <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <strong style={{color: styles.colors.yellow}}>{user}</strong>.</p>
+            
+            {/* --- NUEVO: Mostrar Puntos y Posición Provisional --- */}
+            {liveData && liveData.isLive && jornadaCerrada && (
+                <div style={styles.liveInfoBox}>
+                    <div style={styles.liveInfoItem}>
+                        <span style={styles.liveInfoLabel}>Puntos Provisionales</span>
+                        <span style={styles.liveInfoValue}>{provisionalData.puntos}</span>
+                    </div>
+                    <div style={styles.liveInfoItem}>
+                        <span style={styles.liveInfoLabel}>Posición Provisional</span>
+                        <span style={styles.liveInfoValue}>{provisionalData.posicion}</span>
+                    </div>
+                </div>
+            )}
+
             {jornadaActiva ? (
                 <form onSubmit={handleGuardarPronostico} style={styles.form}>
                     {jornadaActiva.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{jornadaActiva.bote}€ DE BOTE! 💰</div>}
@@ -655,7 +761,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos }) => {
     );
 };
 
-const LaJornadaScreen = ({ teamLogos }) => {
+// --- MODIFICADO: LaJornadaScreen ---
+const LaJornadaScreen = ({ teamLogos, liveData }) => {
     const [jornadaActiva, setJornadaActiva] = useState(null);
     const [jornadaCerrada, setJornadaCerrada] = useState(null);
     const [participantes, setParticipantes] = useState([]);
@@ -665,8 +772,11 @@ const LaJornadaScreen = ({ teamLogos }) => {
     const [porraAnualConfig, setPorraAnualConfig] = useState(null);
     const [pronosticosAnuales, setPronosticosAnuales] = useState([]);
 
+    // --- NUEVO: Estado para la clasificación provisional ---
+    const [provisionalRanking, setProvisionalRanking] = useState([]);
+
     useEffect(() => {
-        const q = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada"]), limit(1));
+        const q = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada"]), orderBy("numeroJornada", "desc"), limit(1));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             if (!snapshot.empty) {
                 const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
@@ -706,6 +816,19 @@ const LaJornadaScreen = ({ teamLogos }) => {
             unsubPronosticos();
         };
     }, []);
+    
+    // --- NUEVO: useEffect para calcular la clasificación provisional ---
+    useEffect(() => {
+        if (jornadaCerrada && liveData && liveData.isLive && participantes.length > 0) {
+            const ranking = participantes.map(p => {
+                const puntos = calculateProvisionalPoints(p, liveData, jornadaCerrada);
+                return { id: p.id, puntos };
+            }).sort((a, b) => b.puntos - a.puntos);
+            setProvisionalRanking(ranking);
+        } else {
+            setProvisionalRanking([]);
+        }
+    }, [liveData, jornadaCerrada, participantes]);
 
     useEffect(() => {
         if (!jornadaActiva || !jornadaActiva.fechaCierre) { setCountdown(''); return; }
@@ -726,6 +849,9 @@ const LaJornadaScreen = ({ teamLogos }) => {
     if (loading) return <p style={{color: styles.colors.lightText}}>Buscando jornada...</p>;
     
     const jornadaActual = jornadaActiva || jornadaCerrada;
+    
+    // --- NUEVO: Determinar si mostrar la vista en vivo ---
+    const isLiveView = jornadaCerrada && liveData && liveData.isLive;
 
     return (
         <div>
@@ -735,7 +861,12 @@ const LaJornadaScreen = ({ teamLogos }) => {
                     <h3>Jornada {jornadaActual.numeroJornada}</h3>
                     <div style={styles.matchInfo}>
                         <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoLocal} shortName={true} imgStyle={styles.matchInfoLogo} />
-                        <span style={styles.vs}>VS</span>
+                        {/* --- NUEVO: Mostrar marcador en vivo o VS --- */}
+                        {isLiveView ? (
+                            <span style={styles.liveScoreInPage}>{liveData.golesLocal} - {liveData.golesVisitante}</span>
+                        ) : (
+                            <span style={styles.vs}>VS</span>
+                        )}
                         <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoVisitante} imgStyle={styles.matchInfoLogo} />
                     </div>
                     <div style={styles.matchDetails}>
@@ -749,10 +880,34 @@ const LaJornadaScreen = ({ teamLogos }) => {
                             <div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div>
                         </>
                     )}
-                    {jornadaCerrada && (
+                    {jornadaCerrada && !isLiveView && (
                         <div>
                             <p style={{textAlign: 'center', marginTop: '20px'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p>
                             <div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div>
+                        </div>
+                    )}
+                    {/* --- NUEVO: Vista de Clasificación Provisional --- */}
+                    {isLiveView && (
+                        <div>
+                            <h3 style={styles.provisionalTitle}>Clasificación Provisional</h3>
+                            <table style={{...styles.table, backgroundColor: 'rgba(0,0,0,0.3)'}}>
+                                <thead>
+                                    <tr>
+                                        <th style={styles.th}>POS</th>
+                                        <th style={styles.th}>Jugador</th>
+                                        <th style={styles.th}>Puntos</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {provisionalRanking.map((jugador, index) => (
+                                        <tr key={jugador.id} style={jugador.puntos > 0 && provisionalRanking[0].puntos === jugador.puntos ? styles.provisionalWinnerRow : styles.tr}>
+                                            <td style={styles.tdRank}>{index + 1}º</td>
+                                            <td style={styles.td}>{jugador.id}</td>
+                                            <td style={styles.td}>{jugador.puntos}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     )}
                 </div>
@@ -859,10 +1014,14 @@ const AnimatedPoints = ({ value }) => {
     return <span>{currentValue}</span>;
 };
 
-const ClasificacionScreen = ({ currentUser }) => {
+// --- MODIFICADO: ClasificacionScreen ---
+const ClasificacionScreen = ({ currentUser, liveData, liveJornada }) => {
     const [clasificacion, setClasificacion] = useState([]);
     const [loading, setLoading] = useState(true);
     const [rachas, setRachas] = useState({});
+    
+    // --- NUEVO: Estado para pronósticos de la jornada en vivo ---
+    const [livePronosticos, setLivePronosticos] = useState([]);
 
     useEffect(() => {
         const fetchRachas = async () => {
@@ -920,7 +1079,44 @@ const ClasificacionScreen = ({ currentUser }) => {
         return () => unsubscribe();
     }, []);
 
+    // --- NUEVO: useEffect para obtener los pronósticos de la jornada en vivo ---
+    useEffect(() => {
+        if (liveJornada) {
+            const pronosticosRef = collection(db, "pronosticos", liveJornada.id, "jugadores");
+            const unsubscribe = onSnapshot(pronosticosRef, (snapshot) => {
+                setLivePronosticos(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            });
+            return () => unsubscribe();
+        } else {
+            setLivePronosticos([]);
+        }
+    }, [liveJornada]);
+    
+    // --- NUEVO: Memo para calcular la clasificación en vivo ---
+    const liveClasificacion = useMemo(() => {
+        if (!liveData || !liveData.isLive || !liveJornada || livePronosticos.length === 0) {
+            return clasificacion;
+        }
+
+        const liveScores = new Map();
+        livePronosticos.forEach(p => {
+            const puntosProvisionales = calculateProvisionalPoints(p, liveData, liveJornada);
+            liveScores.set(p.id, puntosProvisionales);
+        });
+
+        const sortedLive = [...clasificacion].map(jugador => ({
+            ...jugador,
+            puntosEnVivo: (jugador.puntosTotales || 0) + (liveScores.get(jugador.id) || 0)
+        })).sort((a, b) => b.puntosEnVivo - a.puntosEnVivo);
+
+        return sortedLive;
+
+    }, [clasificacion, liveData, liveJornada, livePronosticos]);
+
+
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando clasificación...</p>;
+    
+    const isLive = liveData && liveData.isLive;
     
     const getRankStyle = (index, jugadorId) => {
         let style = {};
@@ -948,15 +1144,19 @@ const ClasificacionScreen = ({ currentUser }) => {
                         <tr>
                             <th style={styles.th}>POS</th>
                             <th style={styles.th}>JUGADOR</th>
-                            <th style={styles.th}>PUNTOS</th>
+                            {/* --- NUEVO: Columna condicional en vivo --- */}
+                            {isLive && <th style={styles.th}>PUNTOS (EN VIVO)</th>}
+                            <th style={styles.th}>PUNTOS TOTALES</th>
                             <th style={{...styles.th, textAlign: 'center'}}>JOKERS</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {clasificacion.map((jugador, index) => (
+                        {liveClasificacion.map((jugador, index) => (
                             <tr key={jugador.id} style={getRankStyle(index, jugador.id)}>
                                 <td style={styles.tdRank}>{getRankIcon(index)}</td>
                                 <td style={styles.td}>{jugador.jugador || jugador.id} {rachas[jugador.id]}</td>
+                                {/* --- NUEVO: Celda condicional en vivo --- */}
+                                {isLive && <td style={{...styles.td, color: styles.colors.gold, fontWeight: 'bold'}}><AnimatedPoints value={jugador.puntosEnVivo} /></td>}
                                 <td style={styles.td}><AnimatedPoints value={jugador.puntosTotales} /></td>
                                 <td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>
                                     {jugador.jokersRestantes !== undefined ? jugador.jokersRestantes : 2} 🃏
@@ -970,6 +1170,7 @@ const ClasificacionScreen = ({ currentUser }) => {
     );
 };
 
+// --- MODIFICADO: JornadaAdminItem ---
 const JornadaAdminItem = ({ jornada }) => {
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
@@ -986,6 +1187,16 @@ const JornadaAdminItem = ({ jornada }) => {
     const [isCalculating, setIsCalculating] = useState(false);
     const [message, setMessage] = useState('');
 
+    // --- NUEVO: Estado para el control en vivo ---
+    const [liveData, setLiveData] = useState({ golesLocal: 0, golesVisitante: 0, ultimoGoleador: '', isLive: false });
+
+    useEffect(() => {
+        // Cargar los datos en vivo existentes de la jornada
+        if (jornada.liveData) {
+            setLiveData(jornada.liveData);
+        }
+    }, [jornada.liveData]);
+
     const handleSaveChanges = async () => {
         setIsSaving(true); setMessage('');
         const jornadaRef = doc(db, "jornadas", jornada.id);
@@ -999,6 +1210,22 @@ const JornadaAdminItem = ({ jornada }) => {
             setMessage('¡Guardado!');
             setTimeout(() => setMessage(''), 2000);
         } catch (error) { console.error("Error al actualizar: ", error); setMessage('Error al guardar.'); }
+        setIsSaving(false);
+    };
+
+    // --- NUEVO: Handler para actualizar el marcador en vivo ---
+    const handleUpdateLiveScore = async () => {
+        setIsSaving(true);
+        const jornadaRef = doc(db, "jornadas", jornada.id);
+        try {
+            // Se activa isLive en la primera actualización
+            await updateDoc(jornadaRef, { liveData: { ...liveData, isLive: true } });
+            setMessage('¡Marcador en vivo actualizado!');
+            setTimeout(() => setMessage(''), 2000);
+        } catch (error) {
+            console.error("Error actualizando marcador en vivo:", error);
+            setMessage('Error al actualizar.');
+        }
         setIsSaving(false);
     };
 
@@ -1040,7 +1267,8 @@ const JornadaAdminItem = ({ jornada }) => {
             batch.set(clasificacionDocRef, { puntosTotales: increment(puntosJornada), jugador: p.id }, { merge: true });
         }
         const jornadaRef = doc(db, "jornadas", jornada.id);
-        batch.update(jornadaRef, { estado: "Finalizada", ganadores });
+        // Al finalizar, se desactiva el modo en vivo
+        batch.update(jornadaRef, { estado: "Finalizada", ganadores, "liveData.isLive": false });
         if (ganadores.length === 0) {
             const boteActual = jornada.bote || 0;
             const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
@@ -1071,6 +1299,30 @@ const JornadaAdminItem = ({ jornada }) => {
             <div style={{marginTop: '10px'}}><label style={styles.label}>Mensaje para la Pantalla Principal:</label><textarea value={splashMessage} onChange={(e) => setSplashMessage(e.target.value)} style={{...styles.input, width: '95%', height: '50px'}} /></div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>URL Imagen del Estadio:</label><input type="text" value={estadioImageUrl} onChange={(e) => setEstadioImageUrl(e.target.value)} style={{...styles.input, width: '95%'}} /></div>
             <div style={{marginTop: '20px'}}><button onClick={handleSaveChanges} disabled={isSaving} style={styles.saveButton}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</button><button onClick={handleCalcularPuntos} disabled={isCalculating || jornada.estado === 'Finalizada'} style={styles.saveButton}>{isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar'}</button>{message && <span style={{marginLeft: '10px', color: styles.colors.success}}>{message}</span>}</div>
+            
+            {/* --- NUEVO: Panel de Control en Vivo --- */}
+            {jornada.estado === 'Cerrada' && (
+                <div style={styles.liveAdminContainer}>
+                    <h4 style={styles.liveAdminTitle}>🔴 Control del Partido en Vivo</h4>
+                    <div style={styles.adminControls}>
+                        <div>
+                            <label style={styles.label}>Marcador en Vivo:</label>
+                            <div style={styles.resultInputContainer}>
+                                <input type="number" min="0" value={liveData.golesLocal} onChange={(e) => setLiveData(d => ({ ...d, golesLocal: parseInt(e.target.value) || 0 }))} style={styles.resultInput} />
+                                <span style={styles.separator}>-</span>
+                                <input type="number" min="0" value={liveData.golesVisitante} onChange={(e) => setLiveData(d => ({ ...d, golesVisitante: parseInt(e.target.value) || 0 }))} style={styles.resultInput} />
+                            </div>
+                        </div>
+                        <div>
+                            <label style={styles.label}>Último Goleador:</label>
+                            <input type="text" value={liveData.ultimoGoleador} onChange={(e) => setLiveData(d => ({...d, ultimoGoleador: e.target.value}))} style={styles.adminInput} placeholder="Nombre o 'SG'"/>
+                        </div>
+                    </div>
+                    <button onClick={handleUpdateLiveScore} disabled={isSaving} style={{...styles.saveButton, backgroundColor: colors.danger, marginTop: '15px'}}>
+                        {isSaving ? 'Actualizando...' : 'Actualizar Marcador en Vivo'}
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
@@ -1661,6 +1913,9 @@ function App() {
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
   const [winnerData, setWinnerData] = useState(null);
 
+  // --- NUEVO: Estado para los datos de la jornada en vivo ---
+  const [liveJornada, setLiveJornada] = useState(null);
+
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
         if (!user) {
@@ -1692,6 +1947,8 @@ function App() {
         #app-container { display: none !important; }
         #orientation-lock { display: flex; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: ${colors.deepBlue}; color: ${colors.lightText}; z-index: 9999; }
       }
+      /* --- NUEVO: Animación para el banner en vivo --- */
+      @keyframes blink-live { 50% { background-color: #a11d27; } }
     `;
     document.head.appendChild(styleSheet);
     
@@ -1706,12 +1963,29 @@ function App() {
             setTeamLogos(docSnap.data());
         }
     });
+    
+    // --- NUEVO: Listener para la jornada en vivo ---
+    const qLive = query(collection(db, "jornadas"), where("estado", "==", "Cerrada"), limit(1));
+    const unsubscribeLive = onSnapshot(qLive, (snapshot) => {
+        if (!snapshot.empty) {
+            const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+            if (jornada.liveData && jornada.liveData.isLive) {
+                setLiveJornada(jornada);
+            } else {
+                setLiveJornada(null);
+            }
+        } else {
+            setLiveJornada(null);
+        }
+    });
+
 
     return () => {
         document.head.removeChild(styleSheet);
         unsubscribeConfig();
         unsubscribeAuth();
         unsubscribeEscudos();
+        unsubscribeLive(); // Limpiar listener en vivo
     }
   }, []);
 
@@ -1753,10 +2027,11 @@ function App() {
             if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} teamLogos={teamLogos} />;
             if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
             switch (activeTab) {
-                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} />;
-                case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} />;
+                // --- MODIFICADO: Pasar datos en vivo a los componentes ---
+                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} />;
+                case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} liveData={liveJornada?.liveData} />;
                 case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
-                case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} />;
+                case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} />;
                 case 'pagos': return <PagosScreen user={currentUser} />;
                 case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} /> : null;
                 default: return null;
@@ -1770,6 +2045,8 @@ function App() {
                 ⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!
             </div>
           )}
+          {/* --- NUEVO: Renderizar el banner en vivo --- */}
+          <LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} />
           <nav style={styles.navbar}>
             <button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button>
             <button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button>
@@ -1946,6 +2223,21 @@ const styles = {
     escudoInput: { width: '90%', padding: '8px', borderRadius: '4px', border: '1px solid #0055A4', backgroundColor: '#001d3d', color: '#f0f0f0', fontSize: '0.8rem' },
     escudoSaveButton: { padding: '5px 10px', fontSize: '0.8rem', backgroundColor: colors.success, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginTop: '5px' },
     matchHeader: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', marginBottom: '20px' },
+    
+    // --- NUEVOS ESTILOS PARA LA FUNCIONALIDAD EN VIVO ---
+    liveBanner: { position: 'sticky', top: 0, left: 0, width: '100%', backgroundColor: colors.danger, color: 'white', display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', gap: '15px', padding: '10px', zIndex: 100, fontFamily: "'Orbitron', sans-serif", animation: 'blink-live 1.5s infinite' },
+    liveIndicator: { fontWeight: 'bold', backgroundColor: 'rgba(255,255,255,0.2)', padding: '3px 8px', borderRadius: '5px' },
+    liveMatchInfo: { fontSize: '1.2rem' },
+    liveGoalScorer: { fontStyle: 'italic', fontSize: '0.9rem' },
+    liveAdminContainer: { marginTop: '25px', paddingTop: '20px', borderTop: `2px dashed ${colors.danger}` },
+    liveAdminTitle: { color: colors.danger, textAlign: 'center', fontFamily: "'Orbitron', sans-serif" },
+    provisionalTitle: { color: colors.yellow, textAlign: 'center', fontFamily: "'Orbitron', sans-serif", marginTop: '30px' },
+    provisionalWinnerRow: { background: `linear-gradient(90deg, ${colors.gold}99, ${colors.darkUIAlt} 80%)` },
+    liveScoreInPage: { color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}`, fontSize: '2.5rem', fontFamily: "'Orbitron', sans-serif" },
+    liveInfoBox: { display: 'flex', justifyContent: 'space-around', backgroundColor: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px', marginBottom: '20px', border: `1px solid ${colors.blue}` },
+    liveInfoItem: { textAlign: 'center' },
+    liveInfoLabel: { display: 'block', fontSize: '0.9rem', color: colors.silver, textTransform: 'uppercase' },
+    liveInfoValue: { display: 'block', fontSize: '1.8rem', color: colors.yellow, fontWeight: 'bold', fontFamily: "'Orbitron', sans-serif" },
 };
 
 export default App;
