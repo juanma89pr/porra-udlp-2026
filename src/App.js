@@ -69,6 +69,69 @@ const PLANTILLA_INICIAL = [
     { dorsal: 17, nombre: "Jaime Mata" }
 ];
 
+// --- BANDA SONORA DE LA APP ---
+const PLAYLIST = [
+    { src: 'https://cdn.pixabay.com/download/audio/2022/08/04/audio_2dde6b6827.mp3', title: 'Upbeat Electronic' },
+    { src: 'https://cdn.pixabay.com/download/audio/2022/01/21/audio_31743c5228.mp3', title: 'Chill Abstract' },
+    { src: 'https://cdn.pixabay.com/download/audio/2022/05/23/audio_982a79a9f8.mp3', title: 'Corporate Pop' },
+    { src: 'https://cdn.pixabay.com/download/audio/2022/02/07/audio_c29a22b34a.mp3', title: 'Lofi Chill' },
+    { src: 'https://cdn.pixabay.com/download/audio/2022/06/14/audio_36b28a32a4.mp3', title: 'Future Bass' },
+    { src: 'https://cdn.pixabay.com/download/audio/2022/08/03/audio_59397663a2.mp3', title: 'Inspiring Pop' },
+    { src: 'https://cdn.pixabay.com/download/audio/2022/08/02/audio_39b387a56a.mp3', title: 'Groovy Funk' },
+    { src: 'https://cdn.pixabay.com/download/audio/2022/06/20/audio_52cc12d642.mp3', title: 'Ambient Electronic' },
+    { src: 'https://cdn.pixabay.com/download/audio/2022/08/25/audio_48089474cb.mp3', title: 'Summer Pop' },
+    { src: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_53b08e64c3.mp3', title: 'Synthwave Drive' }
+];
+
+// ============================================================================
+// --- REPRODUCTOR DE MÚSICA ---
+// ============================================================================
+const AudioPlayer = ({ isMuted, audioUnlocked }) => {
+    const audioRef = useRef(null);
+    const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+    const shuffledPlaylist = useMemo(() => PLAYLIST.sort(() => 0.5 - Math.random()), []);
+
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (audio) {
+            audio.muted = isMuted;
+        }
+    }, [isMuted]);
+
+    useEffect(() => {
+        if (audioUnlocked && audioRef.current) {
+            const audio = audioRef.current;
+            audio.volume = 0;
+            audio.play().catch(e => console.log("Autoplay bloqueado, esperando interacción."));
+
+            // Efecto fade-in
+            let currentVolume = 0;
+            const fadeInInterval = setInterval(() => {
+                currentVolume += 0.05;
+                if (currentVolume >= 0.3) {
+                    audio.volume = 0.3;
+                    clearInterval(fadeInInterval);
+                } else {
+                    audio.volume = currentVolume;
+                }
+            }, 200);
+        }
+    }, [audioUnlocked]);
+
+    const handleNextTrack = () => {
+        setCurrentTrackIndex((prevIndex) => (prevIndex + 1) % shuffledPlaylist.length);
+    };
+
+    return (
+        <audio
+            ref={audioRef}
+            src={shuffledPlaylist[currentTrackIndex].src}
+            onEnded={handleNextTrack}
+            preload="auto"
+        />
+    );
+};
+
 
 // ============================================================================
 // --- LÓGICA DE CÁLCULO DE PUNTOS PROVISIONALES ---
@@ -2061,6 +2124,14 @@ function App() {
   const [winnerData, setWinnerData] = useState(null);
   const [liveJornada, setLiveJornada] = useState(null);
   const [plantilla, setPlantilla] = useState([]);
+  const [isMuted, setIsMuted] = useState(false);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+
+  const handleUnlockAudio = () => {
+      if (!audioUnlocked) {
+          setAudioUnlocked(true);
+      }
+  };
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -2154,6 +2225,7 @@ function App() {
   }, []);
 
   const handleLogin = async (user) => {
+      handleUnlockAudio();
       setCurrentUser(user);
       setScreen('app');
       const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
@@ -2184,8 +2256,8 @@ function App() {
 
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => {setShowInitialSplash(false); setShowOrientationSuggestion(true);}} />;
-    if (showOrientationSuggestion) return <OrientationSuggestion onContinue={() => setShowOrientationSuggestion(false)} />;
-    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} />;
+    if (showOrientationSuggestion) return <OrientationSuggestion onContinue={() => { handleUnlockAudio(); setShowOrientationSuggestion(false); }} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => { handleUnlockAudio(); setScreen('login'); }} teamLogos={teamLogos} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} />;
     if (screen === 'app') {
         const CurrentScreen = () => {
@@ -2217,6 +2289,7 @@ function App() {
             <button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button>
             <button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>
             {currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}
+            <button onClick={() => setIsMuted(!isMuted)} style={styles.muteButton}>{isMuted ? '🔇' : '🎵'}</button>
             <button onClick={() => { setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false); }} style={styles.logoutButton}>Salir</button>
           </nav>
           <div key={activeTab} className="content-enter-active" style={styles.content}>
@@ -2229,6 +2302,7 @@ function App() {
   return (
     <>
         {winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}
+        <AudioPlayer isMuted={isMuted} audioUnlocked={audioUnlocked} />
         <div id="app-container" style={styles.container}>
             <div style={styles.card}>{renderContent()}</div>
         </div>
@@ -2291,10 +2365,11 @@ const styles = {
     userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px', marginTop: '30px' },
     userButton: { width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
-    navbar: { display: 'flex', flexWrap: 'wrap', gap: '5px', borderBottom: `2px solid ${colors.blue}`, paddingBottom: '15px', marginBottom: '20px' },
+    navbar: { display: 'flex', flexWrap: 'wrap', gap: '5px', borderBottom: `2px solid ${colors.blue}`, paddingBottom: '15px', marginBottom: '20px', alignItems: 'center' },
     navButton: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: '3px solid transparent', borderRadius: '6px 6px 0 0', backgroundColor: 'transparent', color: colors.lightText, cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
     navButtonActive: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: `3px solid ${colors.yellow}`, borderRadius: '6px 6px 0 0', backgroundColor: colors.darkUIAlt, color: colors.yellow, cursor: 'pointer', textTransform: 'uppercase', fontWeight: '600' },
-    logoutButton: { padding: '8px 12px', fontSize: '0.9rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.danger, cursor: 'pointer', marginLeft: 'auto', transition: 'all 0.2s', fontWeight: '600', textTransform: 'uppercase' },
+    logoutButton: { padding: '8px 12px', fontSize: '0.9rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.danger, cursor: 'pointer', marginLeft: '10px', transition: 'all 0.2s', fontWeight: '600', textTransform: 'uppercase' },
+    muteButton: { background: 'none', border: 'none', color: colors.lightText, fontSize: '1.5rem', cursor: 'pointer', marginLeft: 'auto', padding: '0 10px' },
     content: { padding: '10px 0', animation: 'fadeIn 0.5s' },
     form: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '25px', borderRadius: '12px', marginTop: '20px', border: `1px solid ${colors.blue}50` },
     formSectionTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.lightText, fontSize: '1.3rem', textAlign: 'center', marginBottom: '20px' },
