@@ -40,6 +40,37 @@ const EQUIPOS_LIGA = [
     "AD Ceuta FC", "CyD Leonesa", "Real Zaragoza", "RC Deportivo"
 ];
 
+// ** NUEVO: Lista inicial de la plantilla **
+const PLANTILLA_INICIAL = [
+    { dorsal: 13, nombre: "Dinko Horkas" },
+    { dorsal: 0, nombre: "Adri Suárez" },
+    { dorsal: 3, nombre: "Mika Mármol" },
+    { dorsal: 28, nombre: "Juanma Herzog" },
+    { dorsal: 4, nombre: "Álex Suárez" },
+    { dorsal: 0, nombre: "Enrique Clemente" },
+    { dorsal: 0, nombre: "Sergio Barcia" },
+    { dorsal: 0, nombre: "Cristian Gutiérrez" },
+    { dorsal: 18, nombre: "Viti Rozada" },
+    { dorsal: 2, nombre: "Marvin Park" },
+    { dorsal: 0, nombre: "Lorenzo Amatucci" },
+    { dorsal: 0, nombre: "Edward Cedeño" },
+    { dorsal: 12, nombre: "Enzo Loiodice" },
+    { dorsal: 20, nombre: "Kirian Rodríguez" },
+    { dorsal: 0, nombre: "Iván Gil" },
+    { dorsal: 0, nombre: "Jonathan Viera" },
+    { dorsal: 0, nombre: "Jeremía Recoba" },
+    { dorsal: 14, nombre: "Manu Fuster" },
+    { dorsal: 0, nombre: "Jesé" },
+    { dorsal: 0, nombre: "Pejiño" },
+    { dorsal: 0, nombre: "Ale García" },
+    { dorsal: 0, nombre: "Adam Arvelo" },
+    { dorsal: 19, nombre: "Sandro Ramírez" },
+    { dorsal: 0, nombre: "Sory Kaba" },
+    { dorsal: 9, nombre: "Marc Cardona" },
+    { dorsal: 17, nombre: "Jaime Mata" }
+];
+
+
 // ============================================================================
 // --- LÓGICA DE CÁLCULO DE PUNTOS PROVISIONALES ---
 // ============================================================================
@@ -217,7 +248,6 @@ const InitialSplashScreen = ({ onFinish, teamLogos }) => {
         <div style={styles.initialSplashContainer}>
             <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
             <h1 style={styles.splashTitle}>PORRA UDLP 2026</h1>
-            {/* ** CORRECCIÓN: Eliminado el mensaje de rotación de pantalla ** */}
             <div style={styles.loadingMessage}>
                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner">
                     <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
@@ -227,8 +257,6 @@ const InitialSplashScreen = ({ onFinish, teamLogos }) => {
         </div>
     );
 };
-
-// ** CORRECCIÓN: Componente OrientationLock eliminado por completo **
 
 const SplashScreen = ({ onEnter, teamLogos }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
@@ -441,7 +469,7 @@ const LoginScreen = ({ onLogin }) => {
     );
 };
 
-const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData }) => {
+const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
     const [pronostico, setPronostico] = useState({ golesLocal: '', golesVisitante: '', resultado1x2: '', goleador: '', sinGoleador: false, pin: '', jokerActivo: false, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) });
@@ -670,19 +698,34 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData }) => {
                             </div>
                         ) : (
                             <fieldset disabled={isLocked} style={{border: 'none', padding: 0, margin: 0}}>
+                                {/* ** NUEVO: Layout de resultado rediseñado ** */}
                                 <div style={styles.formGroup}>
                                     <label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label>
-                                    <div style={styles.resultInputContainer}>
-                                        <TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} />
-                                        <input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} />
-                                        <span style={styles.separator}>-</span>
-                                        <input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} />
-                                        <TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} />
+                                    <div style={styles.miJornadaMatchInfo}>
+                                        <TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} />
+                                        <div style={styles.miJornadaScoreInputs}>
+                                            <input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} />
+                                            <span style={styles.separator}>-</span>
+                                            <input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} />
+                                        </div>
+                                        <TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} />
                                     </div>
                                     {(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}
                                 </div>
                                 <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
-                                <div style={styles.formGroup}><label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label><input type="text" name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador} /><div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>(1 Punto)</span></label></div></div>
+                                {/* ** NUEVO: Desplegable de goleadores ** */}
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label>
+                                    <select name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador}>
+                                        <option value="">-- Elige un jugador --</option>
+                                        {plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (
+                                            <option key={jugador.nombre} value={jugador.nombre}>
+                                                {jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>(1 Punto)</span></label></div>
+                                </div>
                                 <div style={styles.formGroup}><label style={styles.label}>PIN DE SEGURIDAD (4 dígitos, opcional)</label><input type="password" name="pin" value={pronostico.pin} onChange={handlePronosticoChange} maxLength="4" style={styles.input} placeholder="Deja en blanco para no bloquear" /></div>
                                 
                                 <div style={styles.jokerContainer}>
@@ -1995,6 +2038,8 @@ function App() {
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
   const [winnerData, setWinnerData] = useState(null);
   const [liveJornada, setLiveJornada] = useState(null);
+  // ** NUEVO: Estado para la plantilla de jugadores **
+  const [plantilla, setPlantilla] = useState([]);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -2005,7 +2050,6 @@ function App() {
 
     const styleSheet = document.createElement("style");
     styleSheet.type = "text/css";
-    // ** CORRECCIÓN: Eliminada la media query de orientación **
     styleSheet.innerText = `
       @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&display=swap');
       @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
@@ -2049,6 +2093,18 @@ function App() {
         }
     });
 
+    // ** NUEVO: Listener para la plantilla de jugadores **
+    const plantillaRef = doc(db, "configuracion", "plantilla");
+    const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => {
+        if (docSnap.exists() && docSnap.data().jugadores) {
+            setPlantilla(docSnap.data().jugadores);
+        } else {
+            // Si no existe en BD, la creamos con la lista inicial
+            setDoc(plantillaRef, { jugadores: PLANTILLA_INICIAL });
+            setPlantilla(PLANTILLA_INICIAL);
+        }
+    });
+
 
     return () => {
         document.head.removeChild(styleSheet);
@@ -2056,6 +2112,7 @@ function App() {
         unsubscribeAuth();
         unsubscribeEscudos();
         unsubscribeLive();
+        unsubscribePlantilla();
     }
   }, []);
 
@@ -2097,7 +2154,7 @@ function App() {
             if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} teamLogos={teamLogos} />;
             if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
             switch (activeTab) {
-                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} />;
+                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} plantilla={plantilla} />;
                 case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} liveData={liveJornada?.liveData} />;
                 case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
                 case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} />;
@@ -2133,7 +2190,6 @@ function App() {
   };
   return (
     <>
-        {/* ** CORRECCIÓN: Eliminada la instancia de <OrientationLock /> ** */}
         {winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}
         <div id="app-container" style={styles.container}>
             <div style={styles.card}>{renderContent()}</div>
@@ -2152,7 +2208,6 @@ const colors = {
 
 const styles = {
     colors,
-    // ** CORRECCIÓN: Ajustes para responsividad **
     container: { display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minHeight: '100vh', background: `linear-gradient(145deg, ${colors.deepBlue} 0%, #000 100%)`, padding: '15px', fontFamily: "'Exo 2', sans-serif" },
     card: { width: '100%', maxWidth: '900px', backgroundColor: colors.darkUI, color: colors.lightText, padding: '25px', borderRadius: '16px', boxShadow: `0 0 25px ${colors.blue}30, 0 10px 30px rgba(0, 0, 0, 0.5)`, minHeight: 'calc(100vh - 30px)', border: `1px solid ${colors.blue}80`, backdropFilter: 'blur(10px)', },
     title: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', borderBottom: `2px solid ${colors.yellow}`, paddingBottom: '10px', marginBottom: '25px', textShadow: `0 0 10px ${colors.yellow}90`, fontSize: 'clamp(1.5rem, 5vw, 1.8rem)' },
@@ -2304,6 +2359,15 @@ const styles = {
     liveInfoItem: { textAlign: 'center' },
     liveInfoLabel: { display: 'block', fontSize: '0.9rem', color: colors.silver, textTransform: 'uppercase' },
     liveInfoValue: { display: 'block', fontSize: '1.8rem', color: colors.yellow, fontWeight: 'bold', fontFamily: "'Orbitron', sans-serif" },
+    // ** NUEVOS ESTILOS PARA MI JORNADA Y ADMIN PLANTILLA **
+    miJornadaMatchInfo: { display: 'flex', justifyContent: 'space-around', alignItems: 'center', gap: '10px', marginBottom: '20px' },
+    miJornadaTeamLogo: { width: '60px', height: '60px' },
+    miJornadaScoreInputs: { display: 'flex', alignItems: 'center', gap: '10px' },
+    plantillaManagerContainer: { display: 'flex', flexDirection: 'column', gap: '10px' },
+    plantillaPlayerRow: { display: 'flex', gap: '10px', alignItems: 'center' },
+    plantillaInput: { flex: 1, padding: '8px', border: `1px solid ${colors.blue}`, borderRadius: '4px', backgroundColor: colors.deepBlue, color: colors.lightText },
+    plantillaDorsalInput: { width: '50px' },
+    plantillaDeleteButton: { padding: '8px 12px', border: 'none', borderRadius: '4px', backgroundColor: colors.danger, color: 'white', cursor: 'pointer' },
 };
 
 export default App;
