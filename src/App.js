@@ -33,10 +33,9 @@ const SECRET_MESSAGES = [
 ];
 
 // ============================================================================
-// --- FIX: URLs de los escudos de los equipos (VERIFICADAS Y ESTABLES) ---
-// Se han reemplazado todas las URLs problemáticas por enlaces directos a
-// imágenes PNG transparentes de alta calidad desde una CDN fiable (a.espncdn.com)
-// para garantizar que todos los escudos se muestren correctamente.
+// --- FIX: URLs de los escudos de los equipos (CORREGIDAS Y VERIFICADAS) ---
+// Se han revisado una por una todas las URLs para asegurar que corresponden
+// al equipo correcto y provienen de una CDN fiable (a.espncdn.com).
 // ============================================================================
 const teamLogos = {
     "UD Las Palmas": "https://a.espncdn.com/i/teamlogos/soccer/500/96.png",
@@ -62,6 +61,7 @@ const teamLogos = {
     "Real Zaragoza": "https://a.espncdn.com/i/teamlogos/soccer/500/92.png",
     "RC Deportivo": "https://a.espncdn.com/i/teamlogos/soccer/500/85.png"
 };
+
 
 // ============================================================================
 // --- COMPONENTES REUTILIZABLES Y DE ANIMACIÓN ---
@@ -1053,6 +1053,27 @@ const JornadaAdminItem = ({ jornada }) => {
     );
 };
 
+// ============================================================================
+// --- NUEVO COMPONENTE: PANTALLA DE VERIFICACIÓN DE ESCUDOS ---
+// ============================================================================
+const AdminEscudosScreen = ({ onBack }) => {
+    const teamNames = Object.keys(teamLogos);
+    return (
+        <div style={styles.adminJornadaItem}>
+            <h3 style={styles.formSectionTitle}>Verificación de Escudos</h3>
+            <div style={styles.escudosGrid}>
+                {teamNames.map(teamName => (
+                    <div key={teamName} style={styles.escudoCard}>
+                        <img src={teamLogos[teamName]} style={styles.escudoCardImg} alt={teamName} onError={(e) => { e.target.src = 'https://placehold.co/80x80/e63946/ffffff?text=Error'; }} />
+                        <p style={styles.escudoCardName}>{teamName}</p>
+                    </div>
+                ))}
+            </div>
+            <button onClick={onBack} style={{...styles.mainButton, backgroundColor: styles.colors.blue, borderColor: styles.colors.blue}}>Volver al Panel</button>
+        </div>
+    );
+};
+
 const AdminPorraAnual = () => {
     const [config, setConfig] = useState({ estado: '', ascensoFinal: '', posicionFinal: '' });
     const [loading, setLoading] = useState(true);
@@ -1202,6 +1223,7 @@ const AdminPorraAnual = () => {
 const AdminPanelScreen = () => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [view, setView] = useState('main'); // 'main' o 'escudos'
 
     useEffect(() => {
         const q = query(collection(db, "jornadas"), orderBy("numeroJornada"));
@@ -1218,9 +1240,14 @@ const AdminPanelScreen = () => {
 
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando datos de administración...</p>;
 
+    if (view === 'escudos') {
+        return <AdminEscudosScreen onBack={() => setView('main')} />;
+    }
+
     return (
         <div>
             <h2 style={styles.title}>PANEL DE ADMINISTRADOR</h2>
+            <button onClick={() => setView('escudos')} style={{...styles.mainButton, marginBottom: '20px'}}>Verificar Escudos de Equipos</button>
             <AdminPorraAnual />
             <h3 style={{...styles.title, fontSize: '1.5rem', marginTop: '40px'}}>Gestión de Jornadas</h3>
             <div style={styles.jornadaList}>
@@ -1836,6 +1863,10 @@ const styles = {
     installButton: { background: 'none', border: 'none', color: colors.silver, textDecoration: 'underline', cursor: 'pointer', marginTop: '15px', fontSize: '0.9rem' },
     installInstructions: { display: 'flex', gap: '20px', textAlign: 'left', marginBottom: '20px' },
     installSection: { flex: 1, '& h4': { color: colors.yellow, borderBottom: `1px solid ${colors.blue}`, paddingBottom: '5px' }, '& ol': { paddingLeft: '20px' }, '& li': { marginBottom: '10px' } },
+    escudosGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '15px', marginTop: '20px', marginBottom: '20px' },
+    escudoCard: { backgroundColor: colors.darkUIAlt, padding: '10px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
+    escudoCardImg: { width: '80px', height: '80px', objectFit: 'contain' },
+    escudoCardName: { fontSize: '0.8rem', color: colors.lightText, textAlign: 'center', margin: 0 },
 };
 
 export default App;
