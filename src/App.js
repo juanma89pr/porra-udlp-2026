@@ -32,44 +32,23 @@ const SECRET_MESSAGES = [
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
 
-// ============================================================================
-// --- FIX: URLs de los escudos de los equipos (CORREGIDAS Y VERIFICADAS) ---
-// Se han revisado una por una todas las URLs para asegurar que corresponden
-// al equipo correcto y provienen de una CDN fiable (a.espncdn.com).
-// ============================================================================
-const teamLogos = {
-    "UD Las Palmas": "https://a.espncdn.com/i/teamlogos/soccer/500/96.png",
-    "FC Andorra": "https://a.espncdn.com/i/teamlogos/soccer/500/1803.png",
-    "Córdoba CF": "https://a.espncdn.com/i/teamlogos/soccer/500/94.png",
-    "Málaga CF": "https://a.espncdn.com/i/teamlogos/soccer/500/97.png",
-    "Burgos CF": "https://a.espncdn.com/i/teamlogos/soccer/500/3811.png",
-    "Real Sociedad B": "https://a.espncdn.com/i/teamlogos/soccer/500/89.png",
-    "CD Leganés": "https://a.espncdn.com/i/teamlogos/soccer/500/3819.png",
-    "UD Almería": "https://a.espncdn.com/i/teamlogos/soccer/500/3810.png",
-    "Cádiz CF": "https://a.espncdn.com/i/teamlogos/soccer/500/3816.png",
-    "Granada CF": "https://a.espncdn.com/i/teamlogos/soccer/500/3818.png",
-    "SD Eibar": "https://a.espncdn.com/i/teamlogos/soccer/500/3815.png",
-    "SD Huesca": "https://a.espncdn.com/i/teamlogos/soccer/500/4022.png",
-    "Real Sporting de Gijón": "https://a.espncdn.com/i/teamlogos/soccer/500/90.png",
-    "Real Racing Club": "https://a.espncdn.com/i/teamlogos/soccer/500/3823.png",
-    "Real Valladolid CF": "https://a.espncdn.com/i/teamlogos/soccer/500/101.png",
-    "Albacete Balompié": "https://a.espncdn.com/i/teamlogos/soccer/500/3809.png",
-    "CD Castellón": "https://a.espncdn.com/i/teamlogos/soccer/500/3813.png",
-    "CD Mirandés": "https://a.espncdn.com/i/teamlogos/soccer/500/3821.png",
-    "AD Ceuta FC": "https://a.espncdn.com/i/teamlogos/soccer/500/10543.png",
-    "CyD Leonesa": "https://a.espncdn.com/i/teamlogos/soccer/500/3814.png",
-    "Real Zaragoza": "https://a.espncdn.com/i/teamlogos/soccer/500/92.png",
-    "RC Deportivo": "https://a.espncdn.com/i/teamlogos/soccer/500/85.png"
-};
+// Lista de equipos de la liga para la gestión de escudos
+const EQUIPOS_LIGA = [
+    "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF", 
+    "Real Sociedad B", "CD Leganés", "UD Almería", "Cádiz CF", "Granada CF", 
+    "SD Eibar", "SD Huesca", "Real Sporting de Gijón", "Real Racing Club", 
+    "Real Valladolid CF", "Albacete Balompié", "CD Castellón", "CD Mirandés", 
+    "AD Ceuta FC", "CyD Leonesa", "Real Zaragoza", "RC Deportivo"
+];
 
 
 // ============================================================================
 // --- COMPONENTES REUTILIZABLES Y DE ANIMACIÓN ---
 // ============================================================================
 
-const TeamDisplay = ({ teamName, shortName = false, imgStyle }) => (
+const TeamDisplay = ({ teamLogos, teamName, shortName = false, imgStyle }) => (
     <div style={styles.teamDisplay}>
-        <img src={teamLogos[teamName]} style={{...styles.teamLogo, ...imgStyle}} alt={`${teamName} logo`} onError={(e) => { e.target.src = 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'; }} />
+        <img src={teamLogos[teamName] || 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'} style={{...styles.teamLogo, ...imgStyle}} alt={`${teamName} logo`} onError={(e) => { e.target.src = 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'; }} />
         <span style={styles.teamNameText}>{shortName && teamName === "UD Las Palmas" ? "UDLP" : teamName}</span>
     </div>
 );
@@ -162,7 +141,7 @@ const InstallGuideModal = ({ onClose }) => {
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
 
-const InitialSplashScreen = ({ onFinish }) => {
+const InitialSplashScreen = ({ onFinish, teamLogos }) => {
     const [isPortrait, setIsPortrait] = useState(window.matchMedia("(orientation: portrait)").matches);
 
     useEffect(() => {
@@ -206,7 +185,7 @@ const OrientationLock = () => (
     </div>
 );
 
-const SplashScreen = ({ onEnter }) => {
+const SplashScreen = ({ onEnter, teamLogos }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
     const [loading, setLoading] = useState(true);
@@ -417,7 +396,7 @@ const LoginScreen = ({ onLogin }) => {
     );
 };
 
-const MiJornadaScreen = ({ user, setActiveTab }) => {
+const MiJornadaScreen = ({ user, setActiveTab, teamLogos }) => {
     const [jornadaActiva, setJornadaActiva] = useState(null);
     const [jornadaCerrada, setJornadaCerrada] = useState(null);
     const [proximaJornada, setProximaJornada] = useState(null);
@@ -658,11 +637,11 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
                             <div style={styles.formGroup}>
                                 <label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label>
                                 <div style={styles.resultInputContainer}>
-                                    <TeamBetDisplay teamName={jornadaActiva.equipoLocal} />
+                                    <TeamBetDisplay teamLogos={teamLogos} teamName={jornadaActiva.equipoLocal} />
                                     <input type="number" min="0" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} />
                                     <span style={styles.separator}>-</span>
                                     <input type="number" min="0" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} />
-                                    <TeamBetDisplay teamName={jornadaActiva.equipoVisitante} />
+                                    <TeamBetDisplay teamLogos={teamLogos} teamName={jornadaActiva.equipoVisitante} />
                                 </div>
                                 {(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}
                             </div>
@@ -683,7 +662,7 @@ const MiJornadaScreen = ({ user, setActiveTab }) => {
     );
 };
 
-const LaJornadaScreen = ({ onViewJornada }) => {
+const LaJornadaScreen = ({ teamLogos }) => {
     const [jornadaActiva, setJornadaActiva] = useState(null);
     const [jornadaCerrada, setJornadaCerrada] = useState(null);
     const [participantes, setParticipantes] = useState([]);
@@ -756,7 +735,7 @@ const LaJornadaScreen = ({ onViewJornada }) => {
     return (
         <div>
             <h2 style={styles.title}>LA JORNADA</h2>
-            {jornadaActiva ? (<div style={styles.laJornadaContainer}><h3>Jornada {jornadaActiva.numeroJornada}</h3><div style={styles.matchInfo}><TeamDisplay teamName={jornadaActiva.equipoLocal} shortName={true} imgStyle={styles.matchInfoLogo} /><span style={styles.vs}>VS</span><TeamDisplay teamName={jornadaActiva.equipoVisitante} imgStyle={styles.matchInfoLogo} /></div><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></div>) : jornadaCerrada ? (<div><h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3><p style={{textAlign: 'center'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div></div>) : (<div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>)}
+            {jornadaActiva ? (<div style={styles.laJornadaContainer}><h3>Jornada {jornadaActiva.numeroJornada}</h3><div style={styles.matchInfo}><TeamDisplay teamLogos={teamLogos} teamName={jornadaActiva.equipoLocal} shortName={true} imgStyle={styles.matchInfoLogo} /><span style={styles.vs}>VS</span><TeamDisplay teamLogos={teamLogos} teamName={jornadaActiva.equipoVisitante} imgStyle={styles.matchInfoLogo} /></div><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></div>) : jornadaCerrada ? (<div><h3 style={styles.formSectionTitle}>Resumen de Apuestas - Jornada {jornadaCerrada.numeroJornada}</h3><p style={{textAlign: 'center'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div></div>) : (<div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>)}
             
             <div style={styles.porraAnualContainer}>
                 <h3 style={styles.formSectionTitle}>⭐ PORRA ANUAL ⭐</h3>
@@ -1054,18 +1033,57 @@ const JornadaAdminItem = ({ jornada }) => {
 };
 
 // ============================================================================
-// --- NUEVO COMPONENTE: PANTALLA DE VERIFICACIÓN DE ESCUDOS ---
+// --- NUEVO COMPONENTE: PANTALLA DE GESTIÓN DE ESCUDOS ---
 // ============================================================================
-const AdminEscudosScreen = ({ onBack }) => {
-    const teamNames = Object.keys(teamLogos);
+const AdminEscudosManager = ({ onBack, teamLogos }) => {
+    const [urls, setUrls] = useState(teamLogos || {});
+    const [saving, setSaving] = useState({});
+
+    useEffect(() => {
+        setUrls(teamLogos || {});
+    }, [teamLogos]);
+
+    const handleUrlChange = (teamName, value) => {
+        setUrls(prev => ({ ...prev, [teamName]: value }));
+    };
+
+    const handleSave = async (teamName) => {
+        setSaving(prev => ({ ...prev, [teamName]: true }));
+        const docRef = doc(db, "configuracion", "escudos");
+        try {
+            await setDoc(docRef, { [teamName]: urls[teamName] }, { merge: true });
+        } catch (error) {
+            console.error("Error al guardar el escudo:", error);
+            alert("Error al guardar el escudo.");
+        } finally {
+            setSaving(prev => ({ ...prev, [teamName]: false }));
+        }
+    };
+
     return (
         <div style={styles.adminJornadaItem}>
-            <h3 style={styles.formSectionTitle}>Verificación de Escudos</h3>
+            <h3 style={styles.formSectionTitle}>Gestión de Escudos de Equipos</h3>
+            <p style={{textAlign: 'center', marginBottom: '20px'}}>Pega la URL de la imagen del escudo para cada equipo y pulsa "Guardar".</p>
             <div style={styles.escudosGrid}>
-                {teamNames.map(teamName => (
+                {EQUIPOS_LIGA.map(teamName => (
                     <div key={teamName} style={styles.escudoCard}>
-                        <img src={teamLogos[teamName]} style={styles.escudoCardImg} alt={teamName} onError={(e) => { e.target.src = 'https://placehold.co/80x80/e63946/ffffff?text=Error'; }} />
+                        <img 
+                            src={urls[teamName] || 'https://placehold.co/80x80/1b263b/e0e1dd?text=?'} 
+                            style={styles.escudoCardImg} 
+                            alt={teamName} 
+                            onError={(e) => { e.target.src = 'https://placehold.co/80x80/e63946/ffffff?text=Error'; }}
+                        />
                         <p style={styles.escudoCardName}>{teamName}</p>
+                        <input
+                            type="text"
+                            value={urls[teamName] || ''}
+                            onChange={(e) => handleUrlChange(teamName, e.target.value)}
+                            placeholder="Pega la URL del escudo aquí"
+                            style={styles.escudoInput}
+                        />
+                        <button onClick={() => handleSave(teamName)} disabled={saving[teamName]} style={styles.escudoSaveButton}>
+                            {saving[teamName] ? '...' : 'Guardar'}
+                        </button>
                     </div>
                 ))}
             </div>
@@ -1220,7 +1238,7 @@ const AdminPorraAnual = () => {
     );
 };
 
-const AdminPanelScreen = () => {
+const AdminPanelScreen = ({ teamLogos }) => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [view, setView] = useState('main'); // 'main' o 'escudos'
@@ -1241,13 +1259,13 @@ const AdminPanelScreen = () => {
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando datos de administración...</p>;
 
     if (view === 'escudos') {
-        return <AdminEscudosScreen onBack={() => setView('main')} />;
+        return <AdminEscudosManager onBack={() => setView('main')} teamLogos={teamLogos} />;
     }
 
     return (
         <div>
             <h2 style={styles.title}>PANEL DE ADMINISTRADOR</h2>
-            <button onClick={() => setView('escudos')} style={{...styles.mainButton, marginBottom: '20px'}}>Verificar Escudos de Equipos</button>
+            <button onClick={() => setView('escudos')} style={{...styles.mainButton, marginBottom: '20px'}}>Gestionar Escudos de Equipos</button>
             <AdminPorraAnual />
             <h3 style={{...styles.title, fontSize: '1.5rem', marginTop: '40px'}}>Gestión de Jornadas</h3>
             <div style={styles.jornadaList}>
@@ -1590,6 +1608,7 @@ function App() {
   const [viewingJornadaId, setViewingJornadaId] = useState(null);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [teamLogos, setTeamLogos] = useState({});
   
   const [porraAnualConfig, setPorraAnualConfig] = useState(null);
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
@@ -1634,10 +1653,18 @@ function App() {
         setPorraAnualConfig(doc.exists() ? doc.data() : null);
     });
 
+    const escudosRef = doc(db, "configuracion", "escudos");
+    const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => {
+        if (docSnap.exists()) {
+            setTeamLogos(docSnap.data());
+        }
+    });
+
     return () => {
         document.head.removeChild(styleSheet);
         unsubscribeConfig();
         unsubscribeAuth();
+        unsubscribeEscudos();
     }
   }, []);
 
@@ -1671,20 +1698,20 @@ function App() {
   const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
 
   const renderContent = () => {
-    if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} />;
-    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} />;
+    if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} teamLogos={teamLogos} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} />;
     if (screen === 'app') {
         const CurrentScreen = () => {
             if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} />;
             if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
             switch (activeTab) {
-                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} />;
-                case 'laJornada': return <LaJornadaScreen />;
+                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} />;
+                case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} />;
                 case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} />;
                 case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} />;
                 case 'pagos': return <PagosScreen user={currentUser} />;
-                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen /> : null;
+                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} /> : null;
                 default: return null;
             }
         };
@@ -1744,7 +1771,7 @@ const styles = {
     loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' },
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center' },
     splashLogoContainer: { marginBottom: '20px', },
-    splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain', },
+    splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain' },
     splashTitle: { 
         fontFamily: "'Teko', sans-serif", 
         fontSize: '4.5rem', 
@@ -1863,10 +1890,12 @@ const styles = {
     installButton: { background: 'none', border: 'none', color: colors.silver, textDecoration: 'underline', cursor: 'pointer', marginTop: '15px', fontSize: '0.9rem' },
     installInstructions: { display: 'flex', gap: '20px', textAlign: 'left', marginBottom: '20px' },
     installSection: { flex: 1, '& h4': { color: colors.yellow, borderBottom: `1px solid ${colors.blue}`, paddingBottom: '5px' }, '& ol': { paddingLeft: '20px' }, '& li': { marginBottom: '10px' } },
-    escudosGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '15px', marginTop: '20px', marginBottom: '20px' },
+    escudosGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px', marginTop: '20px', marginBottom: '20px' },
     escudoCard: { backgroundColor: colors.darkUIAlt, padding: '10px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     escudoCardImg: { width: '80px', height: '80px', objectFit: 'contain' },
-    escudoCardName: { fontSize: '0.8rem', color: colors.lightText, textAlign: 'center', margin: 0 },
+    escudoCardName: { fontSize: '0.9rem', color: colors.lightText, textAlign: 'center', margin: 0, fontWeight: 'bold' },
+    escudoInput: { width: '90%', padding: '8px', borderRadius: '4px', border: '1px solid #0055A4', backgroundColor: '#001d3d', color: '#f0f0f0', fontSize: '0.8rem' },
+    escudoSaveButton: { padding: '5px 10px', fontSize: '0.8rem', backgroundColor: colors.success, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginTop: '5px' },
 };
 
 export default App;
