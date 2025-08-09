@@ -76,8 +76,8 @@ const PLANTILLA_INICIAL = [
 ];
 
 // --- DATOS DE PERSONALIZACIÓN DE PERFIL ---
-const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#FFD700', '#C0C0C0', '#fca311', '#52b788', '#e63946'];
-const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '7️⃣', '🔟', '💥', '💯'];
+const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)'];
+const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🏃‍♂️', '🏃🏾‍♂️', '1️⃣', '7️⃣', '🔟', '🤑', '😈'];
 
 
 // ============================================================================
@@ -138,6 +138,28 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
 // ============================================================================
 // --- COMPONENTES REUTILIZABLES Y DE ANIMACIÓN ---
 // ============================================================================
+
+const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.lightText, style: customStyle = {} }) => {
+    const finalProfile = profile || {};
+    const color = finalProfile.color || defaultColor;
+    const icon = finalProfile.icon || '';
+
+    const isGradient = typeof color === 'string' && color.startsWith('linear-gradient');
+    
+    const style = {
+        ...customStyle,
+        ...(isGradient
+            ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', display: 'inline-block' }
+            : { color: color }
+        )
+    };
+
+    return (
+        <span style={style}>
+            {icon && `${icon} `}{name}
+        </span>
+    );
+};
 
 const LiveBanner = ({ liveData, jornada }) => {
     if (!jornada || !liveData || !liveData.isLive) return null;
@@ -836,7 +858,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             {showJokerAnimation && <JokerAnimation />}
             <h2 style={styles.title}>MI JORNADA</h2>
             <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>
-                Bienvenido, <strong style={{color: userProfile.color || styles.colors.yellow}}>{user}</strong> {userProfile.icon}
+                Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} />
             </p>
             
             {liveData && liveData.isLive && currentJornada?.estado === 'Cerrada' && (
@@ -959,14 +981,14 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles }) => {
                         <>
                             <div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div>
                             <h3 style={styles.callToAction}>¡Hagan sus porras!</h3>
-                            <div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; const profile = userProfiles[jugador] || {}; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{profile.icon} {jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div>
+                            <div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; const profile = userProfiles[jugador] || {}; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}><PlayerProfileDisplay name={jugador} profile={profile} /> {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div>
                         </>
                     )}
                     
                     {jornadaActual.estado === 'Cerrada' && !isLiveView && (
                         <div>
                             <p style={{textAlign: 'center', marginTop: '20px'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p>
-                            <div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => { const profile = userProfiles[p.id] || {}; return (<div key={p.id} style={styles.resumenJugador}><h4 style={{...styles.resumenJugadorTitle, color: profile.color || styles.colors.yellow}}>{profile.icon} {p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>)})}</div>
+                            <div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => { const profile = userProfiles[p.id] || {}; return (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}><PlayerProfileDisplay name={p.id} profile={profile} defaultColor={styles.colors.yellow} /> {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>)})}</div>
                         </div>
                     )}
                     
@@ -987,7 +1009,7 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles }) => {
                                         return (
                                             <tr key={jugador.id} style={jugador.puntos > 0 && provisionalRanking[0].puntos === jugador.puntos ? styles.provisionalWinnerRow : styles.tr}>
                                                 <td style={styles.tdRank}>{index + 1}º</td>
-                                                <td style={{...styles.td, color: profile.color || styles.colors.lightText}}>{profile.icon} {jugador.id}</td>
+                                                <td style={styles.td}><PlayerProfileDisplay name={jugador.id} profile={profile} /></td>
                                                 <td style={styles.td}>{jugador.puntos}</td>
                                             </tr>
                                         )
@@ -1012,7 +1034,7 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles }) => {
                                 const profile = userProfiles[p.id] || {};
                                 return (
                                 <div key={p.id} style={styles.resumenJugador}>
-                                    <h4 style={{...styles.resumenJugadorTitle, color: profile.color || styles.colors.yellow}}>{profile.icon} {p.id}</h4>
+                                    <h4 style={styles.resumenJugadorTitle}><PlayerProfileDisplay name={p.id} profile={profile} defaultColor={styles.colors.yellow} /></h4>
                                     <div style={styles.resumenJugadorBets}>
                                         <p><strong>¿Asciende?:</strong> <span style={{color: p.ascenso === 'SI' ? styles.colors.success : styles.colors.danger, fontWeight: 'bold'}}>{p.ascenso}</span></p>
                                         <p><strong>Posición Final:</strong> <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{p.posicion}º</span></p>
@@ -1241,7 +1263,10 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
                             return (
                             <tr key={jugador.id} style={getRankStyle(index, jugador.id)}>
                                 <td style={styles.tdRank}>{getRankIcon(index)}</td>
-                                <td style={{...styles.td, color: profile.color || styles.colors.lightText}}>{profile.icon} {jugador.jugador || jugador.id} {rachas[jugador.id]}</td>
+                                <td style={styles.td}>
+                                    <PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} />
+                                    {rachas[jugador.id]}
+                                </td>
                                 {isLive && <td style={{...styles.td, color: styles.colors.gold, fontWeight: 'bold'}}><AnimatedPoints value={jugador.puntosEnVivo} /></td>}
                                 <td style={styles.td}><AnimatedPoints value={jugador.puntosTotales} /></td>
                                 <td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>
@@ -1837,7 +1862,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
                                 if (!p) {
                                     return (
                                         <tr key={jugadorId} style={styles.tr}>
-                                            <td style={{...styles.td, color: profile.color || styles.colors.lightText}}>{profile.icon} {jugadorId}</td>
+                                            <td style={styles.td}><PlayerProfileDisplay name={jugadorId} profile={profile} /></td>
                                             <td colSpan="3" style={{...styles.td, fontStyle: 'italic', opacity: 0.6, textAlign: 'center' }}>
                                                 No ha realizado pronóstico
                                             </td>
@@ -1850,7 +1875,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
                                     return (
                                         <React.Fragment key={p.id}>
                                             <tr style={esGanador ? styles.winnerRow : styles.tr}>
-                                                <td style={{...styles.td, color: profile.color || styles.colors.lightText}}>{profile.icon} {p.id} {p.jokerActivo && '🃏'}</td>
+                                                <td style={styles.td}><PlayerProfileDisplay name={p.id} profile={profile} /> {p.jokerActivo && '🃏'}</td>
                                                 <td style={styles.td}>{p.golesLocal}-{p.golesVisitante} ({p.resultado1x2 || 'N/A'}) {p.goleador && `- ${p.goleador}`} {!p.goleador && p.sinGoleador && '- SG'}</td>
                                                 <td style={styles.td}>{p.puntosObtenidos === undefined ? '-' : p.puntosObtenidos}</td>
                                                 <td style={styles.td}>{p.pagado ? '✅' : '❌'}</td>
@@ -1875,7 +1900,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
                                     const secretMessage = SECRET_MESSAGES[index % SECRET_MESSAGES.length];
                                     return (
                                          <tr key={p.id} style={styles.tr}>
-                                            <td style={{...styles.td, color: profile.color || styles.colors.lightText}}>{profile.icon} {p.id} {p.jokerActivo && '🃏'}</td>
+                                            <td style={styles.td}><PlayerProfileDisplay name={p.id} profile={profile} /> {p.jokerActivo && '🃏'}</td>
                                             <td style={styles.td}>{secretMessage}</td>
                                             <td style={styles.td}>-</td>
                                             <td style={styles.td}>-</td>
@@ -2113,13 +2138,21 @@ const ProfileCustomizationScreen = ({ user, onSave }) => {
             <div style={styles.formGroup}>
                 <label style={styles.label}>1. ELIGE TU COLOR</label>
                 <div style={styles.colorGrid}>
-                    {PROFILE_COLORS.map(color => (
-                        <div 
-                            key={color} 
-                            style={{...styles.colorOption, backgroundColor: color, ...(selectedColor === color ? styles.colorOptionSelected : {})}}
-                            onClick={() => setSelectedColor(color)}
-                        />
-                    ))}
+                    {PROFILE_COLORS.map(color => {
+                        const isGradient = typeof color === 'string' && color.startsWith('linear-gradient');
+                        const style = {
+                            ...styles.colorOption,
+                            ...(isGradient ? { background: color } : { backgroundColor: color }),
+                            ...(selectedColor === color ? styles.colorOptionSelected : {})
+                        };
+                        return (
+                            <div 
+                                key={color} 
+                                style={style}
+                                onClick={() => setSelectedColor(color)}
+                            />
+                        );
+                    })}
                 </div>
             </div>
 
@@ -2140,9 +2173,11 @@ const ProfileCustomizationScreen = ({ user, onSave }) => {
 
             <div style={{textAlign: 'center', marginTop: '40px'}}>
                 <p style={{fontSize: '1.2rem', marginBottom: '10px'}}>Así se verá tu perfil:</p>
-                <span style={{...styles.profilePreview, color: selectedColor}}>
-                    {selectedIcon} {user}
-                </span>
+                <PlayerProfileDisplay 
+                    name={user} 
+                    profile={{ color: selectedColor, icon: selectedIcon }} 
+                    style={styles.profilePreview}
+                />
             </div>
 
             <button onClick={handleSave} disabled={isSaving} style={{...styles.mainButton, width: '100%'}}>
@@ -2298,8 +2333,10 @@ function App() {
   const handleLogin = async (user) => {
       setCurrentUser(user);
 
-      const userProfile = userProfiles[user];
-      if (userProfile && userProfile.icon && userProfile.color) {
+      const userProfileRef = doc(db, "clasificacion", user);
+      const docSnap = await getDoc(userProfileRef);
+
+      if (docSnap.exists() && docSnap.data().icon && docSnap.data().color) {
           setScreen('app');
       } else {
           setScreen('customizeProfile');
