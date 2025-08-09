@@ -243,9 +243,8 @@ const InitialSplashScreen = ({ onFinish }) => {
     useEffect(() => {
         const timer = setTimeout(() => {
             setFadingOut(true);
-            // Esperar a que termine la animación de fadeOut para llamar a onFinish
             setTimeout(onFinish, 500); 
-        }, 2500); // ** TIEMPO REDUCIDO **
+        }, 2500);
         return () => clearTimeout(timer);
     }, [onFinish]);
 
@@ -266,7 +265,6 @@ const InitialSplashScreen = ({ onFinish }) => {
     );
 };
 
-// ** NUEVO: Pantalla de sugerencia de orientación **
 const OrientationSuggestion = ({ onContinue }) => {
     return (
         <div style={{...styles.initialSplashContainer, ...styles.fadeIn}}>
