@@ -23,9 +23,7 @@ const auth = getAuth(app);
 const messaging = getMessaging(app);
 
 // --- CLAVE VAPID PARA NOTIFICACIONES ---
-// IMPORTANTE: Esta clave la obtienes desde tu consola de Firebase
-// Ve a Configuración del proyecto > Cloud Messaging > Certificados push web > Generar un par de claves
-const VAPID_KEY = "BBLY_q-5_1j-VqgCgA-WJ-a-j_..._AQUÍ_VA_TU_CLAVE_..._g-eE";
+const VAPID_KEY = "TU_VAPID_KEY_DE_FIREBASE_AQUÍ";
 
 
 // --- DATOS DE LA APLICACIÓN ---
@@ -76,6 +74,10 @@ const PLANTILLA_INICIAL = [
     { dorsal: 9, nombre: "Marc Cardona" },
     { dorsal: 17, nombre: "Jaime Mata" }
 ];
+
+// --- DATOS DE PERSONALIZACIÓN DE PERFIL ---
+const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#FFD700', '#C0C0C0', '#fca311', '#52b788', '#e63946'];
+const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '7️⃣', '🔟', '💥', '💯'];
 
 
 // ============================================================================
@@ -525,7 +527,7 @@ const LoginScreen = ({ onLogin }) => {
     );
 };
 
-const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla }) => {
+const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
     const [pronostico, setPronostico] = useState({ golesLocal: '', golesVisitante: '', resultado1x2: '', goleador: '', sinGoleador: false, pin: '', jokerActivo: false, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) });
@@ -541,6 +543,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla })
     const [jokerStats, setJokerStats] = useState(Array(10).fill(null));
     const [showJokerAnimation, setShowJokerAnimation] = useState(false);
     const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
+    
+    const userProfile = userProfiles[user] || {};
 
     useEffect(() => {
         setLoading(true);
@@ -831,7 +835,9 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla })
         <div>
             {showJokerAnimation && <JokerAnimation />}
             <h2 style={styles.title}>MI JORNADA</h2>
-            <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <strong style={{color: styles.colors.yellow}}>{user}</strong>.</p>
+            <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>
+                Bienvenido, <strong style={{color: userProfile.color || styles.colors.yellow}}>{user}</strong> {userProfile.icon}
+            </p>
             
             {liveData && liveData.isLive && currentJornada?.estado === 'Cerrada' && (
                 <div style={styles.liveInfoBox}>
@@ -850,7 +856,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla })
     );
 };
 
-const LaJornadaScreen = ({ teamLogos, liveData }) => {
+const LaJornadaScreen = ({ teamLogos, liveData, userProfiles }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
     const [participantes, setParticipantes] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -953,14 +959,14 @@ const LaJornadaScreen = ({ teamLogos, liveData }) => {
                         <>
                             <div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div>
                             <h3 style={styles.callToAction}>¡Hagan sus porras!</h3>
-                            <div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div>
+                            <div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; const profile = userProfiles[jugador] || {}; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{profile.icon} {jugador} {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div>
                         </>
                     )}
                     
                     {jornadaActual.estado === 'Cerrada' && !isLiveView && (
                         <div>
                             <p style={{textAlign: 'center', marginTop: '20px'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p>
-                            <div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}>{p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>))}</div>
+                            <div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => { const profile = userProfiles[p.id] || {}; return (<div key={p.id} style={styles.resumenJugador}><h4 style={{...styles.resumenJugadorTitle, color: profile.color || styles.colors.yellow}}>{profile.icon} {p.id} {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>)})}</div>
                         </div>
                     )}
                     
@@ -976,13 +982,16 @@ const LaJornadaScreen = ({ teamLogos, liveData }) => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {provisionalRanking.map((jugador, index) => (
-                                        <tr key={jugador.id} style={jugador.puntos > 0 && provisionalRanking[0].puntos === jugador.puntos ? styles.provisionalWinnerRow : styles.tr}>
-                                            <td style={styles.tdRank}>{index + 1}º</td>
-                                            <td style={styles.td}>{jugador.id}</td>
-                                            <td style={styles.td}>{jugador.puntos}</td>
-                                        </tr>
-                                    ))}
+                                    {provisionalRanking.map((jugador, index) => {
+                                        const profile = userProfiles[jugador.id] || {};
+                                        return (
+                                            <tr key={jugador.id} style={jugador.puntos > 0 && provisionalRanking[0].puntos === jugador.puntos ? styles.provisionalWinnerRow : styles.tr}>
+                                                <td style={styles.tdRank}>{index + 1}º</td>
+                                                <td style={{...styles.td, color: profile.color || styles.colors.lightText}}>{profile.icon} {jugador.id}</td>
+                                                <td style={styles.td}>{jugador.puntos}</td>
+                                            </tr>
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -999,16 +1008,18 @@ const LaJornadaScreen = ({ teamLogos, liveData }) => {
                     <div>
                         <p style={{textAlign: 'center'}}>Apuestas cerradas. Estos son los pronósticos para final de temporada:</p>
                         <div style={styles.resumenContainer}>
-                            {pronosticosAnuales.sort((a, b) => a.id.localeCompare(b.id)).map(p => (
+                            {pronosticosAnuales.sort((a, b) => a.id.localeCompare(b.id)).map(p => {
+                                const profile = userProfiles[p.id] || {};
+                                return (
                                 <div key={p.id} style={styles.resumenJugador}>
-                                    <h4 style={styles.resumenJugadorTitle}>{p.id}</h4>
+                                    <h4 style={{...styles.resumenJugadorTitle, color: profile.color || styles.colors.yellow}}>{profile.icon} {p.id}</h4>
                                     <div style={styles.resumenJugadorBets}>
                                         <p><strong>¿Asciende?:</strong> <span style={{color: p.ascenso === 'SI' ? styles.colors.success : styles.colors.danger, fontWeight: 'bold'}}>{p.ascenso}</span></p>
                                         <p><strong>Posición Final:</strong> <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{p.posicion}º</span></p>
                                         {porraAnualConfig.estado === 'Finalizada' && <p><strong>Puntos Obtenidos:</strong> <span style={{fontWeight: 'bold', color: styles.colors.gold}}>{p.puntosObtenidos || 0}</span></p>}
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     </div>
                 )}
@@ -1091,7 +1102,7 @@ const AnimatedPoints = ({ value }) => {
     return <span>{currentValue}</span>;
 };
 
-const ClasificacionScreen = ({ currentUser, liveData, liveJornada }) => {
+const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles }) => {
     const [clasificacion, setClasificacion] = useState([]);
     const [loading, setLoading] = useState(true);
     const [rachas, setRachas] = useState({});
@@ -1225,17 +1236,19 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada }) => {
                         </tr>
                     </thead>
                     <tbody>
-                        {liveClasificacion.map((jugador, index) => (
+                        {liveClasificacion.map((jugador, index) => {
+                            const profile = userProfiles[jugador.id] || {};
+                            return (
                             <tr key={jugador.id} style={getRankStyle(index, jugador.id)}>
                                 <td style={styles.tdRank}>{getRankIcon(index)}</td>
-                                <td style={styles.td}>{jugador.jugador || jugador.id} {rachas[jugador.id]}</td>
+                                <td style={{...styles.td, color: profile.color || styles.colors.lightText}}>{profile.icon} {jugador.jugador || jugador.id} {rachas[jugador.id]}</td>
                                 {isLive && <td style={{...styles.td, color: styles.colors.gold, fontWeight: 'bold'}}><AnimatedPoints value={jugador.puntosEnVivo} /></td>}
                                 <td style={styles.td}><AnimatedPoints value={jugador.puntosTotales} /></td>
                                 <td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>
                                     {jugador.jokersRestantes !== undefined ? jugador.jokersRestantes : 2} 🃏
                                 </td>
                             </tr>
-                        ))}
+                        )})}
                     </tbody>
                 </table>
             </div>
@@ -1750,7 +1763,7 @@ const AdminPanelScreen = ({ teamLogos }) => {
     );
 };
 
-const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos }) => {
+const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) => {
     const [jornada, setJornada] = useState(null);
     const [pronosticos, setPronosticos] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1819,11 +1832,12 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos }) => {
                         <tbody>
                             {JUGADORES.map((jugadorId, index) => {
                                 const p = pronosticosMap[jugadorId];
+                                const profile = userProfiles[jugadorId] || {};
 
                                 if (!p) {
                                     return (
                                         <tr key={jugadorId} style={styles.tr}>
-                                            <td style={styles.td}>{jugadorId}</td>
+                                            <td style={{...styles.td, color: profile.color || styles.colors.lightText}}>{profile.icon} {jugadorId}</td>
                                             <td colSpan="3" style={{...styles.td, fontStyle: 'italic', opacity: 0.6, textAlign: 'center' }}>
                                                 No ha realizado pronóstico
                                             </td>
@@ -1836,7 +1850,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos }) => {
                                     return (
                                         <React.Fragment key={p.id}>
                                             <tr style={esGanador ? styles.winnerRow : styles.tr}>
-                                                <td style={styles.td}>{p.id} {p.jokerActivo && '🃏'}</td>
+                                                <td style={{...styles.td, color: profile.color || styles.colors.lightText}}>{profile.icon} {p.id} {p.jokerActivo && '🃏'}</td>
                                                 <td style={styles.td}>{p.golesLocal}-{p.golesVisitante} ({p.resultado1x2 || 'N/A'}) {p.goleador && `- ${p.goleador}`} {!p.goleador && p.sinGoleador && '- SG'}</td>
                                                 <td style={styles.td}>{p.puntosObtenidos === undefined ? '-' : p.puntosObtenidos}</td>
                                                 <td style={styles.td}>{p.pagado ? '✅' : '❌'}</td>
@@ -1861,7 +1875,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos }) => {
                                     const secretMessage = SECRET_MESSAGES[index % SECRET_MESSAGES.length];
                                     return (
                                          <tr key={p.id} style={styles.tr}>
-                                            <td style={styles.td}>{p.id} {p.jokerActivo && '🃏'}</td>
+                                            <td style={{...styles.td, color: profile.color || styles.colors.lightText}}>{profile.icon} {p.id} {p.jokerActivo && '🃏'}</td>
                                             <td style={styles.td}>{secretMessage}</td>
                                             <td style={styles.td}>-</td>
                                             <td style={styles.td}>-</td>
@@ -2078,6 +2092,66 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
     );
 };
 
+const ProfileCustomizationScreen = ({ user, onSave }) => {
+    const [selectedColor, setSelectedColor] = useState(PROFILE_COLORS[0]);
+    const [selectedIcon, setSelectedIcon] = useState(PROFILE_ICONS[0]);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        await onSave(user, { color: selectedColor, icon: selectedIcon });
+        // No es necesario setIsSaving(false) porque el componente se desmontará
+    };
+
+    return (
+        <div style={styles.profileCustomizationContainer}>
+            <h2 style={styles.title}>¡BIENVENIDO, {user}!</h2>
+            <p style={{textAlign: 'center', marginBottom: '30px', fontSize: '1.1rem'}}>
+                Personaliza tu perfil para que todos te reconozcan.
+            </p>
+
+            <div style={styles.formGroup}>
+                <label style={styles.label}>1. ELIGE TU COLOR</label>
+                <div style={styles.colorGrid}>
+                    {PROFILE_COLORS.map(color => (
+                        <div 
+                            key={color} 
+                            style={{...styles.colorOption, backgroundColor: color, ...(selectedColor === color ? styles.colorOptionSelected : {})}}
+                            onClick={() => setSelectedColor(color)}
+                        />
+                    ))}
+                </div>
+            </div>
+
+            <div style={styles.formGroup}>
+                <label style={styles.label}>2. ELIGE TU ICONO</label>
+                <div style={styles.iconGrid}>
+                    {PROFILE_ICONS.map(icon => (
+                        <div 
+                            key={icon}
+                            style={{...styles.iconOption, ...(selectedIcon === icon ? styles.iconOptionSelected : {})}}
+                            onClick={() => setSelectedIcon(icon)}
+                        >
+                            {icon}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div style={{textAlign: 'center', marginTop: '40px'}}>
+                <p style={{fontSize: '1.2rem', marginBottom: '10px'}}>Así se verá tu perfil:</p>
+                <span style={{...styles.profilePreview, color: selectedColor}}>
+                    {selectedIcon} {user}
+                </span>
+            </div>
+
+            <button onClick={handleSave} disabled={isSaving} style={{...styles.mainButton, width: '100%'}}>
+                {isSaving ? 'GUARDANDO...' : 'GUARDAR Y ENTRAR'}
+            </button>
+        </div>
+    );
+};
+
 
 function App() {
   const [showInitialSplash, setShowInitialSplash] = useState(true);
@@ -2095,6 +2169,7 @@ function App() {
   const [liveJornada, setLiveJornada] = useState(null);
   const [plantilla, setPlantilla] = useState([]);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [userProfiles, setUserProfiles] = useState({});
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -2176,6 +2251,16 @@ function App() {
         }
     });
 
+    // Escuchar perfiles de todos los usuarios
+    const clasificacionRef = collection(db, "clasificacion");
+    const unsubscribeProfiles = onSnapshot(clasificacionRef, (snapshot) => {
+        const profiles = {};
+        snapshot.forEach(doc => {
+            profiles[doc.id] = doc.data();
+        });
+        setUserProfiles(profiles);
+    });
+
 
     return () => {
         document.head.removeChild(styleSheet);
@@ -2184,6 +2269,7 @@ function App() {
         unsubscribeEscudos();
         unsubscribeLive();
         unsubscribePlantilla();
+        unsubscribeProfiles();
     }
   }, []);
   
@@ -2211,7 +2297,13 @@ function App() {
 
   const handleLogin = async (user) => {
       setCurrentUser(user);
-      setScreen('app');
+
+      const userProfile = userProfiles[user];
+      if (userProfile && userProfile.icon && userProfile.color) {
+          setScreen('app');
+      } else {
+          setScreen('customizeProfile');
+      }
       
       if ('Notification' in window && Notification.permission === 'default') {
           setShowNotificationModal(true);
@@ -2239,6 +2331,12 @@ function App() {
       }
   };
 
+  const handleSaveProfile = async (user, profileData) => {
+      const profileRef = doc(db, "clasificacion", user);
+      await setDoc(profileRef, profileData, { merge: true });
+      setScreen('app');
+  };
+
   const handleNavClick = (tab) => { setViewingJornadaId(null); setViewingPorraAnual(false); setActiveTab(tab); if (tab !== 'admin') { setIsAdminAuthenticated(false); } };
   const handleAdminClick = () => { if (isAdminAuthenticated) { setActiveTab('admin'); } else { setShowAdminLogin(true); } };
   const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
@@ -2248,15 +2346,16 @@ function App() {
     if (showOrientationSuggestion) return <OrientationSuggestion onContinue={() => setShowOrientationSuggestion(false)} />;
     if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} />;
+    if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} />;
     if (screen === 'app') {
         const CurrentScreen = () => {
-            if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} teamLogos={teamLogos} />;
+            if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} teamLogos={teamLogos} userProfiles={userProfiles} />;
             if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
             switch (activeTab) {
-                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} plantilla={plantilla} />;
-                case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} liveData={liveJornada?.liveData} />;
+                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} plantilla={plantilla} userProfiles={userProfiles} />;
+                case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} liveData={liveJornada?.liveData} userProfiles={userProfiles} />;
                 case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
-                case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} />;
+                case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} userProfiles={userProfiles} />;
                 case 'pagos': return <PagosScreen user={currentUser} />;
                 case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} /> : null;
                 default: return null;
@@ -2479,6 +2578,14 @@ const styles = {
     plantillaInput: { flex: 1, padding: '8px', border: `1px solid ${colors.blue}`, borderRadius: '4px', backgroundColor: colors.deepBlue, color: colors.lightText },
     plantillaDorsalInput: { width: '50px' },
     plantillaDeleteButton: { padding: '8px 12px', border: 'none', borderRadius: '4px', backgroundColor: colors.danger, color: 'white', cursor: 'pointer' },
+    profileCustomizationContainer: { display: 'flex', flexDirection: 'column', height: '100%' },
+    colorGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: '15px', marginTop: '10px' },
+    colorOption: { width: '50px', height: '50px', borderRadius: '50%', cursor: 'pointer', transition: 'transform 0.2s ease, box-shadow 0.2s ease', border: '2px solid transparent' },
+    colorOptionSelected: { transform: 'scale(1.1)', boxShadow: `0 0 15px #fff`, border: '2px solid white' },
+    iconGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: '15px', marginTop: '10px' },
+    iconOption: { width: '50px', height: '50px', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '2rem', backgroundColor: 'rgba(0,0,0,0.2)', transition: 'background-color 0.2s ease' },
+    iconOptionSelected: { backgroundColor: colors.blue },
+    profilePreview: { fontSize: '2rem', fontWeight: 'bold', fontFamily: "'Orbitron', sans-serif", padding: '10px 20px', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', display: 'inline-block' }
 };
 
 export default App;
