@@ -237,16 +237,21 @@ const InstallGuideModal = ({ onClose }) => {
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
 
-const InitialSplashScreen = ({ onFinish, teamLogos }) => {
+const InitialSplashScreen = ({ onFinish }) => {
+    const [fadingOut, setFadingOut] = useState(false);
+
     useEffect(() => {
-        const timer = setTimeout(() => onFinish(), 4000);
+        const timer = setTimeout(() => {
+            setFadingOut(true);
+            // Esperar a que termine la animación de fadeOut para llamar a onFinish
+            setTimeout(onFinish, 500); 
+        }, 2500); // ** TIEMPO REDUCIDO **
         return () => clearTimeout(timer);
     }, [onFinish]);
 
     return (
-        <div style={styles.initialSplashContainer}>
-            <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
-            {/* ** NUEVO: Título rediseñado y centrado ** */}
+        <div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}>
+            <img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} />
             <div style={styles.splashTitleContainer}>
                 <span style={styles.splashTitle}>PORRA UDLP</span>
                 <span style={styles.splashYear}>2026</span>
@@ -256,6 +261,20 @@ const InitialSplashScreen = ({ onFinish, teamLogos }) => {
                     <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
                 </svg>
                 <p>Cargando apuestas...</p>
+            </div>
+        </div>
+    );
+};
+
+// ** NUEVO: Pantalla de sugerencia de orientación **
+const OrientationSuggestion = ({ onContinue }) => {
+    return (
+        <div style={{...styles.initialSplashContainer, ...styles.fadeIn}}>
+            <div style={styles.orientationSuggestionBox}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: styles.colors.yellow}}><path d="M16.4 3.6a9 9 0 0 1 0 16.8M3.6 7.6a9 9 0 0 1 16.8 0"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="m15 5-3 3-3-3"/></svg>
+                <h3 style={styles.splashInfoTitle}>¡Consejo!</h3>
+                <p>Para una mejor experiencia visual, te recomendamos girar tu dispositivo a modo horizontal.</p>
+                <button onClick={onContinue} style={{...styles.mainButton, marginTop: '30px'}}>ENTENDIDO</button>
             </div>
         </div>
     );
@@ -445,7 +464,7 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
             {showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}
             <div style={styles.splashContainer}>
                 <div style={styles.splashLogoContainer}>
-                    <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas Logo" style={styles.splashLogo} />
+                    <img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} />
                     <div style={styles.splashTitleContainer}>
                         <span style={styles.splashTitle}>PORRA UDLP</span>
                         <span style={styles.splashYear}>2026</span>
@@ -2033,6 +2052,7 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
 
 function App() {
   const [showInitialSplash, setShowInitialSplash] = useState(true);
+  const [showOrientationSuggestion, setShowOrientationSuggestion] = useState(false);
   const [screen, setScreen] = useState('splash');
   const [activeTab, setActiveTab] = useState('miJornada');
   const [currentUser, setCurrentUser] = useState(null);
@@ -2055,7 +2075,6 @@ function App() {
 
     const styleSheet = document.createElement("style");
     styleSheet.type = "text/css";
-    // ** NUEVO: Añadida la fuente Russo One para el año **
     styleSheet.innerText = `
       @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap');
       @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
@@ -2150,7 +2169,8 @@ function App() {
   const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
 
   const renderContent = () => {
-    if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} teamLogos={teamLogos} />;
+    if (showInitialSplash) return <InitialSplashScreen onFinish={() => {setShowInitialSplash(false); setShowOrientationSuggestion(true);}} />;
+    if (showOrientationSuggestion) return <OrientationSuggestion onContinue={() => setShowOrientationSuggestion(false)} />;
     if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} />;
     if (screen === 'app') {
@@ -2217,12 +2237,14 @@ const styles = {
     title: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', borderBottom: `2px solid ${colors.yellow}`, paddingBottom: '10px', marginBottom: '25px', textShadow: `0 0 10px ${colors.yellow}90`, fontSize: 'clamp(1.5rem, 5vw, 1.8rem)' },
     mainButton: { fontFamily: "'Orbitron', sans-serif", padding: '10px 25px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.darkText, marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: `0 0 15px ${colors.yellow}50`, ':hover': { backgroundColor: 'transparent', color: colors.yellow, transform: 'scale(1.05)' } },
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
-    initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: colors.deepBlue, animation: 'fadeIn 1s ease' },
+    initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: colors.deepBlue, animation: 'fadeIn 0.5s ease', transition: 'opacity 0.5s ease' },
+    fadeOut: { opacity: 0 },
+    fadeIn: { animation: 'fadeIn 0.5s ease' },
+    orientationSuggestionBox: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', textAlign: 'center', padding: '20px', maxWidth: '400px' },
     loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', fontFamily: "'Exo 2', sans-serif" },
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center' },
     splashLogoContainer: { marginBottom: '20px', },
     splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain' },
-    // ** NUEVO: Estilos para el título rediseñado **
     splashTitleContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 0.8 },
     splashTitle: { 
         fontFamily: "'Teko', sans-serif", 
