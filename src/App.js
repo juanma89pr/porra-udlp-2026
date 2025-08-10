@@ -76,7 +76,7 @@ const PLANTILLA_INICIAL = [
 ];
 
 // --- DATOS DE PERSONALIZACIÓN DE PERFIL ---
-const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)'];
+const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)', 'linear-gradient(45deg, #e63946, #fca311)', 'linear-gradient(45deg, #52b788, #9b59b6)'];
 const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🏃‍♂️', '🏃🏾‍♂️', '1️⃣', '7️⃣', '🔟', '🤑', '😈'];
 
 
@@ -146,17 +146,17 @@ const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.ligh
 
     const isGradient = typeof color === 'string' && color.startsWith('linear-gradient');
     
-    const style = {
-        ...customStyle,
+    const nameStyle = {
         ...(isGradient
-            ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', display: 'inline-block' }
+            ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }
             : { color: color }
         )
     };
 
     return (
-        <span style={style}>
-            {icon && `${icon} `}{name}
+        <span style={{...customStyle, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            {icon && <span>{icon}</span>}
+            <span style={nameStyle}>{name}</span>
         </span>
     );
 };
@@ -537,13 +537,33 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
     );
 };
 
-const LoginScreen = ({ onLogin }) => {
+const LoginScreen = ({ onLogin, userProfiles }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     return (
         <div style={styles.loginContainer}>
             <h2 style={styles.title}>SELECCIONA TU PERFIL</h2>
             <div style={styles.userList}>
-                {JUGADORES.map(jugador => (<button key={jugador} onClick={() => onLogin(jugador)} style={hoveredUser === jugador ? {...styles.userButton, ...styles.userButtonHover} : styles.userButton} onMouseEnter={() => setHoveredUser(jugador)} onMouseLeave={() => setHoveredUser(null)}>{jugador}</button>))}
+                {JUGADORES.map(jugador => {
+                    const profile = userProfiles[jugador] || {};
+                    const isGradient = typeof profile.color === 'string' && profile.color.startsWith('linear-gradient');
+                    
+                    const buttonStyle = {
+                        ...styles.userButton,
+                        ...(hoveredUser === jugador ? styles.userButtonHover : {})
+                    };
+
+                    const circleStyle = {
+                        ...styles.loginProfileIconCircle,
+                        ...(isGradient ? { background: profile.color } : { backgroundColor: profile.color || styles.colors.blue })
+                    };
+
+                    return (
+                        <button key={jugador} onClick={() => onLogin(jugador)} style={buttonStyle} onMouseEnter={() => setHoveredUser(jugador)} onMouseLeave={() => setHoveredUser(null)}>
+                            <div style={circleStyle}>{profile.icon || '?'}</div>
+                            <span>{jugador}</span>
+                        </button>
+                    );
+                })}
             </div>
         </div>
     );
@@ -2117,9 +2137,9 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
     );
 };
 
-const ProfileCustomizationScreen = ({ user, onSave }) => {
-    const [selectedColor, setSelectedColor] = useState(PROFILE_COLORS[0]);
-    const [selectedIcon, setSelectedIcon] = useState(PROFILE_ICONS[0]);
+const ProfileCustomizationScreen = ({ user, onSave, userProfile }) => {
+    const [selectedColor, setSelectedColor] = useState(userProfile.color || PROFILE_COLORS[0]);
+    const [selectedIcon, setSelectedIcon] = useState(userProfile.icon || PROFILE_ICONS[0]);
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSave = async () => {
@@ -2182,6 +2202,52 @@ const ProfileCustomizationScreen = ({ user, onSave }) => {
 
             <button onClick={handleSave} disabled={isSaving} style={{...styles.mainButton, width: '100%'}}>
                 {isSaving ? 'GUARDANDO...' : 'GUARDAR Y ENTRAR'}
+            </button>
+        </div>
+    );
+};
+
+const ProfileScreen = ({ user, userProfile, onEdit, onBack }) => {
+    // Aquí iría la lógica para calcular las estadísticas.
+    // De momento, mostramos datos de ejemplo.
+    const stats = {
+        porrasGanadas: 3,
+        resultadoMasRepetido: "2-1",
+        goleadorFavorito: "Kirian Rodríguez",
+        jokersUsados: 1,
+        plenos: 1,
+    };
+
+    return (
+        <div>
+            <button onClick={onBack} style={styles.backButton}>&larr; Volver</button>
+            <h2 style={styles.title}>
+                <PlayerProfileDisplay name={user} profile={userProfile} style={{fontSize: '2rem'}} />
+            </h2>
+            <div style={styles.statsGrid}>
+                <div style={styles.statCard}>
+                    <div style={styles.statValue}>🏆 {stats.porrasGanadas}</div>
+                    <div style={styles.statLabel}>Porras Ganadas</div>
+                </div>
+                <div style={styles.statCard}>
+                    <div style={styles.statValue}>🎯 {stats.resultadoMasRepetido}</div>
+                    <div style={styles.statLabel}>Resultado Fetiche</div>
+                </div>
+                <div style={styles.statCard}>
+                    <div style={styles.statValue}>⚽️ {stats.goleadorFavorito}</div>
+                    <div style={styles.statLabel}>Goleador Favorito</div>
+                </div>
+                <div style={styles.statCard}>
+                    <div style={styles.statValue}>🃏 {stats.jokersUsados} / 2</div>
+                    <div style={styles.statLabel}>Jokers Usados</div>
+                </div>
+                <div style={styles.statCard}>
+                    <div style={styles.statValue}>💯 {stats.plenos}</div>
+                    <div style={styles.statLabel}>Plenos Conseguidos</div>
+                </div>
+            </div>
+            <button onClick={onEdit} style={{...styles.mainButton, width: '100%', marginTop: '40px'}}>
+                Editar Perfil (Icono y Color)
             </button>
         </div>
     );
@@ -2372,6 +2438,7 @@ function App() {
       const profileRef = doc(db, "clasificacion", user);
       await setDoc(profileRef, profileData, { merge: true });
       setScreen('app');
+      setActiveTab('miJornada');
   };
 
   const handleNavClick = (tab) => { setViewingJornadaId(null); setViewingPorraAnual(false); setActiveTab(tab); if (tab !== 'admin') { setIsAdminAuthenticated(false); } };
@@ -2382,12 +2449,14 @@ function App() {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => {setShowInitialSplash(false); setShowOrientationSuggestion(true);}} />;
     if (showOrientationSuggestion) return <OrientationSuggestion onContinue={() => setShowOrientationSuggestion(false)} />;
     if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} />;
-    if (screen === 'login') return <LoginScreen onLogin={handleLogin} />;
-    if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} />;
+    if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} />;
+    if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
     if (screen === 'app') {
         const CurrentScreen = () => {
             if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} teamLogos={teamLogos} userProfiles={userProfiles} />;
             if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
+            if (activeTab === 'profile') return <ProfileScreen user={currentUser} userProfile={userProfiles[currentUser]} onEdit={() => setScreen('customizeProfile')} onBack={() => setActiveTab('miJornada')} />;
+
             switch (activeTab) {
                 case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} plantilla={plantilla} userProfiles={userProfiles} />;
                 case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} liveData={liveJornada?.liveData} userProfiles={userProfiles} />;
@@ -2416,6 +2485,7 @@ function App() {
             <button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button>
             <button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>
             {currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}
+            <button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button>
             <button onClick={() => { setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false); }} style={styles.logoutButton}>Salir</button>
           </nav>
           <div key={activeTab} className="content-enter-active" style={styles.content}>
@@ -2488,12 +2558,14 @@ const styles = {
     carouselStat: { padding: '10px', fontSize: '1rem', minHeight: '50px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' },
     loginContainer: { textAlign: 'center' },
     userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px', marginTop: '30px' },
-    userButton: { width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px' },
+    userButton: { width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
+    loginProfileIconCircle: { width: '40px', height: '40px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1.5rem', color: colors.darkText },
     navbar: { display: 'flex', flexWrap: 'wrap', gap: '5px', borderBottom: `2px solid ${colors.blue}`, paddingBottom: '15px', marginBottom: '20px', alignItems: 'center' },
     navButton: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: '3px solid transparent', borderRadius: '6px 6px 0 0', backgroundColor: 'transparent', color: colors.lightText, cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
     navButtonActive: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: `3px solid ${colors.yellow}`, borderRadius: '6px 6px 0 0', backgroundColor: colors.darkUIAlt, color: colors.yellow, cursor: 'pointer', textTransform: 'uppercase', fontWeight: '600' },
-    logoutButton: { padding: '8px 12px', fontSize: '0.9rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.danger, cursor: 'pointer', marginLeft: 'auto', transition: 'all 0.2s', fontWeight: '600', textTransform: 'uppercase' },
+    profileNavButton: { marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' },
+    logoutButton: { padding: '8px 12px', fontSize: '0.9rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.danger, cursor: 'pointer', marginLeft: '10px', transition: 'all 0.2s', fontWeight: '600', textTransform: 'uppercase' },
     content: { padding: '10px 0', animation: 'fadeIn 0.5s' },
     form: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '25px', borderRadius: '12px', marginTop: '20px', border: `1px solid ${colors.blue}50` },
     formSectionTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.lightText, fontSize: '1.3rem', textAlign: 'center', marginBottom: '20px' },
@@ -2562,7 +2634,7 @@ const styles = {
     modalContent: { backgroundColor: colors.darkUI, padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '500px', border: `1px solid ${colors.yellow}` },
     resumenContainer: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
     resumenJugador: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px', borderLeft: `4px solid ${colors.blue}` },
-    resumenJugadorTitle: { margin: '0 0 10px 0', paddingBottom: '10px', borderBottom: `1px solid ${colors.blue}80`, color: colors.yellow, fontFamily: "'Orbitron', sans-serif", },
+    resumenJugadorTitle: { margin: '0 0 10px 0', paddingBottom: '10px', borderBottom: `1px solid ${colors.blue}80`, fontFamily: "'Orbitron', sans-serif", },
     resumenJugadorBets: { fontSize: '0.95rem' },
     jokerChipsContainer: { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' },
     pinLockContainer: { backgroundColor: 'rgba(0,0,0,0.3)', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: `1px solid ${colors.yellow}` },
@@ -2622,7 +2694,11 @@ const styles = {
     iconGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: '15px', marginTop: '10px' },
     iconOption: { width: '50px', height: '50px', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '2rem', backgroundColor: 'rgba(0,0,0,0.2)', transition: 'background-color 0.2s ease' },
     iconOptionSelected: { backgroundColor: colors.blue },
-    profilePreview: { fontSize: '2rem', fontWeight: 'bold', fontFamily: "'Orbitron', sans-serif", padding: '10px 20px', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', display: 'inline-block' }
+    profilePreview: { fontSize: '2rem', fontWeight: 'bold', fontFamily: "'Orbitron', sans-serif", padding: '10px 20px', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', display: 'inline-block' },
+    statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '30px' },
+    statCard: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '12px', textAlign: 'center', border: `1px solid ${colors.blue}50` },
+    statValue: { fontFamily: "'Orbitron', sans-serif", fontSize: '2rem', color: colors.yellow, marginBottom: '10px' },
+    statLabel: { fontSize: '1rem', color: colors.silver },
 };
 
 export default App;
