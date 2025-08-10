@@ -4,6 +4,9 @@ import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
+// ¡NUEVO! Importamos Realtime Database para el sistema de presencia
+import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
+
 
 // --- CONFIGURACIÓN DE FIREBASE (sin cambios) ---
 const firebaseConfig = {
@@ -13,7 +16,9 @@ const firebaseConfig = {
     storageBucket: "porra-udlp-2026-v2.appspot.com",
     messagingSenderId: "611441868159",
     appId: "1:611441868159:web:13008731a05c4321946e4a",
-    measurementId: "G-J9T3S8SZT6"
+    measurementId: "G-J9T3S8SZT6",
+    // ¡NUEVO! Añadimos la URL de Realtime Database
+    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedatabase.app"
 };
 
 // --- INICIALIZACIÓN DE FIREBASE ---
@@ -21,6 +26,8 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 const messaging = getMessaging(app);
+// ¡NUEVO! Inicializamos Realtime Database
+const rtdb = getDatabase(app);
 
 // --- CLAVE VAPID PARA NOTIFICACIONES ---
 const VAPID_KEY = "TU_VAPID_KEY_DE_FIREBASE_AQUÍ";
@@ -537,7 +544,7 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
     );
 };
 
-const LoginScreen = ({ onLogin, userProfiles }) => {
+const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     return (
         <div style={styles.loginContainer}>
@@ -545,11 +552,13 @@ const LoginScreen = ({ onLogin, userProfiles }) => {
             <div style={styles.userList}>
                 {JUGADORES.map(jugador => {
                     const profile = userProfiles[jugador] || {};
+                    const isOnline = onlineUsers[jugador];
                     const isGradient = typeof profile.color === 'string' && profile.color.startsWith('linear-gradient');
                     
                     const buttonStyle = {
                         ...styles.userButton,
-                        ...(hoveredUser === jugador ? styles.userButtonHover : {})
+                        ...(hoveredUser === jugador ? styles.userButtonHover : {}),
+                        ...(isOnline ? styles.userButtonOnline : {})
                     };
 
                     const circleStyle = {
@@ -2211,11 +2220,11 @@ const ProfileScreen = ({ user, userProfile, onEdit, onBack }) => {
     // Aquí iría la lógica para calcular las estadísticas.
     // De momento, mostramos datos de ejemplo.
     const stats = {
-        porrasGanadas: 3,
-        resultadoMasRepetido: "2-1",
-        goleadorFavorito: "Kirian Rodríguez",
-        jokersUsados: 1,
-        plenos: 1,
+        porrasGanadas: 0,
+        resultadoMasRepetido: "-",
+        goleadorFavorito: "-",
+        jokersUsados: userProfile.jokersRestantes !== undefined ? 2 - userProfile.jokersRestantes : 0,
+        plenos: 0,
     };
 
     return (
@@ -2271,6 +2280,7 @@ function App() {
   const [plantilla, setPlantilla] = useState([]);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [userProfiles, setUserProfiles] = useState({});
+  const [onlineUsers, setOnlineUsers] = useState({});
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -2300,6 +2310,11 @@ function App() {
         overflow-x: hidden; /* Previene el desbordamiento horizontal */
       }
       /* --- FIN: Reset y Estabilidad Visual --- */
+      
+      @keyframes neon-glow {
+        from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; }
+        to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; }
+      }
 
       @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
       .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
@@ -2361,7 +2376,13 @@ function App() {
         });
         setUserProfiles(profiles);
     });
-
+    
+    // Escuchar estado de conexión de usuarios
+    const statusRef = ref(rtdb, 'status/');
+    const unsubscribeStatus = onValue(statusRef, (snapshot) => {
+        const data = snapshot.val();
+        setOnlineUsers(data || {});
+    });
 
     return () => {
         document.head.removeChild(styleSheet);
@@ -2371,6 +2392,7 @@ function App() {
         unsubscribeLive();
         unsubscribePlantilla();
         unsubscribeProfiles();
+        unsubscribeStatus();
     }
   }, []);
   
@@ -2398,6 +2420,11 @@ function App() {
 
   const handleLogin = async (user) => {
       setCurrentUser(user);
+
+      // Sistema de presencia
+      const userStatusRef = ref(rtdb, 'status/' + user);
+      await set(userStatusRef, true);
+      onDisconnect(userStatusRef).set(false);
 
       const userProfileRef = doc(db, "clasificacion", user);
       const docSnap = await getDoc(userProfileRef);
@@ -2434,6 +2461,14 @@ function App() {
       }
   };
 
+  const handleLogout = () => {
+      const userStatusRef = ref(rtdb, 'status/' + currentUser);
+      set(userStatusRef, false);
+      setCurrentUser(null); 
+      setScreen('login'); 
+      setIsAdminAuthenticated(false);
+  };
+
   const handleSaveProfile = async (user, profileData) => {
       const profileRef = doc(db, "clasificacion", user);
       await setDoc(profileRef, profileData, { merge: true });
@@ -2449,7 +2484,7 @@ function App() {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => {setShowInitialSplash(false); setShowOrientationSuggestion(true);}} />;
     if (showOrientationSuggestion) return <OrientationSuggestion onContinue={() => setShowOrientationSuggestion(false)} />;
     if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} />;
-    if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} />;
+    if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
     if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
     if (screen === 'app') {
         const CurrentScreen = () => {
@@ -2486,7 +2521,7 @@ function App() {
             <button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>
             {currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}
             <button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button>
-            <button onClick={() => { setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false); }} style={styles.logoutButton}>Salir</button>
+            <button onClick={handleLogout} style={styles.logoutButton}>Salir</button>
           </nav>
           <div key={activeTab} className="content-enter-active" style={styles.content}>
             <CurrentScreen />
@@ -2560,6 +2595,7 @@ const styles = {
     userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px', marginTop: '30px' },
     userButton: { width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
+    userButtonOnline: { animation: 'neon-glow 1.5s infinite alternate' },
     loginProfileIconCircle: { width: '40px', height: '40px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1.5rem', color: colors.darkText },
     navbar: { display: 'flex', flexWrap: 'wrap', gap: '5px', borderBottom: `2px solid ${colors.blue}`, paddingBottom: '15px', marginBottom: '20px', alignItems: 'center' },
     navButton: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: '3px solid transparent', borderRadius: '6px 6px 0 0', backgroundColor: 'transparent', color: colors.lightText, cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
