@@ -799,7 +799,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                     <form onSubmit={handleGuardarPronostico} style={styles.form}>
                         {currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}
                         {isVip && (<div style={styles.vipBanner}>⭐ JORNADA VIP ⭐ (Apuesta: 2€ - Puntos Dobles)</div>)}
-                        <h3 style={styles.formSectionTitle}>Jornada {currentJornada.numeroJornada}: {currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</h3>
+                        <h3 style={styles.formSectionTitle}>{currentJornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${currentJornada.numeroJornada}`}: {currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</h3>
                         {isLocked && pronostico.pin && (<div style={styles.pinLockContainer}><p>🔒 Tu pronóstico está bloqueado. Introduce tu PIN para modificarlo.</p><input type="password" maxLength="4" value={pinInput} onChange={(e) => setPinInput(e.target.value)} style={styles.input} placeholder="PIN de 4 dígitos" /><button type="button" onClick={handleUnlock} style={styles.mainButton}>Desbloquear</button></div>)}
                         
                         {hasSubmitted && isLocked ? (
@@ -991,7 +991,7 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
             <h2 style={styles.title}>LA JORNADA</h2>
             {jornadaActual ? (
                 <div style={{...styles.laJornadaContainer, backgroundImage: `linear-gradient(rgba(10, 25, 47, 0.85), rgba(10, 25, 47, 0.85)), url(${jornadaActual.estadioImageUrl})`}}>
-                    <h3>Jornada {jornadaActual.numeroJornada}</h3>
+                    <h3>{jornadaActual.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornadaActual.numeroJornada}`}</h3>
                     <div style={styles.matchInfo}>
                         <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoLocal} shortName={true} imgStyle={styles.matchInfoLogo} />
                         {isLiveView ? (
@@ -1112,7 +1112,7 @@ const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
                                 <span style={{color: styles.colors.yellow, margin: '0 10px'}}>vs</span>
                                 <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 25, height: 25}} />
                             </div>
-                            <strong>{jornada.esVip && '⭐ '}{jornada.esPrueba ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}</strong>
+                            <strong>{jornada.esVip && '⭐ '}{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}</strong>
                             <small>{jornada.fechaStr || 'Fecha por confirmar'} - {jornada.estadio || 'Estadio por confirmar'}</small>
                         </div>
                         <div style={{...styles.statusBadge, backgroundColor: styles.colors.status[jornada.estado]}}>{jornada.estado}</div>
@@ -1310,7 +1310,7 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     );
 };
 
-const JornadaAdminItem = ({ jornada, onDelete }) => {
+const JornadaAdminItem = ({ jornada }) => {
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
     const [resultadoVisitante, setResultadoVisitante] = useState(jornada.resultadoVisitante === undefined ? '' : jornada.resultadoVisitante);
@@ -1434,8 +1434,8 @@ const JornadaAdminItem = ({ jornada, onDelete }) => {
     };
 
     return (
-        <div style={jornada.esPrueba ? {...styles.adminJornadaItem, ...styles.testJornadaAdminItem} : (jornada.esVip ? {...styles.adminJornadaItem, ...styles.jornadaVip} : styles.adminJornadaItem)}>
-            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap'}}><p><strong>{jornada.esPrueba ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}:</strong> {jornada.equipoLocal} vs {jornada.equipoVisitante}</p><div style={styles.vipToggleContainer}><label htmlFor={`vip-toggle-${jornada.id}`}>⭐ VIP</label><input id={`vip-toggle-${jornada.id}`} type="checkbox" checked={esVip} onChange={(e) => setEsVip(e.target.checked)} style={styles.checkbox}/></div></div>
+        <div style={jornada.id === 'jornada_test' ? {...styles.adminJornadaItem, ...styles.testJornadaAdminItem} : (jornada.esVip ? {...styles.adminJornadaItem, ...styles.jornadaVip} : styles.adminJornadaItem)}>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap'}}><p><strong>{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}:</strong> {jornada.equipoLocal} vs {jornada.equipoVisitante}</p><div style={styles.vipToggleContainer}><label htmlFor={`vip-toggle-${jornada.id}`}>⭐ VIP</label><input id={`vip-toggle-${jornada.id}`} type="checkbox" checked={esVip} onChange={(e) => setEsVip(e.target.checked)} style={styles.checkbox}/></div></div>
             <div style={styles.adminControls}>
                 <div><label style={styles.label}>Estado:</label><select value={estado} onChange={(e) => setEstado(e.target.value)} style={styles.adminSelect}><option value="Próximamente">Próximamente</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="Finalizada">Finalizada</option></select></div>
                 <div><label style={styles.label}>Resultado Final:</label><div style={styles.resultInputContainer}><input type="number" min="0" value={resultadoLocal} onChange={(e) => setResultadoLocal(e.target.value)} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="number" min="0" value={resultadoVisitante} onChange={(e) => setResultadoVisitante(e.target.value)} style={styles.resultInput} /></div></div>
@@ -1446,12 +1446,7 @@ const JornadaAdminItem = ({ jornada, onDelete }) => {
             </div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>Mensaje para la Pantalla Principal:</label><textarea value={splashMessage} onChange={(e) => setSplashMessage(e.target.value)} style={{...styles.input, width: '95%', height: '50px'}} /></div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>URL Imagen del Estadio:</label><input type="text" value={estadioImageUrl} onChange={(e) => setEstadioImageUrl(e.target.value)} style={{...styles.input, width: '95%'}} /></div>
-            <div style={{marginTop: '20px', display: 'flex', flexWrap: 'wrap', alignItems: 'center'}}>
-                <button onClick={handleSaveChanges} disabled={isSaving} style={styles.saveButton}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</button>
-                <button onClick={handleCalcularPuntos} disabled={isCalculating || jornada.estado === 'Finalizada'} style={styles.saveButton}>{isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar'}</button>
-                {jornada.esPrueba && <button onClick={() => onDelete(jornada.id)} style={{...styles.saveButton, backgroundColor: colors.danger}}>Eliminar Jornada de Prueba</button>}
-                {message && <span style={{marginLeft: '10px', color: colors.success}}>{message}</span>}
-            </div>
+            <div style={{marginTop: '20px'}}><button onClick={handleSaveChanges} disabled={isSaving} style={styles.saveButton}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</button><button onClick={handleCalcularPuntos} disabled={isCalculating || jornada.estado === 'Finalizada'} style={styles.saveButton}>{isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar'}</button>{message && <span style={{marginLeft: '10px', color: styles.colors.success}}>{message}</span>}</div>
             
             {jornada.estado === 'Cerrada' && (
                 <div style={styles.liveAdminContainer}>
@@ -1479,18 +1474,295 @@ const JornadaAdminItem = ({ jornada, onDelete }) => {
     );
 };
 
+// --- CAMBIO PRINCIPAL AQUÍ ---
+const AdminTestJornada = () => {
+    const [isActive, setIsActive] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const testJornadaRef = useMemo(() => doc(db, "jornadas", "jornada_test"), []);
+
+    useEffect(() => {
+        const checkStatus = async () => {
+            setLoading(true);
+            const docSnap = await getDoc(testJornadaRef);
+            setIsActive(docSnap.exists());
+            setLoading(false);
+        }
+        const unsubscribe = onSnapshot(testJornadaRef, (doc) => {
+             setIsActive(doc.exists());
+        });
+        checkStatus();
+        return () => unsubscribe();
+    }, [testJornadaRef]);
+
+    const handleToggleTestJornada = async () => {
+        setLoading(true);
+        if (isActive) {
+            // Desactivar y borrar
+            if (window.confirm("¿Seguro que quieres DESACTIVAR y BORRAR la jornada de prueba? Todos los pronósticos asociados se eliminarán permanentemente.")) {
+                await deleteDoc(testJornadaRef);
+                // Borrar también los pronósticos de prueba
+                const pronosticosRef = collection(db, "pronosticos", "jornada_test", "jugadores");
+                const pronosticosSnap = await getDocs(pronosticosRef);
+                const batch = writeBatch(db);
+                pronosticosSnap.docs.forEach(d => batch.delete(d.ref));
+                await batch.commit();
+                alert("Jornada de prueba desactivada y todos sus datos han sido borrados.");
+            }
+        } else {
+            // Activar
+            const testJornadaData = {
+                numeroJornada: 99,
+                equipoLocal: "UD Las Palmas",
+                equipoVisitante: "Real Zaragoza",
+                estado: "Abierta", // Inicia como "Abierta" para que los jugadores puedan apostar
+                esVip: false,
+                bote: 0,
+                fechaStr: "Partido de Prueba",
+                estadio: "Estadio de Pruebas",
+                estadioImageUrl: "https://as01.epimg.net/img/comunes/fotos/fichas/estadios/g/grc.jpg",
+                liveData: { isLive: false, golesLocal: 0, golesVisitante: 0, ultimoGoleador: '' },
+                fechaApertura: new Date(),
+                fechaCierre: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000), // Cierra en 7 días por defecto
+            };
+            await setDoc(testJornadaRef, testJornadaData);
+            alert("Jornada de prueba ACTIVADA. Ahora es visible para todos y puedes gestionarla en la lista de jornadas de abajo.");
+        }
+        setLoading(false);
+    };
+
+    return (
+        <div style={{...styles.adminJornadaItem, ...styles.testJornadaAdminItem}}>
+            <h3 style={styles.formSectionTitle}>🧪 Gestión de Jornada de Prueba</h3>
+            <p style={{textAlign: 'center', margin: '10px 0', lineHeight: 1.5}}>
+                Usa esta opción para crear una jornada de prueba. Una vez activada, aparecerá en la lista de abajo y podrás gestionarla como cualquier otra jornada (cambiar estado, poner resultados, etc.).
+            </p>
+            <div style={{display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap'}}>
+                <button 
+                    onClick={handleToggleTestJornada} 
+                    disabled={loading} 
+                    style={{...styles.mainButton, backgroundColor: isActive ? colors.danger : colors.success, borderColor: isActive ? colors.danger : colors.success, margin: '10px 0'}}
+                >
+                    {loading ? 'Cargando...' : (isActive ? 'Desactivar y Borrar Jornada' : 'Activar Jornada de Prueba')}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+
+const AdminEscudosManager = ({ onBack, teamLogos }) => {
+    const [urls, setUrls] = useState(teamLogos || {});
+    const [saving, setSaving] = useState({});
+
+    useEffect(() => {
+        setUrls(teamLogos || {});
+    }, [teamLogos]);
+
+    const handleUrlChange = (teamName, value) => {
+        setUrls(prev => ({ ...prev, [teamName]: value }));
+    };
+
+    const handleSave = async (teamName) => {
+        setSaving(prev => ({ ...prev, [teamName]: true }));
+        const docRef = doc(db, "configuracion", "escudos");
+        try {
+            await setDoc(docRef, { [teamName]: urls[teamName] }, { merge: true });
+        } catch (error) {
+            console.error("Error al guardar el escudo:", error);
+            alert("Error al guardar el escudo.");
+        } finally {
+            setSaving(prev => ({ ...prev, [teamName]: false }));
+        }
+    };
+
+    return (
+        <div style={styles.adminJornadaItem}>
+            <h3 style={styles.formSectionTitle}>Gestión de Escudos de Equipos</h3>
+            <p style={{textAlign: 'center', marginBottom: '20px'}}>Pega la URL de la imagen del escudo para cada equipo y pulsa "Guardar".</p>
+            <div style={styles.escudosGrid}>
+                {EQUIPOS_LIGA.map(teamName => (
+                    <div key={teamName} style={styles.escudoCard}>
+                        <img 
+                            src={urls[teamName] || 'https://placehold.co/80x80/1b263b/e0e1dd?text=?'} 
+                            style={styles.escudoCardImg} 
+                            alt={teamName} 
+                            onError={(e) => { e.target.src = 'https://placehold.co/80x80/e63946/ffffff?text=Error'; }}
+                        />
+                        <p style={styles.escudoCardName}>{teamName}</p>
+                        <input
+                            type="text"
+                            value={urls[teamName] || ''}
+                            onChange={(e) => handleUrlChange(teamName, e.target.value)}
+                            placeholder="Pega la URL del escudo aquí"
+                            style={styles.escudoInput}
+                        />
+                        <button onClick={() => handleSave(teamName)} disabled={saving[teamName]} style={styles.escudoSaveButton}>
+                            {saving[teamName] ? '...' : 'Guardar'}
+                        </button>
+                    </div>
+                ))}
+            </div>
+            <button onClick={onBack} style={{...styles.mainButton, backgroundColor: styles.colors.blue, borderColor: styles.colors.blue}}>Volver al Panel</button>
+        </div>
+    );
+};
+
+const AdminPorraAnual = () => {
+    const [config, setConfig] = useState({ estado: '', ascensoFinal: '', posicionFinal: '' });
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [calculating, setCalculating] = useState(false);
+    const [message, setMessage] = useState('');
+
+    const configRef = useMemo(() => doc(db, "configuracion", "porraAnual"), []);
+
+    useEffect(() => {
+        setLoading(true);
+        getDoc(configRef).then((docSnap) => {
+            if (docSnap.exists()) {
+                setConfig(docSnap.data());
+            }
+            setLoading(false);
+        }).catch(error => {
+            console.error("Error al cargar config anual: ", error);
+            setLoading(false);
+        });
+    }, [configRef]);
+
+    const handleSaveConfig = async () => {
+        setSaving(true);
+        try {
+            await setDoc(configRef, config, { merge: true });
+            setMessage('¡Configuración guardada!');
+        } catch (error) {
+            console.error("Error guardando config anual", error);
+            setMessage('Error al guardar.');
+        } finally {
+            setSaving(false);
+            setTimeout(() => setMessage(''), 3000);
+        }
+    };
+
+    const handleCalcularPuntosAnual = async () => {
+        if (!config.ascensoFinal || !config.posicionFinal) {
+            alert("Debes establecer el resultado de Ascenso y la Posición Final antes de calcular.");
+            return;
+        }
+        if (!window.confirm("¿Seguro que quieres calcular y repartir los puntos de la Porra Anual? Esta acción es irreversible.")) {
+            return;
+        }
+
+        setCalculating(true);
+        const pronosticosRef = collection(db, "porraAnualPronosticos");
+        const pronosticosSnap = await getDocs(pronosticosRef);
+        const pronosticos = pronosticosSnap.docs.map(p => ({ id: p.id, ...p.data() }));
+        const batch = writeBatch(db);
+
+        for (const p of pronosticos) {
+            let puntosObtenidos = 0;
+            const aciertoAscenso = p.ascenso === config.ascensoFinal;
+            const aciertoPosicion = parseInt(p.posicion) === parseInt(config.posicionFinal);
+
+            if (aciertoAscenso && aciertoPosicion) {
+                puntosObtenidos = 20;
+            } else if (aciertoAscenso) {
+                puntosObtenidos = 5;
+            } else if (aciertoPosicion) {
+                puntosObtenidos = 10;
+            }
+
+            if (puntosObtenidos > 0) {
+                const clasificacionRef = doc(db, "clasificacion", p.id);
+                batch.update(clasificacionRef, { puntosTotales: increment(puntosObtenidos) });
+            }
+            
+            const pronosticoAnualRef = doc(db, "porraAnualPronosticos", p.id);
+            batch.update(pronosticoAnualRef, { puntosObtenidos });
+        }
+        
+        batch.update(configRef, { estado: "Finalizada" });
+
+        try {
+            await batch.commit();
+            setMessage("¡Puntos de la Porra Anual calculados y repartidos con éxito!");
+        } catch (error) {
+            console.error("Error al calcular puntos anuales:", error);
+            setMessage("Error al calcular los puntos.");
+        } finally {
+            setCalculating(false);
+        }
+    };
+
+    if (loading) return <p>Cargando configuración de la Porra Anual...</p>;
+
+    return (
+        <div style={styles.adminJornadaItem}>
+            <h3 style={styles.formSectionTitle}>Gestión Porra Anual</h3>
+            <div style={styles.adminControls}>
+                <div>
+                    <label style={styles.label}>Estado de la Porra</label>
+                    <select 
+                        value={config.estado || ''} 
+                        onChange={(e) => setConfig(c => ({ ...c, estado: e.target.value }))}
+                        style={styles.adminSelect}
+                    >
+                        <option value="Inactiva">Inactiva</option>
+                        <option value="Abierta">Abierta</option>
+                        <option value="Cerrada">Cerrada</option>
+                        <option value="Finalizada">Finalizada</option>
+                    </select>
+                </div>
+                 <div>
+                    <label style={styles.label}>Resultado Ascenso</label>
+                    <select 
+                        value={config.ascensoFinal || ''} 
+                        onChange={(e) => setConfig(c => ({ ...c, ascensoFinal: e.target.value }))}
+                        style={styles.adminSelect}
+                    >
+                        <option value="">-- Pendiente --</option>
+                        <option value="SI">SI</option>
+                        <option value="NO">NO</option>
+                    </select>
+                </div>
+                 <div>
+                    <label style={styles.label}>Posición Final</label>
+                    <input 
+                        type="number"
+                        min="1"
+                        max="22"
+                        value={config.posicionFinal || ''}
+                        onChange={(e) => setConfig(c => ({ ...c, posicionFinal: e.target.value }))}
+                        style={styles.adminInput}
+                    />
+                </div>
+            </div>
+            <div style={{marginTop: '20px'}}>
+                <button onClick={handleSaveConfig} disabled={saving} style={styles.saveButton}>
+                    {saving ? 'Guardando...' : 'Guardar Configuración'}
+                </button>
+                <button 
+                    onClick={handleCalcularPuntosAnual} 
+                    disabled={calculating || config.estado !== 'Cerrada'} 
+                    style={{...styles.saveButton, backgroundColor: styles.colors.gold, color: styles.colors.deepBlue}}
+                >
+                    {calculating ? 'Calculando...' : 'Calcular Puntos Finales'}
+                </button>
+            </div>
+             {message && <p style={{...styles.message, marginTop: '15px'}}>{message}</p>}
+        </div>
+    );
+};
+
 const AdminPanelScreen = ({ teamLogos }) => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [view, setView] = useState('main'); // 'main' o 'escudos'
-    const [testJornadaExists, setTestJornadaExists] = useState(false);
 
     useEffect(() => {
         const q = query(collection(db, "jornadas"), orderBy("numeroJornada"));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const jornadasData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setJornadas(jornadasData);
-            setTestJornadaExists(jornadasData.some(j => j.esPrueba));
             setLoading(false);
         }, (error) => {
             console.error("Error al cargar jornadas: ", error);
@@ -1498,40 +1770,6 @@ const AdminPanelScreen = ({ teamLogos }) => {
         });
         return () => unsubscribe();
     }, []);
-
-    const handleCreateTestJornada = async () => {
-        if (testJornadaExists) {
-            alert("Ya existe una jornada de prueba. Elimínala antes de crear una nueva.");
-            return;
-        }
-        const testJornadaData = {
-            numeroJornada: 99,
-            equipoLocal: "UD Las Palmas",
-            equipoVisitante: "Real Zaragoza",
-            estado: "Próximamente",
-            esVip: false,
-            bote: 0,
-            fechaStr: "Partido de Prueba",
-            estadio: "Estadio de Pruebas",
-            liveData: { isLive: false, golesLocal: 0, golesVisitante: 0, ultimoGoleador: '' },
-            esPrueba: true,
-        };
-        await setDoc(doc(db, "jornadas", "jornada_test"), testJornadaData);
-        alert("Jornada de prueba creada en estado 'Próximamente'.");
-    };
-
-    const handleDeleteTestJornada = async (jornadaId) => {
-        if (!window.confirm("¿Seguro que quieres eliminar la jornada de prueba y todos sus pronósticos? Esta acción no se puede deshacer.")) {
-            return;
-        }
-        await deleteDoc(doc(db, "jornadas", jornadaId));
-        const pronosticosRef = collection(db, "pronosticos", jornadaId, "jugadores");
-        const pronosticosSnap = await getDocs(pronosticosRef);
-        const batch = writeBatch(db);
-        pronosticosSnap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        alert("Jornada de prueba eliminada.");
-    };
 
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando datos de administración...</p>;
 
@@ -1542,20 +1780,12 @@ const AdminPanelScreen = ({ teamLogos }) => {
     return (
         <div>
             <h2 style={styles.title}>PANEL DE ADMINISTRADOR</h2>
-            <div style={{...styles.adminJornadaItem, ...styles.testJornadaAdminItem}}>
-                <h3 style={styles.formSectionTitle}>🧪 Gestión de Jornada de Prueba</h3>
-                <p style={{textAlign: 'center', margin: '10px 0'}}>Crea una jornada ficticia para probar todas las funcionalidades de la app.</p>
-                <div style={{display: 'flex', justifyContent: 'center'}}>
-                    <button onClick={handleCreateTestJornada} disabled={testJornadaExists} style={{...styles.mainButton, backgroundColor: colors.blue, borderColor: colors.blue}}>
-                        {testJornadaExists ? "Ya existe una jornada de prueba" : "Crear Jornada de Prueba"}
-                    </button>
-                </div>
-            </div>
+            <AdminTestJornada />
             <button onClick={() => setView('escudos')} style={{...styles.mainButton, marginBottom: '20px'}}>Gestionar Escudos de Equipos</button>
             <AdminPorraAnual />
             <h3 style={{...styles.title, fontSize: '1.5rem', marginTop: '40px'}}>Gestión de Jornadas</h3>
             <div style={styles.jornadaList}>
-                {jornadas.map(jornada => (<JornadaAdminItem key={jornada.id} jornada={jornada} onDelete={handleDeleteTestJornada} />))}
+                {jornadas.map(jornada => (<JornadaAdminItem key={jornada.id} jornada={jornada} />))}
             </div>
         </div>
     );
@@ -1600,7 +1830,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
             <button onClick={onBack} style={styles.backButton}>&larr; Volver al Calendario</button>
             {jornada && (
                 <>
-                    <h2 style={styles.title}>DETALLE JORNADA {jornada.numeroJornada}</h2>
+                    <h2 style={styles.title}>DETALLE {jornada.id === 'jornada_test' ? 'JORNADA DE PRUEBA' : `JORNADA ${jornada.numeroJornada}`}</h2>
                     <div style={styles.matchHeader}>
                         <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 40, height: 40}} />
                         <h3 style={styles.formSectionTitle}>{jornada.equipoLocal} vs {jornada.equipoVisitante}</h3>
