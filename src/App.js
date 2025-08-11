@@ -1981,20 +1981,55 @@ const AdminLoginModal = ({ onClose, onSuccess }) => {
     );
 };
 
-const PagosScreen = ({ user }) => {
+const PagosScreen = ({ user, userProfiles }) => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [financialSummary, setFinancialSummary] = useState({
+        boteActual: 0,
+        totalRecaudado: 0,
+        totalRepartido: 0,
+    });
 
     useEffect(() => {
-        const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"));
+        const q = query(collection(db, "jornadas"), orderBy("numeroJornada", "desc"));
         const unsubscribe = onSnapshot(q, (jornadasSnap) => {
-            const jornadasData = jornadasSnap.docs.map(jornadaDoc => ({ id: jornadaDoc.id, ...jornadaDoc.data(), pronosticos: [] }));
-            const promises = jornadasData.map(jornada => getDocs(collection(db, "pronosticos", jornada.id, "jugadores")));
+            const jornadasData = jornadasSnap.docs.map(jornadaDoc => ({ id: jornadaDoc.id, ...jornadaDoc.data() }));
+            
+            const promises = jornadasData.map(jornada => 
+                getDocs(collection(db, "pronosticos", jornada.id, "jugadores"))
+            );
+
             Promise.all(promises).then(pronosticosSnaps => {
-                pronosticosSnaps.forEach((pronosticosSnap, index) => {
-                    jornadasData[index].pronosticos = pronosticosSnap.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                let totalRecaudado = 0;
+                let totalRepartido = 0;
+
+                const jornadasConPronosticos = jornadasData.map((jornada, index) => {
+                    const pronosticos = pronosticosSnaps[index].docs.map(doc => ({id: doc.id, ...doc.data()}));
+                    const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+                    const recaudadoJornada = pronosticos.length * costeApuesta;
+                    const premioTotal = (jornada.bote || 0) + recaudadoJornada;
+                    
+                    if (jornada.estado === 'Finalizada') {
+                        totalRecaudado += recaudadoJornada;
+                        if (jornada.ganadores && jornada.ganadores.length > 0) {
+                            totalRepartido += premioTotal;
+                        }
+                    }
+
+                    return { ...jornada, pronosticos, recaudadoJornada, premioTotal };
                 });
-                setJornadas(jornadasData);
+
+                const ultimaJornadaFinalizada = jornadasConPronosticos.find(j => j.estado === 'Finalizada');
+                let boteActual = 0;
+                if (ultimaJornadaFinalizada && (!ultimaJornadaFinalizada.ganadores || ultimaJornadaFinalizada.ganadores.length === 0)) {
+                    const proximaJornada = jornadasConPronosticos.reverse().find(j => j.numeroJornada > ultimaJornadaFinalizada.numeroJornada);
+                    if (proximaJornada) {
+                        boteActual = proximaJornada.bote || 0;
+                    }
+                }
+                
+                setFinancialSummary({ boteActual, totalRecaudado, totalRepartido });
+                setJornadas(jornadasConPronosticos.reverse());
                 setLoading(false);
             });
         });
@@ -2006,37 +2041,80 @@ const PagosScreen = ({ user }) => {
         await updateDoc(pronosticoRef, { pagado: haPagado });
     };
 
-    const handleVerificacionChange = async (jornadaId, jugadorId, verificado) => {
+    const handlePremioCobradoChange = async (jornadaId, jugadorId, haCobrado) => {
         const pronosticoRef = doc(db, "pronosticos", jornadaId, "jugadores", jugadorId);
-        await updateDoc(pronosticoRef, { verificado: verificado });
+        await updateDoc(pronosticoRef, { premioCobrado: haCobrado });
     };
 
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando historial de pagos...</p>;
 
     return (
         <div>
-            <h2 style={styles.title}>GESTIÓN DE PAGOS</h2>
-            {jornadas.map(jornada => (
-                <div key={jornada.id} style={styles.adminJornadaItem}>
-                    <h4 style={styles.formSectionTitle}>Jornada {jornada.numeroJornada}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</h4>
-                    <table style={styles.table}>
-                        <thead><tr><th style={styles.th}>Jugador</th><th style={styles.th}>Pagado</th><th style={styles.th}>Verificado (Admin)</th></tr></thead>
-                        <tbody>
-                            {JUGADORES.map(jugadorId => {
-                                const pronostico = jornada.pronosticos.find(p => p.id === jugadorId);
-                                if (!pronostico) return null;
-                                return (
-                                    <tr key={jugadorId} style={styles.tr}>
-                                        <td style={styles.td}>{jugadorId}</td>
-                                        <td style={styles.td}><input type="checkbox" checked={pronostico.pagado || false} onChange={(e) => handlePagoChange(jornada.id, jugadorId, e.target.checked)} disabled={user !== jugadorId} style={styles.checkbox}/></td>
-                                        <td style={styles.td}><input type="checkbox" checked={pronostico.verificado || false} onChange={(e) => handleVerificacionChange(jornada.id, jugadorId, e.target.checked)} disabled={user !== 'Juanma'} style={styles.checkbox}/></td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+            <h2 style={styles.title}>LIBRO DE CUENTAS</h2>
+            <div style={styles.statsGrid}>
+                <div style={styles.statCard}>
+                    <div style={styles.statValue}>💰 {financialSummary.boteActual.toFixed(2)}€</div>
+                    <div style={styles.statLabel}>Bote Actual</div>
                 </div>
-            ))}
+                <div style={styles.statCard}>
+                    <div style={styles.statValue}>📥 {financialSummary.totalRecaudado.toFixed(2)}€</div>
+                    <div style={styles.statLabel}>Total Recaudado</div>
+                </div>
+                <div style={styles.statCard}>
+                    <div style={styles.statValue}>📤 {financialSummary.totalRepartido.toFixed(2)}€</div>
+                    <div style={styles.statLabel}>Total Repartido</div>
+                </div>
+            </div>
+            
+            <div style={{marginTop: '40px'}}>
+                {jornadas.filter(j => j.estado === 'Finalizada').map(jornada => (
+                    <div key={jornada.id} style={styles.pagoCard}>
+                        <h4 style={styles.pagoCardTitle}>Jornada {jornada.numeroJornada}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</h4>
+                        <div style={styles.pagoCardDetails}>
+                            <span><strong>Recaudado:</strong> {jornada.recaudadoJornada}€</span>
+                            <span><strong>Bote Anterior:</strong> {jornada.bote || 0}€</span>
+                            <span><strong>Premio Total:</strong> {jornada.premioTotal}€</span>
+                        </div>
+                        {jornada.ganadores && jornada.ganadores.length > 0 ? (
+                            <div style={styles.pagoCardWinnerInfo}>
+                                <p><strong>🏆 Ganador(es):</strong> {jornada.ganadores.join(', ')}</p>
+                                <p><strong>Premio por ganador:</strong> {(jornada.premioTotal / jornada.ganadores.length).toFixed(2)}€</p>
+                            </div>
+                        ) : (
+                            <div style={styles.pagoCardBoteInfo}>
+                                ¡BOTE! El premio se acumula para la siguiente jornada.
+                            </div>
+                        )}
+                        <table style={{...styles.table, marginTop: '15px'}}>
+                            <thead>
+                                <tr>
+                                    <th style={styles.th}>Jugador</th>
+                                    <th style={styles.th}>Aportación</th>
+                                    {jornada.ganadores && jornada.ganadores.length > 0 && <th style={styles.th}>Premio Cobrado</th>}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {jornada.pronosticos.map(p => {
+                                    const esGanador = jornada.ganadores?.includes(p.id);
+                                    return (
+                                        <tr key={p.id} style={styles.tr}>
+                                            <td style={styles.td}><PlayerProfileDisplay name={p.id} profile={userProfiles[p.id]} /></td>
+                                            <td style={styles.td}>
+                                                <input type="checkbox" checked={p.pagado || false} onChange={(e) => handlePagoChange(jornada.id, p.id, e.target.checked)} disabled={user !== p.id && user !== 'Juanma'} style={styles.checkbox}/>
+                                            </td>
+                                            {esGanador && (
+                                                <td style={styles.td}>
+                                                    <input type="checkbox" checked={p.premioCobrado || false} onChange={(e) => handlePremioCobradoChange(jornada.id, p.id, e.target.checked)} disabled={user !== 'Juanma'} style={styles.checkbox}/>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 };
@@ -2502,7 +2580,7 @@ function App() {
                 case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} liveData={liveJornada?.liveData} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
                 case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
                 case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} userProfiles={userProfiles} />;
-                case 'pagos': return <PagosScreen user={currentUser} />;
+                case 'pagos': return <PagosScreen user={currentUser} userProfiles={userProfiles} />;
                 case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} /> : null;
                 default: return null;
             }
