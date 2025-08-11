@@ -297,6 +297,31 @@ const NotificationPermissionModal = ({ onAllow, onDeny }) => {
     );
 };
 
+// --- NUEVO COMPONENTE DE CARGA ---
+const LoadingSkeleton = ({ type = 'list' }) => {
+    if (type === 'table') {
+        return (
+            <div style={styles.skeletonTable}>
+                {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} style={styles.skeletonRow}>
+                        <div style={{...styles.skeletonBox, width: '50px', height: '20px'}}></div>
+                        <div style={{...styles.skeletonBox, width: '120px', height: '20px'}}></div>
+                        <div style={{...styles.skeletonBox, width: '80px', height: '20px'}}></div>
+                        <div style={{...styles.skeletonBox, width: '60px', height: '20px'}}></div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+    return (
+        <div style={styles.skeletonContainer}>
+            <div style={{...styles.skeletonBox, height: '40px', width: '80%', marginBottom: '20px'}}></div>
+            <div style={{...styles.skeletonBox, height: '20px', width: '60%'}}></div>
+            <div style={{...styles.skeletonBox, height: '20px', width: '70%', marginTop: '10px'}}></div>
+        </div>
+    );
+};
+
 // ============================================================================
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
@@ -532,7 +557,7 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
                         <span style={styles.splashYear}>2026</span>
                     </div>
                 </div>
-                {loading ? (<p style={{color: styles.colors.lightText}}>Cargando información de la jornada...</p>) : (<div style={styles.splashInfoBox}>{renderJornadaInfo()}{currentStat && (<div style={styles.carouselStat}><span style={{color: currentStat.color || styles.colors.lightText, fontWeight: 'bold'}}>{currentStat.label}: </span><span style={{color: styles.colors.lightText}}>{currentStat.value}</span></div>)}{jornadaInfo && jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}</div>)}
+                {loading ? (<LoadingSkeleton />) : (<div style={styles.splashInfoBox}>{renderJornadaInfo()}{currentStat && (<div style={styles.carouselStat}><span style={{color: currentStat.color || styles.colors.lightText, fontWeight: 'bold'}}>{currentStat.label}: </span><span style={{color: styles.colors.lightText}}>{currentStat.value}</span></div>)}{jornadaInfo && jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}</div>)}
                 <button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>
                 {isMobile && (
                     <button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>
@@ -785,7 +810,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         }
     };
 
-    if (loading) return <p style={{color: styles.colors.lightText}}>Buscando jornada...</p>;
+    if (loading) return <LoadingSkeleton />;
 
     const renderContent = () => {
         if (!currentJornada) {
@@ -894,7 +919,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 <div style={styles.liveInfoBox}>
                     <div style={styles.liveInfoItem}>
                         <span style={styles.liveInfoLabel}>Puntos Provisionales</span>
-                        <span style={styles.liveInfoValue}>{provisionalData.puntos}</span>
+                        <span style={styles.liveInfoValue}><AnimatedPoints value={provisionalData.puntos} /></span>
                     </div>
                     <div style={styles.liveInfoItem}>
                         <span style={styles.liveInfoLabel}>Posición Provisional</span>
@@ -982,7 +1007,7 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
         }
     }, [jornadaActual]);
 
-    if (loading) return <p style={{color: styles.colors.lightText}}>Buscando jornada...</p>;
+    if (loading) return <LoadingSkeleton />;
     
     const isLiveView = jornadaActual?.estado === 'Cerrada' && liveData && liveData.isLive;
 
@@ -1039,7 +1064,7 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                                             <tr key={jugador.id} style={jugador.puntos > 0 && provisionalRanking[0].puntos === jugador.puntos ? styles.provisionalWinnerRow : styles.tr}>
                                                 <td style={styles.tdRank}>{index + 1}º</td>
                                                 <td style={styles.td}><PlayerProfileDisplay name={jugador.id} profile={profile} /></td>
-                                                <td style={styles.td}>{jugador.puntos}</td>
+                                                <td style={styles.td}><AnimatedPoints value={jugador.puntos} /></td>
                                             </tr>
                                         )
                                     })}
@@ -1094,7 +1119,7 @@ const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
         return () => unsubscribe();
     }, []);
 
-    if (loading) return <p style={{color: styles.colors.lightText}}>Cargando calendario...</p>;
+    if (loading) return <LoadingSkeleton />;
 
     return (
         <div>
@@ -1125,12 +1150,19 @@ const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
 
 const AnimatedPoints = ({ value }) => {
     const [currentValue, setCurrentValue] = useState(0);
+    const [flash, setFlash] = useState(null); // 'up', 'down', or null
     const prevValueRef = useRef(0);
 
     useEffect(() => {
         const startValue = prevValueRef.current;
         const endValue = value || 0;
         let startTime = null;
+
+        if (endValue > startValue) {
+            setFlash('up');
+        } else if (endValue < startValue) {
+            setFlash('down');
+        }
 
         const animation = (currentTime) => {
             if (!startTime) startTime = currentTime;
@@ -1142,6 +1174,7 @@ const AnimatedPoints = ({ value }) => {
                 requestAnimationFrame(animation);
             } else {
                  prevValueRef.current = endValue;
+                 setTimeout(() => setFlash(null), 700); // Reset flash after animation
             }
         };
         
@@ -1150,7 +1183,13 @@ const AnimatedPoints = ({ value }) => {
         return () => { prevValueRef.current = value || 0; };
     }, [value]);
 
-    return <span>{currentValue}</span>;
+    const getFlashClass = () => {
+        if (flash === 'up') return 'point-jump-up';
+        if (flash === 'down') return 'point-jump-down';
+        return '';
+    };
+
+    return <span className={getFlashClass()}>{currentValue}</span>;
 };
 
 const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles }) => {
@@ -1251,7 +1290,7 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     }, [clasificacion, liveData, liveJornada, livePronosticos]);
 
 
-    if (loading) return <p style={{color: styles.colors.lightText}}>Cargando clasificación...</p>;
+    if (loading) return <LoadingSkeleton type="table" />;
     
     const isLive = liveData && liveData.isLive;
     
@@ -1474,7 +1513,6 @@ const JornadaAdminItem = ({ jornada }) => {
     );
 };
 
-// --- CAMBIO PRINCIPAL AQUÍ ---
 const AdminTestJornada = () => {
     const [isActive, setIsActive] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -1693,7 +1731,7 @@ const AdminPorraAnual = () => {
         }
     };
 
-    if (loading) return <p>Cargando configuración de la Porra Anual...</p>;
+    if (loading) return <LoadingSkeleton />;
 
     return (
         <div style={styles.adminJornadaItem}>
@@ -1771,7 +1809,7 @@ const AdminPanelScreen = ({ teamLogos }) => {
         return () => unsubscribe();
     }, []);
 
-    if (loading) return <p style={{color: styles.colors.lightText}}>Cargando datos de administración...</p>;
+    if (loading) return <LoadingSkeleton />;
 
     if (view === 'escudos') {
         return <AdminEscudosManager onBack={() => setView('main')} teamLogos={teamLogos} />;
@@ -1820,7 +1858,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
         }, {}),
     [pronosticos]);
 
-    if (loading) return <p style={{color: styles.colors.lightText}}>Cargando detalles...</p>;
+    if (loading) return <LoadingSkeleton type="table" />;
 
     const showPronosticos = jornada?.estado === 'Cerrada' || jornada?.estado === 'Finalizada';
     const isFinalizada = jornada?.estado === 'Finalizada';
@@ -2020,7 +2058,7 @@ const PagosScreen = ({ user, userProfiles }) => {
         await updateDoc(pronosticoRef, { premioCobrado: haCobrado });
     };
 
-    if (loading) return <p style={{color: styles.colors.lightText}}>Cargando historial de pagos...</p>;
+    if (loading) return <LoadingSkeleton type="table" />;
 
     return (
         <div>
@@ -2137,9 +2175,7 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
         setIsSaving(false);
     };
 
-    if (loading) {
-        return <p style={{color: styles.colors.lightText}}>Cargando tu pronóstico...</p>;
-    }
+    if (loading) return <LoadingSkeleton />;
 
     if (config?.estado !== 'Abierta' || miPronostico) {
         return (
@@ -2380,7 +2416,8 @@ function App() {
       @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
       @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-      .content-enter-active { animation: fadeIn 0.3s ease-in-out; }
+      @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+      .content-enter-active { animation: slideInFromRight 0.4s ease-out; }
       @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
       .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
       @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } }
@@ -2389,6 +2426,9 @@ function App() {
       .spinner { animation: spin 1.5s linear infinite; }
       @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
       @keyframes blink-live { 50% { background-color: #a11d27; } }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } }
+      .point-jump-up { animation: point-jump-up 0.7s ease-out; }
     `;
     document.head.appendChild(styleSheet);
     
@@ -2663,7 +2703,7 @@ const styles = {
     navButtonActive: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: `3px solid ${colors.yellow}`, borderRadius: '6px 6px 0 0', backgroundColor: colors.darkUIAlt, color: colors.yellow, cursor: 'pointer', textTransform: 'uppercase', fontWeight: '600' },
     profileNavButton: { marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' },
     logoutButton: { padding: '8px 12px', fontSize: '0.9rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.danger, cursor: 'pointer', marginLeft: '10px', transition: 'all 0.2s', fontWeight: '600', textTransform: 'uppercase' },
-    content: { padding: '10px 0', animation: 'fadeIn 0.5s' },
+    content: { padding: '10px 0' },
     form: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '25px', borderRadius: '12px', marginTop: '20px', border: `1px solid ${colors.blue}50` },
     formSectionTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.lightText, fontSize: '1.3rem', textAlign: 'center', marginBottom: '20px' },
     formGroup: { marginBottom: '25px' },
@@ -2744,9 +2784,9 @@ const styles = {
     ascensoButtonsContainer: { display: 'flex', gap: '10px', justifyContent: 'center' },
     ascensoButton: { flex: 1, padding: '20px', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease' },
     ascensoButtonActive: { flex: 1, padding: '20px', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.deepBlue, transition: 'all 0.3s ease' },
-    teamDisplay: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' },
+    teamDisplay: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', flex: '1', minWidth: '0' },
     teamLogo: { width: '40px', height: '40px', objectFit: 'contain' },
-    teamNameText: { fontSize: '0.9rem', fontWeight: 'bold' },
+    teamNameText: { fontSize: 'clamp(0.8rem, 2.5vw, 0.9rem)', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
     winnerAnimationOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000, backdropFilter: 'blur(8px)', animation: 'fadeIn 0.5s ease' },
     winnerModal: { backgroundColor: colors.darkUI, padding: '40px', borderRadius: '20px', textAlign: 'center', border: `2px solid ${colors.gold}`, boxShadow: `0 0 40px ${colors.gold}80` },
     trophy: { fontSize: '100px', animation: 'trophy-grow 1s cubic-bezier(0.25, 1, 0.5, 1) forwards' },
@@ -2804,6 +2844,10 @@ const styles = {
     pagoCardDetails: { display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: '15px', marginBottom: '15px' },
     pagoCardWinnerInfo: { textAlign: 'center', padding: '10px', backgroundColor: `${colors.gold}20`, borderRadius: '8px', margin: '10px 0' },
     pagoCardBoteInfo: { textAlign: 'center', padding: '10px', backgroundColor: `${colors.danger}20`, borderRadius: '8px', margin: '10px 0', fontWeight: 'bold' },
+    skeletonContainer: { padding: '20px' },
+    skeletonBox: { backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '4px', animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' },
+    skeletonTable: { display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px' },
+    skeletonRow: { display: 'flex', justifyContent: 'space-between', gap: '10px' },
 };
 
 export default App;
