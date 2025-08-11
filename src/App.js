@@ -1505,9 +1505,9 @@ const AdminTestJornada = () => {
         } else {
             const testJornadaData = {
                 numeroJornada: 99,
-                equipoLocal: "Real Zaragoza",
-                equipoVisitante: "RC Deportivo",
-                estado: "Cerrada",
+                equipoLocal: "UD Las Palmas",
+                equipoVisitante: "Real Zaragoza",
+                estado: "Abierta",
                 esVip: false,
                 bote: 0,
                 fechaStr: "Partido de Prueba",
@@ -1516,7 +1516,7 @@ const AdminTestJornada = () => {
             };
             await setDoc(testJornadaRef, testJornadaData);
             setIsActive(true);
-            alert("Jornada de prueba activada. Ahora está en estado 'Cerrada' y visible en el panel. Puedes generar apuestas falsas.");
+            alert("Jornada de prueba activada. Ahora está en estado 'Abierta' y visible para todos.");
         }
         setLoading(false);
     };
@@ -1553,7 +1553,7 @@ const AdminTestJornada = () => {
     return (
         <div style={{...styles.adminJornadaItem, ...styles.testJornadaAdminItem}}>
             <h3 style={styles.formSectionTitle}>🧪 Jornada de Prueba</h3>
-            <p style={{textAlign: 'center', margin: '10px 0'}}>Usa esta opción para crear una jornada falsa en estado "Cerrada" y probar la funcionalidad del marcador en vivo sin afectar a las jornadas reales.</p>
+            <p style={{textAlign: 'center', margin: '10px 0'}}>Usa esta opción para crear una jornada falsa y probar la funcionalidad de la app sin afectar a las jornadas reales.</p>
             <div style={{display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap'}}>
                 <button 
                     onClick={handleToggleTestJornada} 
@@ -2825,6 +2825,11 @@ const styles = {
     statLabel: { fontSize: '1rem', color: colors.silver },
     legendContainer: { marginTop: '20px', paddingTop: '15px', borderTop: `1px solid ${colors.blue}`, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '20px', fontSize: '0.9rem', color: colors.silver },
     legendItem: { display: 'flex', alignItems: 'center', gap: '8px' },
+    pagoCard: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: `1px solid ${colors.blue}80` },
+    pagoCardTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, borderBottom: `1px solid ${colors.blue}`, paddingBottom: '10px', marginBottom: '15px' },
+    pagoCardDetails: { display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: '15px', marginBottom: '15px' },
+    pagoCardWinnerInfo: { textAlign: 'center', padding: '10px', backgroundColor: `${colors.gold}20`, borderRadius: '8px', margin: '10px 0' },
+    pagoCardBoteInfo: { textAlign: 'center', padding: '10px', backgroundColor: `${colors.danger}20`, borderRadius: '8px', margin: '10px 0', fontWeight: 'bold' },
 };
 
 export default App;
