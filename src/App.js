@@ -1849,6 +1849,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
     if (loading) return <p style={{color: styles.colors.lightText}}>Cargando detalles...</p>;
 
     const showPronosticos = jornada?.estado === 'Cerrada' || jornada?.estado === 'Finalizada';
+    const isFinalizada = jornada?.estado === 'Finalizada';
 
     return (
         <div>
@@ -1862,7 +1863,7 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
                         <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 40, height: 40}} />
                     </div>
                     
-                    {jornada.estado === 'Finalizada' && (
+                    {isFinalizada && (
                         <p style={styles.finalResult}>Resultado Final: {jornada.resultadoLocal} - {jornada.resultadoVisitante}</p>
                     )}
                     
@@ -1879,8 +1880,8 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
                             <tr>
                                 <th style={styles.th}>Jugador</th>
                                 <th style={styles.th}>Pronóstico</th>
-                                <th style={styles.th}>Puntos</th>
-                                <th style={styles.th}>Pagado</th>
+                                {isFinalizada && <th style={styles.th}>Puntos</th>}
+                                {isFinalizada && <th style={styles.th}>Pagado</th>}
                             </tr>
                         </thead>
                         <tbody>
@@ -1892,8 +1893,8 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
                                     return (
                                         <tr key={jugadorId} style={styles.tr}>
                                             <td style={styles.td}><PlayerProfileDisplay name={jugadorId} profile={profile} /></td>
-                                            <td colSpan="3" style={{...styles.td, fontStyle: 'italic', opacity: 0.6, textAlign: 'center' }}>
-                                                No ha realizado pronóstico
+                                            <td colSpan={isFinalizada ? 3 : 1} style={{...styles.td, fontStyle: 'italic', opacity: 0.6, textAlign: 'center' }}>
+                                                SP
                                             </td>
                                         </tr>
                                     );
@@ -1906,12 +1907,12 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
                                             <tr style={esGanador ? styles.winnerRow : styles.tr}>
                                                 <td style={styles.td}><PlayerProfileDisplay name={p.id} profile={profile} /> {p.jokerActivo && '🃏'}</td>
                                                 <td style={styles.td}>{p.golesLocal}-{p.golesVisitante} ({p.resultado1x2 || 'N/A'}) {p.goleador && `- ${p.goleador}`} {!p.goleador && p.sinGoleador && '- SG'}</td>
-                                                <td style={styles.td}>{p.puntosObtenidos === undefined ? '-' : p.puntosObtenidos}</td>
-                                                <td style={styles.td}>{p.pagado ? '✅' : '❌'}</td>
+                                                {isFinalizada && <td style={styles.td}>{p.puntosObtenidos === undefined ? '-' : p.puntosObtenidos}</td>}
+                                                {isFinalizada && <td style={styles.td}>{p.pagado ? '✅' : '❌'}</td>}
                                             </tr>
                                             {p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0 && (
                                                 <tr style={styles.jokerDetailRow}>
-                                                    <td style={styles.td} colSpan="4">
+                                                    <td style={styles.td} colSpan={isFinalizada ? 4 : 2}>
                                                         <div style={{paddingLeft: '20px'}}>
                                                             <strong>Apuestas JOKER:</strong>
                                                             <div style={{display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '5px'}}>
@@ -1931,14 +1932,18 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
                                          <tr key={p.id} style={styles.tr}>
                                             <td style={styles.td}><PlayerProfileDisplay name={p.id} profile={profile} /> {p.jokerActivo && '🃏'}</td>
                                             <td style={styles.td}>{secretMessage}</td>
-                                            <td style={styles.td}>-</td>
-                                            <td style={styles.td}>-</td>
                                         </tr>
                                     );
                                 }
                             })}
                         </tbody>
                     </table>
+                    <div style={styles.legendContainer}>
+                        <span style={styles.legendItem}>SP: Sin Pronóstico</span>
+                        <span style={styles.legendItem}>🃏: Joker Activado</span>
+                        {isFinalizada && <span style={styles.legendItem}>✅: Pagado</span>}
+                        {isFinalizada && <span style={styles.legendItem}>❌: Pendiente</span>}
+                    </div>
                 </>
             )}
         </div>
@@ -2740,6 +2745,8 @@ const styles = {
     statCard: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '12px', textAlign: 'center', border: `1px solid ${colors.blue}50` },
     statValue: { fontFamily: "'Orbitron', sans-serif", fontSize: '2rem', color: colors.yellow, marginBottom: '10px' },
     statLabel: { fontSize: '1rem', color: colors.silver },
+    legendContainer: { marginTop: '20px', paddingTop: '15px', borderTop: `1px solid ${colors.blue}`, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '20px', fontSize: '0.9rem', color: colors.silver },
+    legendItem: { display: 'flex', alignItems: 'center', gap: '8px' },
 };
 
 export default App;
