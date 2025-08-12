@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
@@ -28,7 +28,7 @@ const functions = getFunctions(app);
 
 export {
     app, db, auth, messaging, rtdb, functions,
-    getAuth, signInAnonymously, onAuthStateChanged,
+    getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken,
     getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction,
     getMessaging, getToken,
     getDatabase, ref, onValue, onDisconnect, set,
