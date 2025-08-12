@@ -249,7 +249,10 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
         try {
             await runTransaction(db, async (transaction) => {
                 const reactionDoc = await transaction.get(reactionRef);
-                if (!reactionDoc.exists()) { throw "Document does not exist!"; }
+                if (!reactionDoc.exists()) { 
+                    // FIX: Throw an actual Error object
+                    throw new Error("Document does not exist!"); 
+                }
                 
                 const currentReactions = reactionDoc.data().reactions || { counts: {}, userReactions: {} };
                 const currentUserReaction = currentReactions.userReactions?.[currentUser];
@@ -370,10 +373,23 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     );
 };
 
+// FIX: Move initialPronosticoState outside the component to fix dependency warning
+const initialPronosticoState = { 
+    golesLocal: '', 
+    golesVisitante: '', 
+    resultado1x2: '', 
+    goleador: '', 
+    sinGoleador: false, 
+    pin: '', 
+    pinConfirm: '', 
+    jokerActivo: false, 
+    jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) 
+};
+
 const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [pronostico, setPronostico] = useState({ golesLocal: '', golesVisitante: '', resultado1x2: '', goleador: '', sinGoleador: false, pin: '', pinConfirm: '', jokerActivo: false, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) });
+    const [pronostico, setPronostico] = useState(initialPronosticoState);
     const [hasSubmitted, setHasSubmitted] = useState(false);
     const [isLocked, setIsLocked] = useState(true);
     const [pinInput, setPinInput] = useState('');
@@ -388,7 +404,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
     
     const userProfile = userProfiles[user] || {};
-    const initialPronosticoState = { golesLocal: '', golesVisitante: '', resultado1x2: '', goleador: '', sinGoleador: false, pin: '', pinConfirm: '', jokerActivo: false, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) };
 
     useEffect(() => {
         setLoading(true);
