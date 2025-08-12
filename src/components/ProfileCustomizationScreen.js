@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import styles from '../styles';
-import { PROFILE_COLORS, PROFILE_ICONS } from '../constants';
+import { PROFILE_COLORS, PROFILE_ICONS } from '../config/constants'; // Corregido
 import { PlayerProfileDisplay } from '../reusableComponents';
 
 const ProfileCustomizationScreen = ({ user, onSave, userProfile }) => {
@@ -10,4 +10,3 @@ const ProfileCustomizationScreen = ({ user, onSave, userProfile }) => {
 };
 
 export default ProfileCustomizationScreen;
-
