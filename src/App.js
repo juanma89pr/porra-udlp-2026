@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -68,24 +68,7 @@ const PLANTILLA_INICIAL = [
 ];
 
 const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)', 'linear-gradient(45deg, #e63946, #fca311)', 'linear-gradient(45deg, #52b788, #9b59b6)'];
-
-// --- ICONOS DE PERFIL MODIFICADOS ---
-const PROFILE_ICONS = [
-    // Animales
-    '🐥', '🦊', '🦍', '🐉', '🦩', 
-    // Elementos y Símbolos
-    '🔥', '⚡️', '❤️‍🔥', '💣', '🚀', '🔝',
-    // Fútbol y Trofeos
-    '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🥈', '🥉', 
-    // General y Reacciones
-    '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎉',
-    // Juegos y Azar
-    '🎮', '🏎️', '🎲', '♠️', '♥️', '♦️', '♣️', '🏴‍☠️', '🎱', '🍀',
-    // Caras y Estados
-    '😂', '🤯', '🤔', '🤫', '🤑', '😈',
-    // Otros
-    '👽', '🤖', '👻', '💸', '1️⃣', '7️⃣', '🔟'
-];
+const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🏃‍♂️', '🏃🏾‍♂️', '1️⃣', '7️⃣', '🔟', '🤑', '😈'];
 
 
 // ============================================================================
@@ -200,8 +183,11 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, jornadaInfo }) => {
     const [reactions, setReactions] = useState({});
 
     useEffect(() => {
-        if (!jornadaInfo || !jornadaInfo.id) return;
-        setLoading(false); // Data is now coming from props
+        if (!jornadaInfo || !jornadaInfo.id) {
+            setLoading(!jornadaInfo); // Show loading if jornadaInfo is null, hide if it's just an empty object
+            return;
+        }
+        setLoading(false);
         const reactionsRef = doc(db, "jornadas", jornadaInfo.id);
         const unsubscribe = onSnapshot(reactionsRef, (docSnap) => {
             if (docSnap.exists() && docSnap.data().reactions) {
@@ -1057,13 +1043,6 @@ const AdminNotifications = ({ onBack }) => {
         setSending(true);
         setMessage(`Enviando: "${msgToSend}"...`);
 
-        // --- NOTA PARA EL DESARROLLADOR ---
-        // Esta función depende de una Cloud Function en tu proyecto de Firebase.
-        // 1. Asegúrate de tener las Cloud Functions configuradas.
-        // 2. Despliega una función llamada 'sendGlobalNotification'.
-        // 3. Esa función debe leer todos los tokens de la colección 'notification_tokens'
-        //    y usar el Admin SDK de Firebase para enviarles el mensaje.
-        // 4. ¡No olvides añadir tu VAPID_KEY al principio de este archivo!
         try {
             const sendGlobalNotification = httpsCallable(functions, 'sendGlobalNotification');
             const result = await sendGlobalNotification({ message: msgToSend });
@@ -1073,7 +1052,7 @@ const AdminNotifications = ({ onBack }) => {
             
         } catch (error) {
             console.error("Error al llamar a la Cloud Function:", error);
-            setMessage(`❌ Error: ${error.message}. Asegúrate de que la Cloud Function 'sendGlobalNotification' esté desplegada y funcionando correctamente.`);
+            setMessage(`❌ Error: ${error.message}`);
         } finally {
             setSending(false);
         }
@@ -1391,11 +1370,6 @@ function App() {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
               console.log('Notification permission granted.');
-              if (VAPID_KEY === "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE") {
-                  console.error("VAPID_KEY no está configurada. No se puede obtener el token.");
-                  alert("Error de configuración: Falta la VAPID key para las notificaciones.");
-                  return;
-              }
               const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
               if (currentToken) {
                   console.log('Token de notificación:', currentToken);
