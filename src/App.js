@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, auth, rtdb, messaging, functions, getAuth, signInAnonymously, onAuthStateChanged, set, onDisconnect, ref, getDoc, collection, doc, query, where, limit, orderBy, getDocs, setDoc, getToken, onSnapshot } from './firebaseConfig';
-import { JUGADORES, ADMIN_PASSWORD, APUESTA_NORMAL, APUESTA_VIP } from './constants';
+import { JUGADORES, ADMIN_PASSWORD, APUESTA_NORMAL, APUESTA_VIP } from './config/constants';
 import styles from './styles';
 import { LiveBanner, WinnerAnimation, InstallGuideModal, NotificationPermissionModal, PlayerProfileDisplay } from './reusableComponents';
 
