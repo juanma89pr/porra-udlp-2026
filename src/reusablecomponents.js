@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styles, { colors } from './styles';
-import { SECRET_MESSAGES } from './constants';
+import { SECRET_MESSAGES, ADMIN_PASSWORD } from './config/constants';
 
 const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.lightText, style: customStyle = {} }) => {
     const finalProfile = profile || {};
@@ -83,4 +83,3 @@ export {
     AnimatedPoints,
     AdminLoginModal
 };
-

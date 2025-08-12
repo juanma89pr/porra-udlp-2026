@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-// Importaciones de Firebase directamente de sus módulos, no de un archivo intermedio
+// Importaciones de Firebase directamente de sus módulos
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, doc, query, where, limit, orderBy, getDocs, setDoc, onSnapshot } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
-// Importaciones de tus archivos
+// Importaciones de tus archivos de configuración
 import { JUGADORES, ADMIN_PASSWORD, APUESTA_NORMAL, APUESTA_VIP, PLANTILLA_INICIAL } from './config/constants';
-import styles from './styles';
-import { LiveBanner, WinnerAnimation, InstallGuideModal, NotificationPermissionModal, PlayerProfileDisplay } from './reusableComponents';
+import styles, { colors } from './styles';
+import { LiveBanner, WinnerAnimation, InstallGuideModal, NotificationPermissionModal, PlayerProfileDisplay, AnimatedPoints } from './reusableComponents';
 import { app, db, auth, rtdb, messaging, functions } from './firebaseConfig';
 
 // Importación de los nuevos componentes de pantalla
 import InitialSplashScreen from './components/InitialSplashScreen';
 import SplashScreen from './components/SplashScreen';
 import LoginScreen from './components/LoginScreen';
-import ProfileCustomizationScreen from './components/components/ProfileCustomizationScreen';
+import ProfileCustomizationScreen from './components/ProfileCustomizationScreen';
 import MiJornadaScreen from './components/MiJornadaScreen';
 import LaJornadaScreen from './components/LaJornadaScreen';
 import CalendarioScreen from './components/CalendarioScreen';
