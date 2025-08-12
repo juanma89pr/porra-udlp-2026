@@ -250,7 +250,6 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
             await runTransaction(db, async (transaction) => {
                 const reactionDoc = await transaction.get(reactionRef);
                 if (!reactionDoc.exists()) { 
-                    // FIX: Throw an actual Error object
                     throw new Error("Document does not exist!"); 
                 }
                 
@@ -373,7 +372,6 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     );
 };
 
-// FIX: Move initialPronosticoState outside the component to fix dependency warning
 const initialPronosticoState = { 
     golesLocal: '', 
     golesVisitante: '', 
@@ -1105,7 +1103,7 @@ const AdminNotifications = ({ onBack }) => {
 };
 
 
-const AdminPanelScreen = () => {
+const AdminPanelScreen = ({ teamLogos }) => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [adminView, setAdminView] = useState('main');
@@ -1120,7 +1118,7 @@ const AdminPanelScreen = () => {
 
     if (loading) return <LoadingSkeleton />;
 
-    if (adminView === 'escudos') return <AdminEscudosManager onBack={() => setAdminView('main')} />;
+    if (adminView === 'escudos') return <AdminEscudosManager onBack={() => setAdminView('main')} teamLogos={teamLogos} />;
     if (adminView === 'users') return <AdminUserManager onBack={() => setAdminView('main')} />;
     if (adminView === 'notifications') return <AdminNotifications onBack={() => setAdminView('main')} />;
     if (adminView === 'anual') return <AdminPorraAnual onBack={() => setAdminView('main')} />;
@@ -1404,7 +1402,7 @@ function App() {
                 case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
                 case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} userProfiles={userProfiles} />;
                 case 'pagos': return <PagosScreen user={currentUser} userProfiles={userProfiles} />;
-                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen /> : null;
+                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} /> : null;
                 default: return null;
             }
         };
