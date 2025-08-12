@@ -1346,6 +1346,7 @@ function App() {
   
   const handleRequestPermission = async (user) => {
       setShowNotificationModal(false);
+      localStorage.setItem('notificationPrompt_v2_seen', 'true'); // Set the flag
       try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
@@ -1365,7 +1366,12 @@ function App() {
       const userStatusRef = ref(rtdb, 'status/' + user); await set(userStatusRef, true); onDisconnect(userStatusRef).set(false);
       const userProfileRef = doc(db, "clasificacion", user); const docSnap = await getDoc(userProfileRef);
       if (docSnap.exists() && docSnap.data().icon && docSnap.data().color) { setScreen('app'); } else { setScreen('customizeProfile'); }
-      if ('Notification' in window && Notification.permission === 'default') { setShowNotificationModal(true); }
+      
+      const hasSeenPrompt = localStorage.getItem('notificationPrompt_v2_seen');
+      if ('Notification' in window && Notification.permission !== 'granted' && !hasSeenPrompt) {
+          setShowNotificationModal(true);
+      }
+      
       const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
       const jornadaSnap = await getDocs(q);
       if (!jornadaSnap.empty) {
@@ -1406,7 +1412,7 @@ function App() {
                 default: return null;
             }
         };
-      return (<>{showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}{showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => setShowNotificationModal(false)} />}{porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!</div>)}<LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} /><nav style={styles.navbar}><button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button><button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button><button onClick={() => handleNavClick('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button><button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button><button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>{currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}<button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button><button onClick={handleLogout} style={styles.logoutButton}>Salir</button></nav><div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreen /></div></>);
+      return (<>{showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}{showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => {setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v2_seen', 'true');}} />}{porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!</div>)}<LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} /><nav style={styles.navbar}><button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button><button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button><button onClick={() => handleNavClick('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button><button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button><button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>{currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}<button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button><button onClick={handleLogout} style={styles.logoutButton}>Salir</button></nav><div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreen /></div></>);
     }
   };
   return (<>{winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}<div id="app-container" style={styles.container}><div style={styles.card}>{renderContent()}</div></div></>);
