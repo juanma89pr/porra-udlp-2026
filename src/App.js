@@ -29,6 +29,8 @@ const rtdb = getDatabase(app);
 const functions = getFunctions(app);
 
 // --- CLAVE VAPID PARA NOTIFICACIONES ---
+// ¡IMPORTANTE! Reemplaza el texto de abajo con tu VAPID Key real.
+// La encuentras en tu proyecto de Firebase > Configuración del Proyecto > Cloud Messaging > Certificados push web.
 const VAPID_KEY = "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE";
 
 
@@ -66,7 +68,24 @@ const PLANTILLA_INICIAL = [
 ];
 
 const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)', 'linear-gradient(45deg, #e63946, #fca311)', 'linear-gradient(45deg, #52b788, #9b59b6)'];
-const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🏃‍♂️', '🏃🏾‍♂️', '1️⃣', '7️⃣', '🔟', '🤑', '😈'];
+
+// --- ICONOS DE PERFIL MODIFICADOS ---
+const PROFILE_ICONS = [
+    // Animales
+    '🐥', '🦊', '🦍', '🐉', '🦩', 
+    // Elementos y Símbolos
+    '🔥', '⚡️', '❤️‍🔥', '💣', '🚀', '🔝',
+    // Fútbol y Trofeos
+    '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🥈', '🥉', 
+    // General y Reacciones
+    '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎉',
+    // Juegos y Azar
+    '🎮', '🏎️', '🎲', '♠️', '♥️', '♦️', '♣️', '🏴‍☠️', '🎱', '🍀',
+    // Caras y Estados
+    '😂', '🤯', '🤔', '🤫', '🤑', '😈',
+    // Otros
+    '👽', '🤖', '👻', '💸', '1️⃣', '7️⃣', '🔟'
+];
 
 
 // ============================================================================
@@ -173,8 +192,7 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
-const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
-    const [jornadaInfo, setJornadaInfo] = useState(null);
+const SplashScreen = ({ onEnter, teamLogos, currentUser, jornadaInfo }) => {
     const [countdown, setCountdown] = useState('');
     const [loading, setLoading] = useState(true);
     const [showInstallGuide, setShowInstallGuide] = useState(false);
@@ -183,6 +201,7 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
 
     useEffect(() => {
         if (!jornadaInfo || !jornadaInfo.id) return;
+        setLoading(false); // Data is now coming from props
         const reactionsRef = doc(db, "jornadas", jornadaInfo.id);
         const unsubscribe = onSnapshot(reactionsRef, (docSnap) => {
             if (docSnap.exists() && docSnap.data().reactions) {
@@ -196,43 +215,28 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
 
 
     useEffect(() => {
-        setLoading(true);
-        const qActiva = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada", "Finalizada", "Próximamente"]), orderBy("numeroJornada", "desc"));
-        const unsubscribe = onSnapshot(qActiva, (snap) => {
-            let jornadaToShow = null;
-            const activas = snap.docs.filter(d => d.data().estado === 'Abierta');
-            const cerradas = snap.docs.filter(d => d.data().estado === 'Cerrada');
-            const finalizadas = snap.docs.filter(d => d.data().estado === 'Finalizada');
-            const proximas = snap.docs.filter(d => d.data().estado === 'Próximamente').sort((a,b) => a.data().numeroJornada - b.data().numeroJornada);
-
-            if (activas.length > 0) {
-                jornadaToShow = { id: activas[0].id, ...activas[0].data(), type: 'activa' };
-            } else if (cerradas.length > 0) {
-                jornadaToShow = { id: cerradas[0].id, ...cerradas[0].data(), type: 'cerrada' };
-            } else if (finalizadas.length > 0) {
-                jornadaToShow = { id: finalizadas[0].id, ...finalizadas[0].data(), type: 'finalizada' };
-            } else if (proximas.length > 0) {
-                jornadaToShow = { id: proximas[0].id, ...proximas[0].data(), type: 'proxima' };
-            }
-            
-            setJornadaInfo(jornadaToShow);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error fetching jornada: ", error);
-            setJornadaInfo(null);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    useEffect(() => {
         if (!jornadaInfo) return;
-        const targetDate = jornadaInfo.type === 'activa' ? jornadaInfo.fechaCierre?.toDate() : jornadaInfo.fechaApertura?.toDate();
+        
+        let targetDate;
+        if (jornadaInfo.estado === 'Abierta') {
+            targetDate = jornadaInfo.fechaCierre?.toDate();
+        } else if (jornadaInfo.estado === 'Próximamente') {
+            targetDate = jornadaInfo.fechaApertura?.toDate();
+        } else {
+            setCountdown('');
+            return;
+        }
+
         if (!targetDate) { setCountdown(''); return; }
+
         const interval = setInterval(() => {
             const now = new Date();
             const diff = targetDate - now;
-            if (diff <= 0) { setCountdown(jornadaInfo.type === 'activa' ? "¡APUESTAS CERRADAS!" : "¡PARTIDO EN JUEGO!"); clearInterval(interval); return; }
+            if (diff <= 0) { 
+                setCountdown(jornadaInfo.estado === 'Abierta' ? "¡APUESTAS CERRADAS!" : "¡PARTIDO EN JUEGO!"); 
+                clearInterval(interval); 
+                return; 
+            }
             const d = Math.floor(diff / (1000 * 60 * 60 * 24));
             const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -282,11 +286,11 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
     const renderJornadaInfo = () => {
         if (!jornadaInfo) { return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>); }
         let infoContent;
-        switch (jornadaInfo.type) {
-            case 'activa': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
-            case 'cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p>Esperando el resultado del partido...</p></>); break;
-            case 'finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
-            case 'proxima': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
+        switch (jornadaInfo.estado) {
+            case 'Abierta': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
+            case 'Cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p>Esperando el resultado del partido...</p></>); break;
+            case 'Finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
+            case 'Próximamente': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
             default: infoContent = null;
         }
         
@@ -384,8 +388,7 @@ const initialPronosticoState = {
     jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) 
 };
 
-const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
-    const [currentJornada, setCurrentJornada] = useState(null);
+const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles, currentJornada }) => {
     const [loading, setLoading] = useState(true);
     const [pronostico, setPronostico] = useState(initialPronosticoState);
     const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -408,32 +411,35 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         const userJokerRef = doc(db, "clasificacion", user);
         getDoc(userJokerRef).then(docSnap => { setJokersRestantes(docSnap.exists() && docSnap.data().jokersRestantes !== undefined ? docSnap.data().jokersRestantes : 2); });
 
-        const qJornada = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada"]), orderBy("numeroJornada", "desc"), limit(1));
-        const unsubscribe = onSnapshot(qJornada, (querySnapshot) => {
-            if (!querySnapshot.empty) {
-                const jornadaData = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
-                setCurrentJornada(jornadaData);
-                if (jornadaData.estado === "Abierta" && jornadaData.fechaCierre) { setPanicButtonDisabled(new Date().getTime() > (jornadaData.fechaCierre.toDate().getTime() - 3600 * 1000)); }
-                const pronosticoRef = doc(db, "pronosticos", jornadaData.id, "jugadores", user);
-                getDoc(pronosticoRef).then(pronosticoSnap => {
-                    if (pronosticoSnap.exists()) {
-                        const data = pronosticoSnap.data();
-                        const filledJokerPronosticos = data.jokerPronosticos ? [...data.jokerPronosticos, ...Array(10 - data.jokerPronosticos.length).fill({golesLocal: '', golesVisitante: ''})] : Array(10).fill({golesLocal: '', golesVisitante: ''});
-                        setPronostico({...initialPronosticoState, ...data, jokerPronosticos: filledJokerPronosticos});
-                        setIsLocked(!!data.pin); setHasSubmitted(true);
-                    } else {
-                        setPronostico(initialPronosticoState); setIsLocked(false); setHasSubmitted(false);
-                    } setLoading(false);
-                });
-                const allPronosticosRef = collection(db, "pronosticos", jornadaData.id, "jugadores");
-                onSnapshot(allPronosticosRef, (snapshot) => { setAllPronosticos(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))); });
-            } else {
-                const qProxima = query(collection(db, "jornadas"), where("estado", "==", "Próximamente"), orderBy("numeroJornada"), limit(1));
-                getDocs(qProxima).then(proximaSnap => { if (!proximaSnap.empty) setCurrentJornada({ id: proximaSnap.docs[0].id, ...proximaSnap.docs[0].data() }); else setCurrentJornada(null); setLoading(false); });
+        if (currentJornada) {
+            if (currentJornada.estado === "Abierta" && currentJornada.fechaCierre) { 
+                setPanicButtonDisabled(new Date().getTime() > (currentJornada.fechaCierre.toDate().getTime() - 3600 * 1000)); 
             }
-        }, (error) => { console.error("Error: ", error); setLoading(false); });
-        return () => unsubscribe();
-    }, [user]);
+            const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user);
+            const unsubPronostico = onSnapshot(pronosticoRef, (pronosticoSnap) => {
+                if (pronosticoSnap.exists()) {
+                    const data = pronosticoSnap.data();
+                    const filledJokerPronosticos = data.jokerPronosticos ? [...data.jokerPronosticos, ...Array(10 - data.jokerPronosticos.length).fill({golesLocal: '', golesVisitante: ''})] : Array(10).fill({golesLocal: '', golesVisitante: ''});
+                    setPronostico({...initialPronosticoState, ...data, jokerPronosticos: filledJokerPronosticos});
+                    setIsLocked(!!data.pin); setHasSubmitted(true);
+                } else {
+                    setPronostico(initialPronosticoState); setIsLocked(false); setHasSubmitted(false);
+                } setLoading(false);
+            });
+
+            const allPronosticosRef = collection(db, "pronosticos", currentJornada.id, "jugadores");
+            const unsubAllPronosticos = onSnapshot(allPronosticosRef, (snapshot) => { 
+                setAllPronosticos(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))); 
+            });
+
+            return () => {
+                unsubPronostico();
+                unsubAllPronosticos();
+            };
+        } else {
+            setLoading(false);
+        }
+    }, [user, currentJornada]);
     
     useEffect(() => {
         if (currentJornada && currentJornada.estado === 'Cerrada' && liveData && liveData.isLive && allPronosticos.length > 0) {
@@ -481,17 +487,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             await setDoc(pronosticoRef, { ...pronosticoToSave, jokerPronosticos: cleanJokerPronosticos, lastUpdated: new Date() });
             setMessage({text: '¡Pronóstico guardado y secreto!', type: 'success'});
             setHasSubmitted(true);
-            setPronostico(initialPronosticoState);
-            setTimeout(() => {
-                getDoc(pronosticoRef).then(pronosticoSnap => {
-                    if (pronosticoSnap.exists()) {
-                         const data = pronosticoSnap.data();
-                         const filledJokerPronosticos = data.jokerPronosticos ? [...data.jokerPronosticos, ...Array(10 - data.jokerPronosticos.length).fill({golesLocal: '', golesVisitante: ''})] : Array(10).fill({golesLocal: '', golesVisitante: ''});
-                         setPronostico({...initialPronosticoState, ...data, jokerPronosticos: filledJokerPronosticos});
-                         setIsLocked(!!data.pin);
-                    }
-                });
-            }, 1000);
+            // No reseteamos el pronóstico aquí para que el usuario pueda ver lo que guardó
+            // y la UI cambie a "bloqueado". La data se refrescará con el onSnapshot.
         } catch (error) { console.error("Error al guardar: ", error); setMessage({text: 'Error al guardar.', type: 'error'}); }
         setIsSaving(false);
     };
@@ -558,7 +555,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                         {hasSubmitted && isLocked ? (
                             <div style={styles.placeholder}><h3>¡Pronóstico guardado y secreto!</h3><p>Tu apuesta está protegida con PIN. Podrás ver los pronósticos de todos cuando la jornada se cierre.</p><div style={{marginTop: '20px'}}><input type="password" maxLength="4" value={pinInput} onChange={(e) => setPinInput(e.target.value)} style={styles.input} placeholder="PIN de 4 dígitos" /><button type="button" onClick={handleUnlock} style={styles.mainButton}>Desbloquear</button></div></div>
                         ) : hasSubmitted && !isLocked ? (
-                             <div style={styles.placeholder}><h3>¡Pronóstico guardado!</h3><p>Tu apuesta no está protegida con PIN. Cualquiera podría modificarla. Puedes añadir un PIN y volver a guardar.</p><button type="button" onClick={() => { setIsLocked(false); setHasSubmitted(false); }} style={styles.mainButton}>Modificar Apuesta</button></div>
+                             <div style={styles.placeholder}><h3>¡Pronóstico guardado!</h3><p>Tu apuesta no está protegida con PIN. Cualquiera podría modificarla si accede con tu perfil.</p><button type="button" onClick={() => { setIsLocked(false); setHasSubmitted(false); }} style={styles.mainButton}>Modificar Apuesta</button></div>
                         ) : (
                             <fieldset style={{border: 'none', padding: 0, margin: 0}}>
                                 <div style={styles.formGroup}><label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label><div style={styles.miJornadaMatchInfo}><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} /><div style={styles.miJornadaScoreInputs}><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} /></div><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} /></div>{(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}</div>
@@ -583,8 +580,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     return (<div>{showJokerAnimation && <JokerAnimation />}<h2 style={styles.title}>MI JORNADA</h2><p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>{liveData && liveData.isLive && currentJornada?.estado === 'Cerrada' && (<div style={styles.liveInfoBox}><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Puntos Provisionales</span><span style={styles.liveInfoValue}><AnimatedPoints value={provisionalData.puntos} /></span></div><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Posición Provisional</span><span style={styles.liveInfoValue}>{provisionalData.posicion}</span></div></div>)}{renderContent()}</div>);
 };
 
-const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => {
-    const [jornadaActual, setJornadaActual] = useState(null);
+const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers, jornadaActual }) => {
     const [participantes, setParticipantes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [countdown, setCountdown] = useState('');
@@ -594,40 +590,42 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
     const [jornadaStats, setJornadaStats] = useState(null);
 
     useEffect(() => {
-        const q = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada"]), orderBy("numeroJornada", "desc"), limit(1));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-                setJornadaActual(jornada);
-                const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
-                onSnapshot(pronosticosRef, (pronosticosSnap) => {
-                    const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setParticipantes(pronosticosData);
-                    if (pronosticosData.length > 0) {
-                        const resultados = pronosticosData.map(p => `${p.golesLocal}-${p.golesVisitante}`);
-                        const counts = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
-                        const resultadoMasComun = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
+        if (jornadaActual) {
+            setLoading(false);
+            const pronosticosRef = collection(db, "pronosticos", jornadaActual.id, "jugadores");
+            const unsubPronosticos = onSnapshot(pronosticosRef, (pronosticosSnap) => {
+                const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setParticipantes(pronosticosData);
+                if (pronosticosData.length > 0) {
+                    const resultados = pronosticosData.map(p => `${p.golesLocal}-${p.golesVisitante}`);
+                    const counts = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
+                    const resultadoMasComun = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
 
-                        const total = pronosticosData.length;
-                        const ganaLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Gana UD Las Palmas').length;
-                        const empateCount = pronosticosData.filter(p => p.resultado1x2 === 'Empate').length;
-                        const pierdeLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Pierde UD Las Palmas').length;
+                    const total = pronosticosData.length;
+                    const ganaLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Gana UD Las Palmas').length;
+                    const empateCount = pronosticosData.filter(p => p.resultado1x2 === 'Empate').length;
+                    const pierdeLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Pierde UD Las Palmas').length;
 
-                        setJornadaStats({
-                            resultadoMasComun: `${resultadoMasComun[0]} (${resultadoMasComun[1]} veces)`,
-                            porcentajeGana: ((ganaLocalCount / total) * 100).toFixed(0),
-                            porcentajeEmpate: ((empateCount / total) * 100).toFixed(0),
-                            porcentajePierde: ((pierdeLocalCount / total) * 100).toFixed(0),
-                        });
-                    } else {
-                        setJornadaStats(null);
-                    }
-                });
-            } else { setJornadaActual(null); setParticipantes([]); } setLoading(false);
-        });
+                    setJornadaStats({
+                        resultadoMasComun: `${resultadoMasComun[0]} (${resultadoMasComun[1]} veces)`,
+                        porcentajeGana: ((ganaLocalCount / total) * 100).toFixed(0),
+                        porcentajeEmpate: ((empateCount / total) * 100).toFixed(0),
+                        porcentajePierde: ((pierdeLocalCount / total) * 100).toFixed(0),
+                    });
+                } else {
+                    setJornadaStats(null);
+                }
+            });
+            return () => unsubPronosticos();
+        } else {
+            setLoading(true);
+        }
+    }, [jornadaActual]);
+
+    useEffect(() => {
         const configRef = doc(db, "configuracion", "porraAnual"); const unsubConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
         const pronosticosAnualesRef = collection(db, "porraAnualPronosticos"); const unsubPronosticos = onSnapshot(pronosticosAnualesRef, (snapshot) => { setPronosticosAnuales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); });
-        return () => { unsubscribe(); unsubConfig(); unsubPronosticos(); };
+        return () => { unsubConfig(); unsubPronosticos(); };
     }, []);
     
     useEffect(() => {
@@ -667,9 +665,14 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
     {isLiveView && (<div><h3 style={styles.provisionalTitle}>Clasificación Provisional</h3><table style={{...styles.table, backgroundColor: 'rgba(0,0,0,0.3)'}}><thead><tr><th style={styles.th}>POS</th><th style={styles.th}>Jugador</th><th style={styles.th}>Puntos</th></tr></thead><tbody>{provisionalRanking.map((jugador, index) => { const profile = userProfiles[jugador.id] || {}; return (<tr key={jugador.id} style={jugador.puntos > 0 && provisionalRanking[0].puntos === jugador.puntos ? styles.provisionalWinnerRow : styles.tr}><td style={styles.tdRank}>{index + 1}º</td><td style={styles.td}><PlayerProfileDisplay name={jugador.id} profile={profile} /></td><td style={styles.td}><AnimatedPoints value={jugador.puntos} /></td></tr>)})}</tbody></table></div>)}</div>) : (<div style={styles.placeholder}><h3>No hay ninguna jornada activa o cerrada en este momento.</h3></div>)}<div style={styles.porraAnualContainer}><h3 style={styles.formSectionTitle}>⭐ PORRA ANUAL ⭐</h3>{porraAnualConfig?.estado === 'Abierta' && <p style={{textAlign: 'center'}}>Las apuestas de los demás serán secretas hasta la Jornada 5. ¡Haz la tuya desde el banner superior!</p>}{(porraAnualConfig?.estado === 'Cerrada' || porraAnualConfig?.estado === 'Finalizada') && (<div><p style={{textAlign: 'center'}}>Apuestas cerradas. Estos son los pronósticos para final de temporada:</p><div style={styles.resumenContainer}>{pronosticosAnuales.sort((a, b) => a.id.localeCompare(b.id)).map(p => { const profile = userProfiles[p.id] || {}; return (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}><PlayerProfileDisplay name={p.id} profile={profile} defaultColor={styles.colors.yellow} /></h4><div style={styles.resumenJugadorBets}><p><strong>¿Asciende?:</strong> <span style={{color: p.ascenso === 'SI' ? styles.colors.success : styles.colors.danger, fontWeight: 'bold'}}>{p.ascenso}</span></p><p><strong>Posición Final:</strong> <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{p.posicion}º</span></p>{porraAnualConfig.estado === 'Finalizada' && <p><strong>Puntos Obtenidos:</strong> <span style={{fontWeight: 'bold', color: styles.colors.gold}}>{p.puntosObtenidos || 0}</span></p>}</div></div>)})}</div></div>)}{porraAnualConfig?.estado !== 'Abierta' && porraAnualConfig?.estado !== 'Cerrada' && porraAnualConfig?.estado !== 'Finalizada' && <p style={{textAlign: 'center'}}>El administrador no ha abierto la porra anual todavía.</p>}</div></div>);
 };
 
-const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
-    const [jornadas, setJornadas] = useState([]); const [loading, setLoading] = useState(true);
-    useEffect(() => { const q = query(collection(db, "jornadas"), orderBy("numeroJornada")); const unsubscribe = onSnapshot(q, (querySnapshot) => { setJornadas(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); setLoading(false); }, (error) => { console.error("Error cargando calendario: ", error); setLoading(false); }); return () => unsubscribe(); }, []);
+const CalendarioScreen = ({ onViewJornada, teamLogos, jornadas }) => {
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
+        if (jornadas && jornadas.length > 0) {
+            setLoading(false);
+        }
+    }, [jornadas]);
+
     if (loading) return <LoadingSkeleton />;
     return (<div><h2 style={styles.title}>CALENDARIO</h2><div style={styles.jornadaList}>{jornadas.map(jornada => (<div key={jornada.id} style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`} : {...styles.jornadaItem, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`}} onClick={() => onViewJornada(jornada.id)}><div style={styles.jornadaInfo}><div style={styles.jornadaTeams}><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 25, height: 25}} /><span style={{color: styles.colors.yellow, margin: '0 10px'}}>vs</span><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 25, height: 25}} /></div><strong>{jornada.esVip && '⭐ '}{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}</strong><small>{jornada.fechaStr || 'Fecha por confirmar'} - {jornada.estadio || 'Estadio por confirmar'}</small></div><div style={{...styles.statusBadge, backgroundColor: styles.colors.status[jornada.estado]}}>{jornada.estado}</div></div>))}</div></div>);
 };
@@ -1054,6 +1057,13 @@ const AdminNotifications = ({ onBack }) => {
         setSending(true);
         setMessage(`Enviando: "${msgToSend}"...`);
 
+        // --- NOTA PARA EL DESARROLLADOR ---
+        // Esta función depende de una Cloud Function en tu proyecto de Firebase.
+        // 1. Asegúrate de tener las Cloud Functions configuradas.
+        // 2. Despliega una función llamada 'sendGlobalNotification'.
+        // 3. Esa función debe leer todos los tokens de la colección 'notification_tokens'
+        //    y usar el Admin SDK de Firebase para enviarles el mensaje.
+        // 4. ¡No olvides añadir tu VAPID_KEY al principio de este archivo!
         try {
             const sendGlobalNotification = httpsCallable(functions, 'sendGlobalNotification');
             const result = await sendGlobalNotification({ message: msgToSend });
@@ -1063,7 +1073,7 @@ const AdminNotifications = ({ onBack }) => {
             
         } catch (error) {
             console.error("Error al llamar a la Cloud Function:", error);
-            setMessage(`❌ Error: ${error.message}`);
+            setMessage(`❌ Error: ${error.message}. Asegúrate de que la Cloud Function 'sendGlobalNotification' esté desplegada y funcionando correctamente.`);
         } finally {
             setSending(false);
         }
@@ -1103,18 +1113,9 @@ const AdminNotifications = ({ onBack }) => {
 };
 
 
-const AdminPanelScreen = ({ teamLogos }) => {
-    const [jornadas, setJornadas] = useState([]);
-    const [loading, setLoading] = useState(true);
+const AdminPanelScreen = ({ teamLogos, allJornadas }) => {
+    const [loading, setLoading] = useState(false);
     const [adminView, setAdminView] = useState('main');
-
-    useEffect(() => {
-        const q = query(collection(db, "jornadas"), orderBy("numeroJornada"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            setJornadas(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); setLoading(false);
-        }, (error) => { console.error("Error al cargar jornadas: ", error); setLoading(false); });
-        return () => unsubscribe();
-    }, []);
 
     if (loading) return <LoadingSkeleton />;
 
@@ -1129,7 +1130,7 @@ const AdminPanelScreen = ({ teamLogos }) => {
                 <AdminTestJornada />
                 <h3 style={{...styles.title, fontSize: '1.5rem', marginTop: '40px'}}>Gestión de Jornadas</h3>
                 <div style={styles.jornadaList}>
-                    {jornadas.map(jornada => (<JornadaAdminItem key={jornada.id} jornada={jornada} />))}
+                    {allJornadas.map(jornada => (<JornadaAdminItem key={jornada.id} jornada={jornada} />))}
                 </div>
             </div>
         );
@@ -1331,6 +1332,10 @@ function App() {
   const [userProfiles, setUserProfiles] = useState({});
   const [onlineUsers, setOnlineUsers] = useState({});
 
+  // --- ESTADOS CENTRALIZADOS PARA JORNADAS ---
+  const [allJornadas, setAllJornadas] = useState([]);
+  const [mainJornada, setMainJornada] = useState(null); // Para Splash, MiJornada, LaJornada
+
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => { if (!user) { signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error)); } });
     const styleSheet = document.createElement("style"); styleSheet.type = "text/css"; styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; }`;
@@ -1341,7 +1346,42 @@ function App() {
     const plantillaRef = doc(db, "configuracion", "plantilla"); const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => { if (docSnap.exists() && docSnap.data().jugadores) { setPlantilla(docSnap.data().jugadores); } else { setDoc(plantillaRef, { jugadores: PLANTILLA_INICIAL }); setPlantilla(PLANTILLA_INICIAL); } });
     const clasificacionRef = collection(db, "clasificacion"); const unsubscribeProfiles = onSnapshot(clasificacionRef, (snapshot) => { const profiles = {}; snapshot.forEach(doc => { profiles[doc.id] = doc.data(); }); setUserProfiles(profiles); });
     const statusRef = ref(rtdb, 'status/'); const unsubscribeStatus = onValue(statusRef, (snapshot) => { const data = snapshot.val(); setOnlineUsers(data || {}); });
-    return () => { document.head.removeChild(styleSheet); unsubscribeConfig(); unsubscribeAuth(); unsubscribeEscudos(); unsubscribeLive(); unsubscribePlantilla(); unsubscribeProfiles(); unsubscribeStatus(); }
+    
+    // --- LISTENER CENTRALIZADO PARA JORNADAS ---
+    const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada", "desc"));
+    const unsubscribeJornadas = onSnapshot(qJornadas, (snap) => {
+        const jornadasData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setAllJornadas(jornadasData);
+
+        let jornadaToShow = null;
+        const activas = jornadasData.filter(d => d.estado === 'Abierta');
+        const cerradas = jornadasData.filter(d => d.estado === 'Cerrada');
+        const finalizadas = jornadasData.filter(d => d.estado === 'Finalizada');
+        const proximas = jornadasData.filter(d => d.estado === 'Próximamente').sort((a,b) => a.numeroJornada - b.numeroJornada);
+
+        if (activas.length > 0) {
+            jornadaToShow = activas[0];
+        } else if (cerradas.length > 0) {
+            jornadaToShow = cerradas[0];
+        } else if (finalizadas.length > 0) {
+            jornadaToShow = finalizadas[0];
+        } else if (proximas.length > 0) {
+            jornadaToShow = proximas[0];
+        }
+        setMainJornada(jornadaToShow);
+    });
+
+    return () => { 
+        document.head.removeChild(styleSheet); 
+        unsubscribeConfig(); 
+        unsubscribeAuth(); 
+        unsubscribeEscudos(); 
+        unsubscribeLive(); 
+        unsubscribePlantilla(); 
+        unsubscribeProfiles(); 
+        unsubscribeStatus(); 
+        unsubscribeJornadas();
+    }
   }, []);
   
   const handleRequestPermission = async (user) => {
@@ -1351,6 +1391,11 @@ function App() {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
               console.log('Notification permission granted.');
+              if (VAPID_KEY === "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE") {
+                  console.error("VAPID_KEY no está configurada. No se puede obtener el token.");
+                  alert("Error de configuración: Falta la VAPID key para las notificaciones.");
+                  return;
+              }
               const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
               if (currentToken) {
                   console.log('Token de notificación:', currentToken);
@@ -1394,7 +1439,7 @@ function App() {
 
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => {setShowInitialSplash(false);}} />;
-    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} currentUser={currentUser} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} currentUser={currentUser} jornadaInfo={mainJornada} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
     if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
     if (screen === 'app') {
@@ -1403,12 +1448,12 @@ function App() {
             if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
             if (activeTab === 'profile') return <ProfileScreen user={currentUser} userProfile={userProfiles[currentUser]} onEdit={() => setScreen('customizeProfile')} onBack={() => setActiveTab('miJornada')} />;
             switch (activeTab) {
-                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} plantilla={plantilla} userProfiles={userProfiles} />;
-                case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} liveData={liveJornada?.liveData} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
-                case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
+                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} plantilla={plantilla} userProfiles={userProfiles} currentJornada={mainJornada} />;
+                case 'laJornada': return <LaJornadaScreen teamLogos={teamLogos} liveData={liveJornada?.liveData} userProfiles={userProfiles} onlineUsers={onlineUsers} jornadaActual={mainJornada} />;
+                case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} jornadas={allJornadas} />;
                 case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} userProfiles={userProfiles} />;
                 case 'pagos': return <PagosScreen user={currentUser} userProfiles={userProfiles} />;
-                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} /> : null;
+                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} allJornadas={allJornadas} /> : null;
                 default: return null;
             }
         };
