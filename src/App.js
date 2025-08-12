@@ -15,7 +15,7 @@ import { app, db, auth, rtdb, messaging, functions } from './firebaseConfig';
 import InitialSplashScreen from './components/InitialSplashScreen';
 import SplashScreen from './components/SplashScreen';
 import LoginScreen from './components/LoginScreen';
-import ProfileCustomizationScreen from './components/ProfileCustomizationScreen';
+import ProfileCustomizationScreen from './components/components/ProfileCustomizationScreen';
 import MiJornadaScreen from './components/MiJornadaScreen';
 import LaJornadaScreen from './components/LaJornadaScreen';
 import CalendarioScreen from './components/CalendarioScreen';
