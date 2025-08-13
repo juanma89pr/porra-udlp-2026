@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction, serverTimestamp, addDoc } from "firebase/firestore";
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -43,8 +43,7 @@ const SECRET_MESSAGES = [
     "Consultando con el Oráculo", "Shhh... es un secreto", "Apuesta Fantasma 👻",
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
-// ¡NUEVO! Emoji triste cambiado por corazón
-const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '❤️', '👏'];
+const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
 
 const EQUIPOS_LIGA = [
     "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF", 
@@ -66,8 +65,8 @@ const PLANTILLA_INICIAL = [
     { dorsal: 9, nombre: "Marc Cardona" }, { dorsal: 17, nombre: "Jaime Mata" }
 ];
 
-const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🦊', '🦍', '🐎', '💫', '🦁', '🐺', '🦉', '🦅', '🐙', '🐬'];
 const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)', 'linear-gradient(45deg, #e63946, #fca311)', 'linear-gradient(45deg, #52b788, #9b59b6)'];
+const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🏃‍♂️', '🏃🏾‍♂️', '1️⃣', '7️⃣', '🔟', '🤑', '😈'];
 
 
 // ============================================================================
@@ -164,30 +163,6 @@ const LoadingSkeleton = ({ type = 'list' }) => {
     return (<div style={styles.skeletonContainer}><div style={{...styles.skeletonBox, height: '40px', width: '80%', marginBottom: '20px'}}></div><div style={{...styles.skeletonBox, height: '20px', width: '60%'}}></div><div style={{...styles.skeletonBox, height: '20px', width: '70%', marginTop: '10px'}}></div></div>);
 };
 
-const ReactionAnimation = ({ emoji, onAnimationEnd }) => {
-    useEffect(() => {
-        const timer = setTimeout(onAnimationEnd, 2000);
-        return () => clearTimeout(timer);
-    }, [onAnimationEnd]);
-
-    const particles = Array.from({ length: 50 });
-    const animationClass = `reaction-animation-${emoji}`;
-
-    return (
-        <div style={styles.reactionAnimationOverlay}>
-            {particles.map((_, i) => (
-                <div key={i} className={animationClass} style={{
-                    left: `${Math.random() * 100}%`,
-                    top: `${Math.random() * 100}%`,
-                    animationDelay: `${Math.random() * 0.5}s`
-                }}>
-                    {emoji}
-                </div>
-            ))}
-        </div>
-    );
-};
-
 // ============================================================================
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
@@ -198,7 +173,7 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
-const SplashScreen = ({ onEnter, teamLogos, currentUser, onReaction }) => {
+const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
     const [loading, setLoading] = useState(true);
@@ -227,6 +202,7 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, onReaction }) => {
             const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+            // Lógica para determinar la jornada a mostrar
             let jornadaActiva = todasLasJornadas.find(j => {
                 const apertura = j.fechaApertura?.toDate();
                 const cierre = j.fechaCierre?.toDate();
@@ -281,9 +257,7 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, onReaction }) => {
     
     const handleReaction = async (emoji) => {
         if (!currentUser || !jornadaInfo) return;
-        onReaction(emoji);
         const reactionRef = doc(db, "jornadas", jornadaInfo.id);
-        const activityLogRef = collection(db, "activity_log");
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -313,12 +287,6 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, onReaction }) => {
                 }
                 transaction.update(reactionRef, { reactions: currentReactions });
             });
-            await addDoc(activityLogRef, {
-                user: currentUser,
-                type: 'reaction',
-                emoji: emoji,
-                timestamp: serverTimestamp()
-            });
         } catch (e) {
             console.error("Transaction failed: ", e);
         }
@@ -327,25 +295,11 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, onReaction }) => {
     const renderJornadaInfo = () => {
         if (!jornadaInfo) { return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>); }
         let infoContent;
-        const matchDisplay = (
-            <div style={styles.splashMatchContainer}>
-                <div style={styles.splashTeam}>
-                    <img src={teamLogos[jornadaInfo.equipoLocal] || 'https://placehold.co/100x100/1b263b/e0e1dd?text=?'} style={styles.splashTeamLogo} alt={`${jornadaInfo.equipoLocal} logo`} />
-                    <span style={styles.splashTeamName}>{jornadaInfo.equipoLocal}</span>
-                </div>
-                <span style={styles.splashVs}>VS</span>
-                <div style={styles.splashTeam}>
-                    <img src={teamLogos[jornadaInfo.equipoVisitante] || 'https://placehold.co/100x100/1b263b/e0e1dd?text=?'} style={styles.splashTeamLogo} alt={`${jornadaInfo.equipoVisitante} logo`} />
-                    <span style={styles.splashTeamName}>{jornadaInfo.equipoVisitante}</span>
-                </div>
-            </div>
-        );
-
         switch (jornadaInfo.type) {
-            case 'activa': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3>{matchDisplay}<div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
-            case 'cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3>{matchDisplay}<p>Esperando el resultado del partido...</p></>); break;
-            case 'finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3>{matchDisplay}<p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
-            case 'proxima': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3>{matchDisplay}{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
+            case 'activa': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
+            case 'cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p>Esperando el resultado del partido...</p></>); break;
+            case 'finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
+            case 'proxima': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
             default: infoContent = null;
         }
         
@@ -379,40 +333,18 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, onReaction }) => {
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     const [recentUsers, setRecentUsers] = useState([]);
-    const [activityLog, setActivityLog] = useState([]);
-    const logContainerRef = useRef(null);
 
     useEffect(() => {
         const storedUsers = localStorage.getItem('recentPorraUsers');
         if (storedUsers) {
             setRecentUsers(JSON.parse(storedUsers));
         }
-        
-        const q = query(collection(db, "activity_log"), orderBy("timestamp", "desc"), limit(20));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            setActivityLog(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
-        });
-
-        return () => unsubscribe();
     }, []);
 
-    useEffect(() => {
-        if (logContainerRef.current) {
-            logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-        }
-    }, [activityLog]);
-
-    const handleSelectUser = async (jugador) => {
+    const handleSelectUser = (jugador) => {
         const updatedRecentUsers = [jugador, ...recentUsers.filter(u => u !== jugador)].slice(0, 3);
         setRecentUsers(updatedRecentUsers);
         localStorage.setItem('recentPorraUsers', JSON.stringify(updatedRecentUsers));
-        
-        await addDoc(collection(db, "activity_log"), {
-            user: jugador,
-            type: 'login',
-            timestamp: serverTimestamp()
-        });
-
         onLogin(jugador);
     };
 
@@ -421,52 +353,33 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
         return [...recentUsers, ...remainingJugadores];
     }, [recentUsers]);
 
-    const formatTime = (timestamp) => {
-        if (!timestamp) return '';
-        return timestamp.toDate().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-    }
-
     return (
         <div style={styles.loginContainer}>
-            <h2 style={styles.title}>ELIGE TU PERFIL</h2>
-            <div style={styles.loginLayout}>
-                <div style={styles.activityLogContainer} ref={logContainerRef}>
-                    {activityLog.slice().reverse().map(log => {
-                        const profile = userProfiles[log.user] || {};
-                        return (
-                            <div key={log.id} style={styles.logEntry}>
-                                <span style={styles.logTimestamp}>{formatTime(log.timestamp)}</span>
-                                <PlayerProfileDisplay name={log.user} profile={profile} />
-                                {log.type === 'login' && <span style={styles.logText}>ha entrado.</span>}
-                                {log.type === 'reaction' && <span style={styles.logText}>ha reaccionado con {log.emoji}</span>}
-                            </div>
-                        )
-                    })}
-                </div>
-                <div style={styles.userList}>
-                    {sortedJugadores.map(jugador => {
-                        const profile = userProfiles[jugador] || {};
-                        const isOnline = onlineUsers[jugador];
-                        const isRecent = recentUsers.includes(jugador);
-                        
-                        const buttonStyle = {
-                            ...styles.userButton,
-                            ...(hoveredUser === jugador ? styles.userButtonHover : {}),
-                            ...(isOnline ? styles.userButtonOnline : {}),
-                            ...(isRecent ? styles.userButtonRecent : {})
-                        };
+            <h2 style={styles.title}>SELECCIONA TU PERFIL</h2>
+            <div style={styles.userList}>
+                {sortedJugadores.map(jugador => {
+                    const profile = userProfiles[jugador] || {};
+                    const isOnline = onlineUsers[jugador];
+                    const isRecent = recentUsers.includes(jugador);
+                    const isGradient = typeof profile.color === 'string' && profile.color.startsWith('linear-gradient');
+                    
+                    const buttonStyle = {
+                        ...styles.userButton,
+                        ...(hoveredUser === jugador ? styles.userButtonHover : {}),
+                        ...(isOnline ? styles.userButtonOnline : {}),
+                        ...(isRecent ? styles.userButtonRecent : {})
+                    };
 
-                        const circleStyle = { ...styles.loginProfileIconCircle, ...(typeof profile.color === 'string' && profile.color.startsWith('linear-gradient') ? { background: profile.color } : { backgroundColor: profile.color || styles.colors.blue }) };
+                    const circleStyle = { ...styles.loginProfileIconCircle, ...(isGradient ? { background: profile.color } : { backgroundColor: profile.color || styles.colors.blue }) };
 
-                        return (
-                            <button key={jugador} onClick={() => handleSelectUser(jugador)} style={buttonStyle} onMouseEnter={() => setHoveredUser(jugador)} onMouseLeave={() => setHoveredUser(null)}>
-                                {isRecent && <div style={styles.recentUserIndicator}>★</div>}
-                                <div style={circleStyle}>{profile.icon || '?'}</div>
-                                <span>{jugador}</span>
-                            </button>
-                        );
-                    })}
-                </div>
+                    return (
+                        <button key={jugador} onClick={() => handleSelectUser(jugador)} style={buttonStyle} onMouseEnter={() => setHoveredUser(jugador)} onMouseLeave={() => setHoveredUser(null)}>
+                            {isRecent && <div style={styles.recentUserIndicator}>★</div>}
+                            <div style={circleStyle}>{profile.icon || '?'}</div>
+                            <span>{jugador}</span>
+                        </button>
+                    );
+                })}
             </div>
         </div>
     );
