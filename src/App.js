@@ -1488,4 +1488,3 @@ const styles = {
 };
 
 export default App;
-" in the canv
