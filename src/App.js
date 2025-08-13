@@ -566,7 +566,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
 const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers, jornadaActual }) => {
     const [participantes, setParticipantes] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [loading] = useState(true);
     const [countdown, setCountdown] = useState('');
     const [porraAnualConfig, setPorraAnualConfig] = useState(null);
     const [pronosticosAnuales, setPronosticosAnuales] = useState([]);
@@ -1091,7 +1091,7 @@ const AdminNotifications = ({ onBack }) => {
 
 
 const AdminPanelScreen = ({ teamLogos, allJornadas }) => {
-    const [loading, setLoading] = useState(false);
+    const [loading] = useState(false);
     const [adminView, setAdminView] = useState('main');
 
     if (loading) return <LoadingSkeleton />;
