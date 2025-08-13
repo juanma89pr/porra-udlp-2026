@@ -43,6 +43,7 @@ const SECRET_MESSAGES = [
     "Consultando con el Oráculo", "Shhh... es un secreto", "Apuesta Fantasma 👻",
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
+// ¡NUEVO! Emoji triste cambiado por corazón
 const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '❤️', '👏'];
 
 const EQUIPOS_LIGA = [
