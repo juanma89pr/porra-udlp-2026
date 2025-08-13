@@ -43,7 +43,8 @@ const SECRET_MESSAGES = [
     "Consultando con el Oráculo", "Shhh... es un secreto", "Apuesta Fantasma 👻",
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
-const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
+// ¡NUEVO! Emoji triste cambiado por corazón
+const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '❤️', '👏'];
 
 const EQUIPOS_LIGA = [
     "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF", 
@@ -326,11 +327,25 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, onReaction }) => {
     const renderJornadaInfo = () => {
         if (!jornadaInfo) { return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>); }
         let infoContent;
+        const matchDisplay = (
+            <div style={styles.splashMatchContainer}>
+                <div style={styles.splashTeam}>
+                    <img src={teamLogos[jornadaInfo.equipoLocal] || 'https://placehold.co/100x100/1b263b/e0e1dd?text=?'} style={styles.splashTeamLogo} alt={`${jornadaInfo.equipoLocal} logo`} />
+                    <span style={styles.splashTeamName}>{jornadaInfo.equipoLocal}</span>
+                </div>
+                <span style={styles.splashVs}>VS</span>
+                <div style={styles.splashTeam}>
+                    <img src={teamLogos[jornadaInfo.equipoVisitante] || 'https://placehold.co/100x100/1b263b/e0e1dd?text=?'} style={styles.splashTeamLogo} alt={`${jornadaInfo.equipoVisitante} logo`} />
+                    <span style={styles.splashTeamName}>{jornadaInfo.equipoVisitante}</span>
+                </div>
+            </div>
+        );
+
         switch (jornadaInfo.type) {
-            case 'activa': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
-            case 'cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p>Esperando el resultado del partido...</p></>); break;
-            case 'finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
-            case 'proxima': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
+            case 'activa': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3>{matchDisplay}<div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
+            case 'cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3>{matchDisplay}<p>Esperando el resultado del partido...</p></>); break;
+            case 'finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3>{matchDisplay}<p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
+            case 'proxima': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3>{matchDisplay}{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
             default: infoContent = null;
         }
         
@@ -708,7 +723,7 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                 onSnapshot(pronosticosRef, (pronosticosSnap) => {
                     const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setParticipantes(pronosticosData);
-                    if (pronosticosData.length >= 5) {
+                    if (pronosticosData.length > 0) {
                         const resultados = pronosticosData.map(p => `${p.golesLocal}-${p.golesVisitante}`);
                         const counts = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
                         const resultadoMasComun = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
@@ -1419,11 +1434,10 @@ function App() {
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [userProfiles, setUserProfiles] = useState({});
   const [onlineUsers, setOnlineUsers] = useState({});
-  const [activeReaction, setActiveReaction] = useState(null);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => { if (!user) { signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error)); } });
-    const styleSheet = document.createElement("style"); styleSheet.type = "text/css"; styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; } .reaction-animation-🔥 { animation: fire-rise 2s forwards; font-size: 2rem; } @keyframes fire-rise { 0% { transform: translateY(0) scale(0.5); opacity: 1; } 100% { transform: translateY(-200px) scale(1.5); opacity: 0; } } .reaction-animation-👏 { animation: clap-sound 0.5s forwards; } @keyframes clap-sound { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }`;
+    const styleSheet = document.createElement("style"); styleSheet.type = "text/css"; styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; }`;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
     const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
@@ -1436,16 +1450,18 @@ function App() {
   
   const handleRequestPermission = async (user) => {
       setShowNotificationModal(false);
-      localStorage.setItem('notificationPrompt_v2_seen', 'true');
+      localStorage.setItem('notificationPrompt_v2_seen', 'true'); // Set the flag
       try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
+              console.log('Notification permission granted.');
               const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
               if (currentToken) {
+                  console.log('Token de notificación:', currentToken);
                   const tokenRef = doc(db, "notification_tokens", currentToken);
                   await setDoc(tokenRef, { user: user, createdAt: new Date() });
-              }
-          }
+              } else { console.log('No registration token available. Request permission to generate one.'); }
+          } else { console.log('Unable to get permission to notify.'); }
       } catch (error) { console.error('An error occurred while retrieving token. ', error); }
   };
 
@@ -1482,7 +1498,7 @@ function App() {
 
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => {setShowInitialSplash(false);}} />;
-    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} currentUser={currentUser} onReaction={setActiveReaction} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} currentUser={currentUser} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
     if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
     if (screen === 'app') {
@@ -1503,7 +1519,7 @@ function App() {
       return (<>{showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}{showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => {setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v2_seen', 'true');}} />}{porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!</div>)}<LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} /><nav style={styles.navbar}><button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button><button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button><button onClick={() => handleNavClick('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button><button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button><button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>{currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}<button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button><button onClick={handleLogout} style={styles.logoutButton}>Salir</button></nav><div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreen /></div></>);
     }
   };
-  return (<>{activeReaction && <ReactionAnimation emoji={activeReaction} onAnimationEnd={() => setActiveReaction(null)} />}{winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}<div id="app-container" style={styles.container}><div style={styles.card}>{renderContent()}</div></div></>);
+  return (<>{winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}<div id="app-container" style={styles.container}><div style={styles.card}>{renderContent()}</div></div></>);
 }
 
 // ============================================================================
