@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction, serverTimestamp, addDoc } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -65,8 +65,9 @@ const PLANTILLA_INICIAL = [
     { dorsal: 9, nombre: "Marc Cardona" }, { dorsal: 17, nombre: "Jaime Mata" }
 ];
 
+// ¡NUEVO! Emojis de perfil actualizados
+const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🦊', '🦍', '🐎', '💫', '🦁', '🐺', '🦉', '🦅', '🐙', '🐬'];
 const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)', 'linear-gradient(45deg, #e63946, #fca311)', 'linear-gradient(45deg, #52b788, #9b59b6)'];
-const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🏃‍♂️', '🏃🏾‍♂️', '1️⃣', '7️⃣', '🔟', '🤑', '😈'];
 
 
 // ============================================================================
@@ -163,6 +164,31 @@ const LoadingSkeleton = ({ type = 'list' }) => {
     return (<div style={styles.skeletonContainer}><div style={{...styles.skeletonBox, height: '40px', width: '80%', marginBottom: '20px'}}></div><div style={{...styles.skeletonBox, height: '20px', width: '60%'}}></div><div style={{...styles.skeletonBox, height: '20px', width: '70%', marginTop: '10px'}}></div></div>);
 };
 
+// ¡NUEVO! Componente para las animaciones de reacción
+const ReactionAnimation = ({ emoji, onAnimationEnd }) => {
+    useEffect(() => {
+        const timer = setTimeout(onAnimationEnd, 2000); // Duración de la animación
+        return () => clearTimeout(timer);
+    }, [onAnimationEnd]);
+
+    const particles = Array.from({ length: 50 });
+    const animationClass = `reaction-animation-${emoji}`;
+
+    return (
+        <div style={styles.reactionAnimationOverlay}>
+            {particles.map((_, i) => (
+                <div key={i} className={animationClass} style={{
+                    left: `${Math.random() * 100}%`,
+                    top: `${Math.random() * 100}%`,
+                    animationDelay: `${Math.random() * 0.5}s`
+                }}>
+                    {emoji}
+                </div>
+            ))}
+        </div>
+    );
+};
+
 // ============================================================================
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
@@ -173,7 +199,7 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
-const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
+const SplashScreen = ({ onEnter, teamLogos, currentUser, onReaction }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
     const [loading, setLoading] = useState(true);
@@ -202,7 +228,6 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
             const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            // Lógica para determinar la jornada a mostrar
             let jornadaActiva = todasLasJornadas.find(j => {
                 const apertura = j.fechaApertura?.toDate();
                 const cierre = j.fechaCierre?.toDate();
@@ -257,7 +282,9 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
     
     const handleReaction = async (emoji) => {
         if (!currentUser || !jornadaInfo) return;
+        onReaction(emoji); // Llama a la función para la animación
         const reactionRef = doc(db, "jornadas", jornadaInfo.id);
+        const activityLogRef = collection(db, "activity_log");
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -286,6 +313,13 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
                     currentReactions.counts[emoji] = (currentReactions.counts[emoji] || 0) + 1;
                 }
                 transaction.update(reactionRef, { reactions: currentReactions });
+            });
+            // Añadir al log de actividad
+            await addDoc(activityLogRef, {
+                user: currentUser,
+                type: 'reaction',
+                emoji: emoji,
+                timestamp: serverTimestamp()
             });
         } catch (e) {
             console.error("Transaction failed: ", e);
@@ -333,18 +367,41 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     const [recentUsers, setRecentUsers] = useState([]);
+    const [activityLog, setActivityLog] = useState([]);
+    const logContainerRef = useRef(null);
 
     useEffect(() => {
         const storedUsers = localStorage.getItem('recentPorraUsers');
         if (storedUsers) {
             setRecentUsers(JSON.parse(storedUsers));
         }
+        
+        const q = query(collection(db, "activity_log"), orderBy("timestamp", "desc"), limit(20));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setActivityLog(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
+        });
+
+        return () => unsubscribe();
     }, []);
 
-    const handleSelectUser = (jugador) => {
+    useEffect(() => {
+        if (logContainerRef.current) {
+            logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+        }
+    }, [activityLog]);
+
+    const handleSelectUser = async (jugador) => {
         const updatedRecentUsers = [jugador, ...recentUsers.filter(u => u !== jugador)].slice(0, 3);
         setRecentUsers(updatedRecentUsers);
         localStorage.setItem('recentPorraUsers', JSON.stringify(updatedRecentUsers));
+        
+        // Añadir al log de actividad
+        await addDoc(collection(db, "activity_log"), {
+            user: jugador,
+            type: 'login',
+            timestamp: serverTimestamp()
+        });
+
         onLogin(jugador);
     };
 
@@ -353,33 +410,52 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
         return [...recentUsers, ...remainingJugadores];
     }, [recentUsers]);
 
+    const formatTime = (timestamp) => {
+        if (!timestamp) return '';
+        return timestamp.toDate().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    }
+
     return (
         <div style={styles.loginContainer}>
-            <h2 style={styles.title}>SELECCIONA TU PERFIL</h2>
-            <div style={styles.userList}>
-                {sortedJugadores.map(jugador => {
-                    const profile = userProfiles[jugador] || {};
-                    const isOnline = onlineUsers[jugador];
-                    const isRecent = recentUsers.includes(jugador);
-                    const isGradient = typeof profile.color === 'string' && profile.color.startsWith('linear-gradient');
-                    
-                    const buttonStyle = {
-                        ...styles.userButton,
-                        ...(hoveredUser === jugador ? styles.userButtonHover : {}),
-                        ...(isOnline ? styles.userButtonOnline : {}),
-                        ...(isRecent ? styles.userButtonRecent : {})
-                    };
+            <h2 style={styles.title}>ELIGE TU PERFIL</h2>
+            <div style={styles.loginLayout}>
+                <div style={styles.activityLogContainer} ref={logContainerRef}>
+                    {activityLog.slice().reverse().map(log => {
+                        const profile = userProfiles[log.user] || {};
+                        return (
+                            <div key={log.id} style={styles.logEntry}>
+                                <span style={styles.logTimestamp}>{formatTime(log.timestamp)}</span>
+                                <PlayerProfileDisplay name={log.user} profile={profile} />
+                                {log.type === 'login' && <span style={styles.logText}>ha entrado.</span>}
+                                {log.type === 'reaction' && <span style={styles.logText}>ha reaccionado con {log.emoji}</span>}
+                            </div>
+                        )
+                    })}
+                </div>
+                <div style={styles.userList}>
+                    {sortedJugadores.map(jugador => {
+                        const profile = userProfiles[jugador] || {};
+                        const isOnline = onlineUsers[jugador];
+                        const isRecent = recentUsers.includes(jugador);
+                        
+                        const buttonStyle = {
+                            ...styles.userButton,
+                            ...(hoveredUser === jugador ? styles.userButtonHover : {}),
+                            ...(isOnline ? styles.userButtonOnline : {}),
+                            ...(isRecent ? styles.userButtonRecent : {})
+                        };
 
-                    const circleStyle = { ...styles.loginProfileIconCircle, ...(isGradient ? { background: profile.color } : { backgroundColor: profile.color || styles.colors.blue }) };
+                        const circleStyle = { ...styles.loginProfileIconCircle, ...(typeof profile.color === 'string' && profile.color.startsWith('linear-gradient') ? { background: profile.color } : { backgroundColor: profile.color || styles.colors.blue }) };
 
-                    return (
-                        <button key={jugador} onClick={() => handleSelectUser(jugador)} style={buttonStyle} onMouseEnter={() => setHoveredUser(jugador)} onMouseLeave={() => setHoveredUser(null)}>
-                            {isRecent && <div style={styles.recentUserIndicator}>★</div>}
-                            <div style={circleStyle}>{profile.icon || '?'}</div>
-                            <span>{jugador}</span>
-                        </button>
-                    );
-                })}
+                        return (
+                            <button key={jugador} onClick={() => handleSelectUser(jugador)} style={buttonStyle} onMouseEnter={() => setHoveredUser(jugador)} onMouseLeave={() => setHoveredUser(null)}>
+                                {isRecent && <div style={styles.recentUserIndicator}>★</div>}
+                                <div style={circleStyle}>{profile.icon || '?'}</div>
+                                <span>{jugador}</span>
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
         </div>
     );
@@ -636,7 +712,8 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                 onSnapshot(pronosticosRef, (pronosticosSnap) => {
                     const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setParticipantes(pronosticosData);
-                    if (pronosticosData.length > 0) {
+                    // ¡NUEVO! Condición para mostrar estadísticas
+                    if (pronosticosData.length >= 5) {
                         const resultados = pronosticosData.map(p => `${p.golesLocal}-${p.golesVisitante}`);
                         const counts = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
                         const resultadoMasComun = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
@@ -1347,10 +1424,11 @@ function App() {
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [userProfiles, setUserProfiles] = useState({});
   const [onlineUsers, setOnlineUsers] = useState({});
+  const [activeReaction, setActiveReaction] = useState(null);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => { if (!user) { signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error)); } });
-    const styleSheet = document.createElement("style"); styleSheet.type = "text/css"; styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; }`;
+    const styleSheet = document.createElement("style"); styleSheet.type = "text/css"; styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; } .reaction-animation-🔥 { animation: fire-rise 2s forwards; font-size: 2rem; } @keyframes fire-rise { 0% { transform: translateY(0) scale(0.5); opacity: 1; } 100% { transform: translateY(-200px) scale(1.5); opacity: 0; } } .reaction-animation-👏 { animation: clap-sound 0.5s forwards; } @keyframes clap-sound { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }`;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
     const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
@@ -1363,18 +1441,16 @@ function App() {
   
   const handleRequestPermission = async (user) => {
       setShowNotificationModal(false);
-      localStorage.setItem('notificationPrompt_v2_seen', 'true'); // Set the flag
+      localStorage.setItem('notificationPrompt_v2_seen', 'true');
       try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
-              console.log('Notification permission granted.');
               const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
               if (currentToken) {
-                  console.log('Token de notificación:', currentToken);
                   const tokenRef = doc(db, "notification_tokens", currentToken);
                   await setDoc(tokenRef, { user: user, createdAt: new Date() });
-              } else { console.log('No registration token available. Request permission to generate one.'); }
-          } else { console.log('Unable to get permission to notify.'); }
+              }
+          }
       } catch (error) { console.error('An error occurred while retrieving token. ', error); }
   };
 
@@ -1411,7 +1487,7 @@ function App() {
 
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => {setShowInitialSplash(false);}} />;
-    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} currentUser={currentUser} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} currentUser={currentUser} onReaction={setActiveReaction} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
     if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
     if (screen === 'app') {
@@ -1432,7 +1508,7 @@ function App() {
       return (<>{showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}{showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => {setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v2_seen', 'true');}} />}{porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!</div>)}<LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} /><nav style={styles.navbar}><button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button><button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button><button onClick={() => handleNavClick('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button><button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button><button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>{currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}<button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button><button onClick={handleLogout} style={styles.logoutButton}>Salir</button></nav><div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreen /></div></>);
     }
   };
-  return (<>{winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}<div id="app-container" style={styles.container}><div style={styles.card}>{renderContent()}</div></div></>);
+  return (<>{activeReaction && <ReactionAnimation emoji={activeReaction} onAnimationEnd={() => setActiveReaction(null)} />}{winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}<div id="app-container" style={styles.container}><div style={styles.card}>{renderContent()}</div></div></>);
 }
 
 // ============================================================================
