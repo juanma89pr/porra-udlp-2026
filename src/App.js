@@ -65,7 +65,6 @@ const PLANTILLA_INICIAL = [
     { dorsal: 9, nombre: "Marc Cardona" }, { dorsal: 17, nombre: "Jaime Mata" }
 ];
 
-// ¡NUEVO! Emojis de perfil actualizados
 const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🦊', '🦍', '🐎', '💫', '🦁', '🐺', '🦉', '🦅', '🐙', '🐬'];
 const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)', 'linear-gradient(45deg, #e63946, #fca311)', 'linear-gradient(45deg, #52b788, #9b59b6)'];
 
@@ -164,10 +163,9 @@ const LoadingSkeleton = ({ type = 'list' }) => {
     return (<div style={styles.skeletonContainer}><div style={{...styles.skeletonBox, height: '40px', width: '80%', marginBottom: '20px'}}></div><div style={{...styles.skeletonBox, height: '20px', width: '60%'}}></div><div style={{...styles.skeletonBox, height: '20px', width: '70%', marginTop: '10px'}}></div></div>);
 };
 
-// ¡NUEVO! Componente para las animaciones de reacción
 const ReactionAnimation = ({ emoji, onAnimationEnd }) => {
     useEffect(() => {
-        const timer = setTimeout(onAnimationEnd, 2000); // Duración de la animación
+        const timer = setTimeout(onAnimationEnd, 2000);
         return () => clearTimeout(timer);
     }, [onAnimationEnd]);
 
@@ -282,7 +280,7 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, onReaction }) => {
     
     const handleReaction = async (emoji) => {
         if (!currentUser || !jornadaInfo) return;
-        onReaction(emoji); // Llama a la función para la animación
+        onReaction(emoji);
         const reactionRef = doc(db, "jornadas", jornadaInfo.id);
         const activityLogRef = collection(db, "activity_log");
 
@@ -314,7 +312,6 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, onReaction }) => {
                 }
                 transaction.update(reactionRef, { reactions: currentReactions });
             });
-            // Añadir al log de actividad
             await addDoc(activityLogRef, {
                 user: currentUser,
                 type: 'reaction',
@@ -395,7 +392,6 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
         setRecentUsers(updatedRecentUsers);
         localStorage.setItem('recentPorraUsers', JSON.stringify(updatedRecentUsers));
         
-        // Añadir al log de actividad
         await addDoc(collection(db, "activity_log"), {
             user: jugador,
             type: 'login',
@@ -712,7 +708,6 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                 onSnapshot(pronosticosRef, (pronosticosSnap) => {
                     const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setParticipantes(pronosticosData);
-                    // ¡NUEVO! Condición para mostrar estadísticas
                     if (pronosticosData.length >= 5) {
                         const resultados = pronosticosData.map(p => `${p.golesLocal}-${p.golesVisitante}`);
                         const counts = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
