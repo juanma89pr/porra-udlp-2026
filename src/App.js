@@ -475,16 +475,47 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         } else { setStats({ count: 0, color: styles.colors.success }); }
     }, [pronostico.golesLocal, pronostico.golesVisitante, allPronosticos, user, currentJornada]);
 
+    // --- MEJORA INICIADA: Lógica de estadísticas del Joker ---
+    // Este `useEffect` ahora comprueba las apuestas Joker contra TODAS las apuestas de los demás (principales y Joker)
     useEffect(() => {
-        if (!pronostico.jokerActivo || allPronosticos.length === 0) { setJokerStats(Array(10).fill(null)); return; }
+        if (!pronostico.jokerActivo || allPronosticos.length === 0) {
+            setJokerStats(Array(10).fill(null));
+            return;
+        }
+
+        const allOtherBets = [];
         const otherPlayersPronosticos = allPronosticos.filter(p => p.id !== user);
+        otherPlayersPronosticos.forEach(p => {
+            if (p.golesLocal !== '' && p.golesVisitante !== '') {
+                allOtherBets.push(`${p.golesLocal}-${p.golesVisitante}`);
+            }
+            if (p.jokerPronosticos && Array.isArray(p.jokerPronosticos)) {
+                p.jokerPronosticos.forEach(jp => {
+                    if (jp.golesLocal !== '' && jp.golesVisitante !== '') {
+                        allOtherBets.push(`${jp.golesLocal}-${jp.golesVisitante}`);
+                    }
+                });
+            }
+        });
+
         const newJokerStats = pronostico.jokerPronosticos.map(jokerBet => {
-            if (jokerBet.golesLocal === '' || jokerBet.golesVisitante === '') { return null; }
-            const count = otherPlayersPronosticos.filter(p => p.golesLocal === jokerBet.golesLocal && p.golesVisitante === jokerBet.golesVisitante).length;
-            let color = styles.colors.success; if (count >= 1 && count <= 2) color = styles.colors.warning; if (count >= 3) color = styles.colors.danger;
-            const text = count > 0 ? `Repetido ${count} vece(s)` : '¡Único!'; return { count, color, text };
-        }); setJokerStats(newJokerStats);
+            if (jokerBet.golesLocal === '' || jokerBet.golesVisitante === '') {
+                return null;
+            }
+            const betString = `${jokerBet.golesLocal}-${jokerBet.golesVisitante}`;
+            const count = allOtherBets.filter(b => b === betString).length;
+            
+            let color = styles.colors.success;
+            if (count >= 1 && count <= 2) color = styles.colors.warning;
+            if (count >= 3) color = styles.colors.danger;
+            
+            const text = count > 0 ? `Repetido ${count} vez/veces` : '¡Pronóstico Único!';
+            return { count, color, text };
+        });
+        setJokerStats(newJokerStats);
+
     }, [pronostico.jokerPronosticos, allPronosticos, user, pronostico.jokerActivo]);
+    // --- MEJORA FINALIZADA ---
     
     const handlePronosticoChange = (e) => { const { name, value, type, checked } = e.target; setPronostico(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value, ...(name === 'sinGoleador' && checked && { goleador: '' }) })); };
     const handleJokerPronosticoChange = (index, field, value) => { const newJokerPronosticos = [...pronostico.jokerPronosticos]; newJokerPronosticos[index] = { ...newJokerPronosticos[index], [field]: value }; setPronostico(prev => ({ ...prev, jokerPronosticos: newJokerPronosticos })); };
@@ -500,13 +531,12 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user);
         try {
             const { pinConfirm, ...pronosticoToSave } = pronostico;
-            // Filtramos solo los pronósticos Joker que han sido rellenados
             const cleanJokerPronosticos = pronosticoToSave.jokerPronosticos.filter(p => p.golesLocal !== '' || p.golesVisitante !== '');
             await setDoc(pronosticoRef, { ...pronosticoToSave, jokerPronosticos: cleanJokerPronosticos, lastUpdated: new Date() });
             
             setMessage({text: '¡Pronóstico guardado y secreto!', type: 'success'});
             setHasSubmitted(true);
-            setIsLocked(!!pronostico.pin); // Bloquear inmediatamente si se usó PIN
+            setIsLocked(!!pronostico.pin);
 
         } catch (error) { console.error("Error al guardar: ", error); setMessage({text: 'Error al guardar.', type: 'error'}); }
         setIsSaving(false);
@@ -514,43 +544,37 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
     const handleUnlock = () => { if (pinInput === pronostico.pin) { setIsLocked(false); setHasSubmitted(false); setMessage({text: 'Pronóstico desbloqueado. Puedes hacer cambios.', type: 'info'}); } else { alert('PIN incorrecto'); } };
     
-    // --- MEJORA INICIADA ---
-    // Se ha modificado la función `handleActivarJoker` para asegurar que el estado se actualice
-    // correctamente y las 10 casillas de pronóstico se muestren de inmediato.
+    // --- MEJORA INICIADA: Flujo de activación del Joker ---
     const handleActivarJoker = async () => {
         if (jokersRestantes <= 0) {
             alert("No te quedan Jokers esta temporada.");
             return;
         }
-        // Mensaje de advertencia mejorado para mayor claridad
-        if (window.confirm("¿Seguro que quieres usar un JOKER para esta jornada? Esta acción no se puede deshacer y se descontará de tu total. Se añadirán 10 casillas para pronósticos de resultado exacto.")) {
+        if (window.confirm("¿Seguro que quieres usar un JOKER para esta jornada? Esta acción no se puede deshacer. Podrás añadir 10 apuestas de resultado exacto adicionales.")) {
             setShowJokerAnimation(true);
             setTimeout(() => setShowJokerAnimation(false), 7000);
 
-            // La lógica para descontar el joker de Firebase es correcta y se mantiene
             const userJokerRef = doc(db, "clasificacion", user);
             try {
                 await updateDoc(userJokerRef, { jokersRestantes: increment(-1) });
                 setJokersRestantes(prev => prev - 1);
             } catch (e) {
-                // Si el documento no existe, lo creamos
-                await setDoc(userJokerRef, { jokersRestantes: 1, puntosTotales: 0, jugador: user });
+                await setDoc(userJokerRef, { jokersRestantes: 1, puntosTotales: 0, jugador: user }, { merge: true });
                 setJokersRestantes(1);
             }
             
-            // --- CAMBIO CRÍTICO ---
-            // Aquí aseguramos que el estado del pronóstico se actualice para activar el Joker
-            // y, fundamentalmente, para crear el array de 10 pronósticos adicionales.
-            // Esto fuerza a React a renderizar las 10 nuevas casillas.
+            // Forzamos el estado de edición para que el formulario permanezca abierto
+            // y el usuario pueda rellenar las nuevas casillas del Joker.
+            setHasSubmitted(false);
+            setIsLocked(false);
+
             setPronostico(prev => ({
                 ...prev,
                 jokerActivo: true,
-                // Se inicializa explícitamente el array para garantizar que no esté vacío o sea nulo
                 jokerPronosticos: Array(10).fill({ golesLocal: '', golesVisitante: '' })
             }));
 
-            // Notificamos al usuario que la acción fue exitosa
-            setMessage({ text: '¡Joker activado! Ahora tienes 10 apuestas de resultado exacto adicionales.', type: 'success' });
+            setMessage({ text: '¡Joker activado! Rellena tus 10 apuestas extra y no olvides Guardar.', type: 'success' });
         }
     };
     // --- MEJORA FINALIZADA ---
@@ -615,7 +639,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                          <div style={styles.placeholder}><h3>¡Pronóstico guardado!</h3><p>Tu apuesta no está protegida con PIN. Cualquiera podría modificarla si accede con tu perfil. Puedes añadir un PIN y volver a guardar.</p><button type="button" onClick={() => { setIsLocked(false); setHasSubmitted(false); }} style={styles.mainButton}>Modificar Apuesta</button></div>
                     ) : (
                         <fieldset style={{border: 'none', padding: 0, margin: 0}}>
-                            {/* Los campos principales no se deshabilitan, el Joker añade opciones, no reemplaza */}
                             <fieldset style={{border: 'none', padding: 0, margin: 0}} >
                                 <div style={styles.formGroup}><label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label><div style={styles.miJornadaMatchInfo}><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} /><div style={styles.miJornadaScoreInputs}><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} /></div><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} /></div>{(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}</div>
                                 <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
@@ -672,7 +695,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             return (<div style={styles.placeholder}><h3>Jornada {currentJornada.numeroJornada} Finalizada</h3><p>Esta jornada ha concluido.</p>{currentJornada.ganadores && currentJornada.ganadores.length === 0 && <div style={styles.boteBanner}>¡BOTE! Nadie acertó el resultado.</div>}<button onClick={handleMarcarComoPagado} disabled={pronostico.pagado} style={styles.mainButton}>{pronostico.pagado ? 'PAGO REGISTRADO ✓' : 'MARCAR COMO PAGADO'}</button><button onClick={() => setActiveTab('laJornada')} style={{...styles.mainButton, marginLeft: '10px', backgroundColor: styles.colors.blue}}>Ver Resumen de Apuestas</button>{message.text && <p style={styles.message}>{message.text}</p>}</div>);
         }
         
-        // Si no está abierta por tiempo, pero el estado es 'Próximamente'
         return (<div style={styles.placeholder}><h3>No hay jornada de apuestas abierta</h3><h4>Próximo Partido: Jornada {currentJornada.numeroJornada}</h4><p style={{fontSize: '1.2rem', fontWeight: 'bold'}}>{currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</p>{currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}{currentJornada.fechaStr && <p>🗓️ {currentJornada.fechaStr}</p>}{currentJornada.estadio && <p>📍 {currentJornada.estadio}</p>}</div>);
     };
     return (<div>{showJokerAnimation && <JokerAnimation />}<h2 style={styles.title}>MI JORNADA</h2><p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>{liveData && liveData.isLive && currentJornada?.estado === 'Cerrada' && (<div style={styles.liveInfoBox}><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Puntos Provisionales</span><span style={styles.liveInfoValue}><AnimatedPoints value={provisionalData.puntos} /></span></div><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Posición Provisional</span><span style={styles.liveInfoValue}>{provisionalData.posicion}</span></div></div>)}{renderContent()}</div>);
@@ -1585,7 +1607,7 @@ const styles = {
     dangerButton: { borderColor: colors.danger, color: colors.danger },
     vipBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1.1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70` },
     jackpotBanner: { background: `linear-gradient(45deg, ${colors.success}, #2a9d8f)`, color: colors.lightText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1.1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.success}70`, textShadow: '1px 1px 2px #000' },
-    jokerGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', alignItems: 'center' },
+    jokerGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px', alignItems: 'flex-start' },
     jokerBetRow: { marginBottom: '10px', width: '100%', maxWidth: '250px' },
     jornadaList: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
     jornadaItem: { cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', border: '1px solid transparent', borderLeft: `5px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: colors.darkUIAlt, transition: 'all 0.3s ease', backgroundSize: 'cover', backgroundPosition: 'center' },
