@@ -29,7 +29,7 @@ const rtdb = getDatabase(app);
 const functions = getFunctions(app);
 
 // --- CLAVE VAPID PARA NOTIFICACIONES ---
-const VAPID_KEY = "BPpyoLngK0o32aklLLt6TcfuU1-DfeWIr0y3OHBj2ST5P_0iwaZIM6pvrRuFMxetpNmy0hyh93hBwflvOenR-NE";
+const VAPID_KEY = "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE";
 
 
 // --- DATOS DE LA APLICACIÓN ---
@@ -154,9 +154,30 @@ const InstallGuideModal = ({ onClose }) => {
     return (<div style={styles.modalOverlay} onClick={onClose}><div style={styles.modalContent} onClick={(e) => e.stopPropagation()}><h3 style={styles.title}>Instalar App</h3><div style={styles.installInstructions}><div style={styles.installSection}><h4>iPhone (Safari)</h4><ol><li>Pulsa el botón de <strong>Compartir</strong> (un cuadrado con una flecha hacia arriba).</li><li>Busca y pulsa en <strong>"Añadir a pantalla de inicio"</strong>.</li><li>¡Listo! Ya tienes la app en tu móvil.</li></ol></div><div style={styles.installSection}><h4>Android (Chrome)</h4><ol><li>Pulsa el botón de <strong>Menú</strong> (tres puntos verticales).</li><li>Busca y pulsa en <strong>"Instalar aplicación"</strong> o "Añadir a pantalla de inicio".</li><li>¡Listo! Ya tienes la app en tu móvil.</li></ol></div></div><button onClick={onClose} style={styles.mainButton}>Entendido</button></div></div>);
 };
 
+// --- MEJORA INICIADA: Texto del modal de notificaciones actualizado ---
 const NotificationPermissionModal = ({ onAllow, onDeny }) => {
-    return (<div style={styles.modalOverlay}><div style={styles.modalContent} onClick={(e) => e.stopPropagation()}><div style={{textAlign: 'center', marginBottom: '20px'}}><span style={{fontSize: '4rem'}}>🔔</span></div><h3 style={styles.title}>ACTIVAR NOTIFICACIONES</h3><p style={{textAlign: 'center', marginBottom: '20px', lineHeight: 1.5}}>¿Quieres recibir avisos importantes sobre la porra? Te notificaremos cuando:</p><ul style={{listStyle: 'none', padding: 0, marginBottom: '30px', textAlign: 'center'}}><li style={{marginBottom: '10px'}}>✅ Se abra una nueva jornada</li><li style={{marginBottom: '10px'}}>⏳ Estén a punto de cerrar las apuestas</li><li style={{marginBottom: '10px'}}>🏆 Se publiquen los resultados y ganadores</li></ul><div style={{display: 'flex', justifyContent: 'space-around', gap: '10px'}}><button onClick={onDeny} style={{...styles.mainButton, backgroundColor: 'transparent', color: styles.colors.lightText, borderColor: styles.colors.lightText}}>Ahora no</button><button onClick={onAllow} style={styles.mainButton}>Activar</button></div></div></div>);
+    return (
+        <div style={styles.modalOverlay}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <div style={{textAlign: 'center', marginBottom: '20px'}}><span style={{fontSize: '4rem'}}>🔔</span></div>
+                <h3 style={styles.title}>REACTIVAR NOTIFICACIONES</h3>
+                <p style={{textAlign: 'center', marginBottom: '20px', lineHeight: 1.5}}>
+                    ¡Hemos mejorado nuestro sistema de avisos! Para asegurarte de que sigues recibiendo las notificaciones importantes, necesitamos que vuelvas a aceptar el permiso. ¡Gracias!
+                </p>
+                <ul style={{listStyle: 'none', padding: 0, marginBottom: '30px', textAlign: 'center'}}>
+                    <li style={{marginBottom: '10px'}}>✅ Avisos de nuevas jornadas</li>
+                    <li style={{marginBottom: '10px'}}>⏳ Recordatorios de cierre</li>
+                    <li style={{marginBottom: '10px'}}>🏆 Resultados y ganadores</li>
+                </ul>
+                <div style={{display: 'flex', justifyContent: 'space-around', gap: '10px'}}>
+                    <button onClick={onDeny} style={{...styles.mainButton, backgroundColor: 'transparent', color: styles.colors.lightText, borderColor: styles.colors.lightText}}>Ahora no</button>
+                    <button onClick={onAllow} style={styles.mainButton}>Reactivar</button>
+                </div>
+            </div>
+        </div>
+    );
 };
+// --- MEJORA FINALIZADA ---
 
 const LoadingSkeleton = ({ type = 'list' }) => {
     if (type === 'table') { return (<div style={styles.skeletonTable}>{Array.from({ length: 5 }).map((_, i) => (<div key={i} style={styles.skeletonRow}><div style={{...styles.skeletonBox, width: '50px', height: '20px'}}></div><div style={{...styles.skeletonBox, width: '120px', height: '20px'}}></div><div style={{...styles.skeletonBox, width: '80px', height: '20px'}}></div><div style={{...styles.skeletonBox, width: '60px', height: '20px'}}></div></div>))}</div>); }
@@ -333,7 +354,7 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     const [recentUsers, setRecentUsers] = useState([]);
-
+    
     useEffect(() => {
         const storedUsers = localStorage.getItem('recentPorraUsers');
         if (storedUsers) {
@@ -366,14 +387,18 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
                     const buttonStyle = {
                         ...styles.userButton,
                         ...(hoveredUser === jugador ? styles.userButtonHover : {}),
-                        ...(isOnline ? styles.userButtonOnline : {}),
-                        ...(isRecent ? styles.userButtonRecent : {})
+                        ...(isOnline ? styles.userButtonOnline : {})
                     };
 
                     const circleStyle = { ...styles.loginProfileIconCircle, ...(isGradient ? { background: profile.color } : { backgroundColor: profile.color || styles.colors.blue }) };
 
                     return (
-                        <button key={jugador} onClick={() => handleSelectUser(jugador)} style={buttonStyle} onMouseEnter={() => setHoveredUser(jugador)} onMouseLeave={() => setHoveredUser(null)}>
+                        <button key={jugador} 
+                            onClick={() => handleSelectUser(jugador)}
+                            style={buttonStyle} 
+                            onMouseEnter={() => setHoveredUser(jugador)} 
+                            onMouseLeave={() => setHoveredUser(null)}
+                        >
                             {isRecent && <div style={styles.recentUserIndicator}>★</div>}
                             <div style={circleStyle}>{profile.icon || '?'}</div>
                             <span>{jugador}</span>
@@ -384,6 +409,7 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
         </div>
     );
 };
+
 const initialPronosticoState = { 
     golesLocal: '', 
     golesVisitante: '', 
@@ -396,9 +422,6 @@ const initialPronosticoState = {
     jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) 
 };
 
-// ############################################################################
-// ### INICIO DEL COMPONENTE MODIFICADO: MiJornadaScreen ###
-// ############################################################################
 const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -416,7 +439,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const [showJokerAnimation, setShowJokerAnimation] = useState(false);
     const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
     
-    // Usamos una ref para guardar el estado inicial del Joker al cargar el pronóstico
     const initialJokerStatus = useRef(false);
     
     const userProfile = userProfiles[user] || {};
@@ -447,7 +469,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                         const filledJokerPronosticos = data.jokerPronosticos ? [...data.jokerPronosticos, ...Array(10 - data.jokerPronosticos.length).fill({golesLocal: '', golesVisitante: ''})] : Array(10).fill({golesLocal: '', golesVisitante: ''});
                         setPronostico({...initialPronosticoState, ...data, jokerPronosticos: filledJokerPronosticos});
                         setIsLocked(!!data.pin); setHasSubmitted(true);
-                        // Guardamos el estado inicial del Joker
                         initialJokerStatus.current = data.jokerActivo || false;
                     } else {
                         setPronostico(initialPronosticoState); setIsLocked(false); setHasSubmitted(false);
@@ -523,7 +544,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const handlePronosticoChange = (e) => { const { name, value, type, checked } = e.target; setPronostico(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value, ...(name === 'sinGoleador' && checked && { goleador: '' }) })); };
     const handleJokerPronosticoChange = (index, field, value) => { const newJokerPronosticos = [...pronostico.jokerPronosticos]; newJokerPronosticos[index] = { ...newJokerPronosticos[index], [field]: value }; setPronostico(prev => ({ ...prev, jokerPronosticos: newJokerPronosticos })); };
     
-    // --- MEJORA INICIADA: Lógica de guardado y descuento del Joker ---
     const handleGuardarPronostico = async (e) => {
         e.preventDefault();
         if (!currentJornada) return;
@@ -574,11 +594,9 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         }
         setIsSaving(false);
     };
-    // --- MEJORA FINALIZADA ---
 
     const handleUnlock = () => { if (pinInput === pronostico.pin) { setIsLocked(false); setHasSubmitted(false); setMessage({text: 'Pronóstico desbloqueado. Puedes hacer cambios.', type: 'info'}); } else { alert('PIN incorrecto'); } };
     
-    // --- MEJORA INICIADA: Activación del Joker solo en la UI ---
     const handleActivarJoker = () => {
         if (jokersRestantes <= 0) {
             alert("No te quedan Jokers esta temporada.");
@@ -601,7 +619,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             setMessage({ text: '¡Joker activado! Rellena tus 10 apuestas extra y no olvides Guardar.', type: 'success' });
         }
     };
-    // --- MEJORA FINALIZADA ---
 
     const handleBotonDelPanico = async () => { if (window.confirm("¿Seguro que quieres cancelar tus apuestas JOKER? No recuperarás el JOKER gastado, pero tus 10 apuestas adicionales se borrarán.")) { setPronostico(prev => ({ ...prev, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) })); setMessage({text: 'Apuestas JOKER eliminadas. Recuerda guardar para confirmar los cambios.', type: 'info'}); } };
     const handleMarcarComoPagado = async () => { if (!currentJornada) return; const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user); try { await updateDoc(pronosticoRef, { pagado: true }); setPronostico(prev => ({...prev, pagado: true})); setMessage({text: '¡Pago registrado con éxito!', type: 'success'}); } catch (error) { console.error("Error al marcar como pagado: ", error); setMessage({text: 'Error al registrar el pago.', type: 'error'}); } };
@@ -1467,21 +1484,22 @@ function App() {
     return () => { document.head.removeChild(styleSheet); unsubscribeConfig(); unsubscribeAuth(); unsubscribeEscudos(); unsubscribeLive(); unsubscribePlantilla(); unsubscribeProfiles(); unsubscribeStatus(); }
   }, []);
   
+  // --- MEJORA INICIADA: Lógica de Notificaciones ---
   const handleRequestPermission = async (user) => {
       setShowNotificationModal(false);
-      localStorage.setItem('notificationPrompt_v2_seen', 'true'); // Set the flag
+      localStorage.setItem('notificationPrompt_v3_seen', 'true'); // Usamos una nueva versión
       try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
-              console.log('Notification permission granted.');
+              console.log('Permiso de notificación concedido.');
               const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
               if (currentToken) {
                   console.log('Token de notificación:', currentToken);
                   const tokenRef = doc(db, "notification_tokens", currentToken);
                   await setDoc(tokenRef, { user: user, createdAt: new Date() });
-              } else { console.log('No registration token available. Request permission to generate one.'); }
-          } else { console.log('Unable to get permission to notify.'); }
-      } catch (error) { console.error('An error occurred while retrieving token. ', error); }
+              } else { console.log('No se pudo obtener el token.'); }
+          } else { console.log('Permiso de notificación denegado.'); }
+      } catch (error) { console.error('Ocurrió un error al obtener el token. ', error); }
   };
 
   const handleLogin = async (user) => {
@@ -1490,7 +1508,7 @@ function App() {
       const userProfileRef = doc(db, "clasificacion", user); const docSnap = await getDoc(userProfileRef);
       if (docSnap.exists() && docSnap.data().icon && docSnap.data().color) { setScreen('app'); } else { setScreen('customizeProfile'); }
       
-      const hasSeenPrompt = localStorage.getItem('notificationPrompt_v2_seen');
+      const hasSeenPrompt = localStorage.getItem('notificationPrompt_v3_seen');
       if ('Notification' in window && Notification.permission !== 'granted' && !hasSeenPrompt) {
           setShowNotificationModal(true);
       }
@@ -1508,6 +1526,7 @@ function App() {
           }
       }
   };
+  // --- MEJORA FINALIZADA ---
 
   const handleLogout = () => { if(currentUser) {const userStatusRef = ref(rtdb, 'status/' + currentUser); set(userStatusRef, false);} setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false); };
   const handleSaveProfile = async (user, profileData) => { const profileRef = doc(db, "clasificacion", user); await setDoc(profileRef, profileData, { merge: true }); setScreen('app'); setActiveTab('miJornada'); };
@@ -1535,7 +1554,7 @@ function App() {
                 default: return null;
             }
         };
-      return (<>{showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}{showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => {setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v2_seen', 'true');}} />}{porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!</div>)}<LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} /><nav style={styles.navbar}><button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button><button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button><button onClick={() => handleNavClick('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button><button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button><button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>{currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}<button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button><button onClick={handleLogout} style={styles.logoutButton}>Salir</button></nav><div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreen /></div></>);
+      return (<>{showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}{showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => {setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v3_seen', 'true');}} />}{porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!</div>)}<LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} /><nav style={styles.navbar}><button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button><button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button><button onClick={() => handleNavClick('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button><button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button><button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>{currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}<button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button><button onClick={handleLogout} style={styles.logoutButton}>Salir</button></nav><div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreen /></div></>);
     }
   };
   return (<>{winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}<div id="app-container" style={styles.container}><div style={styles.card}>{renderContent()}</div></div></>);
@@ -1576,6 +1595,7 @@ const styles = {
     userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px', marginTop: '30px' },
     userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
+    userButtonSelected: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
     userButtonOnline: { animation: 'neon-glow 1.5s infinite alternate', borderColor: '#0f0' },
     userButtonRecent: { borderColor: colors.silver },
     recentUserIndicator: { position: 'absolute', top: '5px', right: '10px', color: colors.yellow, fontSize: '1.2rem' },
@@ -1736,6 +1756,14 @@ const styles = {
     adminNavButton: { padding: '15px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease' },
     presetMessagesContainer: { display: 'flex', flexDirection: 'column', gap: '10px' },
     presetMessageButton: { padding: '12px', textAlign: 'left', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '6px', cursor: 'pointer' },
+    chatSection: { marginTop: '30px', borderTop: `2px solid ${colors.blue}`, paddingTop: '20px' },
+    chatTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textAlign: 'center', fontSize: '1.3rem', marginBottom: '15px' },
+    chatContainer: { height: '250px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '10px', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse', border: `1px solid ${colors.blue}80` },
+    chatMessage: { marginBottom: '10px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', animation: 'fadeIn 0.5s ease' },
+    chatActions: { marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px' },
+    chatActionGroup: { display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' },
+    chatActionButton: { padding: '8px 12px', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem' },
+    chatActionEmojiButton: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '5px' }
 };
 
 export default App;
