@@ -475,8 +475,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         } else { setStats({ count: 0, color: styles.colors.success }); }
     }, [pronostico.golesLocal, pronostico.golesVisitante, allPronosticos, user, currentJornada]);
 
-    // --- MEJORA INICIADA: Lógica de estadísticas del Joker ---
-    // Este `useEffect` ahora comprueba las apuestas Joker contra TODAS las apuestas de los demás (principales y Joker)
     useEffect(() => {
         if (!pronostico.jokerActivo || allPronosticos.length === 0) {
             setJokerStats(Array(10).fill(null));
@@ -515,11 +513,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         setJokerStats(newJokerStats);
 
     }, [pronostico.jokerPronosticos, allPronosticos, user, pronostico.jokerActivo]);
-    // --- MEJORA FINALIZADA ---
     
     const handlePronosticoChange = (e) => { const { name, value, type, checked } = e.target; setPronostico(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value, ...(name === 'sinGoleador' && checked && { goleador: '' }) })); };
     const handleJokerPronosticoChange = (index, field, value) => { const newJokerPronosticos = [...pronostico.jokerPronosticos]; newJokerPronosticos[index] = { ...newJokerPronosticos[index], [field]: value }; setPronostico(prev => ({ ...prev, jokerPronosticos: newJokerPronosticos })); };
     
+    // --- MEJORA INICIADA: Validación de guardado del Joker ---
     const handleGuardarPronostico = async (e) => {
         e.preventDefault();
         if (!currentJornada) return;
@@ -527,11 +525,20 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             setMessage({text: 'Los PIN no coinciden. Por favor, revísalos.', type: 'error'});
             return;
         }
-        setIsSaving(true); setMessage({text: '', type: 'info'});
+
+        const cleanJokerPronosticos = pronostico.jokerPronosticos.filter(p => p.golesLocal !== '' || p.golesVisitante !== '');
+
+        // Nueva validación: si el Joker está activo, se debe rellenar al menos una casilla.
+        if (pronostico.jokerActivo && cleanJokerPronosticos.length === 0) {
+            setMessage({text: 'Has activado el Joker. Debes rellenar al menos una apuesta Joker o usar el Botón del Pánico.', type: 'error'});
+            return;
+        }
+        
+        setIsSaving(true); 
+        setMessage({text: '', type: 'info'});
         const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user);
         try {
             const { pinConfirm, ...pronosticoToSave } = pronostico;
-            const cleanJokerPronosticos = pronosticoToSave.jokerPronosticos.filter(p => p.golesLocal !== '' || p.golesVisitante !== '');
             await setDoc(pronosticoRef, { ...pronosticoToSave, jokerPronosticos: cleanJokerPronosticos, lastUpdated: new Date() });
             
             setMessage({text: '¡Pronóstico guardado y secreto!', type: 'success'});
@@ -541,10 +548,10 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         } catch (error) { console.error("Error al guardar: ", error); setMessage({text: 'Error al guardar.', type: 'error'}); }
         setIsSaving(false);
     };
+    // --- MEJORA FINALIZADA ---
 
     const handleUnlock = () => { if (pinInput === pronostico.pin) { setIsLocked(false); setHasSubmitted(false); setMessage({text: 'Pronóstico desbloqueado. Puedes hacer cambios.', type: 'info'}); } else { alert('PIN incorrecto'); } };
     
-    // --- MEJORA INICIADA: Flujo de activación del Joker ---
     const handleActivarJoker = async () => {
         if (jokersRestantes <= 0) {
             alert("No te quedan Jokers esta temporada.");
@@ -577,7 +584,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             setMessage({ text: '¡Joker activado! Rellena tus 10 apuestas extra y no olvides Guardar.', type: 'success' });
         }
     };
-    // --- MEJORA FINALIZADA ---
 
     const handleBotonDelPanico = async () => { if (window.confirm("¿Seguro que quieres cancelar tus apuestas JOKER? No recuperarás el JOKER gastado, pero tus 10 apuestas adicionales se borrarán.")) { setPronostico(prev => ({ ...prev, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) })); const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user); await updateDoc(pronosticoRef, { jokerPronosticos: [] }); setMessage({text: 'Apuestas JOKER eliminadas. El Joker sigue gastado.', type: 'info'}); } };
     const handleMarcarComoPagado = async () => { if (!currentJornada) return; const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user); try { await updateDoc(pronosticoRef, { pagado: true }); setPronostico(prev => ({...prev, pagado: true})); setMessage({text: '¡Pago registrado con éxito!', type: 'success'}); } catch (error) { console.error("Error al marcar como pagado: ", error); setMessage({text: 'Error al registrar el pago.', type: 'error'}); } };
@@ -699,11 +705,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     };
     return (<div>{showJokerAnimation && <JokerAnimation />}<h2 style={styles.title}>MI JORNADA</h2><p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>{liveData && liveData.isLive && currentJornada?.estado === 'Cerrada' && (<div style={styles.liveInfoBox}><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Puntos Provisionales</span><span style={styles.liveInfoValue}><AnimatedPoints value={provisionalData.puntos} /></span></div><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Posición Provisional</span><span style={styles.liveInfoValue}>{provisionalData.posicion}</span></div></div>)}{renderContent()}</div>);
 };
-// ############################################################################
-// ### FIN DEL COMPONENTE MODIFICADO ###
-// ############################################################################
-
-
 const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
     const [participantes, setParticipantes] = useState([]);
