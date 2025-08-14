@@ -45,7 +45,7 @@ const SECRET_MESSAGES = [
 ];
 const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
 const CHAT_PRESET_MESSAGES = ["¡Vamos UD!", "¡Suerte a todos!", "¿Quién va a ganar?", "Hoy hay bote... 🤑"];
-const CHAT_REACTION_EMOJIS = ['🤣', '🇮🇨', '⚽', '💸', '💪', '🤫'];
+const CHAT_REACTION_EMOJIS = ['💛', '🇮🇨', '⚽', '💸', '💪', '🤫'];
 
 
 const EQUIPOS_LIGA = [
@@ -348,7 +348,6 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
         if (storedUsers) {
             setRecentUsers(JSON.parse(storedUsers));
         }
-        // Listener para los logs del chat
         const logsRef = rtdbQuery(ref(rtdb, 'chat_logs'), orderByChild('timestamp'), limitToLast(20));
         const unsubscribe = onValue(logsRef, (snapshot) => {
             const data = snapshot.val();
@@ -359,41 +358,50 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     }, []);
 
     useEffect(() => {
-        // Auto-scroll al fondo del chat
         if (chatContainerRef.current) {
             chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
         }
     }, [chatLogs]);
 
-    const handleSelectUser = (jugador) => {
+    const handleSelectUser = async (jugador) => {
+        if (!jugador) return;
         const updatedRecentUsers = [jugador, ...recentUsers.filter(u => u !== jugador)].slice(0, 3);
         setRecentUsers(updatedRecentUsers);
         localStorage.setItem('recentPorraUsers', JSON.stringify(updatedRecentUsers));
 
-        // Registrar el acceso en el chat
         const logsRef = ref(rtdb, 'chat_logs');
-        push(logsRef, {
-            type: 'login',
-            user: jugador,
-            content: 'se ha unido a la porra.',
-            timestamp: serverTimestamp()
-        });
-        
-        onLogin(jugador);
+        try {
+            await push(logsRef, {
+                type: 'login',
+                user: jugador,
+                content: 'se ha unido a la porra.',
+                timestamp: serverTimestamp()
+            });
+            onLogin(jugador);
+        } catch (error) {
+            console.error("Error al registrar el acceso en el chat:", error);
+            // A pesar del error en el chat, permitimos el login
+            onLogin(jugador);
+        }
     };
     
-    const handleSendChatMessage = (type, content) => {
+    const handleSendChatMessage = async (type, content) => {
          if (!selectedUserForChat) {
              alert("Selecciona tu perfil primero para poder enviar mensajes.");
              return;
          };
          const logsRef = ref(rtdb, 'chat_logs');
-         push(logsRef, {
-             type: type,
-             user: selectedUserForChat,
-             content: content,
-             timestamp: serverTimestamp()
-         });
+         try {
+            await push(logsRef, {
+                type: type,
+                user: selectedUserForChat,
+                content: content,
+                timestamp: serverTimestamp()
+            });
+         } catch(error) {
+            console.error("Error al enviar mensaje:", error);
+            alert("No se pudo enviar el mensaje.");
+         }
     };
 
     const sortedJugadores = useMemo(() => {
@@ -510,7 +518,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const [showJokerAnimation, setShowJokerAnimation] = useState(false);
     const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
     
-    // Usamos una ref para guardar el estado inicial del Joker al cargar el pronóstico
     const initialJokerStatus = useRef(false);
     
     const userProfile = userProfiles[user] || {};
@@ -541,7 +548,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                         const filledJokerPronosticos = data.jokerPronosticos ? [...data.jokerPronosticos, ...Array(10 - data.jokerPronosticos.length).fill({golesLocal: '', golesVisitante: ''})] : Array(10).fill({golesLocal: '', golesVisitante: ''});
                         setPronostico({...initialPronosticoState, ...data, jokerPronosticos: filledJokerPronosticos});
                         setIsLocked(!!data.pin); setHasSubmitted(true);
-                        // Guardamos el estado inicial del Joker
                         initialJokerStatus.current = data.jokerActivo || false;
                     } else {
                         setPronostico(initialPronosticoState); setIsLocked(false); setHasSubmitted(false);
