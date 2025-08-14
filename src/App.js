@@ -191,6 +191,9 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
+// ############################################################################
+// ### INICIO DEL COMPONENTE MODIFICADO: SplashScreen ###
+// ############################################################################
 const SplashScreen = ({ onEnter, teamLogos }) => {
     const [jornadaData, setJornadaData] = useState({ jornada: null, pronosticos: [] });
     const [loading, setLoading] = useState(true);
@@ -258,6 +261,20 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
             });
         }
         
+        if (jornada.estado === 'Abierta') {
+             slidesDisponibles.push({
+                icon: '✅',
+                title: 'Ya Han Apostado',
+                content: `${pronosticos.length} / ${JUGADORES.length}`
+            });
+            const faltanPorApostar = JUGADORES.filter(j => !pronosticos.some(p => p.id === j));
+            slidesDisponibles.push({
+                icon: '⏳',
+                title: 'Faltan por Apostar',
+                content: faltanPorApostar.length > 0 ? faltanPorApostar.slice(0, 5).join(', ') + (faltanPorApostar.length > 5 ? '...' : '') : '¡Todos han apostado!'
+            });
+        }
+        
         if (pronosticos.length >= 5) {
             const resultados = pronosticos.map(p => `${p.golesLocal}-${p.golesVisitante}`);
             const counts = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
@@ -275,20 +292,6 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
                 icon: '📈',
                 title: 'La Tendencia General',
                 content: `La mayoría cree que: ${pronosticoMasComun1x2}`
-            });
-        }
-        
-        if (jornada.estado === 'Abierta') {
-             slidesDisponibles.push({
-                icon: '✅',
-                title: 'Ya Han Apostado',
-                content: `${pronosticos.length} / ${JUGADORES.length}`
-            });
-            const faltanPorApostar = JUGADORES.filter(j => !pronosticos.some(p => p.id === j));
-            slidesDisponibles.push({
-                icon: '⏳',
-                title: 'Faltan por Apostar',
-                content: faltanPorApostar.length > 0 ? faltanPorApostar.join(', ') : '¡Todos han apostado!'
             });
         }
 
@@ -330,9 +333,9 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
         }
         return (
             <div style={styles.carouselContainer}>
-                <div style={styles.carouselTrack} >
+                <div style={{...styles.carouselTrack, transform: `translateX(-${activeSlide * 100}%)`}} >
                     {slides.map((slide, index) => (
-                        <div key={index} style={index === activeSlide ? styles.carouselSlideActive : styles.carouselSlide}>
+                        <div key={index} style={styles.carouselSlide}>
                             {slide.type === 'countdown' ? (
                                 <Countdown targetDate={slide.targetDate} title={slide.title} />
                             ) : (
@@ -356,16 +359,9 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
 
     return (
         <div style={styles.splashContainer}>
-            <div style={styles.splashTitleContainer}>
-                <span style={styles.splashTitleNew}>PORRA UDLP</span>
-                <span style={styles.splashYearNew}>2026</span>
-            </div>
-
-            {renderCarousel()}
-            
             <div style={styles.shieldMosaicContainer}>
                 <div style={styles.shieldCenter}>
-                    <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas" style={{width: '100%', height: '100%'}}/>
+                    <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas" style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
                 </div>
                 <div style={styles.shieldOrbit}>
                     {otherTeamLogos.map(([name, logoUrl], index) => (
@@ -375,6 +371,13 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
                     ))}
                 </div>
             </div>
+            
+            <div style={styles.splashTitleContainer}>
+                <span style={styles.splashTitleNew}>PORRA UDLP</span>
+                <span style={styles.splashYearNew}>2026</span>
+            </div>
+
+            {renderCarousel()}
 
             <button onClick={onEnter} style={{...styles.mainButton, zIndex: 10}}>ENTRAR A LA PORRA</button>
             {isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}
@@ -382,6 +385,9 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
         </div>
     );
 };
+// ############################################################################
+// ### FIN DEL COMPONENTE MODIFICADO ###
+// ############################################################################
 
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
@@ -1612,20 +1618,20 @@ const styles = {
     loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', fontFamily: "'Exo 2', sans-serif" },
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center', height: '100%', textAlign: 'center', width: '100%', minHeight: 'calc(100vh - 80px)' },
     splashTitleContainer: { marginBottom: '20px', },
-    splashTitleNew: { fontFamily: "'Cinzel', serif", fontSize: 'clamp(3rem, 12vw, 4.5rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '2px', background: `linear-gradient(90deg, ${colors.silver}, ${colors.gold}, ${colors.lightText}, ${colors.gold}, ${colors.silver})`, backgroundSize: '200% auto', color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', animation: 'title-pulse 4s ease-in-out infinite' },
-    splashYearNew: { fontFamily: "'Cinzel', serif", fontSize: 'clamp(1.5rem, 6vw, 2.5rem)', background: `linear-gradient(90deg, ${colors.silver}, ${colors.gold}, ${colors.lightText})`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', marginTop: '-15px' },
+    splashTitleNew: { fontFamily: "'Russo One', sans-serif", fontSize: 'clamp(3rem, 12vw, 4.5rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '2px', background: `linear-gradient(90deg, ${colors.silver}, ${colors.gold}, ${colors.lightText}, ${colors.gold}, ${colors.silver})`, backgroundSize: '200% auto', color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', animation: 'title-pulse 4s ease-in-out infinite' },
+    splashYearNew: { fontFamily: "'Russo One', sans-serif", fontSize: 'clamp(1.5rem, 6vw, 2.5rem)', background: `linear-gradient(90deg, ${colors.silver}, ${colors.gold}, ${colors.lightText})`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', marginTop: '-15px' },
     carouselContainer: { width: '100%', maxWidth: '500px', height: '120px', position: 'relative', overflow: 'hidden', margin: '20px 0' },
     carouselTrack: { display: 'flex', height: '100%', transition: 'transform 0.5s ease-in-out' },
-    carouselSlide: { minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', opacity: 0, transition: 'opacity 0.5s ease-in-out', position: 'absolute', top: 0, left: 0 },
-    carouselSlideActive: { minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', opacity: 1, transition: 'opacity 0.5s ease-in-out', position: 'absolute', top: 0, left: 0 },
+    carouselSlide: { minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', opacity: 0, transition: 'opacity 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
+    carouselSlideActive: { minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', opacity: 1, transition: 'opacity 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
     splashInfoIcon: { fontSize: '1.5rem', marginBottom: '5px' },
-    splashInfoContent: { fontSize: '1.2rem', fontWeight: 'bold', color: colors.yellow },
+    splashInfoContent: { fontSize: '1.2rem', fontWeight: 'bold', color: colors.yellow, wordBreak: 'break-word' },
     splashCountdown: { fontFamily: "'Orbitron', sans-serif", fontSize: '1.5rem', fontWeight: 'bold', color: colors.yellow },
     carouselDots: { position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '8px' },
     carouselDot: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.3)', cursor: 'pointer', transition: 'background-color 0.3s' },
     carouselDotActive: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: colors.yellow, cursor: 'pointer', transition: 'background-color 0.3s' },
     shieldMosaicContainer: { position: 'relative', width: '300px', height: '300px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '30px 0' },
-    shieldCenter: { width: '100px', height: '100px', borderRadius: '50%', zIndex: 5, border: `3px solid ${colors.gold}`, boxShadow: `0 0 20px ${colors.gold}` },
+    shieldCenter: { width: '120px', height: '120px', borderRadius: '50%', zIndex: 5, boxShadow: `0 0 20px ${colors.gold}` },
     shieldOrbit: { position: 'absolute', width: '100%', height: '100%', animation: 'orbit 60s linear infinite' },
     shieldOrbitItem: { position: 'absolute', top: '50%', left: '50%', width: '40px', height: '40px', margin: '-20px 0 0 -20px' },
     userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
