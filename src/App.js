@@ -517,7 +517,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const handlePronosticoChange = (e) => { const { name, value, type, checked } = e.target; setPronostico(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value, ...(name === 'sinGoleador' && checked && { goleador: '' }) })); };
     const handleJokerPronosticoChange = (index, field, value) => { const newJokerPronosticos = [...pronostico.jokerPronosticos]; newJokerPronosticos[index] = { ...newJokerPronosticos[index], [field]: value }; setPronostico(prev => ({ ...prev, jokerPronosticos: newJokerPronosticos })); };
     
-    // --- MEJORA INICIADA: Validación de guardado del Joker ---
     const handleGuardarPronostico = async (e) => {
         e.preventDefault();
         if (!currentJornada) return;
@@ -528,7 +527,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
         const cleanJokerPronosticos = pronostico.jokerPronosticos.filter(p => p.golesLocal !== '' || p.golesVisitante !== '');
 
-        // Nueva validación: si el Joker está activo, se debe rellenar al menos una casilla.
         if (pronostico.jokerActivo && cleanJokerPronosticos.length === 0) {
             setMessage({text: 'Has activado el Joker. Debes rellenar al menos una apuesta Joker o usar el Botón del Pánico.', type: 'error'});
             return;
@@ -548,32 +546,20 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         } catch (error) { console.error("Error al guardar: ", error); setMessage({text: 'Error al guardar.', type: 'error'}); }
         setIsSaving(false);
     };
-    // --- MEJORA FINALIZADA ---
 
     const handleUnlock = () => { if (pinInput === pronostico.pin) { setIsLocked(false); setHasSubmitted(false); setMessage({text: 'Pronóstico desbloqueado. Puedes hacer cambios.', type: 'info'}); } else { alert('PIN incorrecto'); } };
     
-    const handleActivarJoker = async () => {
+    // --- MEJORA INICIADA: Flujo de activación del Joker ---
+    const handleActivarJoker = () => {
         if (jokersRestantes <= 0) {
             alert("No te quedan Jokers esta temporada.");
             return;
         }
         if (window.confirm("¿Seguro que quieres usar un JOKER para esta jornada? Esta acción no se puede deshacer. Podrás añadir 10 apuestas de resultado exacto adicionales.")) {
+            
+            // 1. Actualización visual INMEDIATA
             setShowJokerAnimation(true);
             setTimeout(() => setShowJokerAnimation(false), 7000);
-
-            const userJokerRef = doc(db, "clasificacion", user);
-            try {
-                await updateDoc(userJokerRef, { jokersRestantes: increment(-1) });
-                setJokersRestantes(prev => prev - 1);
-            } catch (e) {
-                await setDoc(userJokerRef, { jokersRestantes: 1, puntosTotales: 0, jugador: user }, { merge: true });
-                setJokersRestantes(1);
-            }
-            
-            // Forzamos el estado de edición para que el formulario permanezca abierto
-            // y el usuario pueda rellenar las nuevas casillas del Joker.
-            setHasSubmitted(false);
-            setIsLocked(false);
 
             setPronostico(prev => ({
                 ...prev,
@@ -581,9 +567,33 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 jokerPronosticos: Array(10).fill({ golesLocal: '', golesVisitante: '' })
             }));
 
+            // 2. Forzamos el estado de edición para que el formulario no se cierre
+            setHasSubmitted(false);
+            setIsLocked(false);
+            
             setMessage({ text: '¡Joker activado! Rellena tus 10 apuestas extra y no olvides Guardar.', type: 'success' });
+
+            // 3. Operación con la base de datos en segundo plano
+            const userJokerRef = doc(db, "clasificacion", user);
+            runTransaction(db, async (transaction) => {
+                const userDoc = await transaction.get(userJokerRef);
+                if (!userDoc.exists()) {
+                    transaction.set(userJokerRef, { jokersRestantes: 1, jugador: user }, { merge: true });
+                } else {
+                    const newJokerCount = (userDoc.data().jokersRestantes || 2) - 1;
+                    transaction.update(userJokerRef, { jokersRestantes: newJokerCount });
+                }
+            }).then(() => {
+                setJokersRestantes(prev => prev - 1);
+            }).catch(error => {
+                console.error("Error al actualizar Jokers en Firebase: ", error);
+                // Opcional: revertir la UI si falla la base de datos
+                setMessage({ text: 'Error al contactar con el servidor. Inténtalo de nuevo.', type: 'error' });
+                setPronostico(prev => ({ ...prev, jokerActivo: false }));
+            });
         }
     };
+    // --- MEJORA FINALIZADA ---
 
     const handleBotonDelPanico = async () => { if (window.confirm("¿Seguro que quieres cancelar tus apuestas JOKER? No recuperarás el JOKER gastado, pero tus 10 apuestas adicionales se borrarán.")) { setPronostico(prev => ({ ...prev, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) })); const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user); await updateDoc(pronosticoRef, { jokerPronosticos: [] }); setMessage({text: 'Apuestas JOKER eliminadas. El Joker sigue gastado.', type: 'info'}); } };
     const handleMarcarComoPagado = async () => { if (!currentJornada) return; const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user); try { await updateDoc(pronosticoRef, { pagado: true }); setPronostico(prev => ({...prev, pagado: true})); setMessage({text: '¡Pago registrado con éxito!', type: 'success'}); } catch (error) { console.error("Error al marcar como pagado: ", error); setMessage({text: 'Error al registrar el pago.', type: 'error'}); } };
@@ -1722,3 +1732,4 @@ const styles = {
 };
 
 export default App;
+
