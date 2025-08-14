@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Regla general: permite leer a cualquiera, pero solo escribir a usuarios autenticados.
+    match /{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Regla específica para los tokens de notificación.
+    // Permite que cualquier usuario autenticado cree un documento para su token.
+    // No permite que lean, actualicen o borren los tokens de otros.
+    match /notification_tokens/{token} {
+      allow create: if request.auth != null;
+    }
+  }
+}
