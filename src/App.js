@@ -191,6 +191,9 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
+// ############################################################################
+// ### INICIO DEL COMPONENTE MODIFICADO: SplashScreen ###
+// ############################################################################
 const SplashScreen = ({ onEnter, teamLogos }) => {
     const [jornadaData, setJornadaData] = useState({ jornada: null, pronosticos: [] });
     const [loading, setLoading] = useState(true);
@@ -330,9 +333,9 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
         }
         return (
             <div style={styles.carouselContainer}>
-                <div style={{...styles.carouselTrack, transform: `translateX(-${activeSlide * 100}%)`}} >
+                <div style={styles.carouselWrapper}>
                     {slides.map((slide, index) => (
-                        <div key={index} style={styles.carouselSlide}>
+                        <div key={index} style={{...styles.carouselSlide, transform: `translateX(-${activeSlide * 100}%)`}}>
                             {slide.type === 'countdown' ? (
                                 <Countdown targetDate={slide.targetDate} title={slide.title} />
                             ) : (
@@ -385,6 +388,9 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
         </div>
     );
 };
+// ############################################################################
+// ### FIN DEL COMPONENTE MODIFICADO ###
+// ############################################################################
 
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
@@ -1618,9 +1624,8 @@ const styles = {
     splashTitleNew: { fontFamily: "'Russo One', sans-serif", fontSize: 'clamp(3rem, 12vw, 4.5rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '2px', background: `linear-gradient(90deg, ${colors.silver}, ${colors.gold}, ${colors.lightText}, ${colors.gold}, ${colors.silver})`, backgroundSize: '200% auto', color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', animation: 'title-pulse 4s ease-in-out infinite' },
     splashYearNew: { fontFamily: "'Russo One', sans-serif", fontSize: 'clamp(1.5rem, 6vw, 2.5rem)', background: `linear-gradient(90deg, ${colors.silver}, ${colors.gold}, ${colors.lightText})`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', marginTop: '-15px' },
     carouselContainer: { width: '100%', maxWidth: '500px', height: '120px', position: 'relative', overflow: 'hidden', margin: '20px 0' },
-    carouselTrack: { display: 'flex', height: '100%', transition: 'transform 0.5s ease-in-out' },
-    carouselSlide: { minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', opacity: 0, transition: 'opacity 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
-    carouselSlideActive: { minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', opacity: 1, transition: 'opacity 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
+    carouselWrapper: { position: 'relative', width: '100%', height: '100%' },
+    carouselSlide: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', transition: 'transform 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
     splashInfoIcon: { fontSize: '1.5rem', marginBottom: '5px' },
     splashInfoContent: { fontSize: '1.2rem', fontWeight: 'bold', color: colors.yellow, wordBreak: 'break-word' },
     splashCountdown: { fontFamily: "'Orbitron', sans-serif", fontSize: '1.5rem', fontWeight: 'bold', color: colors.yellow },
@@ -1628,9 +1633,8 @@ const styles = {
     carouselDot: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.3)', cursor: 'pointer', transition: 'background-color 0.3s' },
     carouselDotActive: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: colors.yellow, cursor: 'pointer', transition: 'background-color 0.3s' },
     shieldMosaicContainer: { position: 'relative', width: '300px', height: '300px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '30px 0' },
-    shieldCenter: { width: '120px', height: '120px', borderRadius: '50%', zIndex: 5, boxShadow: `0 0 20px ${colors.gold}` },
+    shieldCenter: { width: '120px', height: '120px', zIndex: 5 },
     shieldOrbit: { position: 'absolute', width: '100%', height: '100%', animation: 'orbit 60s linear infinite' },
-    shieldOrbitItem: { position: 'absolute', top: '50%', left: '50%', width: '40px', height: '40px', margin: '-20px 0 0 -20px' },
     userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
     userButtonOnline: { animation: 'neon-glow 1.5s infinite alternate', borderColor: '#0f0' },
@@ -1778,29 +1782,7 @@ const styles = {
     skeletonContainer: { padding: '20px' },
     skeletonBox: { backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '4px', animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' },
     skeletonTable: { display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px' },
-    skeletonRow: { display: 'flex', justifyContent: 'space-between', gap: '10px' },
-    reactionContainer: { borderTop: `1px solid ${colors.blue}`, marginTop: '15px', paddingTop: '15px' },
-    reactionEmojis: { display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '10px' },
-    reactionButton: { background: 'rgba(255,255,255,0.1)', border: '1px solid transparent', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.5rem', cursor: 'pointer', transition: 'all 0.2s ease' },
-    reactionButtonSelected: { borderColor: colors.yellow, transform: 'scale(1.15)' },
-    reactionCounts: { display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' },
-    reactionCountChip: { backgroundColor: colors.blue, padding: '3px 8px', borderRadius: '12px', fontSize: '0.8rem' },
-    debtSummaryContainer: { marginTop: '40px', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' },
-    debtGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px' },
-    debtItemPaid: { display: 'flex', justifyContent: 'space-between', padding: '8px', borderRadius: '6px', backgroundColor: `${colors.success}20` },
-    debtItemOwes: { display: 'flex', justifyContent: 'space-between', padding: '8px', borderRadius: '6px', backgroundColor: `${colors.danger}20`, fontWeight: 'bold' },
-    adminNav: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '20px' },
-    adminNavButton: { padding: '15px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease' },
-    presetMessagesContainer: { display: 'flex', flexDirection: 'column', gap: '10px' },
-    presetMessageButton: { padding: '12px', textAlign: 'left', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '6px', cursor: 'pointer' },
-    chatSection: { marginTop: '30px', borderTop: `2px solid ${colors.blue}`, paddingTop: '20px' },
-    chatTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textAlign: 'center', fontSize: '1.3rem', marginBottom: '15px' },
-    chatContainer: { height: '250px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '10px', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse', border: `1px solid ${colors.blue}80` },
-    chatMessage: { marginBottom: '10px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', animation: 'fadeIn 0.5s ease' },
-    chatActions: { marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px' },
-    chatActionGroup: { display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' },
-    chatActionButton: { padding: '8px 12px', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem' },
-    chatActionEmojiButton: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '5px' }
+    skeletonRow: { display: 'flex', justifyContent: 'space-between', gap: '10px' }
 };
 
 export default App;
