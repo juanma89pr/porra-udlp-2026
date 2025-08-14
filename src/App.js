@@ -4,7 +4,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
-import { getDatabase, ref, onValue, onDisconnect, set, push, serverTimestamp, query as rtdbQuery, limitToLast, orderByChild } from "firebase/database";
+import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 
@@ -44,9 +44,6 @@ const SECRET_MESSAGES = [
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
 const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
-const CHAT_PRESET_MESSAGES = ["¡Vamos UD!", "¡Suerte a todos!", "¿Quién va a ganar?", "Hoy hay bote... 🤑"];
-const CHAT_REACTION_EMOJIS = ['💛', '🇮🇨', '⚽', '💸', '💪', '🤫'];
-
 
 const EQUIPOS_LIGA = [
     "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF", 
@@ -333,75 +330,22 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
     return (<>{showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}<div style={styles.splashContainer}><div style={styles.splashLogoContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div></div>{loading ? (<LoadingSkeleton />) : renderJornadaInfo()}<button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>{isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}</div></>);
 };
 
-// ############################################################################
-// ### INICIO DEL COMPONENTE MODIFICADO: LoginScreen ###
-// ############################################################################
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     const [recentUsers, setRecentUsers] = useState([]);
-    const [chatLogs, setChatLogs] = useState([]);
-    const [selectedUserForChat, setSelectedUserForChat] = useState(null);
-    const chatContainerRef = useRef(null);
 
     useEffect(() => {
         const storedUsers = localStorage.getItem('recentPorraUsers');
         if (storedUsers) {
             setRecentUsers(JSON.parse(storedUsers));
         }
-        const logsRef = rtdbQuery(ref(rtdb, 'chat_logs'), orderByChild('timestamp'), limitToLast(20));
-        const unsubscribe = onValue(logsRef, (snapshot) => {
-            const data = snapshot.val();
-            const logsArray = data ? Object.values(data).sort((a, b) => a.timestamp - b.timestamp) : [];
-            setChatLogs(logsArray);
-        });
-        return () => unsubscribe();
     }, []);
 
-    useEffect(() => {
-        if (chatContainerRef.current) {
-            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        }
-    }, [chatLogs]);
-
-    const handleSelectUser = async (jugador) => {
-        if (!jugador) return;
+    const handleSelectUser = (jugador) => {
         const updatedRecentUsers = [jugador, ...recentUsers.filter(u => u !== jugador)].slice(0, 3);
         setRecentUsers(updatedRecentUsers);
         localStorage.setItem('recentPorraUsers', JSON.stringify(updatedRecentUsers));
-
-        const logsRef = ref(rtdb, 'chat_logs');
-        try {
-            await push(logsRef, {
-                type: 'login',
-                user: jugador,
-                content: 'se ha unido a la porra.',
-                timestamp: serverTimestamp()
-            });
-            onLogin(jugador);
-        } catch (error) {
-            console.error("Error al registrar el acceso en el chat:", error);
-            // A pesar del error en el chat, permitimos el login
-            onLogin(jugador);
-        }
-    };
-    
-    const handleSendChatMessage = async (type, content) => {
-         if (!selectedUserForChat) {
-             alert("Selecciona tu perfil primero para poder enviar mensajes.");
-             return;
-         };
-         const logsRef = ref(rtdb, 'chat_logs');
-         try {
-            await push(logsRef, {
-                type: type,
-                user: selectedUserForChat,
-                content: content,
-                timestamp: serverTimestamp()
-            });
-         } catch(error) {
-            console.error("Error al enviar mensaje:", error);
-            alert("No se pudo enviar el mensaje.");
-         }
+        onLogin(jugador);
     };
 
     const sortedJugadores = useMemo(() => {
@@ -423,20 +367,13 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
                         ...styles.userButton,
                         ...(hoveredUser === jugador ? styles.userButtonHover : {}),
                         ...(isOnline ? styles.userButtonOnline : {}),
-                        ...(isRecent ? styles.userButtonRecent : {}),
-                        ...(selectedUserForChat === jugador ? styles.userButtonSelected : {})
+                        ...(isRecent ? styles.userButtonRecent : {})
                     };
 
                     const circleStyle = { ...styles.loginProfileIconCircle, ...(isGradient ? { background: profile.color } : { backgroundColor: profile.color || styles.colors.blue }) };
 
                     return (
-                        <button key={jugador} 
-                            onClick={() => setSelectedUserForChat(jugador)}
-                            onDoubleClick={() => handleSelectUser(jugador)}
-                            style={buttonStyle} 
-                            onMouseEnter={() => setHoveredUser(jugador)} 
-                            onMouseLeave={() => setHoveredUser(null)}
-                        >
+                        <button key={jugador} onClick={() => handleSelectUser(jugador)} style={buttonStyle} onMouseEnter={() => setHoveredUser(jugador)} onMouseLeave={() => setHoveredUser(null)}>
                             {isRecent && <div style={styles.recentUserIndicator}>★</div>}
                             <div style={circleStyle}>{profile.icon || '?'}</div>
                             <span>{jugador}</span>
@@ -444,48 +381,9 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
                     );
                 })}
             </div>
-            <p style={{color: styles.colors.silver, fontStyle: 'italic', marginTop: '15px', fontSize: '0.9rem'}}>
-                Selecciona tu perfil para chatear. Haz doble click para entrar.
-            </p>
-            <button 
-                onClick={() => selectedUserForChat ? handleSelectUser(selectedUserForChat) : alert("Por favor, selecciona tu perfil")} 
-                style={{...styles.mainButton, width: '100%'}}
-            >
-                ENTRAR COMO {selectedUserForChat || '...'}
-            </button>
-
-            {/* --- NUEVO CHAT --- */}
-            <div style={styles.chatSection}>
-                <h3 style={styles.chatTitle}>El Mentidero de la Porra 🏟️</h3>
-                <div style={styles.chatContainer} ref={chatContainerRef}>
-                    {chatLogs.map((log, index) => (
-                        <div key={index} style={styles.chatMessage}>
-                            <span style={{opacity: 0.6}}>{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            <PlayerProfileDisplay name={log.user} profile={userProfiles[log.user]} style={{fontWeight: 'bold'}}/>
-                            <span style={log.type === 'login' ? {fontStyle: 'italic', opacity: 0.7} : {}}>{log.content}</span>
-                        </div>
-                    ))}
-                </div>
-                <div style={styles.chatActions}>
-                    <div style={styles.chatActionGroup}>
-                        {CHAT_PRESET_MESSAGES.map(msg => (
-                            <button key={msg} onClick={() => handleSendChatMessage('message', msg)} style={styles.chatActionButton}>{msg}</button>
-                        ))}
-                    </div>
-                     <div style={styles.chatActionGroup}>
-                        {CHAT_REACTION_EMOJIS.map(emoji => (
-                             <button key={emoji} onClick={() => handleSendChatMessage('reaction', emoji)} style={styles.chatActionEmojiButton}>{emoji}</button>
-                        ))}
-                    </div>
-                </div>
-            </div>
         </div>
     );
 };
-// ############################################################################
-// ### FIN DEL COMPONENTE MODIFICADO ###
-// ############################################################################
-
 const initialPronosticoState = { 
     golesLocal: '', 
     golesVisitante: '', 
@@ -518,6 +416,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const [showJokerAnimation, setShowJokerAnimation] = useState(false);
     const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
     
+    // Usamos una ref para guardar el estado inicial del Joker al cargar el pronóstico
     const initialJokerStatus = useRef(false);
     
     const userProfile = userProfiles[user] || {};
@@ -548,6 +447,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                         const filledJokerPronosticos = data.jokerPronosticos ? [...data.jokerPronosticos, ...Array(10 - data.jokerPronosticos.length).fill({golesLocal: '', golesVisitante: ''})] : Array(10).fill({golesLocal: '', golesVisitante: ''});
                         setPronostico({...initialPronosticoState, ...data, jokerPronosticos: filledJokerPronosticos});
                         setIsLocked(!!data.pin); setHasSubmitted(true);
+                        // Guardamos el estado inicial del Joker
                         initialJokerStatus.current = data.jokerActivo || false;
                     } else {
                         setPronostico(initialPronosticoState); setIsLocked(false); setHasSubmitted(false);
@@ -623,6 +523,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const handlePronosticoChange = (e) => { const { name, value, type, checked } = e.target; setPronostico(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value, ...(name === 'sinGoleador' && checked && { goleador: '' }) })); };
     const handleJokerPronosticoChange = (index, field, value) => { const newJokerPronosticos = [...pronostico.jokerPronosticos]; newJokerPronosticos[index] = { ...newJokerPronosticos[index], [field]: value }; setPronostico(prev => ({ ...prev, jokerPronosticos: newJokerPronosticos })); };
     
+    // --- MEJORA INICIADA: Lógica de guardado y descuento del Joker ---
     const handleGuardarPronostico = async (e) => {
         e.preventDefault();
         if (!currentJornada) return;
@@ -673,9 +574,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         }
         setIsSaving(false);
     };
+    // --- MEJORA FINALIZADA ---
 
     const handleUnlock = () => { if (pinInput === pronostico.pin) { setIsLocked(false); setHasSubmitted(false); setMessage({text: 'Pronóstico desbloqueado. Puedes hacer cambios.', type: 'info'}); } else { alert('PIN incorrecto'); } };
     
+    // --- MEJORA INICIADA: Activación del Joker solo en la UI ---
     const handleActivarJoker = () => {
         if (jokersRestantes <= 0) {
             alert("No te quedan Jokers esta temporada.");
@@ -698,6 +601,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             setMessage({ text: '¡Joker activado! Rellena tus 10 apuestas extra y no olvides Guardar.', type: 'success' });
         }
     };
+    // --- MEJORA FINALIZADA ---
 
     const handleBotonDelPanico = async () => { if (window.confirm("¿Seguro que quieres cancelar tus apuestas JOKER? No recuperarás el JOKER gastado, pero tus 10 apuestas adicionales se borrarán.")) { setPronostico(prev => ({ ...prev, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) })); setMessage({text: 'Apuestas JOKER eliminadas. Recuerda guardar para confirmar los cambios.', type: 'info'}); } };
     const handleMarcarComoPagado = async () => { if (!currentJornada) return; const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user); try { await updateDoc(pronosticoRef, { pagado: true }); setPronostico(prev => ({...prev, pagado: true})); setMessage({text: '¡Pago registrado con éxito!', type: 'success'}); } catch (error) { console.error("Error al marcar como pagado: ", error); setMessage({text: 'Error al registrar el pago.', type: 'error'}); } };
@@ -1672,7 +1576,6 @@ const styles = {
     userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px', marginTop: '30px' },
     userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
-    userButtonSelected: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
     userButtonOnline: { animation: 'neon-glow 1.5s infinite alternate', borderColor: '#0f0' },
     userButtonRecent: { borderColor: colors.silver },
     recentUserIndicator: { position: 'absolute', top: '5px', right: '10px', color: colors.yellow, fontSize: '1.2rem' },
@@ -1833,14 +1736,6 @@ const styles = {
     adminNavButton: { padding: '15px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease' },
     presetMessagesContainer: { display: 'flex', flexDirection: 'column', gap: '10px' },
     presetMessageButton: { padding: '12px', textAlign: 'left', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '6px', cursor: 'pointer' },
-    chatSection: { marginTop: '30px', borderTop: `2px solid ${colors.blue}`, paddingTop: '20px' },
-    chatTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textAlign: 'center', fontSize: '1.3rem', marginBottom: '15px' },
-    chatContainer: { height: '250px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '10px', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse', border: `1px solid ${colors.blue}80` },
-    chatMessage: { marginBottom: '10px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', animation: 'fadeIn 0.5s ease' },
-    chatActions: { marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px' },
-    chatActionGroup: { display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' },
-    chatActionButton: { padding: '8px 12px', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem' },
-    chatActionEmojiButton: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '5px' }
 };
 
 export default App;
