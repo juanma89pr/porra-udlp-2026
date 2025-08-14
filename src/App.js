@@ -200,7 +200,11 @@ const InitialSplashScreen = ({ onFinish }) => {
     
     return (
         <div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}>
-            {/* El escudo ahora es más pequeño y no tiene título superpuesto */}
+            {/* Título añadido a la pantalla de carga */}
+            <div style={styles.splashTitleContainer}>
+                <span style={styles.splashTitleNew}>PORRA UDLP</span>
+                <span style={styles.splashYearNew}>2026</span>
+            </div>
             <img 
                 src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" 
                 alt="UD Las Palmas Logo" 
@@ -231,7 +235,6 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
     const isMobile = useMemo(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
     
     const otherTeamLogos = useMemo(() => {
-        // Excluimos a la UD Las Palmas para que no aparezca en la noria
         const { "UD Las Palmas": _, ...rest } = teamLogos;
         return Object.entries(rest);
     }, [teamLogos]);
@@ -389,20 +392,15 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
 
     return (
         <div style={styles.splashContainer}>
-            {/* Contenedor de la noria de escudos */}
             <div style={styles.shieldMosaicContainer}>
-                {/* Escudo central (UDLP), ahora más grande */}
                 <div style={styles.shieldCenter}>
                     <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas" style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
                 </div>
-                {/* Contenedor de la órbita que girará */}
                 <div style={styles.shieldOrbit}>
                     {otherTeamLogos.map(([name, logoUrl], index) => {
                         const angle = index * (360 / otherTeamLogos.length);
                         return (
-                            // Cada escudo se posiciona en la órbita
                             <div key={name} className="orbit-item" style={{'--angle': `${angle}deg`}}>
-                                {/* La imagen del escudo */}
                                 <img src={logoUrl} alt={name} style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
                             </div>
                         );
@@ -410,13 +408,11 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
                 </div>
             </div>
             
-            {/* Contenedor del título con nueva tipografía y disposición */}
             <div style={styles.splashTitleContainer}>
                 <span style={styles.splashTitleNew}>PORRA UDLP</span>
                 <span style={styles.splashYearNew}>2026</span>
             </div>
 
-            {/* Carrusel de información (sin cambios en la lógica) */}
             {renderCarousel()}
 
             <button onClick={onEnter} style={{...styles.mainButton, zIndex: 10}}>ENTRAR A LA PORRA</button>
@@ -425,10 +421,6 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
         </div>
     );
 };
-// ############################################################################
-// ### FIN DEL COMPONENTE MODIFICADO ###
-// ############################################################################
-
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     const [recentUsers, setRecentUsers] = useState([]);
@@ -817,6 +809,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     };
     return (<div>{showJokerAnimation && <JokerAnimation />}<h2 style={styles.title}>MI JORNADA</h2><p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>{liveData && liveData.isLive && currentJornada?.estado === 'Cerrada' && (<div style={styles.liveInfoBox}><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Puntos Provisionales</span><span style={styles.liveInfoValue}><AnimatedPoints value={provisionalData.puntos} /></span></div><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Posición Provisional</span><span style={styles.liveInfoValue}>{provisionalData.posicion}</span></div></div>)}{renderContent()}</div>);
 };
+
 const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
     const [participantes, setParticipantes] = useState([]);
@@ -1553,12 +1546,11 @@ function App() {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => { if (!user) { signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error)); } });
     const styleSheet = document.createElement("style"); 
     styleSheet.type = "text/css"; 
-    // Se añade la importación de la nueva fuente 'Russo One' para el estilo e-sports
-    styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; } 
-    /* --- INICIO ANIMACIÓN NORIA --- */
+    // Se añade la importación de la nueva fuente 'Teko' para un estilo más de videojuego/deportivo
+    styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; } 
+    /* --- INICIO ANIMACIÓN NORIA CORREGIDA --- */
     @keyframes orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } 
-    @keyframes counter-orbit { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
-    .orbit-item { position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; margin: -25px; transform: rotate(var(--angle)) translate(150px); animation: counter-orbit 80s linear infinite; } 
+    .orbit-item { display: block; position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; margin: -25px; transform: rotate(var(--angle)) translate(150px) rotate(calc(-1 * var(--angle))); }
     /* --- FIN ANIMACIÓN NORIA --- */
     @keyframes title-pulse { 0% { text-shadow: 0 0 5px ${colors.gold}50, 0 0 10px ${colors.gold}30; } 50% { text-shadow: 0 0 10px ${colors.gold}80, 0 0 20px ${colors.gold}50; } 100% { text-shadow: 0 0 5px ${colors.gold}50, 0 0 10px ${colors.gold}30; } }`;
     document.head.appendChild(styleSheet);
@@ -1573,7 +1565,7 @@ function App() {
   
   const handleRequestPermission = async (user) => {
       setShowNotificationModal(false);
-      localStorage.setItem('notificationPrompt_v3_seen', 'true'); // Usamos una nueva versión
+      localStorage.setItem('notificationPrompt_v3_seen', 'true');
       try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
@@ -1662,18 +1654,16 @@ const styles = {
     secondaryButton: { fontFamily: "'Exo 2', sans-serif", padding: '8px 15px', fontSize: '0.9rem', cursor: 'pointer', border: `1px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', textTransform: 'uppercase' },
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
     initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', width: '100%', backgroundColor: colors.deepBlue, animation: 'fadeIn 0.5s ease', transition: 'opacity 0.5s ease' },
-    // Estilo del logo en la pantalla de carga inicial, ahora más pequeño
-    splashLogo: { width: '50%', maxWidth: '200px', height: 'auto', marginBottom: '20px' },
+    splashLogo: { width: '40%', maxWidth: '180px', height: 'auto', margin: '20px 0' },
     fadeOut: { opacity: 0 },
     fadeIn: { animation: 'fadeIn 0.5s ease' },
-    loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', fontFamily: "'Exo 2', sans-serif" },
+    loadingMessage: { marginTop: 'auto', paddingBottom: '50px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', fontFamily: "'Exo 2', sans-serif" },
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'space-around', alignItems: 'center', height: '100%', textAlign: 'center', width: '100%', minHeight: 'calc(100vh - 80px)' },
-    // Contenedor del título con posicionamiento relativo para superponer el año
     splashTitleContainer: { marginBottom: '20px', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
-    // Título principal con la nueva fuente e-sports
-    splashTitleNew: { fontFamily: "'Russo One', sans-serif", fontSize: 'clamp(3rem, 12vw, 4.5rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '2px', background: `linear-gradient(90deg, ${colors.silver}, ${colors.gold}, ${colors.lightText}, ${colors.gold}, ${colors.silver})`, backgroundSize: '200% auto', color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', animation: 'title-pulse 4s ease-in-out infinite' },
-    // Año con la nueva fuente y posicionado para superponerse
-    splashYearNew: { fontFamily: "'Russo One', sans-serif", fontSize: 'clamp(2rem, 8vw, 3rem)', background: `linear-gradient(90deg, ${colors.silver}, ${colors.gold}, ${colors.lightText})`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', position: 'relative', top: '-25px' },
+    // Título con nueva fuente 'Teko'
+    splashTitleNew: { fontFamily: "'Teko', sans-serif", fontSize: 'clamp(4rem, 15vw, 6rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '2px', color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}90, 0 0 20px ${colors.yellow}50` },
+    // Año con efecto metálico azul/plata
+    splashYearNew: { fontFamily: "'Teko', sans-serif", fontSize: 'clamp(2.5rem, 10vw, 4rem)', background: `linear-gradient(45deg, #a7b4c4, #e2e8f0, #7689a1, #e2e8f0, #a7b4c4)`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', position: 'relative', top: '-25px', WebkitTextStroke: `1px ${colors.blue}` },
     carouselContainer: { width: '100%', maxWidth: '500px', height: '120px', position: 'relative', overflow: 'hidden', margin: '20px 0' },
     carouselWrapper: { position: 'relative', width: '100%', height: '100%' },
     carouselSlide: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', transition: 'transform 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
@@ -1683,11 +1673,9 @@ const styles = {
     carouselDots: { position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '8px' },
     carouselDot: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.3)', cursor: 'pointer', transition: 'background-color 0.3s' },
     carouselDotActive: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: colors.yellow, cursor: 'pointer', transition: 'background-color 0.3s' },
-    // Contenedor de la noria
     shieldMosaicContainer: { position: 'relative', width: '350px', height: '350px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '10px 0' },
-    // Escudo central más grande
     shieldCenter: { width: '150px', height: '150px', zIndex: 5 },
-    // Contenedor que orbita
+    // Contenedor de la órbita que gira
     shieldOrbit: { position: 'absolute', width: '100%', height: '100%', animation: 'orbit 80s linear infinite' },
     userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
