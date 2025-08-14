@@ -29,7 +29,7 @@ const rtdb = getDatabase(app);
 const functions = getFunctions(app);
 
 // --- CLAVE VAPID PARA NOTIFICACIONES ---
-const VAPID_KEY = "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE";
+const VAPID_KEY = "BPpyoLngK0o32aklLLt6TcfuU1-DfeWIr0y3OHBj2ST5P_0iwaZIM6pvrRuFMxetpNmy0hyh93hBwflvOenR-NE";
 
 
 // --- DATOS DE LA APLICACIÓN ---
