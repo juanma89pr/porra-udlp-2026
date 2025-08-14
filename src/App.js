@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -43,7 +43,6 @@ const SECRET_MESSAGES = [
     "Consultando con el Oráculo", "Shhh... es un secreto", "Apuesta Fantasma 👻",
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
-const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
 
 const EQUIPOS_LIGA = [
     "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF", 
@@ -192,9 +191,6 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
-// ############################################################################
-// ### INICIO DEL COMPONENTE MODIFICADO: SplashScreen ###
-// ############################################################################
 const SplashScreen = ({ onEnter, teamLogos }) => {
     const [jornadaData, setJornadaData] = useState({ jornada: null, pronosticos: [] });
     const [loading, setLoading] = useState(true);
@@ -202,7 +198,6 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
     const [activeSlide, setActiveSlide] = useState(0);
     const isMobile = useMemo(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
     
-    // Obtenemos los escudos sin el de la UD Las Palmas para la órbita
     const otherTeamLogos = useMemo(() => {
         const { "UD Las Palmas": _, ...rest } = teamLogos;
         return Object.entries(rest);
@@ -242,14 +237,12 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
 
         const slidesDisponibles = [];
 
-        // Slide 1: Próximo Partido
         slidesDisponibles.push({
             icon: '⚔️',
             title: jornada.estado === 'Abierta' ? 'Jornada Actual' : 'Próxima Jornada',
             content: `${jornada.equipoLocal} vs ${jornada.equipoVisitante}`
         });
 
-        // Slide 2: Cuenta Atrás
         const targetDate = jornada.estado === 'Abierta' ? jornada.fechaCierre?.toDate() : jornada.fechaApertura?.toDate();
         slidesDisponibles.push({
             type: 'countdown',
@@ -257,7 +250,6 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
             targetDate: targetDate
         });
 
-        // Slide 3: Bote
         if (jornada.bote > 0) {
             slidesDisponibles.push({
                 icon: '💰',
@@ -266,9 +258,7 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
             });
         }
         
-        // Slides condicionales (mínimo 5 apuestas)
         if (pronosticos.length >= 5) {
-            // Resultado más apostado
             const resultados = pronosticos.map(p => `${p.golesLocal}-${p.golesVisitante}`);
             const counts = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
             const [resultadoMasComun, veces] = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
@@ -278,7 +268,6 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
                 content: `Resultado más apostado: ${resultadoMasComun} (${veces} veces)`
             });
 
-            // Pronóstico 1X2 más apostado
             const pronosticos1x2 = pronosticos.map(p => p.resultado1x2);
             const counts1x2 = pronosticos1x2.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
             const [pronosticoMasComun1x2] = Object.entries(counts1x2).sort((a,b) => b[1] - a[1])[0];
@@ -289,7 +278,6 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
             });
         }
         
-        // Slides de participación (solo si la jornada está abierta)
         if (jornada.estado === 'Abierta') {
              slidesDisponibles.push({
                 icon: '✅',
@@ -311,7 +299,7 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
         if (slides.length > 1) {
             const interval = setInterval(() => {
                 setActiveSlide(prev => (prev + 1) % slides.length);
-            }, 5000); // Cambia de slide cada 5 segundos
+            }, 5000);
             return () => clearInterval(interval);
         }
     }, [slides]);
@@ -394,9 +382,6 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
         </div>
     );
 };
-// ############################################################################
-// ### FIN DEL COMPONENTE MODIFICADO ###
-// ############################################################################
 
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
