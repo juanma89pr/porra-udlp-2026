@@ -17,7 +17,7 @@ const firebaseConfig = {
     messagingSenderId: "611441868159",
     appId: "1:611441868159:web:13008731a05c4321946e4a",
     measurementId: "G-J9T3S8SZT6",
-    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedabase.app"
+    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedatabase.app"
 };
 
 // --- INICIALIZACIÓN DE FIREBASE ---
@@ -44,15 +44,13 @@ const SECRET_MESSAGES = [
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
 
-// ### CORRECCIÓN: Se ha eliminado el CD Leganés duplicado para tener 21 equipos + UDLP ###
 const EQUIPOS_LIGA = [
     "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF", 
-    "Real Sociedad B", "UD Almería", "Cádiz CF", "Granada CF", 
+    "Real Sociedad B", "CD Leganes", "UD Almería", "Cádiz CF", "Granada CF", 
     "SD Eibar", "SD Huesca", "Real Sporting de Gijón", "Real Racing Club", 
     "Real Valladolid CF", "Albacete Balompié", "CD Castellón", "CD Mirandés", 
-    "AD Ceuta FC", "CyD Leonesa", "Real Zaragoza", "RC Deportivo", "CD Leganes"
+    "AD Ceuta FC", "CyD Leonesa", "Real Zaragoza", "RC Deportivo"
 ];
-
 
 const PLANTILLA_INICIAL = [
     { dorsal: 13, nombre: "Dinko Horkas" }, { dorsal: 0, nombre: "Adri Suárez" }, { dorsal: 3, nombre: "Mika Mármol" },
@@ -187,44 +185,11 @@ const LoadingSkeleton = ({ type = 'list' }) => {
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
 
-// ############################################################################
-// ### INICIO DEL COMPONENTE MODIFICADO: InitialSplashScreen ###
-// ############################################################################
 const InitialSplashScreen = ({ onFinish }) => {
     const [fadingOut, setFadingOut] = useState(false);
-    useEffect(() => { 
-        const timer = setTimeout(() => { 
-            setFadingOut(true); 
-            setTimeout(onFinish, 500); 
-        }, 2500); 
-        return () => clearTimeout(timer); 
-    }, [onFinish]);
-    
-    return (
-        <div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}>
-            {/* Contenido centrado y con título */}
-            <div style={styles.splashTitleContainer}>
-                <span style={styles.splashTitleNew}>PORRA UDLP</span>
-                <span style={styles.splashYearNew}>2026</span>
-            </div>
-            <img 
-                src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" 
-                alt="UD Las Palmas Logo" 
-                style={styles.splashLogo} 
-            />
-            <div style={styles.loadingMessage}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner">
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                </svg>
-                <p>Cargando apuestas...</p>
-            </div>
-        </div>
-    );
+    useEffect(() => { const timer = setTimeout(() => { setFadingOut(true); setTimeout(onFinish, 500); }, 2500); return () => clearTimeout(timer); }, [onFinish]);
+    return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
-// ############################################################################
-// ### FIN DEL COMPONENTE MODIFICADO ###
-// ############################################################################
-
 
 // ############################################################################
 // ### INICIO DEL COMPONENTE MODIFICADO: SplashScreen ###
@@ -394,20 +359,20 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
 
     return (
         <div style={styles.splashContainer}>
-            {/* ### CORRECCIÓN: Contenedor de escudos estáticos ### */}
             <div style={styles.shieldMosaicContainer}>
                 <div style={styles.shieldCenter}>
                     <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas" style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
                 </div>
-                {/* Se eliminó el contenedor que giraba. Ahora los escudos se posicionan directamente. */}
-                {otherTeamLogos.map(([name, logoUrl], index) => {
-                    const angle = index * (360 / otherTeamLogos.length);
-                    return (
-                        <div key={name} className="orbit-item" style={{'--angle': `${angle}deg`}}>
-                            <img src={logoUrl} alt={name} style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
-                        </div>
-                    );
-                })}
+                <div style={styles.shieldOrbit}>
+                    {otherTeamLogos.map(([name, logoUrl], index) => {
+                        const angle = index * (360 / otherTeamLogos.length);
+                        return (
+                            <div key={name} className="orbit-item" style={{'--angle': `${angle}deg`}}>
+                                <img src={logoUrl} alt={name} style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
             
             <div style={styles.splashTitleContainer}>
@@ -423,6 +388,10 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
         </div>
     );
 };
+// ############################################################################
+// ### FIN DEL COMPONENTE MODIFICADO ###
+// ############################################################################
+
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     const [recentUsers, setRecentUsers] = useState([]);
@@ -811,7 +780,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     };
     return (<div>{showJokerAnimation && <JokerAnimation />}<h2 style={styles.title}>MI JORNADA</h2><p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>{liveData && liveData.isLive && currentJornada?.estado === 'Cerrada' && (<div style={styles.liveInfoBox}><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Puntos Provisionales</span><span style={styles.liveInfoValue}><AnimatedPoints value={provisionalData.puntos} /></span></div><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Posición Provisional</span><span style={styles.liveInfoValue}>{provisionalData.posicion}</span></div></div>)}{renderContent()}</div>);
 };
-
 const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
     const [participantes, setParticipantes] = useState([]);
@@ -832,7 +800,7 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                 onSnapshot(pronosticosRef, (pronosticosSnap) => {
                     const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setParticipantes(pronosticosData);
-                    if (pronosticosData.length >= 5) {
+                    if (pronosticosData.length > 0) {
                         const resultados = pronosticosData.map(p => `${p.golesLocal}-${p.golesVisitante}`);
                         const counts = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
                         const resultadoMasComun = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
@@ -1546,13 +1514,7 @@ function App() {
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => { if (!user) { signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error)); } });
-    const styleSheet = document.createElement("style"); 
-    styleSheet.type = "text/css"; 
-    // ### CORRECCIÓN: Se añade la importación de la nueva fuente 'Rajdhani' para un estilo más de videojuego/deportivo ###
-    styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@700&family=Orbitron&family=Exo+2&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; } 
-    /* ### CORRECCIÓN: Estilos para el mosaico estático de escudos ### */
-    .orbit-item { display: block; position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; margin: -25px; transform: rotate(var(--angle)) translate(150px); }
-    @keyframes title-pulse { 0% { text-shadow: 0 0 5px ${colors.gold}50, 0 0 10px ${colors.gold}30; } 50% { text-shadow: 0 0 10px ${colors.gold}80, 0 0 20px ${colors.gold}50; } 100% { text-shadow: 0 0 5px ${colors.gold}50, 0 0 10px ${colors.gold}30; } }`;
+    const styleSheet = document.createElement("style"); styleSheet.type = "text/css"; styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; } @keyframes orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .orbit-item { position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; transform: rotate(var(--angle)) translate(140px) rotate(calc(-1 * var(--angle))); } @keyframes title-pulse { 0% { text-shadow: 0 0 5px ${colors.gold}50, 0 0 10px ${colors.gold}30; } 50% { text-shadow: 0 0 10px ${colors.gold}80, 0 0 20px ${colors.gold}50; } 100% { text-shadow: 0 0 5px ${colors.gold}50, 0 0 10px ${colors.gold}30; } }`;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
     const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
@@ -1565,7 +1527,7 @@ function App() {
   
   const handleRequestPermission = async (user) => {
       setShowNotificationModal(false);
-      localStorage.setItem('notificationPrompt_v3_seen', 'true');
+      localStorage.setItem('notificationPrompt_v3_seen', 'true'); // Usamos una nueva versión
       try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
@@ -1654,28 +1616,27 @@ const styles = {
     secondaryButton: { fontFamily: "'Exo 2', sans-serif", padding: '8px 15px', fontSize: '0.9rem', cursor: 'pointer', border: `1px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', textTransform: 'uppercase' },
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
     initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', width: '100%', backgroundColor: colors.deepBlue, animation: 'fadeIn 0.5s ease', transition: 'opacity 0.5s ease' },
-    splashLogo: { width: '40%', maxWidth: '180px', height: 'auto', margin: '20px 0' },
     fadeOut: { opacity: 0 },
     fadeIn: { animation: 'fadeIn 0.5s ease' },
-    loadingMessage: { marginTop: 'auto', paddingBottom: '50px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', fontFamily: "'Exo 2', sans-serif" },
-    splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'space-around', alignItems: 'center', height: '100%', textAlign: 'center', width: '100%', minHeight: 'calc(100vh - 80px)' },
-    splashTitleContainer: { marginBottom: '20px', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
-    // ### CORRECCIÓN: Título con nueva fuente 'Rajdhani' y estilo refinado ###
-    splashTitleNew: { fontFamily: "'Rajdhani', sans-serif", fontSize: 'clamp(4.5rem, 18vw, 7rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}90, 0 0 20px ${colors.yellow}50, 2px 2px 2px rgba(0,0,0,0.5)` },
-    splashYearNew: { fontFamily: "'Rajdhani', sans-serif", fontSize: 'clamp(3rem, 12vw, 5rem)', background: `linear-gradient(45deg, #a7b4c4, #ffffff, #a7b4c4)`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', position: 'relative', top: '-35px', WebkitTextStroke: `1px ${colors.blue}`, textShadow: '1px 1px 3px rgba(0,0,0,0.5)' },
+    loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', fontFamily: "'Exo 2', sans-serif" },
+    splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center', height: '100%', textAlign: 'center', width: '100%', minHeight: 'calc(100vh - 80px)' },
+    splashTitleContainer: { marginBottom: '20px', },
+    splashTitleNew: { fontFamily: "'Russo One', sans-serif", fontSize: 'clamp(3rem, 12vw, 4.5rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '2px', background: `linear-gradient(90deg, ${colors.silver}, ${colors.gold}, ${colors.lightText}, ${colors.gold}, ${colors.silver})`, backgroundSize: '200% auto', color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', animation: 'title-pulse 4s ease-in-out infinite' },
+    splashYearNew: { fontFamily: "'Russo One', sans-serif", fontSize: 'clamp(1.5rem, 6vw, 2.5rem)', background: `linear-gradient(90deg, ${colors.silver}, ${colors.gold}, ${colors.lightText})`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', marginTop: '-15px' },
     carouselContainer: { width: '100%', maxWidth: '500px', height: '120px', position: 'relative', overflow: 'hidden', margin: '20px 0' },
-    carouselWrapper: { position: 'relative', width: '100%', height: '100%' },
-    carouselSlide: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', transition: 'transform 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
+    carouselTrack: { display: 'flex', height: '100%', transition: 'transform 0.5s ease-in-out' },
+    carouselSlide: { minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', opacity: 0, transition: 'opacity 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
+    carouselSlideActive: { minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', opacity: 1, transition: 'opacity 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
     splashInfoIcon: { fontSize: '1.5rem', marginBottom: '5px' },
     splashInfoContent: { fontSize: '1.2rem', fontWeight: 'bold', color: colors.yellow, wordBreak: 'break-word' },
     splashCountdown: { fontFamily: "'Orbitron', sans-serif", fontSize: '1.5rem', fontWeight: 'bold', color: colors.yellow },
     carouselDots: { position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '8px' },
     carouselDot: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.3)', cursor: 'pointer', transition: 'background-color 0.3s' },
     carouselDotActive: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: colors.yellow, cursor: 'pointer', transition: 'background-color 0.3s' },
-    shieldMosaicContainer: { position: 'relative', width: '350px', height: '350px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '10px 0' },
-    shieldCenter: { width: '180px', height: '180px', zIndex: 5 },
-    // ### CORRECCIÓN: Estilos para el mosaico estático de escudos ###
-    orbitItem: { display: 'block', position: 'absolute', top: '50%', left: '50%', width: '55px', height: '55px', margin: '-27.5px', transform: 'rotate(var(--angle)) translate(160px) rotate(calc(-1 * var(--angle)))' },
+    shieldMosaicContainer: { position: 'relative', width: '300px', height: '300px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '30px 0' },
+    shieldCenter: { width: '120px', height: '120px', borderRadius: '50%', zIndex: 5, boxShadow: `0 0 20px ${colors.gold}` },
+    shieldOrbit: { position: 'absolute', width: '100%', height: '100%', animation: 'orbit 60s linear infinite' },
+    shieldOrbitItem: { position: 'absolute', top: '50%', left: '50%', width: '40px', height: '40px', margin: '-20px 0 0 -20px' },
     userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
     userButtonOnline: { animation: 'neon-glow 1.5s infinite alternate', borderColor: '#0f0' },
@@ -1823,7 +1784,29 @@ const styles = {
     skeletonContainer: { padding: '20px' },
     skeletonBox: { backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '4px', animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' },
     skeletonTable: { display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px' },
-    skeletonRow: { display: 'flex', justifyContent: 'space-between', gap: '10px' }
+    skeletonRow: { display: 'flex', justifyContent: 'space-between', gap: '10px' },
+    reactionContainer: { borderTop: `1px solid ${colors.blue}`, marginTop: '15px', paddingTop: '15px' },
+    reactionEmojis: { display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '10px' },
+    reactionButton: { background: 'rgba(255,255,255,0.1)', border: '1px solid transparent', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.5rem', cursor: 'pointer', transition: 'all 0.2s ease' },
+    reactionButtonSelected: { borderColor: colors.yellow, transform: 'scale(1.15)' },
+    reactionCounts: { display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' },
+    reactionCountChip: { backgroundColor: colors.blue, padding: '3px 8px', borderRadius: '12px', fontSize: '0.8rem' },
+    debtSummaryContainer: { marginTop: '40px', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' },
+    debtGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px' },
+    debtItemPaid: { display: 'flex', justifyContent: 'space-between', padding: '8px', borderRadius: '6px', backgroundColor: `${colors.success}20` },
+    debtItemOwes: { display: 'flex', justifyContent: 'space-between', padding: '8px', borderRadius: '6px', backgroundColor: `${colors.danger}20`, fontWeight: 'bold' },
+    adminNav: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '20px' },
+    adminNavButton: { padding: '15px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease' },
+    presetMessagesContainer: { display: 'flex', flexDirection: 'column', gap: '10px' },
+    presetMessageButton: { padding: '12px', textAlign: 'left', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '6px', cursor: 'pointer' },
+    chatSection: { marginTop: '30px', borderTop: `2px solid ${colors.blue}`, paddingTop: '20px' },
+    chatTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textAlign: 'center', fontSize: '1.3rem', marginBottom: '15px' },
+    chatContainer: { height: '250px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '10px', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse', border: `1px solid ${colors.blue}80` },
+    chatMessage: { marginBottom: '10px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', animation: 'fadeIn 0.5s ease' },
+    chatActions: { marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px' },
+    chatActionGroup: { display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' },
+    chatActionButton: { padding: '8px 12px', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem' },
+    chatActionEmojiButton: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '5px' }
 };
 
 export default App;
