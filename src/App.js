@@ -545,7 +545,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user);
         const userJokerRef = doc(db, "clasificacion", user);
 
-        // Comprobamos si el Joker se acaba de activar en esta sesión de edición
         const jokerJustActivated = pronostico.jokerActivo && !initialJokerStatus.current;
 
         try {
@@ -554,7 +553,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             const { pinConfirm, ...pronosticoToSave } = pronostico;
             batch.set(pronosticoRef, { ...pronosticoToSave, jokerPronosticos: cleanJokerPronosticos, lastUpdated: new Date() });
 
-            // Si el Joker se acaba de activar, lo descontamos en la misma operación de guardado
             if (jokerJustActivated) {
                 batch.update(userJokerRef, { jokersRestantes: increment(-1) });
             }
@@ -563,7 +561,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             
             if (jokerJustActivated) {
                 setJokersRestantes(prev => prev - 1);
-                initialJokerStatus.current = true; // Actualizamos el estado inicial para no volver a descontar
+                initialJokerStatus.current = true;
             }
 
             setMessage({text: '¡Pronóstico guardado y secreto!', type: 'success'});
@@ -588,15 +586,12 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         }
         if (window.confirm("¿Seguro que quieres usar un JOKER? Se añadirán 10 casillas de apuesta. El Joker se descontará cuando guardes el pronóstico.")) {
             
-            // 1. Actualización visual INMEDIATA
             setShowJokerAnimation(true);
             setTimeout(() => setShowJokerAnimation(false), 7000);
 
-            // 2. Forzamos el estado de edición para que el formulario no se cierre
             setHasSubmitted(false);
             setIsLocked(false);
             
-            // 3. Actualizamos el estado local para mostrar las casillas
             setPronostico(prev => ({
                 ...prev,
                 jokerActivo: true,
@@ -706,7 +701,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                                 <label style={styles.label}>PIN DE SEGURIDAD (4 dígitos, opcional)</label>
                                 <input type="password" name="pin" value={pronostico.pin} onChange={handlePronosticoChange} maxLength="4" style={styles.input} placeholder="Crea un PIN para proteger tu apuesta" />
                                 <input type="password" name="pinConfirm" value={pronostico.pinConfirm} onChange={handlePronosticoChange} maxLength="4" style={{...styles.input, marginTop: '10px'}} placeholder="Confirma tu PIN" />
-                                <small style={styles.pinReminder}>¡Ojo! Si no usas PIN, tu apuesta no será secreta y cualquiera podrá verla o modificarla si accede con tu perfil.</small>
                             </div>
                             <button type="submit" disabled={isSaving} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR Y BLOQUEAR'}</button>
                         </fieldset>
@@ -1631,8 +1625,8 @@ const styles = {
     dangerButton: { borderColor: colors.danger, color: colors.danger },
     vipBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1.1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70` },
     jackpotBanner: { background: `linear-gradient(45deg, ${colors.success}, #2a9d8f)`, color: colors.lightText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1.1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.success}70`, textShadow: '1px 1px 2px #000' },
-    jokerGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px', alignItems: 'flex-start' },
-    jokerBetRow: { marginBottom: '10px', width: '100%', maxWidth: '250px' },
+    jokerGrid: { display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' },
+    jokerBetRow: { marginBottom: '10px', width: '100%', maxWidth: '300px' },
     jornadaList: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
     jornadaItem: { cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', border: '1px solid transparent', borderLeft: `5px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: colors.darkUIAlt, transition: 'all 0.3s ease', backgroundSize: 'cover', backgroundPosition: 'center' },
     jornadaVip: { borderLeft: `5px solid ${colors.yellow}`, boxShadow: `0 0 15px ${colors.yellow}30` },
