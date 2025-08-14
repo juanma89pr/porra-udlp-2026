@@ -44,7 +44,7 @@ const SECRET_MESSAGES = [
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
 
-// ### CORRECCIÓN: Se ha eliminado el CD Leganés duplicado ###
+// ### CORRECCIÓN: Se ha eliminado el CD Leganés duplicado para tener 21 equipos + UDLP ###
 const EQUIPOS_LIGA = [
     "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF", 
     "Real Sociedad B", "UD Almería", "Cádiz CF", "Granada CF", 
@@ -52,6 +52,7 @@ const EQUIPOS_LIGA = [
     "Real Valladolid CF", "Albacete Balompié", "CD Castellón", "CD Mirandés", 
     "AD Ceuta FC", "CyD Leonesa", "Real Zaragoza", "RC Deportivo", "CD Leganes"
 ];
+
 
 const PLANTILLA_INICIAL = [
     { dorsal: 13, nombre: "Dinko Horkas" }, { dorsal: 0, nombre: "Adri Suárez" }, { dorsal: 3, nombre: "Mika Mármol" },
@@ -393,20 +394,20 @@ const SplashScreen = ({ onEnter, teamLogos }) => {
 
     return (
         <div style={styles.splashContainer}>
+            {/* ### CORRECCIÓN: Contenedor de escudos estáticos ### */}
             <div style={styles.shieldMosaicContainer}>
                 <div style={styles.shieldCenter}>
                     <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas" style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
                 </div>
-                <div style={styles.shieldOrbit}>
-                    {otherTeamLogos.map(([name, logoUrl], index) => {
-                        const angle = index * (360 / otherTeamLogos.length);
-                        return (
-                            <div key={name} className="orbit-item" style={{'--angle': `${angle}deg`}}>
-                                <img src={logoUrl} alt={name} className="orbit-item-img" style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
-                            </div>
-                        );
-                    })}
-                </div>
+                {/* Se eliminó el contenedor que giraba. Ahora los escudos se posicionan directamente. */}
+                {otherTeamLogos.map(([name, logoUrl], index) => {
+                    const angle = index * (360 / otherTeamLogos.length);
+                    return (
+                        <div key={name} className="orbit-item" style={{'--angle': `${angle}deg`}}>
+                            <img src={logoUrl} alt={name} style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
+                        </div>
+                    );
+                })}
             </div>
             
             <div style={styles.splashTitleContainer}>
@@ -1549,11 +1550,8 @@ function App() {
     styleSheet.type = "text/css"; 
     // ### CORRECCIÓN: Se añade la importación de la nueva fuente 'Rajdhani' para un estilo más de videojuego/deportivo ###
     styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@700&family=Orbitron&family=Exo+2&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; } 
-    /* --- INICIO ANIMACIÓN NORIA CORREGIDA --- */
-    @keyframes orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } 
+    /* ### CORRECCIÓN: Estilos para el mosaico estático de escudos ### */
     .orbit-item { display: block; position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; margin: -25px; transform: rotate(var(--angle)) translate(150px); }
-    .orbit-item-img { animation: orbit 80s linear infinite reverse; /* Esta animación inversa contrarresta la rotación del padre */ }
-    /* --- FIN ANIMACIÓN NORIA --- */
     @keyframes title-pulse { 0% { text-shadow: 0 0 5px ${colors.gold}50, 0 0 10px ${colors.gold}30; } 50% { text-shadow: 0 0 10px ${colors.gold}80, 0 0 20px ${colors.gold}50; } 100% { text-shadow: 0 0 5px ${colors.gold}50, 0 0 10px ${colors.gold}30; } }`;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
@@ -1663,8 +1661,8 @@ const styles = {
     splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'space-around', alignItems: 'center', height: '100%', textAlign: 'center', width: '100%', minHeight: 'calc(100vh - 80px)' },
     splashTitleContainer: { marginBottom: '20px', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
     // ### CORRECCIÓN: Título con nueva fuente 'Rajdhani' y estilo refinado ###
-    splashTitleNew: { fontFamily: "'Rajdhani', sans-serif", fontSize: 'clamp(4rem, 15vw, 6rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}90, 0 0 20px ${colors.yellow}50` },
-    splashYearNew: { fontFamily: "'Rajdhani', sans-serif", fontSize: 'clamp(2.5rem, 10vw, 4rem)', background: `linear-gradient(45deg, #a7b4c4, #ffffff, #a7b4c4)`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', position: 'relative', top: '-25px', WebkitTextStroke: `1px ${colors.blue}` },
+    splashTitleNew: { fontFamily: "'Rajdhani', sans-serif", fontSize: 'clamp(4.5rem, 18vw, 7rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}90, 0 0 20px ${colors.yellow}50, 2px 2px 2px rgba(0,0,0,0.5)` },
+    splashYearNew: { fontFamily: "'Rajdhani', sans-serif", fontSize: 'clamp(3rem, 12vw, 5rem)', background: `linear-gradient(45deg, #a7b4c4, #ffffff, #a7b4c4)`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', position: 'relative', top: '-35px', WebkitTextStroke: `1px ${colors.blue}`, textShadow: '1px 1px 3px rgba(0,0,0,0.5)' },
     carouselContainer: { width: '100%', maxWidth: '500px', height: '120px', position: 'relative', overflow: 'hidden', margin: '20px 0' },
     carouselWrapper: { position: 'relative', width: '100%', height: '100%' },
     carouselSlide: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', transition: 'transform 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
@@ -1675,8 +1673,9 @@ const styles = {
     carouselDot: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.3)', cursor: 'pointer', transition: 'background-color 0.3s' },
     carouselDotActive: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: colors.yellow, cursor: 'pointer', transition: 'background-color 0.3s' },
     shieldMosaicContainer: { position: 'relative', width: '350px', height: '350px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '10px 0' },
-    shieldCenter: { width: '150px', height: '150px', zIndex: 5 },
-    shieldOrbit: { position: 'absolute', width: '100%', height: '100%', animation: 'orbit 80s linear infinite' },
+    shieldCenter: { width: '180px', height: '180px', zIndex: 5 },
+    // ### CORRECCIÓN: Estilos para el mosaico estático de escudos ###
+    orbitItem: { display: 'block', position: 'absolute', top: '50%', left: '50%', width: '55px', height: '55px', margin: '-27.5px', transform: 'rotate(var(--angle)) translate(160px) rotate(calc(-1 * var(--angle)))' },
     userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
     userButtonOnline: { animation: 'neon-glow 1.5s infinite alternate', borderColor: '#0f0' },
