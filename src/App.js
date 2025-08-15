@@ -811,7 +811,16 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
     
     {jornadaStats && !isLiveView && (
         <div style={styles.statsGrid}>
-            <div style={styles.statCard}><div style={styles.statValue}>📊 {jornadaStats.resultadoMasComun}</div><div style={styles.statLabel}>Resultado más apostado</div></div>
+            {/* --- INICIO DE LA MODIFICACIÓN --- */}
+            <div style={styles.statCard}>
+                <div style={styles.statValue}>
+                    {participantes.length >= 5 ? `📊 ${jornadaStats.resultadoMasComun}` : '🤫'}
+                </div>
+                <div style={styles.statLabel}>
+                    {participantes.length >= 5 ? 'Resultado más apostado' : 'Secreto hasta 5 apuestas'}
+                </div>
+            </div>
+            {/* --- FIN DE LA MODIFICACIÓN --- */}
             <div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajeGana}%</div><div style={styles.statLabel}>Cree en la victoria</div></div>
             <div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajeEmpate}%</div><div style={styles.statLabel}>Apuesta por el empate</div></div>
             <div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajePierde}%</div><div style={styles.statLabel}>Piensa que se pierde</div></div>
