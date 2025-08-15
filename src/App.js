@@ -194,6 +194,7 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
+// --- INICIO DE LA MODIFICACIÓN: SplashScreen con Carrusel ---
 const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
@@ -201,148 +202,139 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
     const [showInstallGuide, setShowInstallGuide] = useState(false);
     const isMobile = useMemo(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
     const [reactions, setReactions] = useState({});
+    const [splashStats, setSplashStats] = useState(null);
+    const [activeSlide, setActiveSlide] = useState(0);
 
-    useEffect(() => {
-        if (!jornadaInfo || !jornadaInfo.id) return;
-        const reactionsRef = doc(db, "jornadas", jornadaInfo.id);
-        const unsubscribe = onSnapshot(reactionsRef, (docSnap) => {
-            if (docSnap.exists() && docSnap.data().reactions) {
-                setReactions(docSnap.data().reactions);
-            } else {
-                setReactions({});
-            }
-        });
-        return () => unsubscribe();
-    }, [jornadaInfo]);
-
-
+    // Efecto para obtener la jornada actual
     useEffect(() => {
         setLoading(true);
         const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
         const unsubscribe = onSnapshot(qJornadas, (snap) => {
             const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-            // Lógica para determinar la jornada a mostrar
-            let jornadaActiva = todasLasJornadas.find(j => {
-                const apertura = j.fechaApertura?.toDate();
-                const cierre = j.fechaCierre?.toDate();
-                return j.estado === 'Abierta' || (j.estado === 'Próximamente' && apertura && cierre && ahora >= apertura && ahora < cierre);
-            });
-
-            if (jornadaActiva) {
-                setJornadaInfo({ ...jornadaActiva, type: 'activa' });
-            } else {
+            let jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta' || (j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate()));
+            if (jornadaActiva) { setJornadaInfo({ ...jornadaActiva, type: 'activa' }); } 
+            else {
                 let jornadaCerrada = todasLasJornadas.find(j => j.estado === 'Cerrada');
-                if (jornadaCerrada) {
-                    setJornadaInfo({ ...jornadaCerrada, type: 'cerrada' });
-                } else {
+                if (jornadaCerrada) { setJornadaInfo({ ...jornadaCerrada, type: 'cerrada' }); } 
+                else {
                     const ultimasFinalizadas = todasLasJornadas.filter(j => j.estado === 'Finalizada').sort((a,b) => b.numeroJornada - a.numeroJornada);
-                    if (ultimasFinalizadas.length > 0) {
-                        setJornadaInfo({ ...ultimasFinalizadas[0], type: 'finalizada' });
-                    } else {
+                    if (ultimasFinalizadas.length > 0) { setJornadaInfo({ ...ultimasFinalizadas[0], type: 'finalizada' }); } 
+                    else {
                         const proximas = todasLasJornadas.filter(j => j.estado === 'Próximamente').sort((a,b) => a.numeroJornada - b.numeroJornada);
-                        if (proximas.length > 0) {
-                            setJornadaInfo({ ...proximas[0], type: 'proxima' });
-                        } else {
-                            setJornadaInfo(null);
-                        }
+                        setJornadaInfo(proximas.length > 0 ? { ...proximas[0], type: 'proxima' } : null);
                     }
                 }
             }
             setLoading(false);
-        }, (error) => {
-            console.error("Error fetching jornada: ", error);
-            setJornadaInfo(null);
-            setLoading(false);
-        });
+        }, (error) => { console.error("Error fetching jornada: ", error); setLoading(false); });
         return () => unsubscribe();
     }, []);
 
+    // Efecto para las estadísticas del carrusel
+    useEffect(() => {
+        if (!jornadaInfo || jornadaInfo.type !== 'activa') { setSplashStats(null); return; }
+        const pronosticosRef = collection(db, "pronosticos", jornadaInfo.id, "jugadores");
+        const unsubscribeStats = onSnapshot(pronosticosRef, (pronosticosSnap) => {
+            const pronosticosData = pronosticosSnap.docs.map(doc => doc.data());
+            const totalParticipantes = pronosticosData.length;
+            const costeApuesta = jornadaInfo.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+            const boteTotal = (jornadaInfo.bote || 0) + (totalParticipantes * costeApuesta);
+            if (totalParticipantes > 0) {
+                const resultados = pronosticosData.map(p => `${p.golesLocal}-${p.golesVisitante}`);
+                const counts = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
+                const resultadoMasComun = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
+                const ganaLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Gana UD Las Palmas').length;
+                const empateCount = pronosticosData.filter(p => p.resultado1x2 === 'Empate').length;
+                const pierdeLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Pierde UD Las Palmas').length;
+                setSplashStats({ participantes: totalParticipantes, bote: boteTotal, resultadoMasComun: `${resultadoMasComun[0]} (${resultadoMasComun[1]} veces)`, porcentajeGana: ((ganaLocalCount / totalParticipantes) * 100).toFixed(0), porcentajeEmpate: ((empateCount / totalParticipantes) * 100).toFixed(0), porcentajePierde: ((pierdeLocalCount / totalParticipantes) * 100).toFixed(0) });
+            } else {
+                setSplashStats({ participantes: 0, bote: (jornadaInfo.bote || 0), resultadoMasComun: '-', porcentajeGana: 0, porcentajeEmpate: 0, porcentajePierde: 0 });
+            }
+        });
+        return () => unsubscribeStats();
+    }, [jornadaInfo]);
+
+    // Efecto para la cuenta atrás
     useEffect(() => {
         if (!jornadaInfo) return;
         const targetDate = jornadaInfo.type === 'activa' ? jornadaInfo.fechaCierre?.toDate() : jornadaInfo.fechaApertura?.toDate();
         if (!targetDate) { setCountdown(''); return; }
         const interval = setInterval(() => {
-            const now = new Date();
-            const diff = targetDate - now;
+            const diff = targetDate - new Date();
             if (diff <= 0) { setCountdown(jornadaInfo.type === 'activa' ? "¡APUESTAS CERRADAS!" : "¡PARTIDO EN JUEGO!"); clearInterval(interval); return; }
-            const d = Math.floor(diff / (1000 * 60 * 60 * 24));
-            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-            const s = Math.floor((diff % (1000 * 60)) / 1000);
+            const d = Math.floor(diff / 86400000); const h = Math.floor((diff % 86400000) / 3600000); const m = Math.floor((diff % 3600000) / 60000); const s = Math.floor((diff % 60000) / 1000);
             setCountdown(`${d}d ${h}h ${m}m ${s}s`);
         }, 1000);
         return () => clearInterval(interval);
+    }, [jornadaInfo]);
+
+    // Efecto para el auto-play del carrusel
+    useEffect(() => {
+        if (jornadaInfo && jornadaInfo.type === 'activa' && splashStats) {
+            const timer = setTimeout(() => { setActiveSlide(prev => (prev + 1) % 4); }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [activeSlide, jornadaInfo, splashStats]);
+
+    // Efecto para las reacciones
+    useEffect(() => {
+        if (!jornadaInfo || !jornadaInfo.id) return;
+        const reactionsRef = doc(db, "jornadas", jornadaInfo.id);
+        const unsubscribeReactions = onSnapshot(reactionsRef, (docSnap) => { if (docSnap.exists() && docSnap.data().reactions) { setReactions(docSnap.data().reactions); } else { setReactions({}); } });
+        return () => unsubscribeReactions();
     }, [jornadaInfo]);
     
     const handleReaction = async (emoji) => {
         if (!currentUser || !jornadaInfo) return;
         const reactionRef = doc(db, "jornadas", jornadaInfo.id);
-
         try {
             await runTransaction(db, async (transaction) => {
-                const reactionDoc = await transaction.get(reactionRef);
-                if (!reactionDoc.exists()) { 
-                    throw new Error("Document does not exist!"); 
-                }
-                
-                const currentReactions = reactionDoc.data().reactions || { counts: {}, userReactions: {} };
-                const currentUserReaction = currentReactions.userReactions?.[currentUser];
-
-                if (currentUserReaction === emoji) {
-                    delete currentReactions.userReactions[currentUser];
-                    currentReactions.counts[emoji] = (currentReactions.counts[emoji] || 1) - 1;
-                    if (currentReactions.counts[emoji] === 0) {
-                        delete currentReactions.counts[emoji];
-                    }
-                } else {
-                    if (currentUserReaction) {
-                         currentReactions.counts[currentUserReaction] = (currentReactions.counts[currentUserReaction] || 1) - 1;
-                         if (currentReactions.counts[currentUserReaction] === 0) {
-                            delete currentReactions.counts[currentUserReaction];
-                         }
-                    }
-                    currentReactions.userReactions[currentUser] = emoji;
-                    currentReactions.counts[emoji] = (currentReactions.counts[emoji] || 0) + 1;
-                }
+                const reactionDoc = await transaction.get(reactionRef); if (!reactionDoc.exists()) { throw new Error("Document does not exist!"); }
+                const currentReactions = reactionDoc.data().reactions || { counts: {}, userReactions: {} }; const currentUserReaction = currentReactions.userReactions?.[currentUser];
+                if (currentUserReaction === emoji) { delete currentReactions.userReactions[currentUser]; currentReactions.counts[emoji] = (currentReactions.counts[emoji] || 1) - 1; if (currentReactions.counts[emoji] === 0) { delete currentReactions.counts[emoji]; } } 
+                else { if (currentUserReaction) { currentReactions.counts[currentUserReaction] = (currentReactions.counts[currentUserReaction] || 1) - 1; if (currentReactions.counts[currentUserReaction] === 0) { delete currentReactions.counts[currentUserReaction]; } } currentReactions.userReactions[currentUser] = emoji; currentReactions.counts[emoji] = (currentReactions.counts[emoji] || 0) + 1; }
                 transaction.update(reactionRef, { reactions: currentReactions });
             });
-        } catch (e) {
-            console.error("Transaction failed: ", e);
-        }
+        } catch (e) { console.error("Transaction failed: ", e); }
     };
 
     const renderJornadaInfo = () => {
         if (!jornadaInfo) { return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>); }
+        
+        // --- Vistas estáticas para jornadas no activas ---
         let infoContent;
-        switch (jornadaInfo.type) {
-            case 'activa': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
-            case 'cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p>Esperando el resultado del partido...</p></>); break;
-            case 'finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
-            case 'proxima': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
-            default: infoContent = null;
+        if (jornadaInfo.type !== 'activa') {
+            switch (jornadaInfo.type) {
+                case 'cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p>Esperando el resultado del partido...</p></>); break;
+                case 'finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
+                case 'proxima': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
+                default: infoContent = null;
+            }
         }
+
+        // --- Slides del carrusel para jornada activa ---
+        const slides = splashStats ? [
+            <div key="countdown" style={styles.carouselSlide}><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></div>,
+            <div key="pot" style={styles.carouselSlide}><h3 style={styles.splashInfoTitle}>DATOS DE LA JORNADA</h3><div style={styles.splashStatItem}><span style={styles.splashStatValue}>💰 {splashStats.bote.toFixed(2)}€</span><span style={styles.splashStatLabel}>Bote Actual</span></div><div style={styles.splashStatItem}><span style={styles.splashStatValue}>👥 {splashStats.participantes} / {JUGADORES.length}</span><span style={styles.splashStatLabel}>Participantes</span></div></div>,
+            <div key="common-bet" style={styles.carouselSlide}><h3 style={styles.splashInfoTitle}>TENDENCIA DE LA PORRA</h3><div style={styles.splashStatItem}><span style={styles.splashStatValue}>{splashStats.participantes >= 5 ? `📊 ${splashStats.resultadoMasComun}` : '🤫'}</span><span style={styles.splashStatLabel}>{splashStats.participantes >= 5 ? 'Resultado más apostado' : 'Secreto hasta 5 apuestas'}</span></div></div>,
+            <div key="percentages" style={styles.carouselSlide}><h3 style={styles.splashInfoTitle}>¿QUÉ OPINA LA GENTE?</h3><div style={styles.percentageBarContainer}><div style={{...styles.percentageBar, width: `${splashStats.porcentajeGana}%`, backgroundColor: styles.colors.success}}>{splashStats.porcentajeGana > 0 && `${splashStats.porcentajeGana}% Gana`}</div><div style={{...styles.percentageBar, width: `${splashStats.porcentajeEmpate}%`, backgroundColor: styles.colors.warning}}>{splashStats.porcentajeEmpate > 0 && `${splashStats.porcentajeEmpate}% Empata`}</div><div style={{...styles.percentageBar, width: `${splashStats.porcentajePierde}%`, backgroundColor: styles.colors.danger}}>{splashStats.porcentajePierde > 0 && `${splashStats.porcentajePierde}% Pierde`}</div></div></div>
+        ] : [];
         
         const userReaction = reactions.userReactions?.[currentUser];
 
         return (
             <div style={styles.splashInfoBox}>
-                {infoContent}
+                {jornadaInfo.type === 'activa' && splashStats ? (
+                    <>
+                        <div style={styles.carouselContainer}>{slides[activeSlide]}</div>
+                        <div style={styles.carouselDots}>{slides.map((_, index) => (<button key={index} style={index === activeSlide ? {...styles.carouselDot, ...styles.carouselDotActive} : styles.carouselDot} onClick={() => setActiveSlide(index)} />))}</div>
+                    </>
+                ) : ( infoContent )}
                 {jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}
                 <div style={styles.reactionContainer}>
-                    <div style={styles.reactionEmojis}>
-                        {REACTION_EMOJIS.map(emoji => (
-                            <button key={emoji} onClick={() => handleReaction(emoji)} style={userReaction === emoji ? {...styles.reactionButton, ...styles.reactionButtonSelected} : styles.reactionButton}>
-                                {emoji}
-                            </button>
-                        ))}
-                    </div>
-                    <div style={styles.reactionCounts}>
-                        {Object.entries(reactions.counts || {}).map(([emoji, count]) => (
-                            count > 0 && <span key={emoji} style={styles.reactionCountChip}>{emoji} {count}</span>
-                        ))}
-                    </div>
+                    <div style={styles.reactionEmojis}>{REACTION_EMOJIS.map(emoji => (<button key={emoji} onClick={() => handleReaction(emoji)} style={userReaction === emoji ? {...styles.reactionButton, ...styles.reactionButtonSelected} : styles.reactionButton}>{emoji}</button>))}</div>
+                    <div style={styles.reactionCounts}>{Object.entries(reactions.counts || {}).map(([emoji, count]) => (count > 0 && <span key={emoji} style={styles.reactionCountChip}>{emoji} {count}</span>))}</div>
                 </div>
             </div>
         );
@@ -350,6 +342,7 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
 
     return (<>{showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}<div style={styles.splashContainer}><div style={styles.splashLogoContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div></div>{loading ? (<LoadingSkeleton />) : renderJornadaInfo()}<button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>{isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}</div></>);
 };
+// --- FIN DE LA MODIFICACIÓN ---
 
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
