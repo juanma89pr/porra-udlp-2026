@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc } from "firebase/firestore";
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -17,7 +17,7 @@ const firebaseConfig = {
     messagingSenderId: "611441868159",
     appId: "1:611441868159:web:13008731a05c4321946e4a",
     measurementId: "G-J9T3S8SZT6",
-    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedabase.app"
+    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedatabase.app"
 };
 
 // --- INICIALIZACIÓN DE FIREBASE ---
@@ -43,6 +43,7 @@ const SECRET_MESSAGES = [
     "Consultando con el Oráculo", "Shhh... es un secreto", "Apuesta Fantasma 👻",
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
+const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
 
 const EQUIPOS_LIGA = [
     "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF", 
@@ -153,6 +154,7 @@ const InstallGuideModal = ({ onClose }) => {
     return (<div style={styles.modalOverlay} onClick={onClose}><div style={styles.modalContent} onClick={(e) => e.stopPropagation()}><h3 style={styles.title}>Instalar App</h3><div style={styles.installInstructions}><div style={styles.installSection}><h4>iPhone (Safari)</h4><ol><li>Pulsa el botón de <strong>Compartir</strong> (un cuadrado con una flecha hacia arriba).</li><li>Busca y pulsa en <strong>"Añadir a pantalla de inicio"</strong>.</li><li>¡Listo! Ya tienes la app en tu móvil.</li></ol></div><div style={styles.installSection}><h4>Android (Chrome)</h4><ol><li>Pulsa el botón de <strong>Menú</strong> (tres puntos verticales).</li><li>Busca y pulsa en <strong>"Instalar aplicación"</strong> o "Añadir a pantalla de inicio".</li><li>¡Listo! Ya tienes la app en tu móvil.</li></ol></div></div><button onClick={onClose} style={styles.mainButton}>Entendido</button></div></div>);
 };
 
+// --- MEJORA INICIADA: Texto del modal de notificaciones actualizado ---
 const NotificationPermissionModal = ({ onAllow, onDeny }) => {
     return (
         <div style={styles.modalOverlay}>
@@ -175,6 +177,7 @@ const NotificationPermissionModal = ({ onAllow, onDeny }) => {
         </div>
     );
 };
+// --- MEJORA FINALIZADA ---
 
 const LoadingSkeleton = ({ type = 'list' }) => {
     if (type === 'table') { return (<div style={styles.skeletonTable}>{Array.from({ length: 5 }).map((_, i) => (<div key={i} style={styles.skeletonRow}><div style={{...styles.skeletonBox, width: '50px', height: '20px'}}></div><div style={{...styles.skeletonBox, width: '120px', height: '20px'}}></div><div style={{...styles.skeletonBox, width: '80px', height: '20px'}}></div><div style={{...styles.skeletonBox, width: '60px', height: '20px'}}></div></div>))}</div>); }
@@ -187,209 +190,167 @@ const LoadingSkeleton = ({ type = 'list' }) => {
 
 const InitialSplashScreen = ({ onFinish }) => {
     const [fadingOut, setFadingOut] = useState(false);
-    useEffect(() => { 
-        const timer = setTimeout(() => { 
-            setFadingOut(true); 
-            setTimeout(onFinish, 500); 
-        }, 2500); 
-        return () => clearTimeout(timer); 
-    }, [onFinish]);
-    
-    return (
-        <div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}>
-            <div style={styles.splashTitleContainer}>
-                <span style={styles.splashTitleNew}>PORRA UDLP</span>
-                <span style={styles.splashYearNew}>2026</span>
-            </div>
-            <img 
-                src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" 
-                alt="UD Las Palmas Logo" 
-                style={styles.splashLogo} 
-            />
-            <div style={styles.loadingMessage}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner">
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                </svg>
-                <p>Cargando apuestas...</p>
-            </div>
-        </div>
-    );
+    useEffect(() => { const timer = setTimeout(() => { setFadingOut(true); setTimeout(onFinish, 500); }, 2500); return () => clearTimeout(timer); }, [onFinish]);
+    return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
-const SplashScreen = ({ onEnter, teamLogos }) => {
-    const [jornadaData, setJornadaData] = useState({ jornada: null, pronosticos: [] });
+const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
+    const [jornadaInfo, setJornadaInfo] = useState(null);
+    const [countdown, setCountdown] = useState('');
     const [loading, setLoading] = useState(true);
     const [showInstallGuide, setShowInstallGuide] = useState(false);
-    const [activeSlide, setActiveSlide] = useState(0);
     const isMobile = useMemo(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
-    
-    const otherTeamLogos = useMemo(() => {
-        const uniqueTeams = EQUIPOS_LIGA.filter(team => team !== "UD Las Palmas");
-        return uniqueTeams.map(teamName => [teamName, teamLogos[teamName]]);
-    }, [teamLogos]);
+    const [reactions, setReactions] = useState({});
+
+    useEffect(() => {
+        if (!jornadaInfo || !jornadaInfo.id) return;
+        const reactionsRef = doc(db, "jornadas", jornadaInfo.id);
+        const unsubscribe = onSnapshot(reactionsRef, (docSnap) => {
+            if (docSnap.exists() && docSnap.data().reactions) {
+                setReactions(docSnap.data().reactions);
+            } else {
+                setReactions({});
+            }
+        });
+        return () => unsubscribe();
+    }, [jornadaInfo]);
+
 
     useEffect(() => {
         setLoading(true);
         const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
-        const unsubscribeJornadas = onSnapshot(qJornadas, (snap) => {
+        const unsubscribe = onSnapshot(qJornadas, (snap) => {
             const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            let jornadaParaMostrar = todasLasJornadas.find(j => j.estado === 'Abierta');
-            if (!jornadaParaMostrar) {
-                jornadaParaMostrar = todasLasJornadas.find(j => j.estado === 'Próximamente' && j.fechaApertura?.toDate() > ahora);
-            }
-            
-            if (jornadaParaMostrar) {
-                const pronosticosRef = collection(db, "pronosticos", jornadaParaMostrar.id, "jugadores");
-                const unsubscribePronosticos = onSnapshot(pronosticosRef, (pronosticosSnap) => {
-                    const pronosticos = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setJornadaData({ jornada: jornadaParaMostrar, pronosticos });
-                    setLoading(false);
-                });
-                return () => unsubscribePronosticos();
+            // Lógica para determinar la jornada a mostrar
+            let jornadaActiva = todasLasJornadas.find(j => {
+                const apertura = j.fechaApertura?.toDate();
+                const cierre = j.fechaCierre?.toDate();
+                return j.estado === 'Abierta' || (j.estado === 'Próximamente' && apertura && cierre && ahora >= apertura && ahora < cierre);
+            });
+
+            if (jornadaActiva) {
+                setJornadaInfo({ ...jornadaActiva, type: 'activa' });
             } else {
-                setJornadaData({ jornada: null, pronosticos: [] });
-                setLoading(false);
+                let jornadaCerrada = todasLasJornadas.find(j => j.estado === 'Cerrada');
+                if (jornadaCerrada) {
+                    setJornadaInfo({ ...jornadaCerrada, type: 'cerrada' });
+                } else {
+                    const ultimasFinalizadas = todasLasJornadas.filter(j => j.estado === 'Finalizada').sort((a,b) => b.numeroJornada - a.numeroJornada);
+                    if (ultimasFinalizadas.length > 0) {
+                        setJornadaInfo({ ...ultimasFinalizadas[0], type: 'finalizada' });
+                    } else {
+                        const proximas = todasLasJornadas.filter(j => j.estado === 'Próximamente').sort((a,b) => a.numeroJornada - b.numeroJornada);
+                        if (proximas.length > 0) {
+                            setJornadaInfo({ ...proximas[0], type: 'proxima' });
+                        } else {
+                            setJornadaInfo(null);
+                        }
+                    }
+                }
             }
+            setLoading(false);
+        }, (error) => {
+            console.error("Error fetching jornada: ", error);
+            setJornadaInfo(null);
+            setLoading(false);
         });
-        return () => unsubscribeJornadas();
+        return () => unsubscribe();
     }, []);
 
-    const slides = useMemo(() => {
-        const { jornada, pronosticos } = jornadaData;
-        if (!jornada) return [];
-
-        const slidesDisponibles = [];
-
-        slidesDisponibles.push({
-            icon: '⚔️',
-            title: jornada.estado === 'Abierta' ? 'Jornada Actual' : 'Próxima Jornada',
-            content: `${jornada.equipoLocal} vs ${jornada.equipoVisitante}`
-        });
-
-        const targetDate = jornada.estado === 'Abierta' ? jornada.fechaCierre?.toDate() : jornada.fechaApertura?.toDate();
-        slidesDisponibles.push({
-            type: 'countdown',
-            title: jornada.estado === 'Abierta' ? 'Cierre de Apuestas' : 'Comienzo del Partido',
-            targetDate: targetDate
-        });
-
-        if (jornada.bote > 0) {
-            slidesDisponibles.push({
-                icon: '💰',
-                title: 'Bote en Juego',
-                content: `${jornada.bote}€`
-            });
-        }
-        
-        if (jornada.estado === 'Abierta') {
-             slidesDisponibles.push({
-                icon: '✅',
-                title: 'Ya Han Apostado',
-                content: `${pronosticos.length} / ${JUGADORES.length}`
-            });
-            const faltanPorApostar = JUGADORES.filter(j => !pronosticos.some(p => p.id === j));
-            slidesDisponibles.push({
-                icon: '⏳',
-                title: 'Faltan por Apostar',
-                content: faltanPorApostar.length > 0 ? faltanPorApostar.slice(0, 5).join(', ') + (faltanPorApostar.length > 5 ? '...' : '') : '¡Todos han apostado!'
-            });
-        }
-        
-        // ### CORRECCIÓN: La lógica de estadísticas se movió a LaJornadaScreen para mostrarse solo cuando la jornada está cerrada ###
-
-        return slidesDisponibles;
-    }, [jornadaData]);
-
     useEffect(() => {
-        if (slides.length > 1) {
-            const interval = setInterval(() => {
-                setActiveSlide(prev => (prev + 1) % slides.length);
-            }, 5000);
-            return () => clearInterval(interval);
-        }
-    }, [slides]);
+        if (!jornadaInfo) return;
+        const targetDate = jornadaInfo.type === 'activa' ? jornadaInfo.fechaCierre?.toDate() : jornadaInfo.fechaApertura?.toDate();
+        if (!targetDate) { setCountdown(''); return; }
+        const interval = setInterval(() => {
+            const now = new Date();
+            const diff = targetDate - now;
+            if (diff <= 0) { setCountdown(jornadaInfo.type === 'activa' ? "¡APUESTAS CERRADAS!" : "¡PARTIDO EN JUEGO!"); clearInterval(interval); return; }
+            const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((diff % (1000 * 60)) / 1000);
+            setCountdown(`${d}d ${h}h ${m}m ${s}s`);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [jornadaInfo]);
     
-    const Countdown = ({ targetDate, title }) => {
-        const [countdown, setCountdown] = useState('');
-        useEffect(() => {
-            if (!targetDate) return;
-            const interval = setInterval(() => {
-                const now = new Date();
-                const diff = targetDate - now;
-                if (diff <= 0) { setCountdown("¡TIEMPO CUMPLIDO!"); clearInterval(interval); return; }
-                const d = Math.floor(diff / (1000 * 60 * 60 * 24));
-                const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                const s = Math.floor((diff % (1000 * 60)) / 1000);
-                setCountdown(`${d}d ${h}h ${m}m ${s}s`);
-            }, 1000);
-            return () => clearInterval(interval);
-        }, [targetDate]);
-        return (<><span>{title}</span><span style={styles.splashCountdown}>{countdown}</span></>);
+    const handleReaction = async (emoji) => {
+        if (!currentUser || !jornadaInfo) return;
+        const reactionRef = doc(db, "jornadas", jornadaInfo.id);
+
+        try {
+            await runTransaction(db, async (transaction) => {
+                const reactionDoc = await transaction.get(reactionRef);
+                if (!reactionDoc.exists()) { 
+                    throw new Error("Document does not exist!"); 
+                }
+                
+                const currentReactions = reactionDoc.data().reactions || { counts: {}, userReactions: {} };
+                const currentUserReaction = currentReactions.userReactions?.[currentUser];
+
+                if (currentUserReaction === emoji) {
+                    delete currentReactions.userReactions[currentUser];
+                    currentReactions.counts[emoji] = (currentReactions.counts[emoji] || 1) - 1;
+                    if (currentReactions.counts[emoji] === 0) {
+                        delete currentReactions.counts[emoji];
+                    }
+                } else {
+                    if (currentUserReaction) {
+                         currentReactions.counts[currentUserReaction] = (currentReactions.counts[currentUserReaction] || 1) - 1;
+                         if (currentReactions.counts[currentUserReaction] === 0) {
+                            delete currentReactions.counts[currentUserReaction];
+                         }
+                    }
+                    currentReactions.userReactions[currentUser] = emoji;
+                    currentReactions.counts[emoji] = (currentReactions.counts[emoji] || 0) + 1;
+                }
+                transaction.update(reactionRef, { reactions: currentReactions });
+            });
+        } catch (e) {
+            console.error("Transaction failed: ", e);
+        }
     };
 
-    const renderCarousel = () => {
-        if (loading) return <LoadingSkeleton />;
-        if (slides.length === 0) {
-            return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>);
+    const renderJornadaInfo = () => {
+        if (!jornadaInfo) { return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>); }
+        let infoContent;
+        switch (jornadaInfo.type) {
+            case 'activa': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
+            case 'cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p>Esperando el resultado del partido...</p></>); break;
+            case 'finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
+            case 'proxima': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
+            default: infoContent = null;
         }
+        
+        const userReaction = reactions.userReactions?.[currentUser];
+
         return (
-            <div style={styles.carouselContainer}>
-                <div style={styles.carouselWrapper}>
-                    {slides.map((slide, index) => (
-                        <div key={index} style={{...styles.carouselSlide, transform: `translateX(-${activeSlide * 100}%)`}}>
-                            {slide.type === 'countdown' ? (
-                                <Countdown targetDate={slide.targetDate} title={slide.title} />
-                            ) : (
-                                <>
-                                    <span style={styles.splashInfoIcon}>{slide.icon}</span>
-                                    <span>{slide.title}</span>
-                                    <span style={styles.splashInfoContent}>{slide.content}</span>
-                                </>
-                            )}
-                        </div>
-                    ))}
-                </div>
-                <div style={styles.carouselDots}>
-                    {slides.map((_, index) => (
-                        <div key={index} style={index === activeSlide ? styles.carouselDotActive : styles.carouselDot} onClick={() => setActiveSlide(index)}></div>
-                    ))}
+            <div style={styles.splashInfoBox}>
+                {infoContent}
+                {jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}
+                <div style={styles.reactionContainer}>
+                    <div style={styles.reactionEmojis}>
+                        {REACTION_EMOJIS.map(emoji => (
+                            <button key={emoji} onClick={() => handleReaction(emoji)} style={userReaction === emoji ? {...styles.reactionButton, ...styles.reactionButtonSelected} : styles.reactionButton}>
+                                {emoji}
+                            </button>
+                        ))}
+                    </div>
+                    <div style={styles.reactionCounts}>
+                        {Object.entries(reactions.counts || {}).map(([emoji, count]) => (
+                            count > 0 && <span key={emoji} style={styles.reactionCountChip}>{emoji} {count}</span>
+                        ))}
+                    </div>
                 </div>
             </div>
         );
     };
 
-    return (
-        <div style={styles.splashContainer}>
-            <div style={styles.shieldMosaicContainer}>
-                <div style={styles.shieldCenter}>
-                    <img src={teamLogos["UD Las Palmas"]} alt="UD Las Palmas" style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
-                </div>
-                {otherTeamLogos.map(([name, logoUrl], index) => {
-                    const angle = index * (360 / otherTeamLogos.length);
-                    return (
-                        <div key={name} className="orbit-item" style={{'--angle': `${angle}deg`}}>
-                            <img src={logoUrl} alt={name} style={{width: '100%', height: '100%', objectFit: 'contain'}}/>
-                        </div>
-                    );
-                })}
-            </div>
-            
-            <div style={styles.splashTitleContainer}>
-                <span style={styles.splashTitleNew}>PORRA UDLP</span>
-                <span style={styles.splashYearNew}>2026</span>
-            </div>
-
-            {renderCarousel()}
-
-            <button onClick={onEnter} style={{...styles.mainButton, zIndex: 10}}>ENTRAR A LA PORRA</button>
-            {isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}
-            {showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}
-        </div>
-    );
+    return (<>{showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}<div style={styles.splashContainer}><div style={styles.splashLogoContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div></div>{loading ? (<LoadingSkeleton />) : renderJornadaInfo()}<button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>{isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}</div></>);
 };
+
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     const [recentUsers, setRecentUsers] = useState([]);
@@ -492,7 +453,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            let jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta');
+            let jornadaActiva = todasLasJornadas.find(j => {
+                const apertura = j.fechaApertura?.toDate();
+                const cierre = j.fechaCierre?.toDate();
+                return j.estado === 'Abierta' || (j.estado === 'Próximamente' && apertura && cierre && ahora >= apertura && ahora < cierre);
+            });
             
             if(jornadaActiva){
                 setCurrentJornada(jornadaActiva);
@@ -513,7 +478,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 const allPronosticosRef = collection(db, "pronosticos", jornadaActiva.id, "jugadores");
                 onSnapshot(allPronosticosRef, (snapshot) => { setAllPronosticos(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))); });
             } else {
-                 const qProxima = query(collection(db, "jornadas"), where("estado", "in", ["Próximamente", "Cerrada"]), orderBy("numeroJornada"), limit(1));
+                 const qProxima = query(collection(db, "jornadas"), where("estado", "==", "Próximamente"), orderBy("numeroJornada"), limit(1));
                 getDocs(qProxima).then(proximaSnap => { if (!proximaSnap.empty) setCurrentJornada({ id: proximaSnap.docs[0].id, ...proximaSnap.docs[0].data() }); else setCurrentJornada(null); setLoading(false); });
             }
         }, (error) => { console.error("Error: ", error); setLoading(false); });
@@ -693,7 +658,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const renderContent = () => {
         if (!currentJornada) { return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>; }
         
-        const isBettingOpen = currentJornada.estado === 'Abierta';
+        const ahora = new Date();
+        const apertura = currentJornada.fechaApertura?.toDate();
+        const cierre = currentJornada.fechaCierre?.toDate();
+        const isTimeWindowOpen = apertura && cierre && ahora >= apertura && ahora < cierre;
+        const isBettingOpen = currentJornada.estado === 'Abierta' || (currentJornada.estado === 'Próximamente' && isTimeWindowOpen);
         
         if (isBettingOpen) {
             const isVip = currentJornada.esVip;
@@ -770,8 +739,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     };
     return (<div>{showJokerAnimation && <JokerAnimation />}<h2 style={styles.title}>MI JORNADA</h2><p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>{liveData && liveData.isLive && currentJornada?.estado === 'Cerrada' && (<div style={styles.liveInfoBox}><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Puntos Provisionales</span><span style={styles.liveInfoValue}><AnimatedPoints value={provisionalData.puntos} /></span></div><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Posición Provisional</span><span style={styles.liveInfoValue}>{provisionalData.posicion}</span></div></div>)}{renderContent()}</div>);
 };
-
-// ### CORRECCIÓN: Lógica de estadísticas y cambio de estado de jornada ###
 const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
     const [participantes, setParticipantes] = useState([]);
@@ -792,9 +759,7 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                 onSnapshot(pronosticosRef, (pronosticosSnap) => {
                     const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setParticipantes(pronosticosData);
-                    
-                    // Solo calcula y muestra estadísticas si la jornada está cerrada y hay al menos 5 apuestas
-                    if ((jornada.estado === 'Cerrada' || jornada.estado === 'Finalizada') && pronosticosData.length >= 5) {
+                    if (pronosticosData.length > 0) {
                         const resultados = pronosticosData.map(p => `${p.golesLocal}-${p.golesVisitante}`);
                         const counts = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
                         const resultadoMasComun = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
@@ -844,7 +809,14 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
 
     return (<div><h2 style={styles.title}>LA JORNADA</h2>{jornadaActual ? (<div style={{...styles.laJornadaContainer, backgroundImage: `linear-gradient(rgba(10, 25, 47, 0.85), rgba(10, 25, 47, 0.85)), url(${jornadaActual.estadioImageUrl})`}}><h3>{jornadaActual.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornadaActual.numeroJornada}`}</h3><div style={styles.matchInfo}><TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoLocal} shortName={true} imgStyle={styles.matchInfoLogo} />{isLiveView ? (<span style={styles.liveScoreInPage}>{liveData.golesLocal} - {liveData.golesVisitante}</span>) : (<span style={styles.vs}>VS</span>)}<TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoVisitante} imgStyle={styles.matchInfoLogo} /></div><div style={styles.matchDetails}><span>📍 {jornadaActual.estadio || 'Estadio por confirmar'}</span><span>🗓️ {jornadaActual.fechaStr || 'Fecha por confirmar'}</span></div>
     
-    {jornadaStats && <div style={styles.statsGrid}><div style={styles.statCard}><div style={styles.statValue}>📊 {jornadaStats.resultadoMasComun}</div><div style={styles.statLabel}>Resultado más apostado</div></div><div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajeGana}%</div><div style={styles.statLabel}>Cree en la victoria</div></div><div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajeEmpate}%</div><div style={styles.statLabel}>Apuesta por el empate</div></div><div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajePierde}%</div><div style={styles.statLabel}>Piensa que se pierde</div></div></div>}
+    {jornadaStats && !isLiveView && (
+        <div style={styles.statsGrid}>
+            <div style={styles.statCard}><div style={styles.statValue}>📊 {jornadaStats.resultadoMasComun}</div><div style={styles.statLabel}>Resultado más apostado</div></div>
+            <div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajeGana}%</div><div style={styles.statLabel}>Cree en la victoria</div></div>
+            <div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajeEmpate}%</div><div style={styles.statLabel}>Apuesta por el empate</div></div>
+            <div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajePierde}%</div><div style={styles.statLabel}>Piensa que se pierde</div></div>
+        </div>
+    )}
 
     {jornadaActual.estado === 'Abierta' && (<><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; const profile = userProfiles[jugador] || {}; const isOnline = onlineUsers[jugador]; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{isOnline && <div style={styles.onlineIndicatorDot} />}<PlayerProfileDisplay name={jugador} profile={profile} /> {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></>)}
     {jornadaActual.estado === 'Cerrada' && !isLiveView && (<div><p style={{textAlign: 'center', marginTop: '20px'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => { const profile = userProfiles[p.id] || {}; return (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}><PlayerProfileDisplay name={p.id} profile={profile} defaultColor={styles.colors.yellow} /> {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>)})}</div></div>)}
@@ -1501,28 +1473,8 @@ function App() {
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => { if (!user) { signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error)); } });
-    const styleSheet = document.createElement("style"); 
-    styleSheet.type = "text/css"; 
-    styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@700&family=Orbitron&family=Exo+2&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; } 
-    .orbit-item { display: block; position: absolute; top: 50%; left: 50%; width: 55px; height: 55px; margin: -27.5px; transform: rotate(var(--angle)) translate(160px) rotate(calc(-1 * var(--angle))) }`;
+    const styleSheet = document.createElement("style"); styleSheet.type = "text/css"; styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; }`;
     document.head.appendChild(styleSheet);
-    
-    // ### CORRECCIÓN: Función para actualizar estado de jornadas ###
-    const checkAndOpenJornadas = async () => {
-        const q = query(collection(db, "jornadas"), where("estado", "==", "Próximamente"));
-        const snapshot = await getDocs(q);
-        const batch = writeBatch(db);
-        const ahora = new Date();
-        snapshot.forEach(doc => {
-            const jornada = doc.data();
-            if (jornada.fechaApertura && jornada.fechaApertura.toDate() <= ahora) {
-                batch.update(doc.ref, { estado: "Abierta" });
-            }
-        });
-        await batch.commit();
-    };
-    checkAndOpenJornadas();
-
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
     const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
     const qLive = query(collection(db, "jornadas"), where("liveData.isLive", "==", true), limit(1)); const unsubscribeLive = onSnapshot(qLive, (snapshot) => { if (!snapshot.empty) { const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }; setLiveJornada(jornada); } else { setLiveJornada(null); } });
@@ -1532,9 +1484,10 @@ function App() {
     return () => { document.head.removeChild(styleSheet); unsubscribeConfig(); unsubscribeAuth(); unsubscribeEscudos(); unsubscribeLive(); unsubscribePlantilla(); unsubscribeProfiles(); unsubscribeStatus(); }
   }, []);
   
+  // --- MEJORA INICIADA: Lógica de Notificaciones ---
   const handleRequestPermission = async (user) => {
       setShowNotificationModal(false);
-      localStorage.setItem('notificationPrompt_v3_seen', 'true');
+      localStorage.setItem('notificationPrompt_v3_seen', 'true'); // Usamos una nueva versión
       try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
@@ -1573,6 +1526,7 @@ function App() {
           }
       }
   };
+  // --- MEJORA FINALIZADA ---
 
   const handleLogout = () => { if(currentUser) {const userStatusRef = ref(rtdb, 'status/' + currentUser); set(userStatusRef, false);} setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false); };
   const handleSaveProfile = async (user, profileData) => { const profileRef = doc(db, "clasificacion", user); await setDoc(profileRef, profileData, { merge: true }); setScreen('app'); setActiveTab('miJornada'); };
@@ -1582,7 +1536,7 @@ function App() {
 
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => {setShowInitialSplash(false);}} />;
-    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} currentUser={currentUser} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
     if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
     if (screen === 'app') {
@@ -1623,28 +1577,25 @@ const styles = {
     secondaryButton: { fontFamily: "'Exo 2', sans-serif", padding: '8px 15px', fontSize: '0.9rem', cursor: 'pointer', border: `1px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', textTransform: 'uppercase' },
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
     initialSplashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', width: '100%', backgroundColor: colors.deepBlue, animation: 'fadeIn 0.5s ease', transition: 'opacity 0.5s ease' },
-    splashLogo: { width: '40%', maxWidth: '180px', height: 'auto', margin: '20px 0' },
     fadeOut: { opacity: 0 },
     fadeIn: { animation: 'fadeIn 0.5s ease' },
-    loadingMessage: { marginTop: 'auto', paddingBottom: '50px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', fontFamily: "'Exo 2', sans-serif" },
-    splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'space-around', alignItems: 'center', height: '100%', textAlign: 'center', width: '100%', minHeight: 'calc(100vh - 80px)' },
-    splashTitleContainer: { marginBottom: '20px', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
-    splashTitleNew: { fontFamily: "'Rajdhani', sans-serif", fontSize: 'clamp(4.5rem, 18vw, 7rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', color: colors.yellow, textShadow: `0 0 10px ${colors.yellow}90, 0 0 20px ${colors.yellow}50, 2px 2px 2px rgba(0,0,0,0.5)` },
-    splashYearNew: { fontFamily: "'Rajdhani', sans-serif", fontSize: 'clamp(3rem, 12vw, 5rem)', background: `linear-gradient(45deg, #a7b4c4, #ffffff, #a7b4c4)`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', position: 'relative', top: '-35px', WebkitTextStroke: `1px ${colors.blue}`, textShadow: '1px 1px 3px rgba(0,0,0,0.5)' },
-    carouselContainer: { width: '100%', maxWidth: '500px', height: '120px', position: 'relative', overflow: 'hidden', margin: '20px 0' },
-    carouselWrapper: { position: 'relative', width: '100%', height: '100%' },
-    carouselSlide: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: `1px solid ${colors.blue}80`, padding: '15px', transition: 'transform 0.5s ease-in-out', position: 'absolute', top: 0, left: 0, boxSizing: 'border-box' },
-    splashInfoIcon: { fontSize: '1.5rem', marginBottom: '5px' },
-    splashInfoContent: { fontSize: '1.2rem', fontWeight: 'bold', color: colors.yellow, wordBreak: 'break-word' },
-    splashCountdown: { fontFamily: "'Orbitron', sans-serif", fontSize: '1.5rem', fontWeight: 'bold', color: colors.yellow },
-    carouselDots: { position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '8px' },
-    carouselDot: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.3)', cursor: 'pointer', transition: 'background-color 0.3s' },
-    carouselDotActive: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: colors.yellow, cursor: 'pointer', transition: 'background-color 0.3s' },
-    shieldMosaicContainer: { position: 'relative', width: '350px', height: '350px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '10px 0' },
-    shieldCenter: { width: '180px', height: '180px', zIndex: 5 },
-    orbitItem: { display: 'block', position: 'absolute', top: '50%', left: '50%', width: '55px', height: '55px', margin: '-27.5px', transform: 'rotate(var(--angle)) translate(160px) rotate(calc(-1 * var(--angle)))' },
+    loadingMessage: { marginTop: '30px', animation: 'fadeIn 2s ease-in-out', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', fontFamily: "'Exo 2', sans-serif" },
+    splashContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', textAlign: 'center', width: '100%' },
+    splashLogoContainer: { marginBottom: '20px', },
+    splashLogo: { width: '120px', height: '120px', marginBottom: '10px', objectFit: 'contain' },
+    splashTitleContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 0.8 },
+    splashTitle: { fontFamily: "'Teko', sans-serif", fontSize: 'clamp(3.5rem, 15vw, 5.5rem)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '2px', background: `linear-gradient(90deg, ${colors.silver}, ${colors.lightText}, ${colors.yellow}, ${colors.lightText}, ${colors.silver})`, backgroundSize: '200% auto', color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', animation: 'title-shine 5s linear infinite', textShadow: `0 2px 4px rgba(0,0,0,0.5)` },
+    splashYear: { fontFamily: "'Russo One', sans-serif", fontSize: 'clamp(2rem, 9vw, 3rem)', background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: 'transparent', backgroundClip: 'text', WebkitBackgroundClip: 'text', textShadow: `0 2px 5px rgba(0,0,0,0.5)`, animation: 'title-shine 4s linear infinite', marginTop: '-15px' },
+    splashInfoBox: { border: `2px solid ${colors.yellow}80`, padding: '20px', borderRadius: '10px', marginTop: '30px', backgroundColor: 'rgba(0,0,0,0.3)', width: '90%', minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'center' },
+    splashInfoTitle: { margin: '0 0 15px 0', fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textTransform: 'uppercase', fontSize: '1.2rem' },
+    splashMatch: { fontSize: '1.3rem', fontWeight: 'bold' },
+    splashAdminMessage: { fontStyle: 'italic', marginTop: '15px', borderTop: `1px solid ${colors.blue}`, paddingTop: '15px', color: colors.silver },
+    splashBote: { color: colors.success, fontWeight: 'bold', fontSize: '1.1rem' },
+    loginContainer: { textAlign: 'center' },
+    userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px', marginTop: '30px' },
     userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
+    userButtonSelected: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
     userButtonOnline: { animation: 'neon-glow 1.5s infinite alternate', borderColor: '#0f0' },
     userButtonRecent: { borderColor: colors.silver },
     recentUserIndicator: { position: 'absolute', top: '5px', right: '10px', color: colors.yellow, fontSize: '1.2rem' },
@@ -1790,7 +1741,29 @@ const styles = {
     skeletonContainer: { padding: '20px' },
     skeletonBox: { backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '4px', animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' },
     skeletonTable: { display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px' },
-    skeletonRow: { display: 'flex', justifyContent: 'space-between', gap: '10px' }
+    skeletonRow: { display: 'flex', justifyContent: 'space-between', gap: '10px' },
+    reactionContainer: { borderTop: `1px solid ${colors.blue}`, marginTop: '15px', paddingTop: '15px' },
+    reactionEmojis: { display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '10px' },
+    reactionButton: { background: 'rgba(255,255,255,0.1)', border: '1px solid transparent', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.5rem', cursor: 'pointer', transition: 'all 0.2s ease' },
+    reactionButtonSelected: { borderColor: colors.yellow, transform: 'scale(1.15)' },
+    reactionCounts: { display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' },
+    reactionCountChip: { backgroundColor: colors.blue, padding: '3px 8px', borderRadius: '12px', fontSize: '0.8rem' },
+    debtSummaryContainer: { marginTop: '40px', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' },
+    debtGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px' },
+    debtItemPaid: { display: 'flex', justifyContent: 'space-between', padding: '8px', borderRadius: '6px', backgroundColor: `${colors.success}20` },
+    debtItemOwes: { display: 'flex', justifyContent: 'space-between', padding: '8px', borderRadius: '6px', backgroundColor: `${colors.danger}20`, fontWeight: 'bold' },
+    adminNav: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '20px' },
+    adminNavButton: { padding: '15px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease' },
+    presetMessagesContainer: { display: 'flex', flexDirection: 'column', gap: '10px' },
+    presetMessageButton: { padding: '12px', textAlign: 'left', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '6px', cursor: 'pointer' },
+    chatSection: { marginTop: '30px', borderTop: `2px solid ${colors.blue}`, paddingTop: '20px' },
+    chatTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textAlign: 'center', fontSize: '1.3rem', marginBottom: '15px' },
+    chatContainer: { height: '250px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '10px', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse', border: `1px solid ${colors.blue}80` },
+    chatMessage: { marginBottom: '10px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', animation: 'fadeIn 0.5s ease' },
+    chatActions: { marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px' },
+    chatActionGroup: { display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' },
+    chatActionButton: { padding: '8px 12px', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem' },
+    chatActionEmojiButton: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '5px' }
 };
 
 export default App;
