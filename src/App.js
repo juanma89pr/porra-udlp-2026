@@ -70,8 +70,36 @@ const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '�
 
 
 // ============================================================================
-// --- LÓGICA DE CÁLCULO DE PUNTOS ---
+// --- LÓGICA DE CÁLCULO Y FORMATO ---
 // ============================================================================
+
+/**
+ * Formatea un objeto de fecha de Firebase a un string legible con fecha y hora.
+ * @param {object} firebaseDate - El objeto de fecha de Firestore (con seconds y nanoseconds).
+ * @returns {string} - La fecha y hora formateadas (ej: "13/08/2024 a las 20:30").
+ */
+const formatFullDateTime = (firebaseDate) => {
+    if (!firebaseDate || typeof firebaseDate.seconds !== 'number') {
+        return 'Fecha por confirmar';
+    }
+    try {
+        const date = new Date(firebaseDate.seconds * 1000);
+        const options = {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        };
+        // Usamos 'es-ES' para el formato DD/MM/YYYY y reemplazamos la coma por una cadena más natural.
+        return new Intl.DateTimeFormat('es-ES', options).format(date).replace(',', ' a las');
+    } catch (error) {
+        console.error("Error formatting date:", error);
+        return 'Fecha inválida';
+    }
+};
+
 
 const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
     if (!pronostico || !liveData || !jornada || !liveData.isLive) return 0;
@@ -272,19 +300,38 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
 
     useEffect(() => {
         if (!jornadaInfo) return;
-        const targetDate = jornadaInfo.type === 'activa' ? jornadaInfo.fechaCierre?.toDate() : jornadaInfo.fechaApertura?.toDate();
-        if (!targetDate) { setCountdown(''); return; }
+        // --- INICIO BLOQUE 5.1: Lógica de cuenta atrás mejorada ---
+        const targetDate = jornadaInfo.type === 'activa' 
+            ? jornadaInfo.fechaCierre?.toDate() 
+            : (jornadaInfo.type === 'proxima' ? jornadaInfo.fechaApertura?.toDate() : null);
+
+        if (!targetDate) { 
+            setCountdown(''); 
+            return; 
+        }
+
         const interval = setInterval(() => {
             const now = new Date();
             const diff = targetDate - now;
-            if (diff <= 0) { setCountdown(jornadaInfo.type === 'activa' ? "¡APUESTAS CERRADAS!" : "¡PARTIDO EN JUEGO!"); clearInterval(interval); return; }
+
+            if (diff <= 0) {
+                let message = "¡PARTIDO EN JUEGO!";
+                if (jornadaInfo.type === 'activa') message = "¡APUESTAS CERRADAS!";
+                if (jornadaInfo.type === 'proxima') message = "¡APUESTAS ABIERTAS!";
+                setCountdown(message);
+                clearInterval(interval);
+                return;
+            }
+
             const d = Math.floor(diff / (1000 * 60 * 60 * 24));
             const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
             const s = Math.floor((diff % (1000 * 60)) / 1000);
             setCountdown(`${d}d ${h}h ${m}m ${s}s`);
         }, 1000);
+
         return () => clearInterval(interval);
+        // --- FIN BLOQUE 5.1 ---
     }, [jornadaInfo]);
     
     const handleReaction = async (emoji) => {
@@ -328,11 +375,22 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
         if (!jornadaInfo) { return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>); }
         let infoContent;
         switch (jornadaInfo.type) {
-            case 'activa': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
-            case 'cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p>Esperando el resultado del partido...</p></>); break;
-            case 'finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
-            case 'proxima': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>EL PARTIDO COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
-            default: infoContent = null;
+            // --- INICIO BLOQUE 5.1: Ajuste de textos en cuenta atrás ---
+            case 'activa': 
+                infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); 
+                break;
+            case 'proxima': 
+                infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>LA APERTURA COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); 
+                break;
+            // --- FIN BLOQUE 5.1 ---
+            case 'cerrada': 
+                infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p>Esperando el resultado del partido...</p></>); 
+                break;
+            case 'finalizada': 
+                infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); 
+                break;
+            default: 
+                infoContent = null;
         }
         
         const userReaction = reactions.userReactions?.[currentUser];
@@ -513,9 +571,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 }
 
             } else {
-                // Lógica para el periodo inter-jornadas
-                setCurrentJornada(null);
+                 // Lógica para el periodo inter-jornadas
+                const proximaJornada = todasLasJornadas.find(j => j.estado === 'Próximamente');
+                setCurrentJornada(proximaJornada || null); // Guardamos la próxima jornada para el countdown
                 setLoading(false);
+
                 const ultimaFinalizada = todasLasJornadas
                     .filter(j => j.estado === 'Finalizada' && j.id !== 'jornada_test')
                     .sort((a, b) => b.numeroJornada - a.numeroJornada)[0];
@@ -534,7 +594,9 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                         }
                     });
                 } else {
-                    setInterJornadaStatus({ status: 'sin_finalizadas' });
+                     if (!proximaJornada) {
+                        setInterJornadaStatus({ status: 'sin_finalizadas' });
+                    }
                 }
             }
         }, (error) => { console.error("Error: ", error); setLoading(false); });
@@ -724,38 +786,10 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     if (loading) return <LoadingSkeleton />;
 
     const renderContent = () => {
-        // Lógica de renderizado para el periodo inter-jornadas
-        if (!currentJornada) {
-            if (interJornadaStatus?.status === 'pagado') {
-                return <div style={styles.placeholder}>
-                    <h3>Estado de Pagos</h3>
-                    <p style={{...styles.paymentStatus, color: styles.colors.success, borderColor: styles.colors.success}}>✅ Estás al día con tus pagos. ¡Gracias!</p>
-                    <p>Esperando la próxima jornada...</p>
-                </div>;
-            }
-            if (interJornadaStatus?.status === 'debe') {
-                return <div style={styles.placeholder}>
-                    <h3>Estado de Pagos</h3>
-                    <p style={{...styles.paymentStatus, color: styles.colors.warning, borderColor: styles.colors.warning}}>
-                        ⚠️ Tienes pendiente el pago de la Jornada {interJornadaStatus.jornada.numeroJornada}.
-                    </p>
-                    <button onClick={() => setActiveTab('pagos')} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>Ir a Pagos</button>
-                </div>;
-            }
-            if (interJornadaStatus?.status === 'no_participo') {
-                 return <div style={styles.placeholder}>
-                    <h3>No hay jornadas disponibles</h3>
-                    <p>No participaste en la última jornada. ¡Esperamos verte en la siguiente!</p>
-                </div>;
-            }
-            return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>;
-        }
-        
         const ahora = new Date();
-        const apertura = currentJornada.fechaApertura?.toDate();
-        const cierre = currentJornada.fechaCierre?.toDate();
-        const isTimeWindowOpen = apertura && cierre && ahora >= apertura && ahora < cierre;
-        const isBettingOpen = currentJornada.estado === 'Abierta' || (currentJornada.estado === 'Próximamente' && isTimeWindowOpen);
+        const apertura = currentJornada?.fechaApertura?.toDate();
+        const cierre = currentJornada?.fechaCierre?.toDate();
+        const isBettingOpen = currentJornada && (currentJornada.estado === 'Abierta' || (currentJornada.estado === 'Próximamente' && apertura && cierre && ahora >= apertura && ahora < cierre));
         
         if (isBettingOpen) {
             const isVip = currentJornada.esVip;
@@ -820,11 +854,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             );
         }
 
-        if (currentJornada.estado === 'Cerrada') {
+        if (currentJornada?.estado === 'Cerrada') {
             return (<div style={styles.placeholder}><h3>Jornada {currentJornada.numeroJornada} Cerrada</h3><p>Las apuestas para este partido han finalizado.</p><p>Tu pronóstico está guardado y secreto.</p><button onClick={() => setActiveTab('laJornada')} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>Ver Resumen y Datos en Vivo</button></div>);
         }
 
-        if (currentJornada.estado === 'Finalizada') {
+        if (currentJornada?.estado === 'Finalizada') {
             return (
                 <div style={styles.placeholder}>
                     <h3>Jornada {currentJornada.numeroJornada} Finalizada</h3>
@@ -843,7 +877,46 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             );
         }
         
-        return (<div style={styles.placeholder}><h3>No hay jornada de apuestas abierta</h3><h4>Próximo Partido: Jornada {currentJornada.numeroJornada}</h4><p style={{fontSize: '1.2rem', fontWeight: 'bold'}}>{currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</p>{currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}{currentJornada.fechaStr && <p>🗓️ {currentJornada.fechaStr}</p>}{currentJornada.estadio && <p>📍 {currentJornada.estadio}</p>}</div>);
+        // --- INICIO BLOQUE 5.1: Vista para "Próximamente" en MiJornadaScreen ---
+        if (currentJornada?.estado === 'Próximamente') {
+            return (
+                <div style={styles.placeholder}>
+                    <h3>No hay jornada de apuestas abierta</h3>
+                    <h4>Próximo Partido: Jornada {currentJornada.numeroJornada}</h4>
+                    <p style={{fontSize: '1.2rem', fontWeight: 'bold'}}>{currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</p>
+                    {currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}
+                    <p>🗓️ {formatFullDateTime(currentJornada.fechaCierre)}</p>
+                    {currentJornada.estadio && <p>📍 {currentJornada.estadio}</p>}
+                    <SplashScreen onEnter={() => {}} teamLogos={teamLogos} currentUser={user} />
+                </div>
+            );
+        }
+        // --- FIN BLOQUE 5.1 ---
+
+        // Lógica de renderizado para el periodo inter-jornadas
+        if (interJornadaStatus?.status === 'pagado') {
+            return <div style={styles.placeholder}>
+                <h3>Estado de Pagos</h3>
+                <p style={{...styles.paymentStatus, color: styles.colors.success, borderColor: styles.colors.success}}>✅ Estás al día con tus pagos. ¡Gracias!</p>
+                <p>Esperando la próxima jornada...</p>
+            </div>;
+        }
+        if (interJornadaStatus?.status === 'debe') {
+            return <div style={styles.placeholder}>
+                <h3>Estado de Pagos</h3>
+                <p style={{...styles.paymentStatus, color: styles.colors.warning, borderColor: styles.colors.warning}}>
+                    ⚠️ Tienes pendiente el pago de la Jornada {interJornadaStatus.jornada.numeroJornada}.
+                </p>
+                <button onClick={() => setActiveTab('pagos')} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>Ir a Pagos</button>
+            </div>;
+        }
+        if (interJornadaStatus?.status === 'no_participo') {
+             return <div style={styles.placeholder}>
+                <h3>No hay jornadas disponibles</h3>
+                <p>No participaste en la última jornada. ¡Esperamos verte en la siguiente!</p>
+            </div>;
+        }
+        return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>;
     };
     return (
       <div>
@@ -963,10 +1036,12 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                         {isLiveView ? (<span style={styles.liveScoreInPage}>{liveData.golesLocal} - {liveData.golesVisitante}</span>) : (<span style={styles.vs}>VS</span>)}
                         <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoVisitante} imgStyle={styles.matchInfoLogo} />
                     </div>
+                    {/* --- INICIO BLOQUE 5.3: Mostrar fecha y hora completa --- */}
                     <div style={styles.matchDetails}>
                         <span>📍 {jornadaActual.estadio || 'Estadio por confirmar'}</span>
-                        <span>🗓️ {jornadaActual.fechaStr || 'Fecha por confirmar'}</span>
+                        <span>🗓️ {formatFullDateTime(jornadaActual.fechaCierre)}</span>
                     </div>
+                    {/* --- FIN BLOQUE 5.3 --- */}
                     
                     {jornadaStats && !isLiveView && (
                         <div style={styles.statsGrid}>
@@ -1003,7 +1078,9 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                     <div style={styles.interJornadaBox}>
                         <h3 style={styles.interJornadaTitle}>Próxima Jornada</h3>
                         <p style={styles.interJornadaTeams}>{proximaJornada.equipoLocal} vs {proximaJornada.equipoVisitante}</p>
-                        <p>{proximaJornada.fechaStr || 'Fecha por confirmar'}</p>
+                        {/* --- INICIO BLOQUE 5.3: Mostrar fecha y hora completa --- */}
+                        <p>{formatFullDateTime(proximaJornada.fechaCierre)}</p>
+                        {/* --- FIN BLOQUE 5.3 --- */}
                         {proximaJornada.bote > 0 && <p style={styles.interJornadaBote}>¡Bote de {proximaJornada.bote}€ en juego!</p>}
                     </div>
                 ) : <div style={styles.interJornadaBox}><p>El administrador no ha configurado la próxima jornada.</p></div>}
@@ -1043,12 +1120,15 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
         </div>
     );
 };
-
 const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
     const [jornadas, setJornadas] = useState([]); const [loading, setLoading] = useState(true);
     useEffect(() => { const q = query(collection(db, "jornadas"), orderBy("numeroJornada")); const unsubscribe = onSnapshot(q, (querySnapshot) => { setJornadas(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); setLoading(false); }, (error) => { console.error("Error cargando calendario: ", error); setLoading(false); }); return () => unsubscribe(); }, []);
     if (loading) return <LoadingSkeleton />;
-    return (<div><h2 style={styles.title}>CALENDARIO</h2><div style={styles.jornadaList}>{jornadas.map(jornada => (<div key={jornada.id} style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`} : {...styles.jornadaItem, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`}} onClick={() => onViewJornada(jornada.id)}><div style={styles.jornadaInfo}><div style={styles.jornadaTeams}><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 25, height: 25}} /><span style={{color: styles.colors.yellow, margin: '0 10px'}}>vs</span><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 25, height: 25}} /></div><strong>{jornada.esVip && '⭐ '}{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}</strong><small>{jornada.fechaStr || 'Fecha por confirmar'} - {jornada.estadio || 'Estadio por confirmar'}</small></div><div style={{...styles.statusBadge, backgroundColor: styles.colors.status[jornada.estado]}}>{jornada.estado}</div></div>))}</div></div>);
+    return (<div><h2 style={styles.title}>CALENDARIO</h2><div style={styles.jornadaList}>{jornadas.map(jornada => (<div key={jornada.id} style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`} : {...styles.jornadaItem, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`}} onClick={() => onViewJornada(jornada.id)}><div style={styles.jornadaInfo}><div style={styles.jornadaTeams}><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 25, height: 25}} /><span style={{color: styles.colors.yellow, margin: '0 10px'}}>vs</span><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 25, height: 25}} /></div><strong>{jornada.esVip && '⭐ '}{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}</strong>
+    {/* --- INICIO BLOQUE 5.3: Mostrar fecha y hora completa --- */}
+    <small>{formatFullDateTime(jornada.fechaCierre)} - {jornada.estadio || 'Estadio por confirmar'}</small>
+    {/* --- FIN BLOQUE 5.3 --- */}
+    </div><div style={{...styles.statusBadge, backgroundColor: styles.colors.status[jornada.estado]}}>{jornada.estado}</div></div>))}</div></div>);
 };
 
 const AnimatedPoints = ({ value }) => {
@@ -1074,6 +1154,8 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     const getRankIcon = (index) => { if (index === 0) return '🥇'; if (index === 1) return '🥈'; if (index === 2) return '🥉'; return `${index + 1}º`; };
     return (<div><h2 style={styles.title}>CLASIFICACIÓN</h2><div style={{overflowX: 'auto'}}><table style={styles.table}><thead><tr><th style={styles.th}>POS</th><th style={styles.th}>JUGADOR</th>{isLive && <th style={styles.th}>PUNTOS (EN VIVO)</th>}<th style={styles.th}>PUNTOS TOTALES</th><th style={{...styles.th, textAlign: 'center'}}>JOKERS</th></tr></thead><tbody>{liveClasificacion.map((jugador, index) => { const profile = userProfiles[jugador.id] || {}; return (<tr key={jugador.id} style={getRankStyle(index, jugador.id)}><td style={styles.tdRank}>{getRankIcon(index)}</td><td style={styles.td}><PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} />{rachas[jugador.id]}</td>{isLive && <td style={{...styles.td, color: styles.colors.gold, fontWeight: 'bold'}}><AnimatedPoints value={jugador.puntosEnVivo} /></td>}<td style={styles.td}><AnimatedPoints value={jugador.puntosTotales} /></td><td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>{jugador.jokersRestantes !== undefined ? jugador.jokersRestantes : 2} 🃏</td></tr>)})}</tbody></table></div></div>);
 };
+
+// --- INICIO BLOQUE 5.2: Habilitar edición de fechas en Admin Panel ---
 const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
@@ -1082,9 +1164,19 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [resultado1x2, setResultado1x2] = useState(jornada.resultado1x2 || '');
     const [esVip, setEsVip] = useState(jornada.esVip || false);
     const [splashMessage, setSplashMessage] = useState(jornada.splashMessage || '');
-    const toInputFormat = (date) => date && date.seconds ? new Date(date.seconds * 1000).toISOString().slice(0, 16) : '';
+    
+    // Función para convertir fecha de Firebase a formato 'YYYY-MM-DDTHH:mm' para el input
+    const toInputFormat = (date) => {
+        if (!date || !date.seconds) return '';
+        const d = new Date(date.seconds * 1000);
+        // Ajustamos la zona horaria para que el input muestre la hora local correcta
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().slice(0, 16);
+    };
+
     const [fechaApertura, setFechaApertura] = useState(toInputFormat(jornada.fechaApertura));
     const [fechaCierre, setFechaCierre] = useState(toInputFormat(jornada.fechaCierre));
+    
     const [estadioImageUrl, setEstadioImageUrl] = useState(jornada.estadioImageUrl || '');
     const [isSaving, setIsSaving] = useState(false);
     const [isCalculating, setIsCalculating] = useState(false);
@@ -1097,11 +1189,24 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         setIsSaving(true); setMessage('');
         const jornadaRef = doc(db, "jornadas", jornada.id);
         try {
-            await updateDoc(jornadaRef, { estado, resultadoLocal, resultadoVisitante, goleador: goleador.trim(), resultado1x2, esVip, splashMessage, fechaApertura: fechaApertura ? new Date(fechaApertura) : null, fechaCierre: fechaCierre ? new Date(fechaCierre) : null, estadioImageUrl });
+            await updateDoc(jornadaRef, { 
+                estado, 
+                resultadoLocal, 
+                resultadoVisitante, 
+                goleador: goleador.trim(), 
+                resultado1x2, 
+                esVip, 
+                splashMessage, 
+                // Convertimos el string del input a un objeto de fecha de JS antes de guardar
+                fechaApertura: fechaApertura ? new Date(fechaApertura) : null, 
+                fechaCierre: fechaCierre ? new Date(fechaCierre) : null, 
+                estadioImageUrl 
+            });
             setMessage('¡Guardado!'); setTimeout(() => setMessage(''), 2000);
         } catch (error) { console.error("Error al actualizar: ", error); setMessage('Error al guardar.'); }
         setIsSaving(false);
     };
+    // --- FIN BLOQUE 5.2 ---
 
     const handleUpdateLiveScore = async () => {
         setIsSaving(true);
@@ -1221,8 +1326,10 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 </div>
 
                 <div><label style={styles.label}>Resultado 1X2:</label><select value={resultado1x2} onChange={(e) => setResultado1x2(e.target.value)} style={styles.adminSelect}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
+                {/* --- INICIO BLOQUE 5.2: Inputs de fecha funcionales --- */}
                 <div><label style={styles.label}>Apertura Apuestas:</label><input type="datetime-local" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} style={styles.adminInput} /></div>
                 <div><label style={styles.label}>Cierre Apuestas:</label><input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={styles.adminInput} /></div>
+                {/* --- FIN BLOQUE 5.2 --- */}
             </div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>Mensaje para la Pantalla Principal:</label><textarea value={splashMessage} onChange={(e) => setSplashMessage(e.target.value)} style={{...styles.input, width: '95%', height: '50px'}} /></div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>URL Imagen del Estadio:</label><input type="text" value={estadioImageUrl} onChange={(e) => setEstadioImageUrl(e.target.value)} style={{...styles.input, width: '95%'}} /></div>
