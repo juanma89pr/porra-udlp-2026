@@ -73,7 +73,6 @@ const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '�
 // --- LÓGICA DE CÁLCULO DE PUNTOS ---
 // ============================================================================
 
-// --- INICIO BLOQUE 1: CORRECCIÓN CÁLCULO DE PUNTOS EN VIVO (YA APLICADO) ---
 const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
     if (!pronostico || !liveData || !jornada || !liveData.isLive) return 0;
 
@@ -125,7 +124,6 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
 
     return puntosJornada;
 };
-// --- FIN BLOQUE 1 ---
 
 
 // ============================================================================
@@ -435,6 +433,7 @@ const initialPronosticoState = {
     jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) 
 };
 
+// --- INICIO AJUSTE 1: MiJornadaScreen ---
 const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -451,9 +450,9 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const [jokerStats, setJokerStats] = useState(Array(10).fill(null));
     const [showJokerAnimation, setShowJokerAnimation] = useState(false);
     const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
-    // --- INICIO BLOQUE 2.2: Estado para el aviso de deuda ---
     const [tieneDeuda, setTieneDeuda] = useState(false);
-    // --- FIN BLOQUE 2.2 ---
+    // Nuevo estado para la visualización entre jornadas
+    const [interJornadaStatus, setInterJornadaStatus] = useState(null);
     
     const initialJokerStatus = useRef(false);
     
@@ -477,6 +476,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             
             if(jornadaActiva){
                 setCurrentJornada(jornadaActiva);
+                setInterJornadaStatus(null); // Reseteamos el estado inter-jornada
                 if (jornadaActiva.fechaCierre) { setPanicButtonDisabled(new Date().getTime() > (jornadaActiva.fechaCierre.toDate().getTime() - 3600 * 1000)); }
                 const pronosticoRef = doc(db, "pronosticos", jornadaActiva.id, "jugadores", user);
                 getDoc(pronosticoRef).then(pronosticoSnap => {
@@ -494,7 +494,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 const allPronosticosRef = collection(db, "pronosticos", jornadaActiva.id, "jugadores");
                 onSnapshot(allPronosticosRef, (snapshot) => { setAllPronosticos(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))); });
 
-                // --- INICIO BLOQUE 2.2: Lógica para comprobar deuda de la jornada anterior ---
                 if (jornadaActiva.numeroJornada > 1) {
                     const jornadaAnterior = todasLasJornadas.find(j => j.numeroJornada === jornadaActiva.numeroJornada - 1);
                     if (jornadaAnterior && jornadaAnterior.estado === 'Finalizada') {
@@ -512,11 +511,31 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 } else {
                     setTieneDeuda(false);
                 }
-                // --- FIN BLOQUE 2.2 ---
 
             } else {
-                 const qProxima = query(collection(db, "jornadas"), where("estado", "==", "Próximamente"), orderBy("numeroJornada"), limit(1));
-                getDocs(qProxima).then(proximaSnap => { if (!proximaSnap.empty) setCurrentJornada({ id: proximaSnap.docs[0].id, ...proximaSnap.docs[0].data() }); else setCurrentJornada(null); setLoading(false); });
+                // Lógica para el periodo inter-jornadas
+                setCurrentJornada(null);
+                setLoading(false);
+                const ultimaFinalizada = todasLasJornadas
+                    .filter(j => j.estado === 'Finalizada' && j.id !== 'jornada_test')
+                    .sort((a, b) => b.numeroJornada - a.numeroJornada)[0];
+
+                if (ultimaFinalizada) {
+                    const pronosticoRef = doc(db, "pronosticos", ultimaFinalizada.id, "jugadores", user);
+                    getDoc(pronosticoRef).then(pronosticoSnap => {
+                        if (pronosticoSnap.exists()) {
+                            if (pronosticoSnap.data().pagado) {
+                                setInterJornadaStatus({ status: 'pagado', jornada: ultimaFinalizada });
+                            } else {
+                                setInterJornadaStatus({ status: 'debe', jornada: ultimaFinalizada });
+                            }
+                        } else {
+                            setInterJornadaStatus({ status: 'no_participo', jornada: ultimaFinalizada });
+                        }
+                    });
+                } else {
+                    setInterJornadaStatus({ status: 'sin_finalizadas' });
+                }
             }
         }, (error) => { console.error("Error: ", error); setLoading(false); });
         return () => unsubscribe();
@@ -659,7 +678,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
     const handleBotonDelPanico = async () => { if (window.confirm("¿Seguro que quieres cancelar tus apuestas JOKER? No recuperarás el JOKER gastado, pero tus 10 apuestas adicionales se borrarán.")) { setPronostico(prev => ({ ...prev, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) })); setMessage({text: 'Apuestas JOKER eliminadas. Recuerda guardar para confirmar los cambios.', type: 'info'}); } };
     
-    // --- INICIO BLOQUE 2.2: Lógica del botón "Marcar como Pagado" ---
     const handleMarcarComoPagado = async () => {
         if (!currentJornada) return;
         const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user);
@@ -672,7 +690,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             setMessage({text: 'Error al registrar el pago.', type: 'error'});
         }
     };
-    // --- FIN BLOQUE 2.2 ---
 
     const handleCopyLastBet = async () => {
         setMessage({text: 'Buscando tu última apuesta...', type: 'info'});
@@ -707,7 +724,32 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     if (loading) return <LoadingSkeleton />;
 
     const renderContent = () => {
-        if (!currentJornada) { return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>; }
+        // Lógica de renderizado para el periodo inter-jornadas
+        if (!currentJornada) {
+            if (interJornadaStatus?.status === 'pagado') {
+                return <div style={styles.placeholder}>
+                    <h3>Estado de Pagos</h3>
+                    <p style={{...styles.paymentStatus, color: styles.colors.success, borderColor: styles.colors.success}}>✅ Estás al día con tus pagos. ¡Gracias!</p>
+                    <p>Esperando la próxima jornada...</p>
+                </div>;
+            }
+            if (interJornadaStatus?.status === 'debe') {
+                return <div style={styles.placeholder}>
+                    <h3>Estado de Pagos</h3>
+                    <p style={{...styles.paymentStatus, color: styles.colors.warning, borderColor: styles.colors.warning}}>
+                        ⚠️ Tienes pendiente el pago de la Jornada {interJornadaStatus.jornada.numeroJornada}.
+                    </p>
+                    <button onClick={() => setActiveTab('pagos')} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>Ir a Pagos</button>
+                </div>;
+            }
+            if (interJornadaStatus?.status === 'no_participo') {
+                 return <div style={styles.placeholder}>
+                    <h3>No hay jornadas disponibles</h3>
+                    <p>No participaste en la última jornada. ¡Esperamos verte en la siguiente!</p>
+                </div>;
+            }
+            return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>;
+        }
         
         const ahora = new Date();
         const apertura = currentJornada.fechaApertura?.toDate();
@@ -783,7 +825,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         }
 
         if (currentJornada.estado === 'Finalizada') {
-            // --- INICIO BLOQUE 2.2: Mejora del botón "Marcar como Pagado" ---
             return (
                 <div style={styles.placeholder}>
                     <h3>Jornada {currentJornada.numeroJornada} Finalizada</h3>
@@ -800,7 +841,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                     {message.text && <p style={{...styles.message, marginTop: '15px'}}>{message.text}</p>}
                 </div>
             );
-            // --- FIN BLOQUE 2.2 ---
         }
         
         return (<div style={styles.placeholder}><h3>No hay jornada de apuestas abierta</h3><h4>Próximo Partido: Jornada {currentJornada.numeroJornada}</h4><p style={{fontSize: '1.2rem', fontWeight: 'bold'}}>{currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</p>{currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}{currentJornada.fechaStr && <p>🗓️ {currentJornada.fechaStr}</p>}{currentJornada.estadio && <p>📍 {currentJornada.estadio}</p>}</div>);
@@ -808,13 +848,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     return (
       <div>
         {showJokerAnimation && <JokerAnimation />}
-        {/* --- INICIO BLOQUE 2.2: Banner de aviso de deuda --- */}
         {tieneDeuda && (
             <div style={styles.debtBanner}>
                 ⚠️ Tienes pendiente el pago de la jornada anterior. Por favor, ve a la sección de "Pagos" para regularizarlo.
             </div>
         )}
-        {/* --- FIN BLOQUE 2.2 --- */}
         <h2 style={styles.title}>MI JORNADA</h2>
         <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>
         {liveData && liveData.isLive && currentJornada?.estado === 'Cerrada' && (<div style={styles.liveInfoBox}><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Puntos Provisionales</span><span style={styles.liveInfoValue}><AnimatedPoints value={provisionalData.puntos} /></span></div><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Posición Provisional</span><span style={styles.liveInfoValue}>{provisionalData.posicion}</span></div></div>)}
@@ -822,8 +860,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
+// --- FIN AJUSTE 1 ---
 
-// --- INICIO BLOQUE 2.1: Mejora de LaJornadaScreen ---
 const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
     const [participantes, setParticipantes] = useState([]);
@@ -833,7 +871,6 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
     const [pronosticosAnuales, setPronosticosAnuales] = useState([]);
     const [provisionalRanking, setProvisionalRanking] = useState([]);
     const [jornadaStats, setJornadaStats] = useState(null);
-    // Nuevos estados para la información de jornadas pasadas y futuras
     const [ultimaJornada, setUltimaJornada] = useState(null);
     const [proximaJornada, setProximaJornada] = useState(null);
 
@@ -843,7 +880,7 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
             if (!snapshot.empty) {
                 const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
                 setJornadaActual(jornada);
-                setUltimaJornada(null); // Limpiamos las otras por si acaso
+                setUltimaJornada(null); 
                 setProximaJornada(null);
                 const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
                 onSnapshot(pronosticosRef, (pronosticosSnap) => {
@@ -871,7 +908,6 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                 });
                 setLoading(false);
             } else {
-                // Si no hay jornada abierta o cerrada, buscamos la última y la próxima
                 setJornadaActual(null);
                 setParticipantes([]);
                 
@@ -895,7 +931,6 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
         const pronosticosAnualesRef = collection(db, "porraAnualPronosticos"); const unsubPronosticos = onSnapshot(pronosticosAnualesRef, (snapshot) => { setPronosticosAnuales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); });
         return () => { unsubscribe(); unsubConfig(); unsubPronosticos(); };
     }, []);
-    // --- FIN BLOQUE 2.1 ---
     
     useEffect(() => {
         if (jornadaActual && jornadaActual.estado === 'Cerrada' && liveData && liveData.isLive && participantes.length > 0) {
@@ -918,7 +953,6 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
     if (loading) return <LoadingSkeleton />;
     const isLiveView = jornadaActual?.estado === 'Cerrada' && liveData && liveData.isLive;
 
-    // --- INICIO BLOQUE 2.1: Renderizado condicional de la pantalla ---
     const renderContent = () => {
         if (jornadaActual) {
             return (
@@ -950,7 +984,6 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
             );
         }
 
-        // Si no hay jornada actual, mostramos los nuevos recuadros
         return (
             <div style={styles.interJornadaContainer}>
                 {ultimaJornada ? (
@@ -1010,7 +1043,6 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
         </div>
     );
 };
-// --- FIN BLOQUE 2.1 ---
 
 const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
     const [jornadas, setJornadas] = useState([]); const [loading, setLoading] = useState(true);
@@ -1042,10 +1074,7 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     const getRankIcon = (index) => { if (index === 0) return '🥇'; if (index === 1) return '🥈'; if (index === 2) return '🥉'; return `${index + 1}º`; };
     return (<div><h2 style={styles.title}>CLASIFICACIÓN</h2><div style={{overflowX: 'auto'}}><table style={styles.table}><thead><tr><th style={styles.th}>POS</th><th style={styles.th}>JUGADOR</th>{isLive && <th style={styles.th}>PUNTOS (EN VIVO)</th>}<th style={styles.th}>PUNTOS TOTALES</th><th style={{...styles.th, textAlign: 'center'}}>JOKERS</th></tr></thead><tbody>{liveClasificacion.map((jugador, index) => { const profile = userProfiles[jugador.id] || {}; return (<tr key={jugador.id} style={getRankStyle(index, jugador.id)}><td style={styles.tdRank}>{getRankIcon(index)}</td><td style={styles.td}><PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} />{rachas[jugador.id]}</td>{isLive && <td style={{...styles.td, color: styles.colors.gold, fontWeight: 'bold'}}><AnimatedPoints value={jugador.puntosEnVivo} /></td>}<td style={styles.td}><AnimatedPoints value={jugador.puntosTotales} /></td><td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>{jugador.jokersRestantes !== undefined ? jugador.jokersRestantes : 2} 🃏</td></tr>)})}</tbody></table></div></div>);
 };
-
-// --- INICIO BLOQUE 1: MEJORAS ADMIN (YA APLICADO) ---
 const JornadaAdminItem = ({ jornada, plantilla }) => {
-// --- FIN BLOQUE 1 ---
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
     const [resultadoVisitante, setResultadoVisitante] = useState(jornada.resultadoVisitante === undefined ? '' : jornada.resultadoVisitante);
@@ -1155,7 +1184,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         setIsCalculating(false);
     };
 
-    // --- INICIO BLOQUE 1: NUEVA FUNCIÓN PARA RESETEAR BOTE (YA APLICADO) ---
     const handleResetBote = async () => {
         if (window.confirm(`¿Seguro que quieres resetear el bote de la Jornada ${jornada.numeroJornada} a 0€? Esta acción es irreversible.`)) {
             setIsSaving(true);
@@ -1171,7 +1199,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
             setIsSaving(false);
         }
     };
-    // --- FIN BLOQUE 1 ---
 
     return (
         <div style={jornada.id === 'jornada_test' ? {...styles.adminJornadaItem, ...styles.testJornadaAdminItem} : (jornada.esVip ? {...styles.adminJornadaItem, ...styles.jornadaVip} : styles.adminJornadaItem)}>
@@ -1180,7 +1207,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 <div><label style={styles.label}>Estado:</label><select value={estado} onChange={(e) => setEstado(e.target.value)} style={styles.adminSelect}><option value="Próximamente">Próximamente</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="Finalizada">Finalizada</option></select></div>
                 <div><label style={styles.label}>Resultado Final:</label><div style={styles.resultInputContainer}><input type="number" min="0" value={resultadoLocal} onChange={(e) => setResultadoLocal(e.target.value)} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="number" min="0" value={resultadoVisitante} onChange={(e) => setResultadoVisitante(e.target.value)} style={styles.resultInput} /></div></div>
                 
-                {/* --- INICIO BLOQUE 1: CAMBIO A DESPLEGABLE DE GOLEADOR (YA APLICADO) --- */}
                 <div>
                     <label style={styles.label}>Primer Goleador:</label>
                     <select value={goleador} onChange={(e) => setGoleador(e.target.value)} style={styles.adminSelect}>
@@ -1193,7 +1219,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                         ))}
                     </select>
                 </div>
-                {/* --- FIN BLOQUE 1 --- */}
 
                 <div><label style={styles.label}>Resultado 1X2:</label><select value={resultado1x2} onChange={(e) => setResultado1x2(e.target.value)} style={styles.adminSelect}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
                 <div><label style={styles.label}>Apertura Apuestas:</label><input type="datetime-local" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} style={styles.adminInput} /></div>
@@ -1206,11 +1231,9 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 <button onClick={handleCalcularPuntos} disabled={isCalculating || jornada.estado === 'Finalizada'} style={styles.saveButton}>
                     {isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar'}
                 </button>
-                {/* --- INICIO BLOQUE 1: BOTÓN RESETEAR BOTE (YA APLICADO) --- */}
                 <button onClick={handleResetBote} disabled={isSaving} style={{...styles.saveButton, backgroundColor: colors.warning, color: colors.deepBlue}}>
                     Resetear Bote a 0€
                 </button>
-                {/* --- FIN BLOQUE 1 --- */}
                 {message && <span style={{marginLeft: '10px', color: styles.colors.success, alignSelf: 'center'}}>{message}</span>}
             </div>
             
@@ -1551,7 +1574,6 @@ const AdminLoginModal = ({ onClose, onSuccess }) => {
     return (<div style={styles.modalOverlay}><div style={styles.modalContent}><h3 style={styles.title}>ACCESO ADMIN</h3><form onSubmit={handleSubmit}><label style={styles.label}>Contraseña:</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={styles.input}/>{error && <p style={{color: styles.colors.danger}}>{error}</p>}<div style={{display: 'flex', justifyContent: 'space-between', marginTop: '20px'}}><button type="button" onClick={onClose} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>CANCELAR</button><button type="submit" style={styles.mainButton}>ENTRAR</button></div></form></div></div>);
 };
 
-// --- INICIO BLOQUE 2.2: Ajustes en PagosScreen ---
 const PagosScreen = ({ user, userProfiles }) => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1618,7 +1640,6 @@ const PagosScreen = ({ user, userProfiles }) => {
 
     <div style={{marginTop: '40px'}}>{jornadas.filter(j => j.estado === 'Finalizada').reverse().map(jornada => (<div key={jornada.id} style={styles.pagoCard}><h4 style={styles.pagoCardTitle}>Jornada {jornada.numeroJornada}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</h4><div style={styles.pagoCardDetails}><span><strong>Recaudado:</strong> {jornada.recaudadoJornada}€</span><span><strong>Bote Anterior:</strong> {jornada.bote || 0}€</span><span><strong>Premio Total:</strong> {jornada.premioTotal}€</span></div>{jornada.ganadores && jornada.ganadores.length > 0 ? (<div style={styles.pagoCardWinnerInfo}><p><strong>🏆 Ganador(es):</strong> {jornada.ganadores.join(', ')}</p><p><strong>Premio por ganador:</strong> {(jornada.premioTotal / jornada.ganadores.length).toFixed(2)}€</p></div>) : (<div style={styles.pagoCardBoteInfo}>¡BOTE! El premio se acumula para la siguiente jornada.</div>)}<table style={{...styles.table, marginTop: '15px'}}><thead><tr><th style={styles.th}>Jugador</th><th style={styles.th}>Aportación</th>{jornada.ganadores && jornada.ganadores.length > 0 && <th style={styles.th}>Premio Cobrado</th>}</tr></thead><tbody>{jornada.pronosticos.map(p => { const esGanador = jornada.ganadores?.includes(p.id); return (<tr key={p.id} style={styles.tr}><td style={styles.td}><PlayerProfileDisplay name={p.id} profile={userProfiles[p.id]} /></td><td style={styles.td}><input type="checkbox" checked={p.pagado || false} onChange={(e) => handlePagoChange(jornada.id, p.id, e.target.checked)} disabled={user !== 'Juanma'} style={styles.checkbox}/></td>{esGanador && (<td style={styles.td}><input type="checkbox" checked={p.premioCobrado || false} onChange={(e) => handlePremioCobradoChange(jornada.id, p.id, e.target.checked)} disabled={user !== 'Juanma'} style={styles.checkbox}/></td>)}</tr>); })}</tbody></table></div>))}</div></div>);
 };
-// --- FIN BLOQUE 2.2 ---
 
 const PorraAnualScreen = ({ user, onBack, config }) => {
     const [pronostico, setPronostico] = useState({ ascenso: '', posicion: '' }); const [miPronostico, setMiPronostico] = useState(null); const [isSaving, setIsSaving] = useState(false); const [message, setMessage] = useState(''); const [loading, setLoading] = useState(true);
@@ -2003,7 +2024,6 @@ const styles = {
     chatActionGroup: { display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' },
     chatActionButton: { padding: '8px 12px', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem' },
     chatActionEmojiButton: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '5px' },
-    // --- INICIO BLOQUE 2: Nuevos estilos ---
     debtBanner: { backgroundColor: colors.warning, color: colors.deepBlue, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1rem' },
     interJornadaContainer: { display: 'flex', flexDirection: 'column', gap: '20px' },
     interJornadaBox: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '12px', border: `1px solid ${colors.blue}80`, textAlign: 'center' },
@@ -2011,7 +2031,7 @@ const styles = {
     interJornadaTeams: { fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '10px' },
     interJornadaWinner: { color: colors.gold, fontWeight: 'bold', marginTop: '10px' },
     interJornadaBote: { color: colors.success, fontWeight: 'bold', marginTop: '10px' },
-    // --- FIN BLOQUE 2 ---
+    paymentStatus: { fontSize: '1.1rem', fontWeight: 'bold', margin: '20px 0', padding: '15px', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', border: `2px solid` },
 };
 
 export default App;
