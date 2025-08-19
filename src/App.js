@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase-firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -491,7 +491,21 @@ const initialPronosticoState = {
     jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) 
 };
 
-// --- INICIO AJUSTE 1: MiJornadaScreen ---
+// --- INICIO CORRECCIÓN ---
+// Componente para mostrar información de la próxima jornada
+const ProximaJornadaInfo = ({ jornada }) => {
+    if (!jornada) return null;
+    return (
+        <div style={{marginTop: '30px', borderTop: `1px solid ${styles.colors.blue}`, paddingTop: '20px'}}>
+            <h4 style={{...styles.formSectionTitle, fontSize: '1.2rem'}}>Próximo Partido: Jornada {jornada.numeroJornada}</h4>
+            <p style={{fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center'}}>{jornada.equipoLocal} vs {jornada.equipoVisitante}</p>
+            {jornada.bote > 0 && <div style={{...styles.jackpotBanner, marginTop: '15px'}}>💰 JACKPOT: ¡{jornada.bote}€ DE BOTE! 💰</div>}
+            <p style={{textAlign: 'center'}}>🗓️ {formatFullDateTime(jornada.fechaCierre)}</p>
+            {jornada.estadio && <p style={{textAlign: 'center'}}>📍 {jornada.estadio}</p>}
+        </div>
+    );
+};
+
 const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -509,7 +523,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const [showJokerAnimation, setShowJokerAnimation] = useState(false);
     const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
     const [tieneDeuda, setTieneDeuda] = useState(false);
-    // Nuevo estado para la visualización entre jornadas
     const [interJornadaStatus, setInterJornadaStatus] = useState(null);
     
     const initialJokerStatus = useRef(false);
@@ -534,7 +547,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             
             if(jornadaActiva){
                 setCurrentJornada(jornadaActiva);
-                setInterJornadaStatus(null); // Reseteamos el estado inter-jornada
+                setInterJornadaStatus(null); 
                 if (jornadaActiva.fechaCierre) { setPanicButtonDisabled(new Date().getTime() > (jornadaActiva.fechaCierre.toDate().getTime() - 3600 * 1000)); }
                 const pronosticoRef = doc(db, "pronosticos", jornadaActiva.id, "jugadores", user);
                 getDoc(pronosticoRef).then(pronosticoSnap => {
@@ -571,9 +584,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 }
 
             } else {
-                 // Lógica para el periodo inter-jornadas
                 const proximaJornada = todasLasJornadas.find(j => j.estado === 'Próximamente');
-                setCurrentJornada(proximaJornada || null); // Guardamos la próxima jornada para el countdown
+                setCurrentJornada(null); // No hay jornada activa, el render se basará en interJornadaStatus
                 setLoading(false);
 
                 const ultimaFinalizada = todasLasJornadas
@@ -585,23 +597,22 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                     getDoc(pronosticoRef).then(pronosticoSnap => {
                         if (pronosticoSnap.exists()) {
                             if (pronosticoSnap.data().pagado) {
-                                setInterJornadaStatus({ status: 'pagado', jornada: ultimaFinalizada });
+                                setInterJornadaStatus({ status: 'pagado', jornada: ultimaFinalizada, proxima: proximaJornada });
                             } else {
-                                setInterJornadaStatus({ status: 'debe', jornada: ultimaFinalizada });
+                                setInterJornadaStatus({ status: 'debe', jornada: ultimaFinalizada, proxima: proximaJornada });
                             }
                         } else {
-                            setInterJornadaStatus({ status: 'no_participo', jornada: ultimaFinalizada });
+                            setInterJornadaStatus({ status: 'no_participo', jornada: ultimaFinalizada, proxima: proximaJornada });
                         }
                     });
                 } else {
-                     if (!proximaJornada) {
-                        setInterJornadaStatus({ status: 'sin_finalizadas' });
-                    }
+                    setInterJornadaStatus({ status: 'sin_finalizadas', proxima: proximaJornada });
                 }
             }
         }, (error) => { console.error("Error: ", error); setLoading(false); });
         return () => unsubscribe();
     }, [user]);
+
     
     useEffect(() => {
         if (currentJornada && currentJornada.estado === 'Cerrada' && liveData && liveData.isLive && allPronosticos.length > 0) {
@@ -877,28 +888,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             );
         }
         
-        // --- INICIO BLOQUE 5.1: Vista para "Próximamente" en MiJornadaScreen ---
-        if (currentJornada?.estado === 'Próximamente') {
-            return (
-                <div style={styles.placeholder}>
-                    <h3>No hay jornada de apuestas abierta</h3>
-                    <h4>Próximo Partido: Jornada {currentJornada.numeroJornada}</h4>
-                    <p style={{fontSize: '1.2rem', fontWeight: 'bold'}}>{currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</p>
-                    {currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}
-                    <p>🗓️ {formatFullDateTime(currentJornada.fechaCierre)}</p>
-                    {currentJornada.estadio && <p>📍 {currentJornada.estadio}</p>}
-                    <SplashScreen onEnter={() => {}} teamLogos={teamLogos} currentUser={user} />
-                </div>
-            );
-        }
-        // --- FIN BLOQUE 5.1 ---
-
-        // Lógica de renderizado para el periodo inter-jornadas
         if (interJornadaStatus?.status === 'pagado') {
             return <div style={styles.placeholder}>
                 <h3>Estado de Pagos</h3>
                 <p style={{...styles.paymentStatus, color: styles.colors.success, borderColor: styles.colors.success}}>✅ Estás al día con tus pagos. ¡Gracias!</p>
-                <p>Esperando la próxima jornada...</p>
+                <ProximaJornadaInfo jornada={interJornadaStatus.proxima} />
             </div>;
         }
         if (interJornadaStatus?.status === 'debe') {
@@ -908,20 +902,30 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                     ⚠️ Tienes pendiente el pago de la Jornada {interJornadaStatus.jornada.numeroJornada}.
                 </p>
                 <button onClick={() => setActiveTab('pagos')} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>Ir a Pagos</button>
+                <ProximaJornadaInfo jornada={interJornadaStatus.proxima} />
             </div>;
         }
         if (interJornadaStatus?.status === 'no_participo') {
              return <div style={styles.placeholder}>
                 <h3>No hay jornadas disponibles</h3>
                 <p>No participaste en la última jornada. ¡Esperamos verte en la siguiente!</p>
+                <ProximaJornadaInfo jornada={interJornadaStatus.proxima} />
             </div>;
         }
+        if (interJornadaStatus?.status === 'sin_finalizadas') {
+             return <div style={styles.placeholder}>
+                <h3>¡Comienza la temporada!</h3>
+                <p>Aún no ha finalizado ninguna jornada.</p>
+                <ProximaJornadaInfo jornada={interJornadaStatus.proxima} />
+            </div>;
+        }
+
         return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>;
     };
     return (
       <div>
         {showJokerAnimation && <JokerAnimation />}
-        {tieneDeuda && (
+        {tieneDeuda && !interJornadaStatus && (
             <div style={styles.debtBanner}>
                 ⚠️ Tienes pendiente el pago de la jornada anterior. Por favor, ve a la sección de "Pagos" para regularizarlo.
             </div>
@@ -933,7 +937,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
-// --- FIN AJUSTE 1 ---
+// --- FIN CORRECCIÓN ---
 
 const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
