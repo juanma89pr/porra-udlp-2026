@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
-// MODIFICACIÓN: Añadimos signInWithEmailAndPassword y signOut para el login de admin
+// MODIFICADO: Añadimos signInWithEmailAndPassword y signOut para el login de admin
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
@@ -63,17 +63,7 @@ const EQUIPOS_LIGA = [
     "AD Ceuta FC", "CyD Leonesa", "Real Zaragoza", "RC Deportivo"
 ];
 
-const PLANTILLA_INICIAL = [
-    { dorsal: 13, nombre: "Dinko Horkas" }, { dorsal: 0, nombre: "Adri Suárez" }, { dorsal: 3, nombre: "Mika Mármol" },
-    { dorsal: 28, nombre: "Juanma Herzog" }, { dorsal: 4, nombre: "Álex Suárez" }, { dorsal: 0, nombre: "Enrique Clemente" },
-    { dorsal: 0, nombre: "Sergio Barcia" }, { dorsal: 0, nombre: "Cristian Gutiérrez" }, { dorsal: 18, nombre: "Viti Rozada" },
-    { dorsal: 2, nombre: "Marvin Park" }, { dorsal: 0, nombre: "Lorenzo Amatucci" }, { dorsal: 0, nombre: "Edward Cedeño" },
-    { dorsal: 12, nombre: "Enzo Loiodice" }, { dorsal: 20, nombre: "Kirian Rodríguez" }, { dorsal: 0, nombre: "Iván Gil" },
-    { dorsal: 0, nombre: "Jonathan Viera" }, { dorsal: 0, nombre: "Jeremía Recoba" }, { dorsal: 14, nombre: "Manu Fuster" },
-    { dorsal: 0, nombre: "Jesé" }, { dorsal: 0, nombre: "Pejiño" }, { dorsal: 0, nombre: "Ale García" },
-    { dorsal: 0, nombre: "Adam Arvelo" }, { dorsal: 19, nombre: "Sandro Ramírez" }, { dorsal: 0, nombre: "Sory Kaba" },
-    { dorsal: 9, nombre: "Marc Cardona" }, { dorsal: 17, nombre: "Jaime Mata" }
-];
+// MODIFICADO: Eliminamos la constante PLANTILLA_INICIAL. Ahora se leerá desde la base de datos.
 
 const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)', 'linear-gradient(45deg, #e63946, #fca311)', 'linear-gradient(45deg, #52b788, #9b59b6)'];
 const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🏃‍♂️', '🏃🏾‍♂️', '1️⃣', '7️⃣', '🔟', '🤑', '😈'];
@@ -181,6 +171,7 @@ const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.ligh
         // Ordenamos las insignias por prioridad (menor número = mayor prioridad) y cogemos la primera
         return finalProfile.badges
             .map(badgeKey => ({ key: badgeKey, ...BADGE_DEFINITIONS[badgeKey] }))
+            .filter(b => b.name) // Nos aseguramos de que la insignia exista en las definiciones
             .sort((a, b) => a.priority - b.priority)[0];
     }, [finalProfile.badges]);
 
@@ -475,6 +466,7 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
         
         const highestPriorityBadge = profile.badges
             .map(badgeKey => ({ key: badgeKey, ...BADGE_DEFINITIONS[badgeKey] }))
+            .filter(b => b.name) // Nos aseguramos de que la insignia exista en las definiciones
             .sort((a, b) => a.priority - b.priority)[0];
             
         if (highestPriorityBadge && highestPriorityBadge.style) {
@@ -552,6 +544,7 @@ const ProximaJornadaInfo = ({ jornada }) => {
     );
 };
 
+// MODIFICADO: El componente MiJornadaScreen ahora incluye un selector de goleador con imágenes.
 const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -867,7 +860,36 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                             <fieldset style={{border: 'none', padding: 0, margin: 0}} >
                                 <div style={styles.formGroup}><label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label><div style={styles.miJornadaMatchInfo}><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} /><div style={styles.miJornadaScoreInputs}><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} /></div><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} /></div>{(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}</div>
                                 <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
-                                <div style={styles.formGroup}><label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label><select name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador}><option value="">-- Elige un jugador --</option>{plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}</select><div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>(1 Punto)</span></label></div></div>
+                                
+                                {/* MODIFICADO: Bloque del selector de goleador para incluir imágenes */}
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label>
+                                    <div style={styles.goleadorSelectorContainer}>
+                                        {pronostico.goleador && !pronostico.sinGoleador && (
+                                            <div style={styles.goleadorPreview}>
+                                                <img 
+                                                    src={plantilla.find(j => j.nombre === pronostico.goleador)?.imageUrl || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'} 
+                                                    alt={pronostico.goleador} 
+                                                    style={styles.goleadorPreviewImg}
+                                                    onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }}
+                                                />
+                                                <span>{pronostico.goleador}</span>
+                                            </div>
+                                        )}
+                                        <select name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador}>
+                                            <option value="">-- Elige un jugador --</option>
+                                            {plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (
+                                                <option key={jugador.nombre} value={jugador.nombre}>
+                                                    {jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div style={{marginTop: '10px'}}>
+                                        <input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} />
+                                        <label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>(1 Punto)</span></label>
+                                    </div>
+                                </div>
                             </fieldset>
                             
                             <div style={styles.jokerContainer}>
@@ -983,7 +1005,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
-
 const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
     const [participantes, setParticipantes] = useState([]);
@@ -1194,11 +1215,10 @@ const AnimatedPoints = ({ value }) => {
 const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles }) => {
     const [clasificacion, setClasificacion] = useState([]); 
     const [loading, setLoading] = useState(true); 
-    const [rachas, setRachas] = useState({}); // CORRECCIÓN: Esta variable ahora se usa.
+    const [rachas, setRachas] = useState({});
     const [livePronosticos, setLivePronosticos] = useState([]);
 
     useEffect(() => {
-        // Función para calcular las rachas de las 2 últimas jornadas finalizadas
         const fetchRachas = async () => { 
             const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(2)); 
             const jornadasSnap = await getDocs(q); 
@@ -1311,7 +1331,6 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
                             return (
                                 <tr key={jugador.id} style={getRankStyle(index, jugador.id)}>
                                     <td style={styles.tdRank}>{getRankIcon(index)}</td>
-                                    {/* CORRECCIÓN: Se añade el emoji de la racha si existe */}
                                     <td style={styles.td}>
                                         <PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} />
                                         {rachas[jugador.id] && <span style={{marginLeft: '8px'}}>{rachas[jugador.id]}</span>}
@@ -1328,7 +1347,8 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
         </div>
     );
 };
-// --- INICIO BLOQUE 5.2: Habilitar edición de fechas en Admin Panel ---
+
+// MODIFICADO: El componente JornadaAdminItem ahora incluye el botón para re-calcular insignias.
 const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
@@ -1338,18 +1358,15 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [esVip, setEsVip] = useState(jornada.esVip || false);
     const [splashMessage, setSplashMessage] = useState(jornada.splashMessage || '');
     
-    // Función para convertir fecha de Firebase a formato 'YYYY-MM-DDTHH:mm' para el input
     const toInputFormat = (date) => {
         if (!date || !date.seconds) return '';
         const d = new Date(date.seconds * 1000);
-        // Ajustamos la zona horaria para que el input muestre la hora local correcta
         d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
         return d.toISOString().slice(0, 16);
     };
 
     const [fechaApertura, setFechaApertura] = useState(toInputFormat(jornada.fechaApertura));
     const [fechaCierre, setFechaCierre] = useState(toInputFormat(jornada.fechaCierre));
-    // --- MEJORA 1: Añadir estado para fechaPartido ---
     const [fechaPartido, setFechaPartido] = useState(toInputFormat(jornada.fechaPartido));
     
     const [estadioImageUrl, setEstadioImageUrl] = useState(jornada.estadioImageUrl || '');
@@ -1374,7 +1391,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 splashMessage, 
                 fechaApertura: fechaApertura ? new Date(fechaApertura) : null, 
                 fechaCierre: fechaCierre ? new Date(fechaCierre) : null, 
-                // --- MEJORA 1: Guardar fechaPartido ---
                 fechaPartido: fechaPartido ? new Date(fechaPartido) : null,
                 estadioImageUrl 
             });
@@ -1393,26 +1409,11 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         setIsSaving(false);
     };
 
-    // --- MEJORA 2: Lógica de cálculo de puntos y asignación de insignias ---
-    const handleCalcularPuntos = async () => {
-        if (jornada.estado === 'Finalizada') {
-            alert("ERROR: Esta jornada ya ha sido finalizada y los puntos ya se han calculado. No se puede volver a ejecutar esta acción.");
-            return;
-        }
-
-        if (resultadoLocal === '' || resultadoVisitante === '' || !resultado1x2) { alert("Introduce los goles de ambos equipos y el Resultado 1X2."); return; }
-        setIsCalculating(true);
-        
+    // MODIFICADO: La lógica de cálculo de puntos y asignación de insignias se ha movido a una función reutilizable.
+    const runPointsAndBadgesLogic = async (isRecalculation = false) => {
         const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
         const pronosticosSnap = await getDocs(pronosticosRef);
         const pronosticos = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        const clasificacionRef = collection(db, "clasificacion");
-        const clasificacionSnap = await getDocs(clasificacionRef);
-        const clasificacionActual = {};
-        clasificacionSnap.forEach(doc => {
-            clasificacionActual[doc.id] = { id: doc.id, ...doc.data() };
-        });
 
         const batch = writeBatch(db);
         const ganadores = [];
@@ -1421,106 +1422,132 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         for (const p of pronosticos) {
             let puntosJornada = 0;
             const esVipJornada = jornada.esVip || false;
-            // Acierto Resultado Exacto
-            if (p.golesLocal !== '' && p.golesVisitante !== '' && parseInt(p.golesLocal) === parseInt(resultadoLocal) && parseInt(p.golesVisitante) === parseInt(resultadoVisitante)) {
+            if (p.golesLocal !== '' && p.golesVisitante !== '' && parseInt(p.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(p.golesVisitante) === parseInt(jornada.resultadoVisitante)) {
                 puntosJornada += esVipJornada ? 6 : 3;
                 if (!ganadores.includes(p.id)) ganadores.push(p.id);
             }
-            // Acierto 1X2
             let resultado1x2Real = '';
             if (jornada.equipoLocal === "UD Las Palmas") {
-                if (parseInt(resultadoLocal) > parseInt(resultadoVisitante)) resultado1x2Real = 'Gana UD Las Palmas';
-                else if (parseInt(resultadoLocal) < parseInt(resultadoVisitante)) resultado1x2Real = 'Pierde UD Las Palmas';
+                if (parseInt(jornada.resultadoLocal) > parseInt(jornada.resultadoVisitante)) resultado1x2Real = 'Gana UD Las Palmas';
+                else if (parseInt(jornada.resultadoLocal) < parseInt(jornada.resultadoVisitante)) resultado1x2Real = 'Pierde UD Las Palmas';
                 else resultado1x2Real = 'Empate';
             } else {
-                if (parseInt(resultadoVisitante) > parseInt(resultadoLocal)) resultado1x2Real = 'Gana UD Las Palmas';
-                else if (parseInt(resultadoVisitante) < parseInt(resultadoLocal)) resultado1x2Real = 'Pierde UD Las Palmas';
+                if (parseInt(jornada.resultadoVisitante) > parseInt(jornada.resultadoLocal)) resultado1x2Real = 'Gana UD Las Palmas';
+                else if (parseInt(jornada.resultadoVisitante) < parseInt(jornada.resultadoLocal)) resultado1x2Real = 'Pierde UD Las Palmas';
                 else resultado1x2Real = 'Empate';
             }
             if (p.resultado1x2 === resultado1x2Real) { puntosJornada += esVipJornada ? 2 : 1; }
-            // Acierto Goleador
-            const goleadorReal = goleador.trim().toLowerCase();
+            const goleadorReal = (jornada.goleador || '').trim().toLowerCase();
             const goleadorApostado = p.goleador ? p.goleador.trim().toLowerCase() : '';
             if (p.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) { puntosJornada += 1; } 
             else if (!p.sinGoleador && goleadorApostado === goleadorReal && goleadorReal !== "") { puntosJornada += esVipJornada ? 4 : 2; }
-            // Acierto Joker
             if (p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0) {
                 for (const jokerP of p.jokerPronosticos) {
-                    if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === parseInt(resultadoLocal) && parseInt(jokerP.golesVisitante) === parseInt(resultadoVisitante)) {
+                    if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(jokerP.golesVisitante) === parseInt(jornada.resultadoVisitante)) {
                         puntosJornada += esVipJornada ? 6 : 3;
                         if (!ganadores.includes(p.id)) ganadores.push(p.id);
                         break; 
                     }
                 }
             }
-            puntosPorJugador[p.id] = puntosJornada;
-            const pronosticoDocRef = doc(db, "pronosticos", jornada.id, "jugadores", p.id);
-            batch.update(pronosticoDocRef, { puntosObtenidos: puntosJornada });
             
-            const clasificacionDocRef = doc(db, "clasificacion", p.id);
-            batch.set(clasificacionDocRef, { puntosTotales: increment(puntosJornada), jugador: p.id }, { merge: true });
-        }
-
-        // Lógica de asignación de insignias
-        const clasificacionNueva = { ...clasificacionActual };
-        for (const jugadorId in puntosPorJugador) {
-            if (clasificacionNueva[jugadorId]) {
-                clasificacionNueva[jugadorId].puntosTotales = (clasificacionNueva[jugadorId].puntosTotales || 0) + puntosPorJugador[jugadorId];
-            } else {
-                clasificacionNueva[jugadorId] = { puntosTotales: puntosPorJugador[jugadorId] };
+            puntosPorJugador[p.id] = puntosJornada;
+            
+            if (!isRecalculation) {
+                const pronosticoDocRef = doc(db, "pronosticos", jornada.id, "jugadores", p.id);
+                batch.update(pronosticoDocRef, { puntosObtenidos: puntosJornada });
+                const clasificacionDocRef = doc(db, "clasificacion", p.id);
+                batch.set(clasificacionDocRef, { puntosTotales: increment(puntosJornada), jugador: p.id }, { merge: true });
             }
         }
 
-        const sortedClasificacion = Object.values(clasificacionNueva).sort((a, b) => (b.puntosTotales || 0) - (a.puntosTotales || 0));
-        const lider = sortedClasificacion[0];
+        const allJornadasSnap = await getDocs(query(collection(db, "jornadas"), orderBy("numeroJornada")));
+        const allJornadas = allJornadasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const clasificacionHistorica = {};
+        JUGADORES.forEach(j => clasificacionHistorica[j] = { puntosTotales: 0 });
+
+        for (const j of allJornadas) {
+            if (j.numeroJornada < jornada.numeroJornada && j.estado === 'Finalizada') {
+                const pronosticosPasadosSnap = await getDocs(collection(db, "pronosticos", j.id, "jugadores"));
+                pronosticosPasadosSnap.forEach(pSnap => {
+                    const pData = pSnap.data();
+                    if (clasificacionHistorica[pSnap.id] && pData.puntosObtenidos) {
+                        clasificacionHistorica[pSnap.id].puntosTotales += pData.puntosObtenidos;
+                    }
+                });
+            }
+        }
+
+        for (const jugadorId in puntosPorJugador) {
+            if (clasificacionHistorica[jugadorId]) {
+                clasificacionHistorica[jugadorId].puntosTotales += puntosPorJugador[jugadorId];
+            }
+        }
+
+        const sortedClasificacion = Object.entries(clasificacionHistorica).sort(([,a],[,b]) => b.puntosTotales - a.puntosTotales);
+        const lider = sortedClasificacion[0] ? sortedClasificacion[0][0] : null;
 
         for (const jugadorId of JUGADORES) {
-            const jugadorData = clasificacionActual[jugadorId] || { badges: [] };
+            const jugadorRef = doc(db, "clasificacion", jugadorId);
+            const jugadorSnap = await getDoc(jugadorRef);
+            const jugadorData = jugadorSnap.exists() ? jugadorSnap.data() : { badges: [] };
             let newBadges = new Set(jugadorData.badges || []);
 
-            // Limpiar insignias de jornada anterior
             newBadges.delete('campeon_jornada');
             newBadges.delete('lider_general');
 
-            // Asignar campeón de jornada
-            if (ganadores.includes(jugadorId)) {
-                newBadges.add('campeon_jornada');
-            }
+            if (ganadores.includes(jugadorId)) newBadges.add('campeon_jornada');
+            if (lider && jugadorId === lider) newBadges.add('lider_general');
 
-            // Asignar líder general
-            if (lider && jugadorId === lider.id) {
-                newBadges.add('lider_general');
-            }
-
-            // Lógica de rachas (simplificada, se puede mejorar con más historial)
-            const puntosEstaJornada = puntosPorJugador[jugadorId] || 0;
-            if (puntosEstaJornada >= 3) { // Consideramos racha si acierta resultado
-                newBadges.add('en_racha');
-                newBadges.delete('mala_racha');
-            } else if (puntosEstaJornada === 0) {
-                newBadges.add('mala_racha');
-                newBadges.delete('en_racha');
-            }
-
-            const clasificacionDocRef = doc(db, "clasificacion", jugadorId);
-            batch.update(clasificacionDocRef, { badges: Array.from(newBadges) });
+            batch.set(jugadorRef, { badges: Array.from(newBadges) }, { merge: true });
         }
 
-        const jornadaRef = doc(db, "jornadas", jornada.id);
-        batch.update(jornadaRef, { estado: "Finalizada", ganadores, "liveData.isLive": false });
-        if (ganadores.length === 0 && jornada.id !== 'jornada_test') {
-            const boteActual = jornada.bote || 0;
-            const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
-            const nuevoBote = boteActual + (pronosticos.length * costeApuesta);
-            const qProxima = query(collection(db, "jornadas"), where("numeroJornada", ">", jornada.numeroJornada), orderBy("numeroJornada"), limit(1));
-            const proximaJornadaSnap = await getDocs(qProxima);
-            if (!proximaJornadaSnap.empty) {
-                const proximaJornadaRef = doc(db, "jornadas", proximaJornadaSnap.docs[0].id);
-                batch.update(proximaJornadaRef, { bote: increment(nuevoBote) });
+        if (!isRecalculation) {
+            const jornadaRef = doc(db, "jornadas", jornada.id);
+            batch.update(jornadaRef, { estado: "Finalizada", ganadores, "liveData.isLive": false });
+            if (ganadores.length === 0 && jornada.id !== 'jornada_test') {
+                const boteActual = jornada.bote || 0;
+                const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+                const nuevoBote = boteActual + (pronosticos.length * costeApuesta);
+                const proximaJornada = allJornadas.find(j => j.numeroJornada > jornada.numeroJornada);
+                if (proximaJornada) {
+                    const proximaJornadaRef = doc(db, "jornadas", proximaJornada.id);
+                    batch.update(proximaJornadaRef, { bote: increment(nuevoBote) });
+                }
             }
         }
-        try { await batch.commit(); alert("¡Puntos calculados, insignias asignadas y jornada cerrada!"); } 
-        catch (error) { console.error("Error al calcular: ", error); alert("Error al calcular puntos."); }
+        
+        await batch.commit();
+    };
+
+    const handleCalcularPuntos = async () => {
+        if (jornada.estado === 'Finalizada') {
+            alert("ERROR: Esta jornada ya ha sido finalizada y los puntos ya se han calculado. No se puede volver a ejecutar esta acción.");
+            return;
+        }
+        if (resultadoLocal === '' || resultadoVisitante === '' || !resultado1x2) { alert("Introduce los goles de ambos equipos y el Resultado 1X2."); return; }
+        setIsCalculating(true);
+        try {
+            await runPointsAndBadgesLogic(false);
+            alert("¡Puntos calculados, insignias asignadas y jornada cerrada!");
+        } catch (error) {
+            console.error("Error al calcular: ", error);
+            alert("Error al calcular puntos.");
+        }
+        setIsCalculating(false);
+    };
+
+    // NUEVO: Función para el botón de re-calcular insignias.
+    const handleRecalcularInsignias = async () => {
+        if (!window.confirm(`¿Seguro que quieres re-calcular las insignias para la Jornada ${jornada.numeroJornada}? Esto es útil si la jornada se cerró antes de implementar el sistema de insignias.`)) return;
+        setIsCalculating(true);
+        try {
+            await runPointsAndBadgesLogic(true);
+            alert(`¡Insignias para la Jornada ${jornada.numeroJornada} re-calculadas y asignadas con éxito!`);
+        } catch (error) {
+            console.error("Error al re-calcular insignias: ", error);
+            alert("Error al re-calcular insignias.");
+        }
         setIsCalculating(false);
     };
 
@@ -1563,7 +1590,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 <div><label style={styles.label}>Resultado 1X2:</label><select value={resultado1x2} onChange={(e) => setResultado1x2(e.target.value)} style={styles.adminSelect}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
                 <div><label style={styles.label}>Apertura Apuestas:</label><input type="datetime-local" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} style={styles.adminInput} /></div>
                 <div><label style={styles.label}>Cierre Apuestas:</label><input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={styles.adminInput} /></div>
-                {/* --- MEJORA 1: Input para fechaPartido --- */}
                 <div><label style={styles.label}>Fecha del Partido:</label><input type="datetime-local" value={fechaPartido} onChange={(e) => setFechaPartido(e.target.value)} style={styles.adminInput} /></div>
             </div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>Mensaje para la Pantalla Principal:</label><textarea value={splashMessage} onChange={(e) => setSplashMessage(e.target.value)} style={{...styles.input, width: '95%', height: '50px'}} /></div>
@@ -1573,6 +1599,12 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 <button onClick={handleCalcularPuntos} disabled={isCalculating || jornada.estado === 'Finalizada'} style={styles.saveButton}>
                     {isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar'}
                 </button>
+                 {/* NUEVO: Botón para re-calcular insignias, solo visible en jornadas finalizadas */}
+                {jornada.estado === 'Finalizada' && (
+                    <button onClick={handleRecalcularInsignias} disabled={isCalculating} style={{...styles.saveButton, backgroundColor: colors.blue}}>
+                        {isCalculating ? 'Calculando...' : 'Re-calcular Insignias'}
+                    </button>
+                )}
                 <button onClick={handleResetBote} disabled={isSaving} style={{...styles.saveButton, backgroundColor: colors.warning, color: colors.deepBlue}}>
                     Resetear Bote a 0€
                 </button>
@@ -1677,6 +1709,89 @@ const AdminEscudosManager = ({ onBack, teamLogos }) => {
                     </div>
                 ))}
             </div>
+        </div>
+    );
+};
+
+// NUEVO: Componente para gestionar la plantilla de jugadores.
+const AdminPlantillaManager = ({ onBack, plantilla, setPlantilla }) => {
+    const [jugadores, setJugadores] = useState(plantilla);
+    const [newJugador, setNewJugador] = useState({ dorsal: '', nombre: '', imageUrl: '' });
+    const [saving, setSaving] = useState(false);
+    const [message, setMessage] = useState('');
+
+    const handleInputChange = (index, field, value) => {
+        const updatedJugadores = [...jugadores];
+        updatedJugadores[index][field] = value;
+        setJugadores(updatedJugadores);
+    };
+
+    const handleNewJugadorChange = (field, value) => {
+        setNewJugador(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleAddJugador = () => {
+        if (!newJugador.nombre) {
+            alert("El nombre del jugador no puede estar vacío.");
+            return;
+        }
+        setJugadores([...jugadores, { ...newJugador, id: Date.now() }]); // Usamos un id temporal
+        setNewJugador({ dorsal: '', nombre: '', imageUrl: '' });
+    };
+
+    const handleRemoveJugador = (index) => {
+        if (window.confirm(`¿Seguro que quieres eliminar a ${jugadores[index].nombre}?`)) {
+            const updatedJugadores = jugadores.filter((_, i) => i !== index);
+            setJugadores(updatedJugadores);
+        }
+    };
+
+    const handleSaveChanges = async () => {
+        setSaving(true);
+        setMessage('');
+        const plantillaRef = doc(db, "configuracion", "plantilla");
+        try {
+            // Quitamos el id temporal antes de guardar
+            const jugadoresToSave = jugadores.map(({ id, ...rest }) => rest);
+            await setDoc(plantillaRef, { jugadores: jugadoresToSave });
+            setPlantilla(jugadores); // Actualizamos el estado global
+            setMessage('¡Plantilla guardada con éxito!');
+            setTimeout(() => setMessage(''), 3000);
+        } catch (error) {
+            console.error("Error al guardar la plantilla:", error);
+            setMessage('Error al guardar la plantilla.');
+        }
+        setSaving(false);
+    };
+
+    return (
+        <div style={styles.adminJornadaItem}>
+            <button onClick={onBack} style={styles.backButton}>&larr; Volver al Panel</button>
+            <h3 style={styles.formSectionTitle}>Gestión de Plantilla</h3>
+            <p style={{textAlign: 'center', marginBottom: '20px'}}>Añade, edita o elimina jugadores de la plantilla.</p>
+            
+            <div style={styles.plantillaList}>
+                {jugadores.map((jugador, index) => (
+                    <div key={jugador.id || index} style={styles.plantillaItem}>
+                        <input type="text" value={jugador.dorsal} onChange={(e) => handleInputChange(index, 'dorsal', e.target.value)} placeholder="Dorsal" style={styles.plantillaInput} />
+                        <input type="text" value={jugador.nombre} onChange={(e) => handleInputChange(index, 'nombre', e.target.value)} placeholder="Nombre" style={{...styles.plantillaInput, flex: 2}} />
+                        <input type="text" value={jugador.imageUrl} onChange={(e) => handleInputChange(index, 'imageUrl', e.target.value)} placeholder="URL Imagen (PNG)" style={{...styles.plantillaInput, flex: 3}} />
+                        <button onClick={() => handleRemoveJugador(index)} style={styles.plantillaRemoveBtn}>-</button>
+                    </div>
+                ))}
+            </div>
+
+            <div style={{...styles.plantillaItem, marginTop: '20px', borderTop: `2px dashed ${colors.blue}`, paddingTop: '20px'}}>
+                <input type="text" value={newJugador.dorsal} onChange={(e) => handleNewJugadorChange('dorsal', e.target.value)} placeholder="Dorsal" style={styles.plantillaInput} />
+                <input type="text" value={newJugador.nombre} onChange={(e) => handleNewJugadorChange('nombre', e.target.value)} placeholder="Nombre" style={{...styles.plantillaInput, flex: 2}} />
+                <input type="text" value={newJugador.imageUrl} onChange={(e) => handleNewJugadorChange('imageUrl', e.target.value)} placeholder="URL Imagen (PNG)" style={{...styles.plantillaInput, flex: 3}} />
+                <button onClick={handleAddJugador} style={styles.plantillaAddBtn}>+</button>
+            </div>
+
+            <button onClick={handleSaveChanges} disabled={saving} style={{...styles.saveButton, marginTop: '30px'}}>
+                {saving ? 'Guardando...' : 'Guardar Cambios en la Plantilla'}
+            </button>
+            {message && <p style={{...styles.message, marginTop: '15px'}}>{message}</p>}
         </div>
     );
 };
@@ -1862,10 +1977,11 @@ const AdminNotifications = ({ onBack }) => {
     );
 };
 
-
-const AdminPanelScreen = ({ teamLogos, plantilla }) => {
+// MODIFICADO: El panel de admin ahora tiene un menú para navegar entre las diferentes secciones.
+const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla }) => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [adminView, setAdminView] = useState('jornadas'); // 'jornadas', 'escudos', 'plantilla', etc.
 
     useEffect(() => {
         const q = query(collection(db, "jornadas"), orderBy("numeroJornada"));
@@ -1874,21 +1990,48 @@ const AdminPanelScreen = ({ teamLogos, plantilla }) => {
         }, (error) => { console.error("Error al cargar jornadas: ", error); setLoading(false); });
         return () => unsubscribe();
     }, []);
+    
+    const renderAdminContent = () => {
+        switch (adminView) {
+            case 'jornadas':
+                return (
+                    <div>
+                        <AdminTestJornada />
+                        <h3 style={{...styles.title, fontSize: '1.5rem', marginTop: '40px'}}>Gestión de Jornadas</h3>
+                        <div style={styles.jornadaList}>
+                            {jornadas.map(jornada => (<JornadaAdminItem key={jornada.id} jornada={jornada} plantilla={plantilla} />))}
+                        </div>
+                    </div>
+                );
+            case 'escudos':
+                return <AdminEscudosManager onBack={() => setAdminView('jornadas')} teamLogos={teamLogos} />;
+            case 'plantilla':
+                return <AdminPlantillaManager onBack={() => setAdminView('jornadas')} plantilla={plantilla} setPlantilla={setPlantilla} />;
+            case 'porraAnual':
+                return <AdminPorraAnual onBack={() => setAdminView('jornadas')} />;
+            case 'usuarios':
+                return <AdminUserManager onBack={() => setAdminView('jornadas')} />;
+            case 'notificaciones':
+                return <AdminNotifications onBack={() => setAdminView('jornadas')} />;
+            default:
+                return null;
+        }
+    };
 
     if (loading) return <LoadingSkeleton />;
 
     return (
         <div>
             <h2 style={styles.title}>PANEL DE ADMINISTRADOR</h2>
-            <AdminNotifications />
-            <AdminUserManager />
-            <AdminPorraAnual />
-            <AdminEscudosManager teamLogos={teamLogos} />
-            <AdminTestJornada />
-            <h3 style={{...styles.title, fontSize: '1.5rem', marginTop: '40px'}}>Gestión de Jornadas</h3>
-            <div style={styles.jornadaList}>
-                {jornadas.map(jornada => (<JornadaAdminItem key={jornada.id} jornada={jornada} plantilla={plantilla} />))}
+            <div style={styles.adminNav}>
+                <button onClick={() => setAdminView('jornadas')} style={styles.adminNavButton}>Jornadas</button>
+                <button onClick={() => setAdminView('plantilla')} style={styles.adminNavButton}>Plantilla</button>
+                <button onClick={() => setAdminView('escudos')} style={styles.adminNavButton}>Escudos</button>
+                <button onClick={() => setAdminView('porraAnual')} style={styles.adminNavButton}>Porra Anual</button>
+                <button onClick={() => setAdminView('usuarios')} style={styles.adminNavButton}>Usuarios</button>
+                <button onClick={() => setAdminView('notificaciones')} style={styles.adminNavButton}>Notificaciones</button>
             </div>
+            {renderAdminContent()}
         </div>
     );
 };
@@ -1910,7 +2053,6 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
     </>)}</div>);
 };
 
-// MODIFICACIÓN: Nuevo componente de login para el admin
 const AdminLoginModal = ({ onClose, onSuccess }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -2106,6 +2248,7 @@ function App() {
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
   const [winnerData, setWinnerData] = useState(null);
   const [liveJornada, setLiveJornada] = useState(null);
+  // MODIFICADO: El estado de la plantilla ahora se gestiona aquí.
   const [plantilla, setPlantilla] = useState([]);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [userProfiles, setUserProfiles] = useState({});
@@ -2124,7 +2267,6 @@ function App() {
         }
     });
     const styleSheet = document.createElement("style"); 
-    // --- MEJORA 2: Añadir keyframes para las animaciones de insignias ---
     styleSheet.innerText = `
         @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2169,7 +2311,8 @@ function App() {
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
     const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
     const qLive = query(collection(db, "jornadas"), where("liveData.isLive", "==", true), limit(1)); const unsubscribeLive = onSnapshot(qLive, (snapshot) => { if (!snapshot.empty) { const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }; setLiveJornada(jornada); } else { setLiveJornada(null); } });
-    const plantillaRef = doc(db, "configuracion", "plantilla"); const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => { if (docSnap.exists() && docSnap.data().jugadores) { setPlantilla(docSnap.data().jugadores); } else { setDoc(plantillaRef, { jugadores: PLANTILLA_INICIAL }); setPlantilla(PLANTILLA_INICIAL); } });
+    // MODIFICADO: Se lee la plantilla desde la base de datos.
+    const plantillaRef = doc(db, "configuracion", "plantilla"); const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => { if (docSnap.exists() && docSnap.data().jugadores) { setPlantilla(docSnap.data().jugadores); } else { setDoc(plantillaRef, { jugadores: [] }); setPlantilla([]); } });
     const clasificacionRef = collection(db, "clasificacion"); const unsubscribeProfiles = onSnapshot(clasificacionRef, (snapshot) => { const profiles = {}; snapshot.forEach(doc => { profiles[doc.id] = doc.data(); }); setUserProfiles(profiles); });
     const statusRef = ref(rtdb, 'status/'); const unsubscribeStatus = onValue(statusRef, (snapshot) => { const data = snapshot.val(); setOnlineUsers(data || {}); });
     return () => { document.head.removeChild(styleSheet); unsubscribeConfig(); unsubscribeAuth(); unsubscribeEscudos(); unsubscribeLive(); unsubscribePlantilla(); unsubscribeProfiles(); unsubscribeStatus(); }
@@ -2252,7 +2395,8 @@ function App() {
                 case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
                 case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} userProfiles={userProfiles} />;
                 case 'pagos': return <PagosScreen user={currentUser} userProfiles={userProfiles} />;
-                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} plantilla={plantilla} /> : null;
+                // MODIFICADO: Se pasa la plantilla y el setter al panel de admin.
+                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} plantilla={plantilla} setPlantilla={setPlantilla} /> : null;
                 default: return null;
             }
         };
@@ -2454,18 +2598,10 @@ const styles = {
     debtGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px' },
     debtItemPaid: { display: 'flex', justifyContent: 'space-between', padding: '8px', borderRadius: '6px', backgroundColor: `${colors.success}20` },
     debtItemOwes: { display: 'flex', justifyContent: 'space-between', padding: '8px', borderRadius: '6px', backgroundColor: `${colors.danger}20`, fontWeight: 'bold' },
-    adminNav: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '20px' },
+    adminNav: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '20px' },
     adminNavButton: { padding: '15px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease' },
     presetMessagesContainer: { display: 'flex', flexDirection: 'column', gap: '10px' },
     presetMessageButton: { padding: '12px', textAlign: 'left', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '6px', cursor: 'pointer' },
-    chatSection: { marginTop: '30px', borderTop: `2px solid ${colors.blue}`, paddingTop: '20px' },
-    chatTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, textAlign: 'center', fontSize: '1.3rem', marginBottom: '15px' },
-    chatContainer: { height: '250px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '10px', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse', border: `1px solid ${colors.blue}80` },
-    chatMessage: { marginBottom: '10px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', animation: 'fadeIn 0.5s ease' },
-    chatActions: { marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px' },
-    chatActionGroup: { display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' },
-    chatActionButton: { padding: '8px 12px', backgroundColor: colors.darkUIAlt, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem' },
-    chatActionEmojiButton: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '5px' },
     debtBanner: { backgroundColor: colors.warning, color: colors.deepBlue, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1rem' },
     interJornadaContainer: { display: 'flex', flexDirection: 'column', gap: '20px' },
     interJornadaBox: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '12px', border: `1px solid ${colors.blue}80`, textAlign: 'center' },
@@ -2474,6 +2610,16 @@ const styles = {
     interJornadaWinner: { color: colors.gold, fontWeight: 'bold', marginTop: '10px' },
     interJornadaBote: { color: colors.success, fontWeight: 'bold', marginTop: '10px' },
     paymentStatus: { fontSize: '1.1rem', fontWeight: 'bold', margin: '20px 0', padding: '15px', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', border: `2px solid` },
+    // NUEVO: Estilos para el gestor de plantilla
+    plantillaList: { display: 'flex', flexDirection: 'column', gap: '10px' },
+    plantillaItem: { display: 'flex', gap: '10px', alignItems: 'center' },
+    plantillaInput: { flex: 1, padding: '8px', fontSize: '0.9rem', backgroundColor: colors.deepBlue, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '4px' },
+    plantillaRemoveBtn: { backgroundColor: colors.danger, color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontWeight: 'bold' },
+    plantillaAddBtn: { backgroundColor: colors.success, color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontWeight: 'bold' },
+    // NUEVO: Estilos para el selector de goleador con imagen
+    goleadorSelectorContainer: { position: 'relative' },
+    goleadorPreview: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', backgroundColor: 'rgba(0,0,0,0.2)', padding: '5px', borderRadius: '8px' },
+    goleadorPreviewImg: { width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' },
 };
 
 export default App;
