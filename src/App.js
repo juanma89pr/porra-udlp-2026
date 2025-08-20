@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+// MODIFICACIÓN: Añadimos signInWithEmailAndPassword y signOut para el login de admin
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
@@ -34,7 +35,8 @@ const VAPID_KEY = "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE";
 
 // --- DATOS DE LA APLICACIÓN ---
 const JUGADORES = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
-const ADMIN_PASSWORD = "porra2026lpa";
+// ELIMINADO: La contraseña ya no se guarda en el código
+// const ADMIN_PASSWORD = "porra2026lpa"; 
 const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
 const SECRET_MESSAGES = [
@@ -491,7 +493,6 @@ const initialPronosticoState = {
     jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) 
 };
 
-// --- INICIO CORRECCIÓN ---
 // Componente para mostrar información de la próxima jornada
 const ProximaJornadaInfo = ({ jornada }) => {
     if (!jornada) return null;
@@ -937,7 +938,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
-// --- FIN CORRECCIÓN ---
 
 const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
@@ -1158,7 +1158,6 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     const getRankIcon = (index) => { if (index === 0) return '🥇'; if (index === 1) return '🥈'; if (index === 2) return '🥉'; return `${index + 1}º`; };
     return (<div><h2 style={styles.title}>CLASIFICACIÓN</h2><div style={{overflowX: 'auto'}}><table style={styles.table}><thead><tr><th style={styles.th}>POS</th><th style={styles.th}>JUGADOR</th>{isLive && <th style={styles.th}>PUNTOS (EN VIVO)</th>}<th style={styles.th}>PUNTOS TOTALES</th><th style={{...styles.th, textAlign: 'center'}}>JOKERS</th></tr></thead><tbody>{liveClasificacion.map((jugador, index) => { const profile = userProfiles[jugador.id] || {}; return (<tr key={jugador.id} style={getRankStyle(index, jugador.id)}><td style={styles.tdRank}>{getRankIcon(index)}</td><td style={styles.td}><PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} />{rachas[jugador.id]}</td>{isLive && <td style={{...styles.td, color: styles.colors.gold, fontWeight: 'bold'}}><AnimatedPoints value={jugador.puntosEnVivo} /></td>}<td style={styles.td}><AnimatedPoints value={jugador.puntosTotales} /></td><td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>{jugador.jokersRestantes !== undefined ? jugador.jokersRestantes : 2} 🃏</td></tr>)})}</tbody></table></div></div>);
 };
-
 // --- INICIO BLOQUE 5.2: Habilitar edición de fechas en Admin Panel ---
 const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [estado, setEstado] = useState(jornada.estado);
@@ -1679,10 +1678,46 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
     </>)}</div>);
 };
 
+// MODIFICACIÓN: Nuevo componente de login para el admin
 const AdminLoginModal = ({ onClose, onSuccess }) => {
-    const [password, setPassword] = useState(''); const [error, setError] = useState('');
-    const handleSubmit = (e) => { e.preventDefault(); if (password === ADMIN_PASSWORD) { onSuccess(); } else { setError('Contraseña incorrecta'); } };
-    return (<div style={styles.modalOverlay}><div style={styles.modalContent}><h3 style={styles.title}>ACCESO ADMIN</h3><form onSubmit={handleSubmit}><label style={styles.label}>Contraseña:</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={styles.input}/>{error && <p style={{color: styles.colors.danger}}>{error}</p>}<div style={{display: 'flex', justifyContent: 'space-between', marginTop: '20px'}}><button type="button" onClick={onClose} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>CANCELAR</button><button type="submit" style={styles.mainButton}>ENTRAR</button></div></form></div></div>);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+            onSuccess();
+        } catch (err) {
+            setError('Error: Email o contraseña incorrectos.');
+            console.error("Error de login de admin:", err);
+        }
+    };
+
+    return (
+        <div style={styles.modalOverlay}>
+            <div style={styles.modalContent}>
+                <h3 style={styles.title}>ACCESO ADMIN</h3>
+                <form onSubmit={handleSubmit}>
+                    <div style={styles.formGroup}>
+                        <label style={styles.label}>Email:</label>
+                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={styles.input} required />
+                    </div>
+                    <div style={styles.formGroup}>
+                        <label style={styles.label}>Contraseña:</label>
+                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={styles.input} required />
+                    </div>
+                    {error && <p style={{color: styles.colors.danger, textAlign: 'center'}}>{error}</p>}
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '20px'}}>
+                        <button type="button" onClick={onClose} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>CANCELAR</button>
+                        <button type="submit" style={styles.mainButton}>ENTRAR</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
 };
 
 const PagosScreen = ({ user, userProfiles }) => {
@@ -1843,9 +1878,23 @@ function App() {
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [userProfiles, setUserProfiles] = useState({});
   const [onlineUsers, setOnlineUsers] = useState({});
+  // MODIFICACIÓN: Guardamos el usuario anónimo original
+  const anonymousUserRef = useRef(null);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => { if (!user) { signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error)); } });
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => { 
+        if (user && !user.isAnonymous) {
+            // Es el admin
+            setIsAdminAuthenticated(true);
+        } else if (user && user.isAnonymous) {
+            // Es un jugador (o el admin que ha vuelto atrás)
+            anonymousUserRef.current = user;
+            setIsAdminAuthenticated(false);
+        } else {
+             // Nadie logueado, iniciamos sesión anónima
+            signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error));
+        }
+    });
     const styleSheet = document.createElement("style"); styleSheet.type = "text/css"; styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; }`;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
@@ -1899,9 +1948,24 @@ function App() {
       }
   };
 
-  const handleLogout = () => { if(currentUser) {const userStatusRef = ref(rtdb, 'status/' + currentUser); set(userStatusRef, false);} setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false); };
+  const handleLogout = async () => {
+    if (currentUser) {
+        const userStatusRef = ref(rtdb, 'status/' + currentUser);
+        set(userStatusRef, false);
+    }
+    // MODIFICACIÓN: Si el admin cierra sesión, volvemos al usuario anónimo
+    if (isAdminAuthenticated) {
+        await signOut(auth);
+        // Forzamos el re-login anónimo para que la app siga funcionando
+        await signInAnonymously(auth);
+    }
+    setCurrentUser(null);
+    setScreen('login');
+    setIsAdminAuthenticated(false);
+  };
+
   const handleSaveProfile = async (user, profileData) => { const profileRef = doc(db, "clasificacion", user); await setDoc(profileRef, profileData, { merge: true }); setScreen('app'); setActiveTab('miJornada'); };
-  const handleNavClick = (tab) => { setViewingJornadaId(null); setViewingPorraAnual(false); setActiveTab(tab); if (tab !== 'admin') { setIsAdminAuthenticated(false); } };
+  const handleNavClick = (tab) => { setViewingJornadaId(null); setViewingPorraAnual(false); setActiveTab(tab); if (tab !== 'admin' && isAdminAuthenticated) { signOut(auth).then(() => signInAnonymously(auth)); } };
   const handleAdminClick = () => { if (isAdminAuthenticated) { setActiveTab('admin'); } else { setShowAdminLogin(true); } };
   const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
 
