@@ -35,8 +35,6 @@ const VAPID_KEY = "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE";
 
 // --- DATOS DE LA APLICACIÓN ---
 const JUGADORES = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
-// ELIMINADO: La contraseña ya no se guarda en el código
-// const ADMIN_PASSWORD = "porra2026lpa"; 
 const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
 const SECRET_MESSAGES = [
@@ -46,6 +44,16 @@ const SECRET_MESSAGES = [
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
 const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
+
+// --- MEJORA 2: Definición de Insignias ---
+const BADGE_DEFINITIONS = {
+    lider_general: { icon: '🥇', name: 'Líder General', priority: 1, style: 'gold-leader' },
+    campeon_jornada: { icon: '🏆', name: 'Campeón de la Jornada', priority: 2, style: 'gold-leader' },
+    en_racha: { icon: '🔥', name: 'En Racha', priority: 3, style: 'fire-streak' },
+    mala_racha: { icon: '🥶', name: 'Mala Racha', priority: 4, style: 'cold-streak' },
+    // Se pueden añadir más insignias aquí en el futuro
+};
+
 
 const EQUIPOS_LIGA = [
     "UD Las Palmas", "FC Andorra", "Córdoba CF", "Málaga CF", "Burgos CF",
@@ -166,8 +174,25 @@ const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.ligh
     const icon = finalProfile.icon || '';
     const isGradient = typeof color === 'string' && color.startsWith('linear-gradient');
     const nameStyle = { ...(isGradient ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color: color }) };
-    return (<span style={{...customStyle, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>{icon && <span>{icon}</span>}<span style={nameStyle}>{name}</span></span>);
+    
+    // --- MEJORA 2: Lógica para mostrar la insignia de mayor prioridad ---
+    const highestPriorityBadge = useMemo(() => {
+        if (!finalProfile.badges || finalProfile.badges.length === 0) return null;
+        // Ordenamos las insignias por prioridad (menor número = mayor prioridad) y cogemos la primera
+        return finalProfile.badges
+            .map(badgeKey => ({ key: badgeKey, ...BADGE_DEFINITIONS[badgeKey] }))
+            .sort((a, b) => a.priority - b.priority)[0];
+    }, [finalProfile.badges]);
+
+    return (
+        <span style={{...customStyle, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            {highestPriorityBadge && <span title={highestPriorityBadge.name}>{highestPriorityBadge.icon}</span>}
+            {icon && <span>{icon}</span>}
+            <span style={nameStyle}>{name}</span>
+        </span>
+    );
 };
+
 
 const LiveBanner = ({ liveData, jornada }) => {
     if (!jornada || !liveData || !liveData.isLive) return null;
@@ -302,7 +327,6 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
 
     useEffect(() => {
         if (!jornadaInfo) return;
-        // --- INICIO BLOQUE 5.1: Lógica de cuenta atrás mejorada ---
         const targetDate = jornadaInfo.type === 'activa' 
             ? jornadaInfo.fechaCierre?.toDate() 
             : (jornadaInfo.type === 'proxima' ? jornadaInfo.fechaApertura?.toDate() : null);
@@ -333,7 +357,6 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
         }, 1000);
 
         return () => clearInterval(interval);
-        // --- FIN BLOQUE 5.1 ---
     }, [jornadaInfo]);
     
     const handleReaction = async (emoji) => {
@@ -376,17 +399,18 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
     const renderJornadaInfo = () => {
         if (!jornadaInfo) { return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>); }
         let infoContent;
+        // --- MEJORA 1: Usar fechaPartido para mostrar la hora del partido ---
+        const fechaMostrada = jornadaInfo.fechaPartido || jornadaInfo.fechaCierre;
+
         switch (jornadaInfo.type) {
-            // --- INICIO BLOQUE 5.1: Ajuste de textos en cuenta atrás ---
             case 'activa': 
-                infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); 
+                infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); 
                 break;
             case 'proxima': 
-                infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>LA APERTURA COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); 
+                infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>LA APERTURA COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); 
                 break;
-            // --- FIN BLOQUE 5.1 ---
             case 'cerrada': 
-                infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p>Esperando el resultado del partido...</p></>); 
+                infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p><p>Esperando el resultado del partido...</p></>); 
                 break;
             case 'finalizada': 
                 infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); 
@@ -445,6 +469,20 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
         return [...recentUsers, ...remainingJugadores];
     }, [recentUsers]);
 
+    // --- MEJORA 2: Función para obtener el estilo dinámico del botón según la insignia ---
+    const getBadgeStyle = (profile) => {
+        if (!profile || !profile.badges || profile.badges.length === 0) return {};
+        
+        const highestPriorityBadge = profile.badges
+            .map(badgeKey => ({ key: badgeKey, ...BADGE_DEFINITIONS[badgeKey] }))
+            .sort((a, b) => a.priority - b.priority)[0];
+            
+        if (highestPriorityBadge && highestPriorityBadge.style) {
+            return { animation: `${highestPriorityBadge.style}-animation 2s infinite alternate` };
+        }
+        return {};
+    };
+
     return (
         <div style={styles.loginContainer}>
             <h2 style={styles.title}>SELECCIONA TU PERFIL</h2>
@@ -455,10 +493,14 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
                     const isRecent = recentUsers.includes(jugador);
                     const isGradient = typeof profile.color === 'string' && profile.color.startsWith('linear-gradient');
                     
+                    // Aplicamos el estilo de la insignia
+                    const badgeStyle = getBadgeStyle(profile);
+
                     const buttonStyle = {
                         ...styles.userButton,
                         ...(hoveredUser === jugador ? styles.userButtonHover : {}),
-                        ...(isOnline ? styles.userButtonOnline : {})
+                        ...(isOnline ? styles.userButtonOnline : {}),
+                        ...badgeStyle // Aquí se añade el estilo dinámico
                     };
 
                     const circleStyle = { ...styles.loginProfileIconCircle, ...(isGradient ? { background: profile.color } : { backgroundColor: profile.color || styles.colors.blue }) };
@@ -481,6 +523,7 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     );
 };
 
+
 const initialPronosticoState = { 
     golesLocal: '', 
     golesVisitante: '', 
@@ -496,12 +539,14 @@ const initialPronosticoState = {
 // Componente para mostrar información de la próxima jornada
 const ProximaJornadaInfo = ({ jornada }) => {
     if (!jornada) return null;
+    // --- MEJORA 1: Usar fechaPartido para la fecha del partido ---
+    const fechaMostrada = jornada.fechaPartido || jornada.fechaCierre;
     return (
         <div style={{marginTop: '30px', borderTop: `1px solid ${styles.colors.blue}`, paddingTop: '20px'}}>
             <h4 style={{...styles.formSectionTitle, fontSize: '1.2rem'}}>Próximo Partido: Jornada {jornada.numeroJornada}</h4>
             <p style={{fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center'}}>{jornada.equipoLocal} vs {jornada.equipoVisitante}</p>
             {jornada.bote > 0 && <div style={{...styles.jackpotBanner, marginTop: '15px'}}>💰 JACKPOT: ¡{jornada.bote}€ DE BOTE! 💰</div>}
-            <p style={{textAlign: 'center'}}>🗓️ {formatFullDateTime(jornada.fechaCierre)}</p>
+            <p style={{textAlign: 'center'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p>
             {jornada.estadio && <p style={{textAlign: 'center'}}>📍 {jornada.estadio}</p>}
         </div>
     );
@@ -1032,6 +1077,8 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
 
     const renderContent = () => {
         if (jornadaActual) {
+            // --- MEJORA 1: Usar fechaPartido para la fecha del partido ---
+            const fechaMostrada = jornadaActual.fechaPartido || jornadaActual.fechaCierre;
             return (
                 <div style={{...styles.laJornadaContainer, backgroundImage: `linear-gradient(rgba(10, 25, 47, 0.85), rgba(10, 25, 47, 0.85)), url(${jornadaActual.estadioImageUrl})`}}>
                     <h3>{jornadaActual.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornadaActual.numeroJornada}`}</h3>
@@ -1040,12 +1087,10 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                         {isLiveView ? (<span style={styles.liveScoreInPage}>{liveData.golesLocal} - {liveData.golesVisitante}</span>) : (<span style={styles.vs}>VS</span>)}
                         <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoVisitante} imgStyle={styles.matchInfoLogo} />
                     </div>
-                    {/* --- INICIO BLOQUE 5.3: Mostrar fecha y hora completa --- */}
                     <div style={styles.matchDetails}>
                         <span>📍 {jornadaActual.estadio || 'Estadio por confirmar'}</span>
-                        <span>🗓️ {formatFullDateTime(jornadaActual.fechaCierre)}</span>
+                        <span>🗓️ {formatFullDateTime(fechaMostrada)}</span>
                     </div>
-                    {/* --- FIN BLOQUE 5.3 --- */}
                     
                     {jornadaStats && !isLiveView && (
                         <div style={styles.statsGrid}>
@@ -1082,9 +1127,8 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                     <div style={styles.interJornadaBox}>
                         <h3 style={styles.interJornadaTitle}>Próxima Jornada</h3>
                         <p style={styles.interJornadaTeams}>{proximaJornada.equipoLocal} vs {proximaJornada.equipoVisitante}</p>
-                        {/* --- INICIO BLOQUE 5.3: Mostrar fecha y hora completa --- */}
-                        <p>{formatFullDateTime(proximaJornada.fechaCierre)}</p>
-                        {/* --- FIN BLOQUE 5.3 --- */}
+                        {/* --- MEJORA 1: Usar fechaPartido para la fecha del partido --- */}
+                        <p>{formatFullDateTime(proximaJornada.fechaPartido || proximaJornada.fechaCierre)}</p>
                         {proximaJornada.bote > 0 && <p style={styles.interJornadaBote}>¡Bote de {proximaJornada.bote}€ en juego!</p>}
                     </div>
                 ) : <div style={styles.interJornadaBox}><p>El administrador no ha configurado la próxima jornada.</p></div>}
@@ -1128,11 +1172,13 @@ const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
     const [jornadas, setJornadas] = useState([]); const [loading, setLoading] = useState(true);
     useEffect(() => { const q = query(collection(db, "jornadas"), orderBy("numeroJornada")); const unsubscribe = onSnapshot(q, (querySnapshot) => { setJornadas(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); setLoading(false); }, (error) => { console.error("Error cargando calendario: ", error); setLoading(false); }); return () => unsubscribe(); }, []);
     if (loading) return <LoadingSkeleton />;
-    return (<div><h2 style={styles.title}>CALENDARIO</h2><div style={styles.jornadaList}>{jornadas.map(jornada => (<div key={jornada.id} style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`} : {...styles.jornadaItem, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`}} onClick={() => onViewJornada(jornada.id)}><div style={styles.jornadaInfo}><div style={styles.jornadaTeams}><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 25, height: 25}} /><span style={{color: styles.colors.yellow, margin: '0 10px'}}>vs</span><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 25, height: 25}} /></div><strong>{jornada.esVip && '⭐ '}{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}</strong>
-    {/* --- INICIO BLOQUE 5.3: Mostrar fecha y hora completa --- */}
-    <small>{formatFullDateTime(jornada.fechaCierre)} - {jornada.estadio || 'Estadio por confirmar'}</small>
-    {/* --- FIN BLOQUE 5.3 --- */}
-    </div><div style={{...styles.statusBadge, backgroundColor: styles.colors.status[jornada.estado]}}>{jornada.estado}</div></div>))}</div></div>);
+    return (<div><h2 style={styles.title}>CALENDARIO</h2><div style={styles.jornadaList}>{jornadas.map(jornada => {
+        // --- MEJORA 1: Usar fechaPartido para la fecha del partido ---
+        const fechaMostrada = jornada.fechaPartido || jornada.fechaCierre;
+        return (<div key={jornada.id} style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`} : {...styles.jornadaItem, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`}} onClick={() => onViewJornada(jornada.id)}><div style={styles.jornadaInfo}><div style={styles.jornadaTeams}><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 25, height: 25}} /><span style={{color: styles.colors.yellow, margin: '0 10px'}}>vs</span><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 25, height: 25}} /></div><strong>{jornada.esVip && '⭐ '}{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}</strong>
+    <small>{formatFullDateTime(fechaMostrada)} - {jornada.estadio || 'Estadio por confirmar'}</small>
+    </div><div style={{...styles.statusBadge, backgroundColor: styles.colors.status[jornada.estado]}}>{jornada.estado}</div></div>)
+    })}</div></div>);
 };
 
 const AnimatedPoints = ({ value }) => {
@@ -1149,14 +1195,14 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     const [clasificacion, setClasificacion] = useState([]); const [loading, setLoading] = useState(true); const [rachas, setRachas] = useState({}); const [livePronosticos, setLivePronosticos] = useState([]);
     useEffect(() => {
         const fetchRachas = async () => { const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(2)); const jornadasSnap = await getDocs(q); if (jornadasSnap.docs.length < 2) return; const [jornada1, jornada2] = jornadasSnap.docs.map(d => ({id: d.id, ...d.data()})); const [pronosticos1Snap, pronosticos2Snap] = await Promise.all([getDocs(collection(db, "pronosticos", jornada1.id, "jugadores")), getDocs(collection(db, "pronosticos", jornada2.id, "jugadores"))]); const pronosticos1 = Object.fromEntries(pronosticos1Snap.docs.map(d => [d.id, d.data()])); const pronosticos2 = Object.fromEntries(pronosticos2Snap.docs.map(d => [d.id, d.data()])); const newRachas = {}; JUGADORES.forEach(jugador => { const p1 = pronosticos1[jugador]; const p2 = pronosticos2[jugador]; const aciertoExacto1 = p1 && parseInt(p1.golesLocal) === jornada1.resultadoLocal && parseInt(p1.golesVisitante) === jornada1.resultadoVisitante; const aciertoExacto2 = p2 && parseInt(p2.golesLocal) === jornada2.resultadoLocal && parseInt(p2.golesVisitante) === jornada2.resultadoVisitante; if (aciertoExacto1 && aciertoExacto2) { newRachas[jugador] = '🔥'; } else if ((p1?.puntosObtenidos === 0 || !p1) && (p2?.puntosObtenidos === 0 || !p2)) { newRachas[jugador] = '🥶'; } }); setRachas(newRachas); };
-        fetchRachas(); const qClasificacion = query(collection(db, "clasificacion")); const unsubscribe = onSnapshot(qClasificacion, (querySnapshot) => { const clasificacionData = {}; querySnapshot.forEach((doc) => { clasificacionData[doc.id] = { id: doc.id, ...doc.data() }; }); const processedData = JUGADORES.map(jugadorId => { return clasificacionData[jugadorId] || { id: jugadorId, jugador: jugadorId, puntosTotales: 0, jokersRestantes: 2 }; }); setClasificacion(processedData); setLoading(false); }, (error) => { console.error("Error al cargar la clasificación: ", error); setLoading(false); }); return () => unsubscribe();
+        fetchRachas(); const qClasificacion = query(collection(db, "clasificacion")); const unsubscribe = onSnapshot(qClasificacion, (querySnapshot) => { const clasificacionData = {}; querySnapshot.forEach((doc) => { clasificacionData[doc.id] = { id: doc.id, ...doc.data() }; }); const processedData = JUGADORES.map(jugadorId => { return clasificacionData[jugadorId] || { id: jugadorId, jugador: jugadorId, puntosTotales: 0, jokersRestantes: 2, badges: [] }; }); setClasificacion(processedData); setLoading(false); }, (error) => { console.error("Error al cargar la clasificación: ", error); setLoading(false); }); return () => unsubscribe();
     }, []);
     useEffect(() => { if (liveJornada) { const pronosticosRef = collection(db, "pronosticos", liveJornada.id, "jugadores"); const unsubscribe = onSnapshot(pronosticosRef, (snapshot) => { setLivePronosticos(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))); }); return () => unsubscribe(); } else { setLivePronosticos([]); } }, [liveJornada]);
     const liveClasificacion = useMemo(() => { const isLive = liveData && liveData.isLive && liveJornada; const liveScores = new Map(); if (isLive) { livePronosticos.forEach(p => { const puntosProvisionales = calculateProvisionalPoints(p, liveData, liveJornada); liveScores.set(p.id, puntosProvisionales); }); } const sorted = [...clasificacion].map(jugador => ({ ...jugador, puntosEnVivo: (jugador.puntosTotales || 0) + (liveScores.get(jugador.id) || 0) })).sort((a, b) => { const pointsA = isLive ? a.puntosEnVivo : (a.puntosTotales || 0); const pointsB = isLive ? b.puntosEnVivo : (b.puntosTotales || 0); return pointsB - pointsA; }); return sorted; }, [clasificacion, liveData, liveJornada, livePronosticos]);
     if (loading) return <LoadingSkeleton type="table" />; const isLive = liveData && liveData.isLive;
     const getRankStyle = (index, jugadorId) => { let style = {}; if (index === 0) style = styles.top1Row; else if (index === 1) style = styles.top2Row; else if (index === 2) style = styles.top3Row; else style = styles.tr; if (jugadorId === currentUser) style = {...style, ...styles.currentUserRow}; return style; };
     const getRankIcon = (index) => { if (index === 0) return '🥇'; if (index === 1) return '🥈'; if (index === 2) return '🥉'; return `${index + 1}º`; };
-    return (<div><h2 style={styles.title}>CLASIFICACIÓN</h2><div style={{overflowX: 'auto'}}><table style={styles.table}><thead><tr><th style={styles.th}>POS</th><th style={styles.th}>JUGADOR</th>{isLive && <th style={styles.th}>PUNTOS (EN VIVO)</th>}<th style={styles.th}>PUNTOS TOTALES</th><th style={{...styles.th, textAlign: 'center'}}>JOKERS</th></tr></thead><tbody>{liveClasificacion.map((jugador, index) => { const profile = userProfiles[jugador.id] || {}; return (<tr key={jugador.id} style={getRankStyle(index, jugador.id)}><td style={styles.tdRank}>{getRankIcon(index)}</td><td style={styles.td}><PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} />{rachas[jugador.id]}</td>{isLive && <td style={{...styles.td, color: styles.colors.gold, fontWeight: 'bold'}}><AnimatedPoints value={jugador.puntosEnVivo} /></td>}<td style={styles.td}><AnimatedPoints value={jugador.puntosTotales} /></td><td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>{jugador.jokersRestantes !== undefined ? jugador.jokersRestantes : 2} 🃏</td></tr>)})}</tbody></table></div></div>);
+    return (<div><h2 style={styles.title}>CLASIFICACIÓN</h2><div style={{overflowX: 'auto'}}><table style={styles.table}><thead><tr><th style={styles.th}>POS</th><th style={styles.th}>JUGADOR</th>{isLive && <th style={styles.th}>PUNTOS (EN VIVO)</th>}<th style={styles.th}>PUNTOS TOTALES</th><th style={{...styles.th, textAlign: 'center'}}>JOKERS</th></tr></thead><tbody>{liveClasificacion.map((jugador, index) => { const profile = userProfiles[jugador.id] || {}; return (<tr key={jugador.id} style={getRankStyle(index, jugador.id)}><td style={styles.tdRank}>{getRankIcon(index)}</td><td style={styles.td}><PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} /></td>{isLive && <td style={{...styles.td, color: styles.colors.gold, fontWeight: 'bold'}}><AnimatedPoints value={jugador.puntosEnVivo} /></td>}<td style={styles.td}><AnimatedPoints value={jugador.puntosTotales} /></td><td style={{...styles.td, ...styles.tdIcon, textAlign: 'center'}}>{jugador.jokersRestantes !== undefined ? jugador.jokersRestantes : 2} 🃏</td></tr>)})}</tbody></table></div></div>);
 };
 // --- INICIO BLOQUE 5.2: Habilitar edición de fechas en Admin Panel ---
 const JornadaAdminItem = ({ jornada, plantilla }) => {
@@ -1179,6 +1225,8 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
 
     const [fechaApertura, setFechaApertura] = useState(toInputFormat(jornada.fechaApertura));
     const [fechaCierre, setFechaCierre] = useState(toInputFormat(jornada.fechaCierre));
+    // --- MEJORA 1: Añadir estado para fechaPartido ---
+    const [fechaPartido, setFechaPartido] = useState(toInputFormat(jornada.fechaPartido));
     
     const [estadioImageUrl, setEstadioImageUrl] = useState(jornada.estadioImageUrl || '');
     const [isSaving, setIsSaving] = useState(false);
@@ -1200,16 +1248,16 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 resultado1x2, 
                 esVip, 
                 splashMessage, 
-                // Convertimos el string del input a un objeto de fecha de JS antes de guardar
                 fechaApertura: fechaApertura ? new Date(fechaApertura) : null, 
                 fechaCierre: fechaCierre ? new Date(fechaCierre) : null, 
+                // --- MEJORA 1: Guardar fechaPartido ---
+                fechaPartido: fechaPartido ? new Date(fechaPartido) : null,
                 estadioImageUrl 
             });
             setMessage('¡Guardado!'); setTimeout(() => setMessage(''), 2000);
         } catch (error) { console.error("Error al actualizar: ", error); setMessage('Error al guardar.'); }
         setIsSaving(false);
     };
-    // --- FIN BLOQUE 5.2 ---
 
     const handleUpdateLiveScore = async () => {
         setIsSaving(true);
@@ -1221,6 +1269,7 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         setIsSaving(false);
     };
 
+    // --- MEJORA 2: Lógica de cálculo de puntos y asignación de insignias ---
     const handleCalcularPuntos = async () => {
         if (jornada.estado === 'Finalizada') {
             alert("ERROR: Esta jornada ya ha sido finalizada y los puntos ya se han calculado. No se puede volver a ejecutar esta acción.");
@@ -1229,17 +1278,28 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
 
         if (resultadoLocal === '' || resultadoVisitante === '' || !resultado1x2) { alert("Introduce los goles de ambos equipos y el Resultado 1X2."); return; }
         setIsCalculating(true);
+        
         const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
         const pronosticosSnap = await getDocs(pronosticosRef);
         const pronosticos = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        const clasificacionRef = collection(db, "clasificacion");
+        const clasificacionSnap = await getDocs(clasificacionRef);
+        const clasificacionActual = {};
+        clasificacionSnap.forEach(doc => {
+            clasificacionActual[doc.id] = { id: doc.id, ...doc.data() };
+        });
+
         const batch = writeBatch(db);
         const ganadores = [];
+        const puntosPorJugador = {};
+
         for (const p of pronosticos) {
             let puntosJornada = 0;
-            const esVip = jornada.esVip || false;
+            const esVipJornada = jornada.esVip || false;
             // Acierto Resultado Exacto
             if (p.golesLocal !== '' && p.golesVisitante !== '' && parseInt(p.golesLocal) === parseInt(resultadoLocal) && parseInt(p.golesVisitante) === parseInt(resultadoVisitante)) {
-                puntosJornada += esVip ? 6 : 3;
+                puntosJornada += esVipJornada ? 6 : 3;
                 if (!ganadores.includes(p.id)) ganadores.push(p.id);
             }
             // Acierto 1X2
@@ -1253,27 +1313,75 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 else if (parseInt(resultadoVisitante) < parseInt(resultadoLocal)) resultado1x2Real = 'Pierde UD Las Palmas';
                 else resultado1x2Real = 'Empate';
             }
-            if (p.resultado1x2 === resultado1x2Real) { puntosJornada += esVip ? 2 : 1; }
+            if (p.resultado1x2 === resultado1x2Real) { puntosJornada += esVipJornada ? 2 : 1; }
             // Acierto Goleador
             const goleadorReal = goleador.trim().toLowerCase();
             const goleadorApostado = p.goleador ? p.goleador.trim().toLowerCase() : '';
             if (p.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) { puntosJornada += 1; } 
-            else if (!p.sinGoleador && goleadorApostado === goleadorReal && goleadorReal !== "") { puntosJornada += esVip ? 4 : 2; }
+            else if (!p.sinGoleador && goleadorApostado === goleadorReal && goleadorReal !== "") { puntosJornada += esVipJornada ? 4 : 2; }
             // Acierto Joker
             if (p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0) {
                 for (const jokerP of p.jokerPronosticos) {
                     if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === parseInt(resultadoLocal) && parseInt(jokerP.golesVisitante) === parseInt(resultadoVisitante)) {
-                        puntosJornada += esVip ? 6 : 3;
+                        puntosJornada += esVipJornada ? 6 : 3;
                         if (!ganadores.includes(p.id)) ganadores.push(p.id);
                         break; 
                     }
                 }
             }
+            puntosPorJugador[p.id] = puntosJornada;
             const pronosticoDocRef = doc(db, "pronosticos", jornada.id, "jugadores", p.id);
             batch.update(pronosticoDocRef, { puntosObtenidos: puntosJornada });
+            
             const clasificacionDocRef = doc(db, "clasificacion", p.id);
             batch.set(clasificacionDocRef, { puntosTotales: increment(puntosJornada), jugador: p.id }, { merge: true });
         }
+
+        // Lógica de asignación de insignias
+        const clasificacionNueva = { ...clasificacionActual };
+        for (const jugadorId in puntosPorJugador) {
+            if (clasificacionNueva[jugadorId]) {
+                clasificacionNueva[jugadorId].puntosTotales = (clasificacionNueva[jugadorId].puntosTotales || 0) + puntosPorJugador[jugadorId];
+            } else {
+                clasificacionNueva[jugadorId] = { puntosTotales: puntosPorJugador[jugadorId] };
+            }
+        }
+
+        const sortedClasificacion = Object.values(clasificacionNueva).sort((a, b) => (b.puntosTotales || 0) - (a.puntosTotales || 0));
+        const lider = sortedClasificacion[0];
+
+        for (const jugadorId of JUGADORES) {
+            const jugadorData = clasificacionActual[jugadorId] || { badges: [] };
+            let newBadges = new Set(jugadorData.badges || []);
+
+            // Limpiar insignias de jornada anterior
+            newBadges.delete('campeon_jornada');
+            newBadges.delete('lider_general');
+
+            // Asignar campeón de jornada
+            if (ganadores.includes(jugadorId)) {
+                newBadges.add('campeon_jornada');
+            }
+
+            // Asignar líder general
+            if (lider && jugadorId === lider.id) {
+                newBadges.add('lider_general');
+            }
+
+            // Lógica de rachas (simplificada, se puede mejorar con más historial)
+            const puntosEstaJornada = puntosPorJugador[jugadorId] || 0;
+            if (puntosEstaJornada >= 3) { // Consideramos racha si acierta resultado
+                newBadges.add('en_racha');
+                newBadges.delete('mala_racha');
+            } else if (puntosEstaJornada === 0) {
+                newBadges.add('mala_racha');
+                newBadges.delete('en_racha');
+            }
+
+            const clasificacionDocRef = doc(db, "clasificacion", jugadorId);
+            batch.update(clasificacionDocRef, { badges: Array.from(newBadges) });
+        }
+
         const jornadaRef = doc(db, "jornadas", jornada.id);
         batch.update(jornadaRef, { estado: "Finalizada", ganadores, "liveData.isLive": false });
         if (ganadores.length === 0 && jornada.id !== 'jornada_test') {
@@ -1287,7 +1395,7 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 batch.update(proximaJornadaRef, { bote: increment(nuevoBote) });
             }
         }
-        try { await batch.commit(); alert("¡Puntos calculados y jornada cerrada!"); } 
+        try { await batch.commit(); alert("¡Puntos calculados, insignias asignadas y jornada cerrada!"); } 
         catch (error) { console.error("Error al calcular: ", error); alert("Error al calcular puntos."); }
         setIsCalculating(false);
     };
@@ -1329,10 +1437,10 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 </div>
 
                 <div><label style={styles.label}>Resultado 1X2:</label><select value={resultado1x2} onChange={(e) => setResultado1x2(e.target.value)} style={styles.adminSelect}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
-                {/* --- INICIO BLOQUE 5.2: Inputs de fecha funcionales --- */}
                 <div><label style={styles.label}>Apertura Apuestas:</label><input type="datetime-local" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} style={styles.adminInput} /></div>
                 <div><label style={styles.label}>Cierre Apuestas:</label><input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={styles.adminInput} /></div>
-                {/* --- FIN BLOQUE 5.2 --- */}
+                {/* --- MEJORA 1: Input para fechaPartido --- */}
+                <div><label style={styles.label}>Fecha del Partido:</label><input type="datetime-local" value={fechaPartido} onChange={(e) => setFechaPartido(e.target.value)} style={styles.adminInput} /></div>
             </div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>Mensaje para la Pantalla Principal:</label><textarea value={splashMessage} onChange={(e) => setSplashMessage(e.target.value)} style={{...styles.input, width: '95%', height: '50px'}} /></div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>URL Imagen del Estadio:</label><input type="text" value={estadioImageUrl} onChange={(e) => setEstadioImageUrl(e.target.value)} style={{...styles.input, width: '95%'}} /></div>
@@ -1397,7 +1505,7 @@ const AdminTestJornada = () => {
                 alert("Jornada de prueba desactivada y todos sus datos han sido borrados.");
             }
         } else {
-            const testJornadaData = { numeroJornada: 99, equipoLocal: "UD Las Palmas", equipoVisitante: "Real Zaragoza", estado: "Abierta", esVip: false, bote: 0, fechaStr: "Partido de Prueba", estadio: "Estadio de Pruebas", estadioImageUrl: "https://as01.epimg.net/img/comunes/fotos/fichas/estadios/g/grc.jpg", liveData: { isLive: false, golesLocal: 0, golesVisitante: 0, ultimoGoleador: '' }, fechaApertura: new Date(), fechaCierre: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000), };
+            const testJornadaData = { numeroJornada: 99, equipoLocal: "UD Las Palmas", equipoVisitante: "Real Zaragoza", estado: "Abierta", esVip: false, bote: 0, fechaStr: "Partido de Prueba", estadio: "Estadio de Pruebas", estadioImageUrl: "https://as01.epimg.net/img/comunes/fotos/fichas/estadios/g/grc.jpg", liveData: { isLive: false, golesLocal: 0, golesVisitante: 0, ultimoGoleador: '' }, fechaApertura: new Date(), fechaCierre: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000), fechaPartido: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000) };
             await setDoc(testJornadaRef, testJornadaData);
             alert("Jornada de prueba ACTIVADA. Ahora es visible para todos y puedes gestionarla en la lista de jornadas de abajo.");
         }
@@ -1878,24 +1986,61 @@ function App() {
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [userProfiles, setUserProfiles] = useState({});
   const [onlineUsers, setOnlineUsers] = useState({});
-  // MODIFICACIÓN: Guardamos el usuario anónimo original
   const anonymousUserRef = useRef(null);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => { 
         if (user && !user.isAnonymous) {
-            // Es el admin
             setIsAdminAuthenticated(true);
         } else if (user && user.isAnonymous) {
-            // Es un jugador (o el admin que ha vuelto atrás)
             anonymousUserRef.current = user;
             setIsAdminAuthenticated(false);
         } else {
-             // Nadie logueado, iniciamos sesión anónima
             signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error));
         }
     });
-    const styleSheet = document.createElement("style"); styleSheet.type = "text/css"; styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } @keyframes neon-glow { from { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0f0, 0 0 20px #0f0, 0 0 25px #0f0; } to { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0f0, 0 0 40px #0f0, 0 0 50px #0f0; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } } .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; }`;
+    const styleSheet = document.createElement("style"); 
+    // --- MEJORA 2: Añadir keyframes para las animaciones de insignias ---
+    styleSheet.innerText = `
+        @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { font-size: 16px !important; -webkit-text-size-adjust: 100%; }
+        body, #root { width: 100%; min-width: 100%; overflow-x: hidden; }
+        @keyframes gold-leader-animation { 
+            0% { box-shadow: 0 0 5px ${colors.gold}, 0 0 10px ${colors.gold}, 0 0 15px ${colors.gold}80; } 
+            50% { box-shadow: 0 0 15px ${colors.gold}, 0 0 25px ${colors.gold}, 0 0 35px ${colors.gold}80; }
+            100% { box-shadow: 0 0 5px ${colors.gold}, 0 0 10px ${colors.gold}, 0 0 15px ${colors.gold}80; }
+        }
+        @keyframes fire-streak-animation {
+            0% { box-shadow: 0 0 5px #fca311, 0 0 10px #e63946, 0 0 15px #fca31180; }
+            50% { box-shadow: 0 0 15px #fca311, 0 0 25px #e63946, 0 0 35px #fca31180; }
+            100% { box-shadow: 0 0 5px #fca311, 0 0 10px #e63946, 0 0 15px #fca31180; }
+        }
+        @keyframes cold-streak-animation {
+            0% { box-shadow: 0 0 8px #00aaff, 0 0 15px #00aaff, 0 0 20px #00aaff80; }
+            100% { box-shadow: 0 0 8px #00aaff, 0 0 15px #00aaff, 0 0 20px #00aaff80; }
+        }
+        @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
+        .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
+        @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+        .content-enter-active { animation: slideInFromRight 0.4s ease-out; }
+        @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+        .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } }
+        .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1.5s linear infinite; }
+        @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+        @keyframes blink-live { 50% { background-color: #a11d27; } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } }
+        .point-jump-up { animation: point-jump-up 0.7s ease-out; }
+    `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
     const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
@@ -1953,10 +2098,8 @@ function App() {
         const userStatusRef = ref(rtdb, 'status/' + currentUser);
         set(userStatusRef, false);
     }
-    // MODIFICACIÓN: Si el admin cierra sesión, volvemos al usuario anónimo
     if (isAdminAuthenticated) {
         await signOut(auth);
-        // Forzamos el re-login anónimo para que la app siga funcionando
         await signInAnonymously(auth);
     }
     setCurrentUser(null);
@@ -2031,7 +2174,7 @@ const styles = {
     userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', fontFamily: "'Exo 2', sans-serif", textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     userButtonHover: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
     userButtonSelected: { borderColor: colors.yellow, color: colors.yellow, transform: 'translateY(-5px)', boxShadow: `0 0 20px ${colors.yellow}50` },
-    userButtonOnline: { animation: 'neon-glow 1.5s infinite alternate', borderColor: '#0f0' },
+    userButtonOnline: { borderColor: '#0f0' },
     userButtonRecent: { borderColor: colors.silver },
     recentUserIndicator: { position: 'absolute', top: '5px', right: '10px', color: colors.yellow, fontSize: '1.2rem' },
     loginProfileIconCircle: { width: '40px', height: '40px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1.5rem', color: colors.darkText },
