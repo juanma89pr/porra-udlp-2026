@@ -272,6 +272,7 @@ const NotificationPermissionModal = ({ onAllow, onDeny }) => {
 
 const LoadingSkeleton = ({ type = 'list' }) => {
     if (type === 'table') { return (<div style={styles.skeletonTable}>{Array.from({ length: 5 }).map((_, i) => (<div key={i} style={styles.skeletonRow}><div style={{...styles.skeletonBox, width: '50px', height: '20px'}}></div><div style={{...styles.skeletonBox, width: '120px', height: '20px'}}></div><div style={{...styles.skeletonBox, width: '80px', height: '20px'}}></div><div style={{...styles.skeletonBox, width: '60px', height: '20px'}}></div></div>))}</div>); }
+    if (type === 'splash') { return (<div style={styles.skeletonContainer}><div style={{...styles.skeletonBox, height: '40px', width: '80%', marginBottom: '20px'}}></div><div style={{...styles.skeletonBox, height: '150px', width: '100%'}}></div><div style={{...styles.skeletonBox, height: '60px', width: '90%', marginTop: '10px'}}></div></div>); }
     return (<div style={styles.skeletonContainer}><div style={{...styles.skeletonBox, height: '40px', width: '80%', marginBottom: '20px'}}></div><div style={{...styles.skeletonBox, height: '20px', width: '60%'}}></div><div style={{...styles.skeletonBox, height: '20px', width: '70%', marginTop: '10px'}}></div></div>);
 };
 
@@ -285,28 +286,106 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
+// MODIFICADO: SplashScreen ahora muestra estadísticas interactivas
 const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
     const [loading, setLoading] = useState(true);
     const [showInstallGuide, setShowInstallGuide] = useState(false);
     const isMobile = useMemo(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
-    const [reactions, setReactions] = useState({});
+    
+    // NUEVO: Estados para las estadísticas y pronósticos
+    const [pronosticos, setPronosticos] = useState([]);
+    const [stats, setStats] = useState([]);
+    const [currentStatIndex, setCurrentStatIndex] = useState(0);
 
+    // Se suscribe a los datos de la jornada para obtener las reacciones
     useEffect(() => {
         if (!jornadaInfo || !jornadaInfo.id) return;
         const reactionsRef = doc(db, "jornadas", jornadaInfo.id);
         const unsubscribe = onSnapshot(reactionsRef, (docSnap) => {
-            if (docSnap.exists() && docSnap.data().reactions) {
-                setReactions(docSnap.data().reactions);
-            } else {
-                setReactions({});
+            if (docSnap.exists()) {
+                // Actualizamos la jornadaInfo para tener las reacciones más recientes
+                setJornadaInfo(prev => ({...prev, ...docSnap.data()}));
             }
+        });
+        return () => unsubscribe();
+    }, [jornadaInfo?.id]);
+
+    // Se suscribe a los pronósticos de la jornada activa para calcular estadísticas
+    useEffect(() => {
+        if (!jornadaInfo || !jornadaInfo.id || jornadaInfo.type !== 'activa') {
+            setPronosticos([]);
+            return;
+        };
+        const pronosticosRef = collection(db, "pronosticos", jornadaInfo.id, "jugadores");
+        const unsubscribe = onSnapshot(pronosticosRef, (snapshot) => {
+            const pronosticosData = snapshot.docs.map(d => d.data());
+            setPronosticos(pronosticosData);
         });
         return () => unsubscribe();
     }, [jornadaInfo]);
 
+    // Calcula las estadísticas cuando cambian los pronósticos
+    useEffect(() => {
+        if (pronosticos.length < 5) { // Condición de 5 apuestas mínimas
+            setStats([]);
+            return;
+        }
 
+        const newStats = [];
+
+        // Stat 1: Resultado más común
+        const resultados = pronosticos.map(p => `${p.golesLocal}-${p.golesVisitante}`);
+        const countsResultados = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
+        const [resultadoMasComun, countResultado] = Object.entries(countsResultados).sort((a,b) => b[1] - a[1])[0];
+        newStats.push({
+            id: 'resultado_mas_comun',
+            title: 'El Termómetro de la Porra',
+            value: resultadoMasComun,
+            description: `(apostado ${countResultado} veces)`
+        });
+
+        // Stat 2: Pichichi de la afición
+        const goleadores = pronosticos.map(p => p.goleador).filter(Boolean);
+        if (goleadores.length > 0) {
+            const countsGoleadores = goleadores.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
+            const [pichichi, countPichichi] = Object.entries(countsGoleadores).sort((a,b) => b[1] - a[1])[0];
+            newStats.push({
+                id: 'pichichi_aficion',
+                title: 'El Pichichi de la Afición',
+                value: pichichi,
+                description: `(elegido ${countPichichi} veces)`
+            });
+        }
+        
+        // Stat 3: Tendencia 1X2
+        const total = pronosticos.length;
+        const ganaCount = pronosticos.filter(p => p.resultado1x2 === 'Gana UD Las Palmas').length;
+        const porcentajeGana = ((ganaCount / total) * 100).toFixed(0);
+        newStats.push({
+            id: 'fe_ciega',
+            title: 'La Fe Ciega',
+            value: `${porcentajeGana}%`,
+            description: 'cree en la victoria de la UDLP'
+        });
+
+        setStats(newStats);
+
+    }, [pronosticos]);
+
+    // Carrusel automático para las estadísticas
+    useEffect(() => {
+        if (stats.length > 1) {
+            const interval = setInterval(() => {
+                setCurrentStatIndex(prevIndex => (prevIndex + 1) % stats.length);
+            }, 5000); // Cambia cada 5 segundos
+            return () => clearInterval(interval);
+        }
+    }, [stats]);
+
+
+    // Lógica para encontrar la jornada activa/próxima/finalizada
     useEffect(() => {
         setLoading(true);
         const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
@@ -314,7 +393,6 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
             const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            // Lógica para determinar la jornada a mostrar
             let jornadaActiva = todasLasJornadas.find(j => {
                 const apertura = j.fechaApertura?.toDate();
                 const cierre = j.fechaCierre?.toDate();
@@ -350,6 +428,7 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
         return () => unsubscribe();
     }, []);
 
+    // Lógica para la cuenta atrás
     useEffect(() => {
         if (!jornadaInfo) return;
         const targetDate = jornadaInfo.type === 'activa' 
@@ -384,37 +463,47 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
         return () => clearInterval(interval);
     }, [jornadaInfo]);
     
+    // MODIFICADO: handleReaction ahora guarda la reacción por estadística
     const handleReaction = async (emoji) => {
-        if (!currentUser || !jornadaInfo) return;
+        if (!currentUser || !jornadaInfo || stats.length === 0) return;
+        
+        const currentStat = stats[currentStatIndex];
+        if (!currentStat) return;
+
         const reactionRef = doc(db, "jornadas", jornadaInfo.id);
 
         try {
             await runTransaction(db, async (transaction) => {
-                const reactionDoc = await transaction.get(reactionRef);
-                if (!reactionDoc.exists()) { 
+                const jornadaDoc = await transaction.get(reactionRef);
+                if (!jornadaDoc.exists()) { 
                     throw new Error("Document does not exist!"); 
                 }
                 
-                const currentReactions = reactionDoc.data().reactions || { counts: {}, userReactions: {} };
-                const currentUserReaction = currentReactions.userReactions?.[currentUser];
+                const allStatReactions = jornadaDoc.data().statReactions || {};
+                const currentStatReactions = allStatReactions[currentStat.id] || { counts: {}, userReactions: {} };
+                const currentUserReaction = currentStatReactions.userReactions?.[currentUser];
 
-                if (currentUserReaction === emoji) {
-                    delete currentReactions.userReactions[currentUser];
-                    currentReactions.counts[emoji] = (currentReactions.counts[emoji] || 1) - 1;
-                    if (currentReactions.counts[emoji] === 0) {
-                        delete currentReactions.counts[emoji];
+                // Lógica para añadir/quitar/cambiar reacción
+                if (currentUserReaction === emoji) { // Quitar reacción
+                    delete currentStatReactions.userReactions[currentUser];
+                    currentStatReactions.counts[emoji] = (currentStatReactions.counts[emoji] || 1) - 1;
+                } else { // Añadir o cambiar reacción
+                    if (currentUserReaction) { // Si ya había una, quitar la vieja
+                         currentStatReactions.counts[currentUserReaction] = (currentStatReactions.counts[currentUserReaction] || 1) - 1;
                     }
-                } else {
-                    if (currentUserReaction) {
-                         currentReactions.counts[currentUserReaction] = (currentReactions.counts[currentUserReaction] || 1) - 1;
-                         if (currentReactions.counts[currentUserReaction] === 0) {
-                            delete currentReactions.counts[currentUserReaction];
-                         }
-                    }
-                    currentReactions.userReactions[currentUser] = emoji;
-                    currentReactions.counts[emoji] = (currentReactions.counts[emoji] || 0) + 1;
+                    currentStatReactions.userReactions[currentUser] = emoji;
+                    currentStatReactions.counts[emoji] = (currentStatReactions.counts[emoji] || 0) + 1;
                 }
-                transaction.update(reactionRef, { reactions: currentReactions });
+                
+                // Limpiar contadores en 0
+                Object.keys(currentStatReactions.counts).forEach(key => {
+                    if (currentStatReactions.counts[key] <= 0) {
+                        delete currentStatReactions.counts[key];
+                    }
+                });
+
+                allStatReactions[currentStat.id] = currentStatReactions;
+                transaction.update(reactionRef, { statReactions: allStatReactions });
             });
         } catch (e) {
             console.error("Transaction failed: ", e);
@@ -423,8 +512,12 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
 
     const renderJornadaInfo = () => {
         if (!jornadaInfo) { return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>); }
+        
+        const currentStat = stats.length > 0 ? stats[currentStatIndex] : null;
+        const reactionsForStat = jornadaInfo.statReactions?.[currentStat?.id] || { counts: {}, userReactions: {} };
+        const userReaction = reactionsForStat.userReactions?.[currentUser];
+
         let infoContent;
-        // --- MEJORA 1: Usar fechaPartido para mostrar la hora del partido ---
         const fechaMostrada = jornadaInfo.fechaPartido || jornadaInfo.fechaCierre;
 
         switch (jornadaInfo.type) {
@@ -444,34 +537,50 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
                 infoContent = null;
         }
         
-        const userReaction = reactions.userReactions?.[currentUser];
-
         return (
             <div style={styles.splashInfoBox}>
                 {infoContent}
                 {jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}
-                <div style={styles.reactionContainer}>
-                    <div style={styles.reactionEmojis}>
-                        {REACTION_EMOJIS.map(emoji => (
-                            <button key={emoji} onClick={() => handleReaction(emoji)} style={userReaction === emoji ? {...styles.reactionButton, ...styles.reactionButtonSelected} : styles.reactionButton}>
-                                {emoji}
-                            </button>
-                        ))}
+                
+                {/* NUEVO: Contenedor de estadísticas y reacciones */}
+                {jornadaInfo.type === 'activa' && (
+                    <div style={styles.statsReactionContainer}>
+                        {stats.length > 0 && currentStat ? (
+                            <div key={currentStat.id} className="stat-fade-in">
+                                <h4 style={styles.splashStatTitle}>{currentStat.title}</h4>
+                                <p style={styles.splashStatValue}>{currentStat.value}</p>
+                                <p style={styles.splashStatDescription}>{currentStat.description}</p>
+                            </div>
+                        ) : (
+                            <div style={{textAlign: 'center', padding: '20px 0'}}>
+                                <p>🤫 Los datos de la porra serán públicos cuando haya al menos 5 apuestas.</p>
+                            </div>
+                        )}
+
+                        <div style={styles.reactionContainer}>
+                            <div style={styles.reactionEmojis}>
+                                {REACTION_EMOJIS.map(emoji => (
+                                    <button key={emoji} onClick={() => handleReaction(emoji)} style={userReaction === emoji ? {...styles.reactionButton, ...styles.reactionButtonSelected} : styles.reactionButton} disabled={!currentStat}>
+                                        {emoji}
+                                    </button>
+                                ))}
+                            </div>
+                            <div style={styles.reactionCounts}>
+                                {Object.entries(reactionsForStat.counts || {}).map(([emoji, count]) => (
+                                    count > 0 && <span key={emoji} style={styles.reactionCountChip}>{emoji} {count}</span>
+                                ))}
+                            </div>
+                        </div>
                     </div>
-                    <div style={styles.reactionCounts}>
-                        {Object.entries(reactions.counts || {}).map(([emoji, count]) => (
-                            count > 0 && <span key={emoji} style={styles.reactionCountChip}>{emoji} {count}</span>
-                        ))}
-                    </div>
-                </div>
+                )}
             </div>
         );
     };
 
-    return (<>{showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}<div style={styles.splashContainer}><div style={styles.splashLogoContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div></div>{loading ? (<LoadingSkeleton />) : renderJornadaInfo()}<button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>{isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}</div></>);
+    return (<>{showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}<div style={styles.splashContainer}><div style={styles.splashLogoContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div></div>{loading ? (<LoadingSkeleton type="splash" />) : renderJornadaInfo()}<button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>{isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}</div></>);
 };
 
-// MODIFICADO: El componente LoginScreen ahora muestra el estado "Online" o "Última vez visto".
+
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     const [recentUsers, setRecentUsers] = useState([]);
@@ -584,7 +693,6 @@ const ProximaJornadaInfo = ({ jornada }) => {
     );
 };
 
-// MODIFICADO: El componente MiJornadaScreen ahora incluye un selector de goleador con imágenes.
 const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -1388,6 +1496,7 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     );
 };
 
+// --- FIN DE LA PRIMERA PARTE ---
 // MODIFICADO: El componente JornadaAdminItem ahora incluye el botón para re-calcular insignias.
 const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [estado, setEstado] = useState(jornada.estado);
@@ -2503,6 +2612,7 @@ function App() {
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } }
         .point-jump-up { animation: point-jump-up 0.7s ease-out; }
+        .stat-fade-in { animation: fadeIn 0.5s ease-in-out; }
     `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
@@ -2836,6 +2946,11 @@ const styles = {
     goleadorSelectorContainer: { position: 'relative' },
     goleadorPreview: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', backgroundColor: 'rgba(0,0,0,0.2)', padding: '5px', borderRadius: '8px' },
     goleadorPreviewImg: { width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' },
+    // NUEVO: Estilos para el carrusel de estadísticas
+    statsReactionContainer: { borderTop: `1px solid ${colors.blue}`, marginTop: '15px', paddingTop: '15px', minHeight: '150px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' },
+    splashStatTitle: { color: colors.lightText, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '1px' },
+    splashStatValue: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, fontSize: '2.5rem', margin: '5px 0' },
+    splashStatDescription: { color: colors.silver, fontSize: '0.9rem' },
 };
 
 export default App;
