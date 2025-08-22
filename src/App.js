@@ -100,6 +100,40 @@ const formatFullDateTime = (firebaseDate) => {
     }
 };
 
+// --- NUEVA FUNCIÓN: Formatea la última conexión para el login ---
+/**
+ * Formatea un objeto de fecha de Firebase a un string relativo de "última vez visto".
+ * @param {object} firebaseDate - El objeto de fecha de Firestore (con seconds y nanoseconds).
+ * @returns {string|null} - La fecha relativa (ej: "hace 5 min") o null si no es válida.
+ */
+const formatLastSeen = (firebaseDate) => {
+    if (!firebaseDate || typeof firebaseDate.seconds !== 'number') {
+        return null;
+    }
+    try {
+        const now = new Date();
+        const lastSeenDate = new Date(firebaseDate.seconds * 1000);
+        const diffSeconds = Math.floor((now - lastSeenDate) / 1000);
+        const diffMinutes = Math.floor(diffSeconds / 60);
+        const diffHours = Math.floor(diffMinutes / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffSeconds < 60) return "hace un momento";
+        if (diffMinutes < 60) return `hace ${diffMinutes} min`;
+        if (diffHours < 24) return `hace ${diffHours} h`;
+        if (diffDays === 1) {
+            return `ayer a las ${lastSeenDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+        }
+        if (diffDays < 7) return `hace ${diffDays} días`;
+        
+        return `el ${lastSeenDate.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}`;
+
+    } catch (error) {
+        console.error("Error formatting last seen:", error);
+        return null;
+    }
+};
+
 
 const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
     if (!pronostico || !liveData || !jornada || !liveData.isLive) return 0;
@@ -437,6 +471,7 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
     return (<>{showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}<div style={styles.splashContainer}><div style={styles.splashLogoContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div></div>{loading ? (<LoadingSkeleton />) : renderJornadaInfo()}<button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>{isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}</div></>);
 };
 
+// MODIFICADO: El componente LoginScreen ahora muestra el estado "Online" o "Última vez visto".
 const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     const [hoveredUser, setHoveredUser] = useState(null);
     const [recentUsers, setRecentUsers] = useState([]);
@@ -484,6 +519,7 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
                     const isOnline = onlineUsers[jugador];
                     const isRecent = recentUsers.includes(jugador);
                     const isGradient = typeof profile.color === 'string' && profile.color.startsWith('linear-gradient');
+                    const lastSeenText = !isOnline ? formatLastSeen(profile.ultimaConexion) : null;
                     
                     // Aplicamos el estilo de la insignia
                     const badgeStyle = getBadgeStyle(profile);
@@ -506,7 +542,11 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
                         >
                             {isRecent && <div style={styles.recentUserIndicator}>★</div>}
                             <div style={circleStyle}>{profile.icon || '?'}</div>
-                            <span>{jugador}</span>
+                            <div style={styles.loginUserInfo}>
+                                <span>{jugador}</span>
+                                {isOnline && <span style={styles.onlineStatusText}>Online</span>}
+                                {lastSeenText && <span style={styles.lastSeenText}>{lastSeenText}</span>}
+                            </div>
                         </button>
                     );
                 })}
@@ -1796,17 +1836,44 @@ const AdminPlantillaManager = ({ onBack, plantilla, setPlantilla }) => {
     );
 };
 
+// MODIFICADO: Añadida la fecha de cierre para la Porra Anual
 const AdminPorraAnual = ({ onBack }) => {
-    const [config, setConfig] = useState({ estado: '', ascensoFinal: '', posicionFinal: '' });
+    const [config, setConfig] = useState({ estado: '', ascensoFinal: '', posicionFinal: '', fechaCierre: '' });
     const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [calculating, setCalculating] = useState(false); const [message, setMessage] = useState('');
     const configRef = useMemo(() => doc(db, "configuracion", "porraAnual"), []);
 
-    useEffect(() => { setLoading(true); getDoc(configRef).then((docSnap) => { if (docSnap.exists()) { setConfig(docSnap.data()); } setLoading(false); }).catch(error => { console.error("Error al cargar config anual: ", error); setLoading(false); }); }, [configRef]);
+    const toInputFormat = (date) => {
+        if (!date || !date.seconds) return '';
+        const d = new Date(date.seconds * 1000);
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().slice(0, 16);
+    };
+
+    useEffect(() => {
+        setLoading(true);
+        getDoc(configRef).then((docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setConfig({ ...data, fechaCierre: toInputFormat(data.fechaCierre) });
+            }
+            setLoading(false);
+        }).catch(error => {
+            console.error("Error al cargar config anual: ", error);
+            setLoading(false);
+        });
+    }, [configRef]);
 
     const handleSaveConfig = async () => {
         setSaving(true);
-        try { await setDoc(configRef, config, { merge: true }); setMessage('¡Configuración guardada!'); } 
-        catch (error) { console.error("Error guardando config anual", error); setMessage('Error al guardar.'); } 
+        try {
+            const configToSave = {
+                ...config,
+                fechaCierre: config.fechaCierre ? new Date(config.fechaCierre) : null,
+            };
+            await setDoc(configRef, configToSave, { merge: true });
+            setMessage('¡Configuración guardada!');
+        }
+        catch (error) { console.error("Error guardando config anual", error); setMessage('Error al guardar.'); }
         finally { setSaving(false); setTimeout(() => setMessage(''), 3000); }
     };
 
@@ -1841,8 +1908,9 @@ const AdminPorraAnual = ({ onBack }) => {
             <h3 style={styles.formSectionTitle}>Gestión Porra Anual</h3>
             <div style={styles.adminControls}>
                 <div><label style={styles.label}>Estado de la Porra</label><select value={config.estado || ''} onChange={(e) => setConfig(c => ({ ...c, estado: e.target.value }))} style={styles.adminSelect}><option value="Inactiva">Inactiva</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="Finalizada">Finalizada</option></select></div>
-                 <div><label style={styles.label}>Resultado Ascenso</label><select value={config.ascensoFinal || ''} onChange={(e) => setConfig(c => ({ ...c, ascensoFinal: e.target.value }))} style={styles.adminSelect}><option value="">-- Pendiente --</option><option value="SI">SI</option><option value="NO">NO</option></select></div>
-                 <div><label style={styles.label}>Posición Final</label><input type="number" min="1" max="22" value={config.posicionFinal || ''} onChange={(e) => setConfig(c => ({ ...c, posicionFinal: e.target.value }))} style={styles.adminInput}/></div>
+                <div><label style={styles.label}>Fecha Cierre Apuestas</label><input type="datetime-local" value={config.fechaCierre || ''} onChange={(e) => setConfig(c => ({ ...c, fechaCierre: e.target.value }))} style={styles.adminInput} /></div>
+                <div><label style={styles.label}>Resultado Ascenso</label><select value={config.ascensoFinal || ''} onChange={(e) => setConfig(c => ({ ...c, ascensoFinal: e.target.value }))} style={styles.adminSelect}><option value="">-- Pendiente --</option><option value="SI">SI</option><option value="NO">NO</option></select></div>
+                <div><label style={styles.label}>Posición Final</label><input type="number" min="1" max="22" value={config.posicionFinal || ''} onChange={(e) => setConfig(c => ({ ...c, posicionFinal: e.target.value }))} style={styles.adminInput}/></div>
             </div>
             <div style={{marginTop: '20px'}}>
                 <button onClick={handleSaveConfig} disabled={saving} style={styles.saveButton}>{saving ? 'Guardando...' : 'Guardar Configuración'}</button>
@@ -2161,13 +2229,142 @@ const PagosScreen = ({ user, userProfiles }) => {
     <div style={{marginTop: '40px'}}>{jornadas.filter(j => j.estado === 'Finalizada').reverse().map(jornada => (<div key={jornada.id} style={styles.pagoCard}><h4 style={styles.pagoCardTitle}>Jornada {jornada.numeroJornada}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</h4><div style={styles.pagoCardDetails}><span><strong>Recaudado:</strong> {jornada.recaudadoJornada}€</span><span><strong>Bote Anterior:</strong> {jornada.bote || 0}€</span><span><strong>Premio Total:</strong> {jornada.premioTotal}€</span></div>{jornada.ganadores && jornada.ganadores.length > 0 ? (<div style={styles.pagoCardWinnerInfo}><p><strong>🏆 Ganador(es):</strong> {jornada.ganadores.join(', ')}</p><p><strong>Premio por ganador:</strong> {(jornada.premioTotal / jornada.ganadores.length).toFixed(2)}€</p></div>) : (<div style={styles.pagoCardBoteInfo}>¡BOTE! El premio se acumula para la siguiente jornada.</div>)}<table style={{...styles.table, marginTop: '15px'}}><thead><tr><th style={styles.th}>Jugador</th><th style={styles.th}>Aportación</th>{jornada.ganadores && jornada.ganadores.length > 0 && <th style={styles.th}>Premio Cobrado</th>}</tr></thead><tbody>{jornada.pronosticos.map(p => { const esGanador = jornada.ganadores?.includes(p.id); return (<tr key={p.id} style={styles.tr}><td style={styles.td}><PlayerProfileDisplay name={p.id} profile={userProfiles[p.id]} /></td><td style={styles.td}><input type="checkbox" checked={p.pagado || false} onChange={(e) => handlePagoChange(jornada.id, p.id, e.target.checked)} disabled={user !== 'Juanma'} style={styles.checkbox}/></td>{esGanador && (<td style={styles.td}><input type="checkbox" checked={p.premioCobrado || false} onChange={(e) => handlePremioCobradoChange(jornada.id, p.id, e.target.checked)} disabled={user !== 'Juanma'} style={styles.checkbox}/></td>)}</tr>); })}</tbody></table></div>))}</div></div>);
 };
 
+// MODIFICADO: El componente PorraAnualScreen ahora gestiona los cambios restantes.
 const PorraAnualScreen = ({ user, onBack, config }) => {
-    const [pronostico, setPronostico] = useState({ ascenso: '', posicion: '' }); const [miPronostico, setMiPronostico] = useState(null); const [isSaving, setIsSaving] = useState(false); const [message, setMessage] = useState(''); const [loading, setLoading] = useState(true);
-    useEffect(() => { const pronosticoRef = doc(db, "porraAnualPronosticos", user); getDoc(pronosticoRef).then(docSnap => { if (docSnap.exists()) { setMiPronostico(docSnap.data()); setPronostico(docSnap.data()); } setLoading(false); }); }, [user]);
-    const handleGuardar = async (e) => { e.preventDefault(); if (!pronostico.ascenso || !pronostico.posicion) { setMessage("Debes rellenar ambos campos."); return; } setIsSaving(true); const pronosticoRef = doc(db, "porraAnualPronosticos", user); try { await setDoc(pronosticoRef, { ...pronostico, jugador: user, lastUpdated: new Date() }); setMessage("¡Tu pronóstico anual ha sido guardado! Suerte al final de la liga."); setMiPronostico(pronostico); setTimeout(() => { onBack(); }, 4000); } catch (error) { console.error("Error al guardar pronóstico anual:", error); setMessage("Hubo un error al guardar tu pronóstico."); } setIsSaving(false); };
+    const [pronostico, setPronostico] = useState({ ascenso: '', posicion: '' });
+    const [miPronostico, setMiPronostico] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [message, setMessage] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [countdown, setCountdown] = useState('');
+
+    useEffect(() => {
+        const pronosticoRef = doc(db, "porraAnualPronosticos", user);
+        getDoc(pronosticoRef).then(docSnap => {
+            if (docSnap.exists()) {
+                setMiPronostico(docSnap.data());
+                setPronostico(docSnap.data());
+            }
+            setLoading(false);
+        });
+    }, [user]);
+
+    useEffect(() => {
+        if (!config || !config.fechaCierre) return;
+        const targetDate = config.fechaCierre.toDate();
+        const interval = setInterval(() => {
+            const now = new Date();
+            const diff = targetDate - now;
+            if (diff <= 0) {
+                setCountdown("PLAZO FINALIZADO");
+                clearInterval(interval);
+                return;
+            }
+            const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            setCountdown(`${d}d ${h}h ${m}m para el cierre`);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [config]);
+
+    const handleGuardar = async (e) => {
+        e.preventDefault();
+        if (!pronostico.ascenso || !pronostico.posicion) {
+            setMessage("Debes rellenar ambos campos.");
+            return;
+        }
+        setIsSaving(true);
+        const pronosticoRef = doc(db, "porraAnualPronosticos", user);
+        try {
+            const isFirstTime = !miPronostico;
+            const changesLeft = miPronostico?.cambiosRestantes ?? 2;
+            
+            if (!isFirstTime && changesLeft <= 0) {
+                setMessage("No te quedan más cambios.");
+                setIsSaving(false);
+                return;
+            }
+
+            const dataToSave = {
+                ...pronostico,
+                jugador: user,
+                lastUpdated: new Date(),
+                cambiosRestantes: isFirstTime ? 2 : changesLeft - 1,
+            };
+
+            await setDoc(pronosticoRef, dataToSave);
+            setMessage(isFirstTime ? "¡Tu pronóstico anual ha sido guardado!" : "¡Cambio guardado con éxito!");
+            setMiPronostico(dataToSave);
+
+        } catch (error) {
+            console.error("Error al guardar pronóstico anual:", error);
+            setMessage("Hubo un error al guardar tu pronóstico.");
+        }
+        setIsSaving(false);
+    };
+
     if (loading) return <LoadingSkeleton />;
-    if (config?.estado !== 'Abierta' || miPronostico) { return (<div><button onClick={onBack} style={styles.backButton}>&larr; Volver</button><h2 style={styles.title}>⭐ PORRA ANUAL ⭐</h2><div style={styles.placeholder}>{miPronostico ? (<><h3>Ya has hecho tu apuesta especial</h3><p>Tu pronóstico guardado es:</p><p><strong>¿Asciende?:</strong> {miPronostico.ascenso}</p><p><strong>Posición Final:</strong> {miPronostico.posicion}º</p><p style={{marginTop: '20px', fontStyle: 'italic'}}>¡Suerte al final de la liga!</p></>) : (<h3>Las apuestas para la Porra Anual están cerradas.</h3>)}</div></div>); }
-    return (<div><button onClick={onBack} style={styles.backButton}>&larr; Volver</button><h2 style={styles.title}>⭐ PORRA ANUAL ⭐</h2><form onSubmit={handleGuardar} style={styles.form}><p style={{textAlign: 'center', marginBottom: '30px', fontSize: '1.1rem'}}>Haz tu pronóstico para el final de la temporada. ¡Solo puedes hacerlo una vez!</p><div style={styles.formGroup}><label style={styles.label}>1. ¿Asciende la UD Las Palmas? <span style={styles.pointsReminder}>(5 Puntos)</span></label><div style={styles.ascensoButtonsContainer}><button type="button" onClick={() => setPronostico(p => ({...p, ascenso: 'SI'}))} style={pronostico.ascenso === 'SI' ? styles.ascensoButtonActive : styles.ascensoButton}>SÍ</button><button type="button" onClick={() => setPronostico(p => ({...p, ascenso: 'NO'}))} style={pronostico.ascenso === 'NO' ? styles.ascensoButtonActive : styles.ascensoButton}>NO</button></div></div><div style={styles.formGroup}><label style={styles.label}>2. ¿En qué posición terminará? <span style={styles.pointsReminder}>(10 Puntos)</span></label><input type="number" min="1" max="22" name="posicion" value={pronostico.posicion} onChange={(e) => setPronostico(p => ({...p, posicion: e.target.value}))} style={{...styles.input, textAlign: 'center', fontSize: '2rem', fontFamily: "'Orbitron', sans-serif"}} placeholder="1-22"/></div><p style={{textAlign: 'center', color: styles.colors.gold, fontWeight: 'bold', fontStyle: 'italic'}}>⭐ ¡Si aciertas las dos preguntas ganarás 20 PUNTOS! ⭐</p><button type="submit" disabled={isSaving} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR PRONÓSTICO ANUAL'}</button>{message && <p style={{...styles.message, backgroundColor: styles.colors.success}}>{message}</p>}</form></div>);
+
+    const isClosed = config?.estado !== 'Abierta' || (config?.fechaCierre && new Date() > config.fechaCierre.toDate());
+    const noChangesLeft = miPronostico && miPronostico.cambiosRestantes <= 0;
+
+    if (isClosed || noChangesLeft) {
+        return (
+            <div>
+                <button onClick={onBack} style={styles.backButton}>&larr; Volver</button>
+                <h2 style={styles.title}>⭐ PORRA ANUAL ⭐</h2>
+                <div style={styles.placeholder}>
+                    {miPronostico ? (
+                        <>
+                            <h3>Tu apuesta final está guardada</h3>
+                            <p><strong>¿Asciende?:</strong> {miPronostico.ascenso}</p>
+                            <p><strong>Posición Final:</strong> {miPronostico.posicion}º</p>
+                            <p style={{ marginTop: '20px', fontStyle: 'italic' }}>
+                                {isClosed ? "El plazo para modificar ha terminado. ¡Suerte!" : "Has usado todos tus cambios. ¡Suerte!"}
+                            </p>
+                        </>
+                    ) : (
+                        <h3>Las apuestas para la Porra Anual están cerradas.</h3>
+                    )}
+                </div>
+            </div>
+        );
+    }
+    
+    return (
+        <div>
+            <button onClick={onBack} style={styles.backButton}>&larr; Volver</button>
+            <h2 style={styles.title}>⭐ PORRA ANUAL ⭐</h2>
+            <form onSubmit={handleGuardar} style={styles.form}>
+                <div style={styles.porraAnualInfoBox}>
+                    <p>
+                        {miPronostico ? `Te quedan ${miPronostico.cambiosRestantes || 0} cambios.` : 'Tienes 2 cambios disponibles.'}
+                    </p>
+                    {countdown && <p style={styles.porraAnualCountdown}>{countdown}</p>}
+                </div>
+                <p style={{ textAlign: 'center', marginBottom: '30px', fontSize: '1.1rem' }}>
+                    {miPronostico ? 'Puedes modificar tu pronóstico si te quedan cambios.' : 'Haz tu pronóstico para el final de la temporada.'}
+                </p>
+                <div style={styles.formGroup}>
+                    <label style={styles.label}>1. ¿Asciende la UD Las Palmas? <span style={styles.pointsReminder}>(5 Puntos)</span></label>
+                    <div style={styles.ascensoButtonsContainer}>
+                        <button type="button" onClick={() => setPronostico(p => ({ ...p, ascenso: 'SI' }))} style={pronostico.ascenso === 'SI' ? styles.ascensoButtonActive : styles.ascensoButton}>SÍ</button>
+                        <button type="button" onClick={() => setPronostico(p => ({ ...p, ascenso: 'NO' }))} style={pronostico.ascenso === 'NO' ? styles.ascensoButtonActive : styles.ascensoButton}>NO</button>
+                    </div>
+                </div>
+                <div style={styles.formGroup}>
+                    <label style={styles.label}>2. ¿En qué posición terminará? <span style={styles.pointsReminder}>(10 Puntos)</span></label>
+                    <input type="number" min="1" max="22" name="posicion" value={pronostico.posicion} onChange={(e) => setPronostico(p => ({ ...p, posicion: e.target.value }))} style={{ ...styles.input, textAlign: 'center', fontSize: '2rem', fontFamily: "'Orbitron', sans-serif" }} placeholder="1-22" />
+                </div>
+                <p style={{ textAlign: 'center', color: styles.colors.gold, fontWeight: 'bold', fontStyle: 'italic' }}>⭐ ¡Si aciertas las dos preguntas ganarás 20 PUNTOS! ⭐</p>
+                <button type="submit" disabled={isSaving} style={styles.mainButton}>
+                    {isSaving ? 'GUARDANDO...' : (miPronostico ? 'USAR 1 CAMBIO Y GUARDAR' : 'GUARDAR PRONÓSTICO')}
+                </button>
+                {message && <p style={{ ...styles.message, backgroundColor: styles.colors.success }}>{message}</p>}
+            </form>
+        </div>
+    );
 };
 
 const ProfileCustomizationScreen = ({ user, onSave, userProfile }) => {
@@ -2335,11 +2532,23 @@ function App() {
       } catch (error) { console.error('Ocurrió un error al obtener el token. ', error); }
   };
 
+  // MODIFICADO: handleLogin ahora actualiza el campo `ultimaConexion`.
   const handleLogin = async (user) => {
       setCurrentUser(user);
-      const userStatusRef = ref(rtdb, 'status/' + user); await set(userStatusRef, true); onDisconnect(userStatusRef).set(false);
-      const userProfileRef = doc(db, "clasificacion", user); const docSnap = await getDoc(userProfileRef);
-      if (docSnap.exists() && docSnap.data().icon && docSnap.data().color) { setScreen('app'); } else { setScreen('customizeProfile'); }
+      
+      // Actualizar estado online y última conexión
+      const userStatusRef = ref(rtdb, 'status/' + user);
+      await set(userStatusRef, true);
+      onDisconnect(userStatusRef).set(false);
+      const userProfileRef = doc(db, "clasificacion", user);
+      await setDoc(userProfileRef, { ultimaConexion: new Date() }, { merge: true });
+
+      const docSnap = await getDoc(userProfileRef);
+      if (docSnap.exists() && docSnap.data().icon && docSnap.data().color) {
+          setScreen('app');
+      } else {
+          setScreen('customizeProfile');
+      }
       
       const hasSeenPrompt = localStorage.getItem('notificationPrompt_v3_seen');
       if ('Notification' in window && Notification.permission !== 'granted' && !hasSeenPrompt) {
@@ -2400,7 +2609,7 @@ function App() {
                 default: return null;
             }
         };
-      return (<>{showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}{showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => {setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v3_seen', 'true');}} />}{porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz tu pronóstico antes de la Jornada 5. ¡Pincha aquí!</div>)}<LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} /><nav style={styles.navbar}><button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button><button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button><button onClick={() => handleNavClick('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button><button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button><button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>{currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}<button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button><button onClick={handleLogout} style={styles.logoutButton}>Salir</button></nav><div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreen /></div></>);
+      return (<>{showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}{showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => {setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v3_seen', 'true');}} />}{porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (!porraAnualConfig?.fechaCierre || new Date() < porraAnualConfig.fechaCierre.toDate()) && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz o modifica tu pronóstico. ¡Pincha aquí!</div>)}<LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} /><nav style={styles.navbar}><button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button><button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button><button onClick={() => handleNavClick('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button><button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button><button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>{currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}<button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button><button onClick={handleLogout} style={styles.logoutButton}>Salir</button></nav><div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreen /></div></>);
     }
   };
   return (<>{winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}<div id="app-container" style={styles.container}><div style={styles.card}>{renderContent()}</div></div></>);
@@ -2446,6 +2655,10 @@ const styles = {
     userButtonRecent: { borderColor: colors.silver },
     recentUserIndicator: { position: 'absolute', top: '5px', right: '10px', color: colors.yellow, fontSize: '1.2rem' },
     loginProfileIconCircle: { width: '40px', height: '40px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1.5rem', color: colors.darkText },
+    // NUEVO: Estilos para la información de conexión en el login
+    loginUserInfo: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' },
+    onlineStatusText: { color: '#0f0', fontSize: '0.8rem', fontWeight: 'bold' },
+    lastSeenText: { color: colors.silver, fontSize: '0.75rem', fontStyle: 'italic' },
     navbar: { display: 'flex', flexWrap: 'wrap', gap: '5px', borderBottom: `2px solid ${colors.blue}`, paddingBottom: '15px', marginBottom: '20px', alignItems: 'center' },
     navButton: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: '3px solid transparent', borderRadius: '6px 6px 0 0', backgroundColor: 'transparent', color: colors.lightText, cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
     navButtonActive: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: `3px solid ${colors.yellow}`, borderRadius: '6px 6px 0 0', backgroundColor: colors.darkUIAlt, color: colors.yellow, cursor: 'pointer', textTransform: 'uppercase', fontWeight: '600' },
@@ -2526,6 +2739,9 @@ const styles = {
     jokerIcon: { position: 'absolute', top: '-50px', fontSize: '3rem', animationName: 'fall', animationTimingFunction: 'linear', animationIterationCount: '1' },
     porraAnualBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70`, cursor: 'pointer' },
     porraAnualContainer: { marginTop: '30px', padding: '20px', borderTop: `2px solid ${colors.yellow}`, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px' },
+    // NUEVO: Estilos para la Porra Anual
+    porraAnualInfoBox: { backgroundColor: 'rgba(0,0,0,0.3)', padding: '10px', borderRadius: '8px', textAlign: 'center', marginBottom: '15px', border: `1px solid ${colors.blue}` },
+    porraAnualCountdown: { color: colors.yellow, fontWeight: 'bold', fontFamily: "'Orbitron', sans-serif" },
     ascensoButtonsContainer: { display: 'flex', gap: '10px', justifyContent: 'center' },
     ascensoButton: { flex: 1, padding: '20px', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, transition: 'all 0.3s ease' },
     ascensoButtonActive: { flex: 1, padding: '20px', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.yellow}`, borderRadius: '8px', backgroundColor: colors.yellow, color: colors.deepBlue, transition: 'all 0.3s ease' },
