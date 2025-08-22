@@ -310,7 +310,9 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
             }
         });
         return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [jornadaInfo?.id]);
+
 
     // Se suscribe a los pronósticos de la jornada activa para calcular estadísticas
     useEffect(() => {
@@ -1455,7 +1457,7 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     const getRankIcon = (index) => { 
         if (index === 0) return '🥇'; 
         if (index === 1) return '🥈'; 
-        if (index === 2) return '🥉'; 
+        if (index === 2) return ' '; 
         return `${index + 1}º`; 
     };
 
