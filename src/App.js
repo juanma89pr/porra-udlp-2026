@@ -63,7 +63,39 @@ const EQUIPOS_LIGA = [
     "AD Ceuta FC", "CyD Leonesa", "Real Zaragoza", "RC Deportivo"
 ];
 
-// MODIFICADO: Eliminamos la constante PLANTILLA_INICIAL. Ahora se leerá desde la base de datos.
+// SOLUCIÓN: Añadimos la plantilla actualizada como una constante de respaldo.
+// Esta lista se usará por defecto, garantizando que el selector de goleador nunca esté vacío.
+// La aplicación seguirá intentando cargar la lista desde la base de datos, por si la modificas.
+const PLANTILLA_ACTUALIZADA = [
+    { dorsal: "1", nombre: "Dinko Horkas", imageUrl: "" },
+    { dorsal: "13", nombre: "José Antonio Caro", imageUrl: "" },
+    { dorsal: "35", nombre: "Adri Suárez", imageUrl: "" },
+    { dorsal: "3", nombre: "Mika Mármol", imageUrl: "" },
+    { dorsal: "15", nombre: "Juanma Herzog", imageUrl: "" },
+    { dorsal: "4", nombre: "Álex Suárez", imageUrl: "" },
+    { dorsal: "5", nombre: "Enrique Clemente", imageUrl: "" },
+    { dorsal: "6", nombre: "Sergio Barcia", imageUrl: "" },
+    { dorsal: "23", nombre: "Cristian Gutiérrez", imageUrl: "" },
+    { dorsal: "17", nombre: "Viti Rozada", imageUrl: "" },
+    { dorsal: "2", nombre: "Marvin Park", imageUrl: "" },
+    { dorsal: "16", nombre: "Lorenzo Amatucci", imageUrl: "" },
+    { dorsal: "18", nombre: "Edward Cedeño", imageUrl: "" },
+    { dorsal: "12", nombre: "Enzo Loiodice", imageUrl: "" },
+    { dorsal: "20", nombre: "Kirian Rodríguez", imageUrl: "" },
+    { dorsal: "8", nombre: "Iván Gil", imageUrl: "" },
+    { dorsal: "21", nombre: "Jonathan Viera", imageUrl: "" },
+    { dorsal: "9", nombre: "Jeremía Recoba", imageUrl: "" },
+    { dorsal: "14", nombre: "Manu Fuster", imageUrl: "" },
+    { dorsal: "10", nombre: "Jesé", imageUrl: "" },
+    { dorsal: "24", nombre: "Pejiño", imageUrl: "" },
+    { dorsal: "22", nombre: "Ale García", imageUrl: "" },
+    { dorsal: "29", nombre: "Adam Arvelo", imageUrl: "" },
+    { dorsal: "25", nombre: "Milos Lukovic", imageUrl: "" },
+    { dorsal: "19", nombre: "Sandro Ramírez", imageUrl: "" },
+    { dorsal: "11", nombre: "Marc Cardona", imageUrl: "" },
+    { dorsal: "7", nombre: "Jaime Mata", imageUrl: "" }
+];
+
 
 const PROFILE_COLORS = ['#FFC72C', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)', 'linear-gradient(45deg, #e63946, #fca311)', 'linear-gradient(45deg, #52b788, #9b59b6)'];
 const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '🎮', '🏎️', '😂', '🤯', '🤔', '🤫', '💸', '💣', '🚀', '👽', '🤖', '👻', '🎱', '🍀', '🏃‍♂️', '🏃🏾‍♂️', '1️⃣', '7️⃣', '🔟', '🤑', '😈'];
@@ -1011,7 +1043,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                                 <div style={styles.formGroup}><label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label><div style={styles.miJornadaMatchInfo}><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} /><div style={styles.miJornadaScoreInputs}><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} /></div><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} /></div>{(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}</div>
                                 <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
                                 
-                                {/* MODIFICADO: Bloque del selector de goleador para incluir imágenes */}
+                                {/* SOLUCIÓN: El selector de goleador ahora siempre tendrá la lista de la constante PLANTILLA_ACTUALIZADA */}
                                 <div style={styles.formGroup}>
                                     <label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label>
                                     <div style={styles.goleadorSelectorContainer}>
@@ -2556,8 +2588,8 @@ function App() {
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
   const [winnerData, setWinnerData] = useState(null);
   const [liveJornada, setLiveJornada] = useState(null);
-  // MODIFICADO: El estado de la plantilla ahora se gestiona aquí.
-  const [plantilla, setPlantilla] = useState([]);
+  // SOLUCIÓN: El estado de la plantilla ahora se gestiona aquí y se inicializa con la lista de respaldo.
+  const [plantilla, setPlantilla] = useState(PLANTILLA_ACTUALIZADA);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [userProfiles, setUserProfiles] = useState({});
   const [onlineUsers, setOnlineUsers] = useState({});
@@ -2620,8 +2652,18 @@ function App() {
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
     const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
     const qLive = query(collection(db, "jornadas"), where("liveData.isLive", "==", true), limit(1)); const unsubscribeLive = onSnapshot(qLive, (snapshot) => { if (!snapshot.empty) { const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }; setLiveJornada(jornada); } else { setLiveJornada(null); } });
-    // MODIFICADO: Se lee la plantilla desde la base de datos.
-    const plantillaRef = doc(db, "configuracion", "plantilla"); const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => { if (docSnap.exists() && docSnap.data().jugadores) { setPlantilla(docSnap.data().jugadores); } else { setDoc(plantillaRef, { jugadores: [] }); setPlantilla([]); } });
+    
+    // SOLUCIÓN: Se lee la plantilla desde la base de datos, pero si falla o está vacía, se mantiene la lista de respaldo.
+    const plantillaRef = doc(db, "configuracion", "plantilla"); 
+    const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => { 
+        if (docSnap.exists() && docSnap.data().jugadores && docSnap.data().jugadores.length > 0) { 
+            setPlantilla(docSnap.data().jugadores); 
+        } else {
+            // Si no existe o está vacía en Firebase, no hacemos nada para mantener la PLANTILLA_ACTUALIZADA
+            console.log("No se encontró plantilla en Firebase o está vacía. Usando la lista local de respaldo.");
+        } 
+    });
+
     const clasificacionRef = collection(db, "clasificacion"); const unsubscribeProfiles = onSnapshot(clasificacionRef, (snapshot) => { const profiles = {}; snapshot.forEach(doc => { profiles[doc.id] = doc.data(); }); setUserProfiles(profiles); });
     const statusRef = ref(rtdb, 'status/'); const unsubscribeStatus = onValue(statusRef, (snapshot) => { const data = snapshot.val(); setOnlineUsers(data || {}); });
     return () => { document.head.removeChild(styleSheet); unsubscribeConfig(); unsubscribeAuth(); unsubscribeEscudos(); unsubscribeLive(); unsubscribePlantilla(); unsubscribeProfiles(); unsubscribeStatus(); }
