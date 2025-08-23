@@ -1896,12 +1896,14 @@ const AdminEscudosManager = ({ onBack, teamLogos }) => {
     );
 };
 
-// NUEVO: Componente para gestionar la plantilla de jugadores.
+// MODIFICADO: Añadida la herramienta de verificación de imágenes.
 const AdminPlantillaManager = ({ onBack, plantilla, setPlantilla }) => {
     const [jugadores, setJugadores] = useState(plantilla);
     const [newJugador, setNewJugador] = useState({ dorsal: '', nombre: '', imageUrl: '' });
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState('');
+    const [verifying, setVerifying] = useState(false);
+    const [verificationResults, setVerificationResults] = useState(null);
 
     const handleInputChange = (index, field, value) => {
         const updatedJugadores = [...jugadores];
@@ -1947,6 +1949,40 @@ const AdminPlantillaManager = ({ onBack, plantilla, setPlantilla }) => {
         setSaving(false);
     };
 
+    const handleVerifyImages = async () => {
+        setVerifying(true);
+        setVerificationResults(null);
+        setMessage('Verificando imágenes, por favor espera...');
+
+        const results = { ok: [], failed: [] };
+
+        const checkImage = (jugador) => {
+            return new Promise((resolve) => {
+                if (!jugador.imageUrl || jugador.imageUrl.trim() === '') {
+                    results.failed.push({ nombre: jugador.nombre, reason: 'URL vacía' });
+                    resolve();
+                    return;
+                }
+                const img = new Image();
+                img.onload = () => {
+                    results.ok.push(jugador.nombre);
+                    resolve();
+                };
+                img.onerror = () => {
+                    results.failed.push({ nombre: jugador.nombre, reason: 'No se pudo cargar' });
+                    resolve();
+                };
+                img.src = jugador.imageUrl;
+            });
+        };
+
+        await Promise.all(jugadores.map(checkImage));
+
+        setVerificationResults(results);
+        setVerifying(false);
+        setMessage('Verificación completada.');
+    };
+
     return (
         <div style={styles.adminJornadaItem}>
             <button onClick={onBack} style={styles.backButton}>&larr; Volver al Panel</button>
@@ -1970,11 +2006,33 @@ const AdminPlantillaManager = ({ onBack, plantilla, setPlantilla }) => {
                 <input type="text" value={newJugador.imageUrl} onChange={(e) => handleNewJugadorChange('imageUrl', e.target.value)} placeholder="URL Imagen (PNG)" style={{...styles.plantillaInput, flex: 3}} />
                 <button onClick={handleAddJugador} style={styles.plantillaAddBtn}>+</button>
             </div>
-
-            <button onClick={handleSaveChanges} disabled={saving} style={{...styles.saveButton, marginTop: '30px'}}>
-                {saving ? 'Guardando...' : 'Guardar Cambios en la Plantilla'}
-            </button>
+            
+            <div style={{display: 'flex', gap: '10px', marginTop: '30px'}}>
+                <button onClick={handleSaveChanges} disabled={saving || verifying} style={{...styles.saveButton}}>
+                    {saving ? 'Guardando...' : 'Guardar Cambios en la Plantilla'}
+                </button>
+                <button onClick={handleVerifyImages} disabled={verifying || saving} style={{...styles.saveButton, backgroundColor: colors.blue}}>
+                    {verifying ? 'Verificando...' : 'Verificar Fotos de Jugadores'}
+                </button>
+            </div>
             {message && <p style={{...styles.message, marginTop: '15px'}}>{message}</p>}
+
+            {verificationResults && (
+                <div style={styles.verificationResultsContainer}>
+                    <h4>Resultados de la Verificación:</h4>
+                    <p style={{color: colors.success}}><strong>{verificationResults.ok.length} imágenes OK</strong></p>
+                    {verificationResults.failed.length > 0 && (
+                        <div>
+                            <p style={{color: colors.danger}}><strong>{verificationResults.failed.length} imágenes fallidas:</strong></p>
+                            <ul style={styles.verificationList}>
+                                {verificationResults.failed.map(fail => (
+                                    <li key={fail.nombre}>{fail.nombre} ({fail.reason})</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
