@@ -354,7 +354,7 @@ const PieChart = ({ data }) => {
             <svg viewBox="0 0 120 120" style={styles.pieChartSvg}>
                 {data.map((segment, index) => {
                     const strokeDashoffset = circumference - (accumulatedPercentage / 100 * circumference);
-                    const strokeDasharray = `${(segment.percentage / 100 * circumference)} ${circumference}`;
+                    const strokeDasharray = `${(parseFloat(segment.percentage) / 100 * circumference)} ${circumference}`;
                     accumulatedPercentage += parseFloat(segment.percentage);
                     
                     return (
@@ -2617,8 +2617,8 @@ function App() {
         @keyframes bounce-in { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
         @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
         .pulsed { animation: pulse-once 0.4s ease-in-out; }
-        @keyframes draw-stroke { to { stroke-dashoffset: 0; } }
-        .pie-chart-segment { stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dashoffset); animation: draw-stroke 1s 0.5s ease-out forwards; }
+        @keyframes draw-stroke { to { stroke-dashoffset: var(--stroke-dashoffset); } }
+        .pie-chart-segment { stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dasharray); animation: draw-stroke 1s 0.5s ease-out forwards; }
     `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
