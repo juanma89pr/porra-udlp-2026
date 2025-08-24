@@ -288,7 +288,6 @@ const AnimatedCount = ({ endValue, duration = 1000, decimals = 0 }) => {
     return <span>{currentValue.toFixed(decimals)}</span>;
 };
 
-// CORREGIDO: El gráfico circular ahora usa una animación de rotación para cada segmento, garantizando que todos sean visibles.
 const PieChart = ({ data }) => {
     const radius = 50;
     const circumference = 2 * Math.PI * radius;
@@ -350,7 +349,6 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
-// CORREGIDO: SplashScreen vuelve a tener el carrusel de estadísticas informativas, sin emojis.
 const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
@@ -852,8 +850,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
-
-// --- FIN DE LA PRIMERA PARTE ---
+// --- INICIO DE LA SEGUNDA PARTE ---
 // CORREGIDO: LaJornadaScreen ahora gestiona el estado y la lógica de las reacciones.
 const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
@@ -866,9 +863,11 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
     const [jornadaStats, setJornadaStats] = useState(null);
     const [ultimaJornada, setUltimaJornada] = useState(null);
     const [proximaJornada, setProximaJornada] = useState(null);
-    // NUEVO: Estado para las reacciones
-    const [reactions, setReactions] = useState({});
-    const [animatingReaction, setAnimatingReaction] = useState(null); // { cardId, emoji }
+    // NUEVO: Estados para gestionar las reacciones
+    const [reactions, setReactions] = useState({}); // Almacena los datos de reacciones de Firestore
+    const [userReactions, setUserReactions] = useState({}); // Almacena la reacción del usuario actual para saber qué ha votado
+    const [animatingReaction, setAnimatingReaction] = useState(null); // { cardId, emoji } para la animación
+    const [isSubmittingReaction, setIsSubmittingReaction] = useState({}); // Para deshabilitar botones mientras se procesa
 
     // Cargar datos de la jornada y pronósticos
     useEffect(() => {
@@ -913,17 +912,29 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
     // Cargar reacciones en tiempo real
     useEffect(() => {
         if (jornadaActual) {
+            // Reiniciar conteos al cambiar de jornada
+            setUserReactions({});
+            setReactions({});
+
             const reactionsRef = doc(db, "reactions", jornadaActual.id);
             const unsubscribeReactions = onSnapshot(reactionsRef, (docSnap) => {
                 if (docSnap.exists()) {
-                    setReactions(docSnap.data());
+                    const data = docSnap.data();
+                    setReactions(data.stats || {});
+                    // Guardamos la reacción del usuario actual para saber qué ha votado
+                    if (data.users && data.users[user]) {
+                        setUserReactions(data.users[user]);
+                    } else {
+                        setUserReactions({});
+                    }
                 } else {
                     setReactions({});
+                    setUserReactions({});
                 }
             });
             return () => unsubscribeReactions();
         }
-    }, [jornadaActual]);
+    }, [jornadaActual, user]);
 
     // Lógica del ranking provisional y cuenta atrás
     useEffect(() => {
@@ -945,42 +956,55 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
         } else { setCountdown(''); }
     }, [jornadaActual]);
 
-    // CORREGIDO: Función para manejar las reacciones, ahora funcional y sin errores.
+    // CORREGIDO: Función para manejar las reacciones con la lógica completa.
     const handleReaction = async (cardId, emoji) => {
-        if (!jornadaActual || !user) return;
+        if (!jornadaActual || !user || isSubmittingReaction[cardId]) return;
+
+        setIsSubmittingReaction(prev => ({ ...prev, [cardId]: true }));
         setAnimatingReaction({ cardId, emoji });
         setTimeout(() => setAnimatingReaction(null), 1500); // Duración de la animación
 
         const reactionRef = doc(db, "reactions", jornadaActual.id);
-        const userReactionField = `users.${user}.${cardId}`;
         
         try {
             await runTransaction(db, async (transaction) => {
                 const reactionDoc = await transaction.get(reactionRef);
                 const currentData = reactionDoc.exists() ? reactionDoc.data() : { users: {}, stats: {} };
+                
                 const userPreviousReaction = currentData.users?.[user]?.[cardId];
+                const isSameEmoji = userPreviousReaction === emoji;
 
-                let newStats = currentData.stats || {};
+                // Actualizamos el mapa de reacciones del usuario
+                const newUserReactionsForCard = isSameEmoji ? null : emoji; // Si es el mismo, se anula (null)
                 
-                // Si el usuario ya reaccionó y el voto es diferente, quitar el voto anterior
-                if (userPreviousReaction && userPreviousReaction !== emoji && newStats[cardId]?.[userPreviousReaction]) {
-                    newStats[cardId][userPreviousReaction] = Math.max(0, (newStats[cardId][userPreviousReaction] || 1) - 1);
-                }
+                // Actualizamos los contadores globales
+                const cardStats = { ...(currentData.stats?.[cardId] || {}) };
 
-                // Añadir el nuevo voto (solo si no es el mismo que ya tenía)
-                if (userPreviousReaction !== emoji) {
-                    if (!newStats[cardId]) newStats[cardId] = {};
-                    newStats[cardId][emoji] = (newStats[cardId][emoji] || 0) + 1;
+                // 1. Anular voto anterior si existe y es diferente al nuevo
+                if (userPreviousReaction && !isSameEmoji) {
+                    cardStats[userPreviousReaction] = Math.max(0, (cardStats[userPreviousReaction] || 1) - 1);
                 }
                 
-                // Actualizar la base de datos
-                transaction.set(reactionRef, {
-                    stats: newStats,
-                    [userReactionField]: emoji
-                }, { merge: true });
+                // 2. Gestionar el voto actual
+                if (isSameEmoji) {
+                    // Anular voto
+                    cardStats[emoji] = Math.max(0, (cardStats[emoji] || 1) - 1);
+                } else {
+                    // Registrar nuevo voto
+                    cardStats[emoji] = (cardStats[emoji] || 0) + 1;
+                }
+                
+                // Preparamos los datos para la transacción
+                const newUsersData = { ...currentData.users, [user]: { ...currentData.users?.[user], [cardId]: newUserReactionsForCard } };
+                const newStatsData = { ...currentData.stats, [cardId]: cardStats };
+
+                // Ejecutamos la transacción
+                transaction.set(reactionRef, { users: newUsersData, stats: newStatsData }, { merge: true });
             });
         } catch (error) {
             console.error("Error al registrar la reacción:", error);
+        } finally {
+            setIsSubmittingReaction(prev => ({ ...prev, [cardId]: false }));
         }
     };
 
@@ -998,9 +1022,21 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                     
                     {isLiveView && (
                         <div style={styles.liveReactionsPanel}>
-                            {GOAL_REACTION_EMOJIS.map(emoji => (<button key={emoji} onClick={() => handleReaction('liveEvents', emoji)} style={styles.reactionButton}>{emoji}</button>))}
+                             <div style={styles.reactionEmojis}>
+                                {GOAL_REACTION_EMOJIS.map(emoji => (
+                                    <button 
+                                        key={emoji} 
+                                        onClick={() => handleReaction('liveEvents', emoji)} 
+                                        disabled={isSubmittingReaction['liveEvents']}
+                                        className={animatingReaction?.cardId === 'liveEvents' && animatingReaction.emoji !== emoji ? 'fade-out' : ''}
+                                        style={{...styles.reactionButton, ...(userReactions['liveEvents'] === emoji ? styles.reactionButtonSelected : {})}}
+                                    >
+                                        {animatingReaction?.cardId === 'liveEvents' && animatingReaction.emoji === emoji ? <span className="fly-away">{emoji}</span> : emoji}
+                                    </button>
+                                ))}
+                            </div>
                             <div style={styles.reactionCountCorner}>
-                                {GOAL_REACTION_EMOJIS.map(emoji => reactions.stats?.liveEvents?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.stats.liveEvents[emoji]}</span>)}
+                                {GOAL_REACTION_EMOJIS.map(emoji => reactions?.liveEvents?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.liveEvents[emoji]}</span>)}
                             </div>
                         </div>
                     )}
@@ -1013,13 +1049,19 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                                 <div style={styles.reactionContainer}>
                                     <div style={styles.reactionEmojis}>
                                         {STAT_REACTION_EMOJIS.map(emoji => (
-                                            <button key={emoji} onClick={() => handleReaction('resultadoComun', emoji)} className={animatingReaction?.cardId === 'resultadoComun' ? 'fade-out' : ''} style={styles.reactionButton}>
+                                            <button 
+                                                key={emoji} 
+                                                onClick={() => handleReaction('resultadoComun', emoji)} 
+                                                disabled={isSubmittingReaction['resultadoComun']}
+                                                className={animatingReaction?.cardId === 'resultadoComun' && animatingReaction.emoji !== emoji ? 'fade-out' : ''}
+                                                style={{...styles.reactionButton, ...(userReactions['resultadoComun'] === emoji ? styles.reactionButtonSelected : {})}}
+                                            >
                                                 {animatingReaction?.cardId === 'resultadoComun' && animatingReaction.emoji === emoji ? <span className="fly-away">{emoji}</span> : emoji}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
-                                <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions.stats?.resultadoComun?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.stats.resultadoComun[emoji]}</span>)}</div>
+                                <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions?.resultadoComun?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.resultadoComun[emoji]}</span>)}</div>
                             </div>
                             <div style={{...styles.statCard, position: 'relative', overflow: 'hidden'}}>
                                 <PieChart data={[{label: 'Victoria', percentage: jornadaStats.porcentajeGana, color: colors.success}, {label: 'Empate', percentage: jornadaStats.porcentajeEmpate, color: colors.warning}, {label: 'Derrota', percentage: jornadaStats.porcentajePierde, color: colors.danger}]} />
@@ -1027,13 +1069,19 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                                 <div style={styles.reactionContainer}>
                                     <div style={styles.reactionEmojis}>
                                         {STAT_REACTION_EMOJIS.map(emoji => (
-                                            <button key={emoji} onClick={() => handleReaction('feAficion', emoji)} className={animatingReaction?.cardId === 'feAficion' ? 'fade-out' : ''} style={styles.reactionButton}>
+                                            <button 
+                                                key={emoji} 
+                                                onClick={() => handleReaction('feAficion', emoji)} 
+                                                disabled={isSubmittingReaction['feAficion']}
+                                                className={animatingReaction?.cardId === 'feAficion' && animatingReaction.emoji !== emoji ? 'fade-out' : ''}
+                                                style={{...styles.reactionButton, ...(userReactions['feAficion'] === emoji ? styles.reactionButtonSelected : {})}}
+                                            >
                                                 {animatingReaction?.cardId === 'feAficion' && animatingReaction.emoji === emoji ? <span className="fly-away">{emoji}</span> : emoji}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
-                                <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions.stats?.feAficion?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.stats.feAficion[emoji]}</span>)}</div>
+                                <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions?.feAficion?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.feAficion[emoji]}</span>)}</div>
                             </div>
                         </div>
                     )}
@@ -1085,6 +1133,9 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
         </div>
     );
 };
+// ... (El resto de los componentes como CalendarioScreen, ClasificacionScreen, etc., se mantienen igual que en la PARTE 1)
+// ... Asegúrate de copiar el resto de componentes desde aquí hasta el final del archivo original.
+
 const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
     const [jornadas, setJornadas] = useState([]); const [loading, setLoading] = useState(true);
     useEffect(() => { const q = query(collection(db, "jornadas"), orderBy("numeroJornada")); const unsubscribe = onSnapshot(q, (querySnapshot) => { setJornadas(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); setLoading(false); }, (error) => { console.error("Error cargando calendario: ", error); setLoading(false); }); return () => unsubscribe(); }, []);
@@ -2374,9 +2425,9 @@ function App() {
         @keyframes pie-draw { to { stroke-dashoffset: 0; } }
         .pie-chart-segment-new { transform-origin: 60px 60px; stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dasharray); transform: rotate(var(--rotation)); animation: pie-draw 1s ease-out forwards; }
         @keyframes reaction-fade-out { to { opacity: 0; transform: scale(0.5); } }
-        .reactionEmojis .fade-out { animation: reaction-fade-out 0.5s forwards; pointer-events: none; }
-        @keyframes reaction-fly { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(70px, -70px) scale(0); opacity: 0; } }
-        .reactionButton .fly-away { display: inline-block; animation: reaction-fly 1s forwards; position: absolute; top: 5px; left: 5px; }
+        .fade-out { animation: reaction-fade-out 0.5s forwards; }
+        @keyframes reaction-fly { 0% { transform: translate(0, 0) scale(1.2); opacity: 1; } 100% { transform: translate(80px, -80px) scale(0); opacity: 0; } }
+        .fly-away { display: inline-block; animation: reaction-fly 1s cubic-bezier(0.5, -0.5, 1, 1) forwards; position: absolute; z-index: 10; pointer-events: none; }
         @keyframes status-blink-red { 0%, 100% { background-color: ${colors.danger}; box-shadow: 0 0 8px ${colors.danger}; } 50% { background-color: #a11d27; box-shadow: 0 0 15px ${colors.danger}; } }
         @keyframes status-pulse-green { 0%, 100% { background-color: ${colors.success}; box-shadow: 0 0 5px ${colors.success}; } 50% { background-color: #3a9a6a; box-shadow: 0 0 10px ${colors.success}; } }
     `;
@@ -2674,10 +2725,10 @@ const styles = {
     skeletonBox: { backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '4px', animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' },
     skeletonTable: { display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px' },
     skeletonRow: { display: 'flex', justifyContent: 'space-between', gap: '10px' },
-    reactionContainer: { borderTop: `1px solid ${colors.blue}`, marginTop: '15px', paddingTop: '15px' },
-    reactionEmojis: { display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '10px' },
-    reactionButton: { background: 'rgba(255,255,255,0.1)', border: '1px solid transparent', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.5rem', cursor: 'pointer', transition: 'all 0.2s ease', animation: 'bounce-in 0.5s ease-out forwards' },
-    reactionButtonSelected: { borderColor: colors.yellow, transform: 'scale(1.15)' },
+    reactionContainer: { borderTop: `1px solid ${colors.blue}`, marginTop: '15px', paddingTop: '10px' },
+    reactionEmojis: { display: 'flex', justifyContent: 'center', gap: '5px', flexWrap: 'wrap' },
+    reactionButton: { position: 'relative', background: 'rgba(255,255,255,0.1)', border: '1px solid transparent', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.5rem', cursor: 'pointer', transition: 'all 0.2s ease' },
+    reactionButtonSelected: { borderColor: colors.yellow, transform: 'scale(1.15)', boxShadow: `0 0 10px ${colors.yellow}` },
     reactionCounts: { display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' },
     reactionCountChip: { backgroundColor: colors.blue, padding: '3px 8px', borderRadius: '12px', fontSize: '0.8rem' },
     debtSummaryContainer: { marginTop: '40px', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' },
@@ -2704,7 +2755,6 @@ const styles = {
     goleadorSelectorContainer: { position: 'relative' },
     goleadorPreview: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', backgroundColor: 'rgba(0,0,0,0.2)', padding: '5px', borderRadius: '8px' },
     goleadorPreviewImg: { width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' },
-    // CORREGIDO: Estilos para el nuevo carrusel de SplashScreen
     statsCarouselContainer: { width: '90%', maxWidth: '400px', overflow: 'hidden', marginTop: '20px' },
     statsCarouselTrack: { display: 'flex', transition: 'transform 0.5s ease-in-out', width: '400%' },
     'statsCarouselTrack.stat-card-0': { transform: 'translateX(0%)' },
@@ -2723,7 +2773,6 @@ const styles = {
     pieChartLegendColor: { width: '15px', height: '15px', borderRadius: '50%' },
     liveReactionsPanel: { display: 'flex', justifyContent: 'center', gap: '10px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '12px', margin: '20px 0', position: 'relative' },
     reactionCountCorner: { position: 'absolute', top: '10px', right: '10px', display: 'flex', flexDirection: 'column', gap: '5px', background: 'rgba(0,0,0,0.5)', padding: '5px', borderRadius: '8px', fontSize: '0.8rem' },
-    // NUEVO: Estilos para el piloto de estado en el menú
     statusIndicatorRed: { width: '10px', height: '10px', backgroundColor: colors.danger, borderRadius: '50%', animation: 'status-blink-red 1.5s infinite' },
     statusIndicatorGreen: { width: '10px', height: '10px', backgroundColor: colors.success, borderRadius: '50%', animation: 'status-pulse-green 2s infinite' },
 };
