@@ -944,7 +944,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
         } else { setCountdown(''); }
     }, [jornadaActual]);
 
-    // NUEVO: Función para manejar las reacciones
+    // CORREGIDO: Función para manejar las reacciones, ahora funcional y sin errores.
     const handleReaction = async (cardId, emoji) => {
         if (!jornadaActual || !user) return;
         setAnimatingReaction({ cardId, emoji });
@@ -952,8 +952,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
 
         const reactionRef = doc(db, "reactions", jornadaActual.id);
         const userReactionField = `users.${user}.${cardId}`;
-        const emojiCountField = `stats.${cardId}.${emoji}`;
-
+        
         try {
             await runTransaction(db, async (transaction) => {
                 const reactionDoc = await transaction.get(reactionRef);
@@ -962,15 +961,17 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
 
                 let newStats = currentData.stats || {};
                 
-                // Si el usuario ya reaccionó, quitar el voto anterior
-                if (userPreviousReaction && newStats[cardId]?.[userPreviousReaction]) {
-                    newStats[cardId][userPreviousReaction] = (newStats[cardId][userPreviousReaction] || 1) - 1;
+                // Si el usuario ya reaccionó y el voto es diferente, quitar el voto anterior
+                if (userPreviousReaction && userPreviousReaction !== emoji && newStats[cardId]?.[userPreviousReaction]) {
+                    newStats[cardId][userPreviousReaction] = Math.max(0, (newStats[cardId][userPreviousReaction] || 1) - 1);
                 }
 
-                // Añadir el nuevo voto
-                if (!newStats[cardId]) newStats[cardId] = {};
-                newStats[cardId][emoji] = (newStats[cardId][emoji] || 0) + 1;
-
+                // Añadir el nuevo voto (solo si no es el mismo que ya tenía)
+                if (userPreviousReaction !== emoji) {
+                    if (!newStats[cardId]) newStats[cardId] = {};
+                    newStats[cardId][emoji] = (newStats[cardId][emoji] || 0) + 1;
+                }
+                
                 // Actualizar la base de datos
                 transaction.set(reactionRef, {
                     stats: newStats,
