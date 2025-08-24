@@ -338,6 +338,7 @@ const PieChart = ({ data }) => {
     );
 };
 
+
 // ============================================================================
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
@@ -440,7 +441,7 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
         if (stats) {
             const timer = setInterval(() => {
                 setCurrentStatIndex(prevIndex => (prevIndex + 1) % 4); // 4 es el número de tarjetas de estadísticas
-            }, 5000); // Cambia cada 5 segundos
+            }, 4000); // Cambia cada 4 segundos
             return () => clearInterval(timer);
         }
     }, [stats]);
@@ -475,8 +476,8 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
             {loading ? <LoadingSkeleton type="splash" /> : renderJornadaInfo()}
             {jornadaInfo?.type === 'activa' && stats && (
                 <div style={styles.statsCarouselContainer}>
-                    <div style={styles.statsCarouselTrack} className={`stat-card-${currentStatIndex}`}>
-                        {statCards.map((card, index) => <div key={index} className="stat-card-wrapper">{card}</div>)}
+                    <div style={{...styles.statsCarouselTrack, transform: `translateX(-${currentStatIndex * 25}%)`}}>
+                        {statCards.map((card, index) => <div key={index} style={styles.statCardWrapper}>{card}</div>)}
                     </div>
                 </div>
             )}
@@ -951,7 +952,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
 
         const reactionRef = doc(db, "reactions", jornadaActual.id);
         const userReactionField = `users.${user}.${cardId}`;
-        const emojiCountField = `${cardId}.${emoji}`;
+        const emojiCountField = `stats.${cardId}.${emoji}`;
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -959,16 +960,22 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                 const currentData = reactionDoc.exists() ? reactionDoc.data() : { users: {}, stats: {} };
                 const userPreviousReaction = currentData.users?.[user]?.[cardId];
 
-                // Actualizar contadores
-                if (userPreviousReaction) {
-                    // Si el usuario ya reaccionó, quitar el voto anterior
-                    const prevEmojiCountField = `${cardId}.${userPreviousReaction}`;
-                    transaction.update(reactionRef, { [prevEmojiCountField]: increment(-1) });
-                }
-                transaction.set(reactionRef, { [emojiCountField]: increment(1) }, { merge: true });
+                let newStats = currentData.stats || {};
                 
-                // Guardar la reacción del usuario
-                transaction.set(reactionRef, { [userReactionField]: emoji }, { merge: true });
+                // Si el usuario ya reaccionó, quitar el voto anterior
+                if (userPreviousReaction && newStats[cardId]?.[userPreviousReaction]) {
+                    newStats[cardId][userPreviousReaction] = (newStats[cardId][userPreviousReaction] || 1) - 1;
+                }
+
+                // Añadir el nuevo voto
+                if (!newStats[cardId]) newStats[cardId] = {};
+                newStats[cardId][emoji] = (newStats[cardId][emoji] || 0) + 1;
+
+                // Actualizar la base de datos
+                transaction.set(reactionRef, {
+                    stats: newStats,
+                    [userReactionField]: emoji
+                }, { merge: true });
             });
         } catch (error) {
             console.error("Error al registrar la reacción:", error);
@@ -991,40 +998,40 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                         <div style={styles.liveReactionsPanel}>
                             {GOAL_REACTION_EMOJIS.map(emoji => (<button key={emoji} onClick={() => handleReaction('liveEvents', emoji)} style={styles.reactionButton}>{emoji}</button>))}
                             <div style={styles.reactionCountCorner}>
-                                {GOAL_REACTION_EMOJIS.map(emoji => reactions['liveEvents']?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions['liveEvents'][emoji]}</span>)}
+                                {GOAL_REACTION_EMOJIS.map(emoji => reactions.stats?.liveEvents?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.stats.liveEvents[emoji]}</span>)}
                             </div>
                         </div>
                     )}
 
                     {jornadaStats && !isLiveView && (
                         <div style={styles.statsGrid}>
-                            <div style={{...styles.statCard, position: 'relative'}}>
+                            <div style={{...styles.statCard, position: 'relative', overflow: 'hidden'}}>
                                 <div style={styles.statValue}>{participantes.length >= 5 ? `📊 ${Object.entries(participantes.reduce((acc, p) => { const res = `${p.golesLocal}-${p.golesVisitante}`; acc[res] = (acc[res] || 0) + 1; return acc; }, {})).sort((a,b) => b[1] - a[1])[0][0]}` : '🤫'}</div>
                                 <div style={styles.statLabel}>{participantes.length >= 5 ? 'Resultado más apostado' : 'Secreto hasta 5 apuestas'}</div>
                                 <div style={styles.reactionContainer}>
                                     <div style={styles.reactionEmojis}>
                                         {STAT_REACTION_EMOJIS.map(emoji => (
-                                            <button key={emoji} onClick={() => handleReaction('resultadoComun', emoji)} className={animatingReaction?.cardId === 'resultadoComun' && animatingReaction.emoji !== emoji ? 'fade-out' : ''} style={styles.reactionButton}>
+                                            <button key={emoji} onClick={() => handleReaction('resultadoComun', emoji)} className={animatingReaction?.cardId === 'resultadoComun' ? 'fade-out' : ''} style={styles.reactionButton}>
                                                 {animatingReaction?.cardId === 'resultadoComun' && animatingReaction.emoji === emoji ? <span className="fly-away">{emoji}</span> : emoji}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
-                                <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions['resultadoComun']?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions['resultadoComun'][emoji]}</span>)}</div>
+                                <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions.stats?.resultadoComun?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.stats.resultadoComun[emoji]}</span>)}</div>
                             </div>
-                            <div style={{...styles.statCard, position: 'relative'}}>
+                            <div style={{...styles.statCard, position: 'relative', overflow: 'hidden'}}>
                                 <PieChart data={[{label: 'Victoria', percentage: jornadaStats.porcentajeGana, color: colors.success}, {label: 'Empate', percentage: jornadaStats.porcentajeEmpate, color: colors.warning}, {label: 'Derrota', percentage: jornadaStats.porcentajePierde, color: colors.danger}]} />
                                 <div style={styles.statLabel}>La Fe de la Afición</div>
                                 <div style={styles.reactionContainer}>
                                     <div style={styles.reactionEmojis}>
                                         {STAT_REACTION_EMOJIS.map(emoji => (
-                                            <button key={emoji} onClick={() => handleReaction('feAficion', emoji)} className={animatingReaction?.cardId === 'feAficion' && animatingReaction.emoji !== emoji ? 'fade-out' : ''} style={styles.reactionButton}>
+                                            <button key={emoji} onClick={() => handleReaction('feAficion', emoji)} className={animatingReaction?.cardId === 'feAficion' ? 'fade-out' : ''} style={styles.reactionButton}>
                                                 {animatingReaction?.cardId === 'feAficion' && animatingReaction.emoji === emoji ? <span className="fly-away">{emoji}</span> : emoji}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
-                                <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions['feAficion']?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions['feAficion'][emoji]}</span>)}</div>
+                                <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions.stats?.feAficion?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.stats.feAficion[emoji]}</span>)}</div>
                             </div>
                         </div>
                     )}
@@ -2363,11 +2370,11 @@ function App() {
         @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
         .pulsed { animation: pulse-once 0.4s ease-in-out; }
         @keyframes pie-draw { to { stroke-dashoffset: 0; } }
-        .pie-chart-segment-new { stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dasharray); transform: rotate(var(--rotation)); animation: pie-draw 1s ease-out forwards; }
+        .pie-chart-segment-new { transform-origin: 60px 60px; stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dasharray); transform: rotate(var(--rotation)); animation: pie-draw 1s ease-out forwards; }
         @keyframes reaction-fade-out { to { opacity: 0; transform: scale(0.5); } }
-        .reactionButton.fade-out { animation: reaction-fade-out 0.5s forwards; }
-        @keyframes reaction-fly { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(100px, -100px) scale(0); opacity: 0; } }
-        .reactionButton .fly-away { display: inline-block; animation: reaction-fly 1s forwards; }
+        .reactionEmojis .fade-out { animation: reaction-fade-out 0.5s forwards; pointer-events: none; }
+        @keyframes reaction-fly { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(70px, -70px) scale(0); opacity: 0; } }
+        .reactionButton .fly-away { display: inline-block; animation: reaction-fly 1s forwards; position: absolute; top: 5px; left: 5px; }
     `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
