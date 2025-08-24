@@ -319,7 +319,7 @@ const InitialSplashScreen = ({ onFinish }) => {
 };
 
 // MODIFICADO: SplashScreen ahora muestra estadísticas interactivas
-const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
+const SplashScreen = ({ onEnter, teamLogos, currentUser, plantilla }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
     const [loading, setLoading] = useState(true);
@@ -374,39 +374,49 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
         const countsResultados = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
         const [resultadoMasComun, countResultado] = Object.entries(countsResultados).sort((a,b) => b[1] - a[1])[0];
         newStats.push({
+            type: 'stat',
             id: 'resultado_mas_comun',
             title: 'El Termómetro de la Porra',
             value: resultadoMasComun,
             description: `(apostado ${countResultado} veces)`
         });
 
-        // Stat 2: Pichichi de la afición
+        // Stat 2: El Más Elegido
         const goleadores = pronosticos.map(p => p.goleador).filter(Boolean);
         if (goleadores.length > 0) {
             const countsGoleadores = goleadores.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
             const [pichichi, countPichichi] = Object.entries(countsGoleadores).sort((a,b) => b[1] - a[1])[0];
+            const pichichiData = plantilla.find(j => j.nombre === pichichi);
             newStats.push({
-                id: 'pichichi_aficion',
-                title: 'El Pichichi de la Afición',
+                type: 'stat',
+                id: 'el_mas_elegido',
+                title: 'El Más Elegido',
                 value: pichichi,
+                imageUrl: pichichiData?.imageUrl,
                 description: `(elegido ${countPichichi} veces)`
             });
         }
         
-        // Stat 3: Tendencia 1X2
+        // Stat 3: Tendencia 1X2 con gráfico
         const total = pronosticos.length;
         const ganaCount = pronosticos.filter(p => p.resultado1x2 === 'Gana UD Las Palmas').length;
-        const porcentajeGana = ((ganaCount / total) * 100).toFixed(0);
+        const empateCount = pronosticos.filter(p => p.resultado1x2 === 'Empate').length;
+        const pierdeCount = total - ganaCount - empateCount;
+
         newStats.push({
-            id: 'fe_ciega',
-            title: 'La Fe Ciega',
-            value: `${porcentajeGana}%`,
-            description: 'cree en la victoria de la UDLP'
+            type: 'graph',
+            id: 'tendencia_1x2',
+            title: 'La Fe de la Afición',
+            data: [
+                { label: 'Victoria', value: ganaCount, percentage: ((ganaCount / total) * 100).toFixed(0) },
+                { label: 'Empate', value: empateCount, percentage: ((empateCount / total) * 100).toFixed(0) },
+                { label: 'Derrota', value: pierdeCount, percentage: ((pierdeCount / total) * 100).toFixed(0) },
+            ]
         });
 
         setStats(newStats);
 
-    }, [pronosticos]);
+    }, [pronosticos, plantilla]);
 
     // Carrusel automático para las estadísticas
     useEffect(() => {
@@ -580,13 +590,31 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser }) => {
                 {jornadaInfo.type === 'activa' && (
                     <div style={styles.statsReactionContainer}>
                         {stats.length > 0 && currentStat ? (
-                            <div key={currentStat.id} className="stat-fade-in">
+                            <div key={currentStat.id} className="stat-fade-in" style={{minHeight: '130px'}}>
                                 <h4 style={styles.splashStatTitle}>{currentStat.title}</h4>
-                                <p style={styles.splashStatValue}>{currentStat.value}</p>
-                                <p style={styles.splashStatDescription}>{currentStat.description}</p>
+                                {currentStat.type === 'stat' && (
+                                    <>
+                                        {currentStat.imageUrl && (
+                                            <img src={currentStat.imageUrl} alt={currentStat.value} style={styles.splashStatImage} onError={(e) => { e.target.style.display = 'none'; }} />
+                                        )}
+                                        <p style={styles.splashStatValue}>{currentStat.value}</p>
+                                        <p style={styles.splashStatDescription}>{currentStat.description}</p>
+                                    </>
+                                )}
+                                {currentStat.type === 'graph' && (
+                                    <div style={styles.barChartContainer}>
+                                        {currentStat.data.map(item => (
+                                            <div key={item.label} style={styles.barChartItem}>
+                                                <div style={styles.barChartLabel}>{item.percentage}%</div>
+                                                <div style={{...styles.barChartBar, height: `${item.percentage}%`}}></div>
+                                                <div style={styles.barChartLabel}>{item.label}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ) : (
-                            <div style={{textAlign: 'center', padding: '20px 0'}}>
+                            <div style={{textAlign: 'center', padding: '20px 0', minHeight: '130px'}}>
                                 <p>🤫 Los datos de la porra serán públicos cuando haya al menos 5 apuestas.</p>
                             </div>
                         )}
@@ -1489,7 +1517,7 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     const getRankIcon = (index) => { 
         if (index === 0) return '🥇'; 
         if (index === 1) return '🥈'; 
-        if (index === 2) return ' '; 
+        if (index === 2) return '🥉'; 
         return `${index + 1}º`; 
     };
 
@@ -2802,7 +2830,7 @@ function App() {
 
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => {setShowInitialSplash(false);}} />;
-    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} currentUser={currentUser} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} currentUser={currentUser} plantilla={plantilla} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
     if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
     if (screen === 'app') {
@@ -3053,6 +3081,13 @@ const styles = {
     splashStatTitle: { color: colors.lightText, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '1px' },
     splashStatValue: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, fontSize: '2.5rem', margin: '5px 0' },
     splashStatDescription: { color: colors.silver, fontSize: '0.9rem' },
+    splashStatImage: { width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover', margin: '5px auto', border: `2px solid ${colors.yellow}` },
+    barChartContainer: { display: 'flex', justifyContent: 'space-around', alignItems: 'flex-end', height: '100px', marginTop: '10px' },
+    barChartItem: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, gap: '5px' },
+    barChartBar: { width: '70%', backgroundColor: colors.blue, borderRadius: '4px 4px 0 0', transition: 'height 0.5s ease-out' },
+    barChartLabel: { fontSize: '0.8rem', color: colors.silver },
+    verificationResultsContainer: { marginTop: '20px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: `1px solid ${colors.blue}` },
+    verificationList: { listStyleType: 'none', padding: 0, columns: 2, columnGap: '20px' }
 };
 
 export default App;
