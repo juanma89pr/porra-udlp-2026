@@ -6,7 +6,7 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassw
 // MODIFICADO: Limpiamos 'runTransaction' que no se usaba
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
-// MODIFICADO: Comentamos temporalmente push y onChildAdded para pasar el build de Netlify
+// FASE 1: Se mantiene esta línea comentada como se pidió en el plan.
 import { getDatabase, ref, onValue, onDisconnect, set, /* push, onChildAdded */ } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
@@ -45,7 +45,7 @@ const SECRET_MESSAGES = [
     "Consultando con el Oráculo", "Shhh... es un secreto", "Apuesta Fantasma 👻",
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
-// MODIFICADO: Emojis separados por tipo de reacción
+// FASE 2: Se definen las nuevas constantes de emojis.
 const STAT_REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
 const GOAL_REACTION_EMOJIS = ['🙌', '⚽', '🎉', '🤩', '🤯'];
 
@@ -343,7 +343,7 @@ const AnimatedCount = ({ endValue, duration = 1000, decimals = 0 }) => {
     return <span>{currentValue.toFixed(decimals)}</span>;
 };
 
-// NUEVO: Componente para el gráfico circular
+// FASE 2: Creación del nuevo componente PieChart.
 const PieChart = ({ data }) => {
     const radius = 50;
     const circumference = 2 * Math.PI * radius;
@@ -398,7 +398,7 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
-// MODIFICADO: SplashScreen ahora es más simple, sin reacciones.
+// FASE 1: Se limpia el componente SplashScreen de toda la lógica de reacciones.
 const SplashScreen = ({ onEnter, teamLogos }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
@@ -1091,6 +1091,9 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
+
+// --- FIN DE LA PRIMERA PARTE ---
+// FASE 3: Comienzan las modificaciones en LaJornadaScreen
 const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
     const [participantes, setParticipantes] = useState([]);
@@ -1184,7 +1187,6 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
 
     const renderContent = () => {
         if (jornadaActual) {
-            // --- MEJORA 1: Usar fechaPartido para la fecha del partido ---
             const fechaMostrada = jornadaActual.fechaPartido || jornadaActual.fechaCierre;
             return (
                 <div style={{...styles.laJornadaContainer, backgroundImage: `linear-gradient(rgba(10, 25, 47, 0.85), rgba(10, 25, 47, 0.85)), url(${jornadaActual.estadioImageUrl})`}}>
@@ -1199,16 +1201,41 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                         <span>🗓️ {formatFullDateTime(fechaMostrada)}</span>
                     </div>
                     
+                    {/* FASE 3: Panel de reacciones a eventos en vivo (inicialmente oculto) */}
+                    {isLiveView && (
+                        <div style={styles.liveReactionsPanel}>
+                            {GOAL_REACTION_EMOJIS.map(emoji => (
+                                <button key={emoji} style={styles.reactionButton}>{emoji}</button>
+                            ))}
+                        </div>
+                    )}
+
                     {jornadaStats && !isLiveView && (
                         <div style={styles.statsGrid}>
-                            <div style={styles.statCard}><div style={styles.statValue}>{participantes.length >= 5 ? `📊 ${jornadaStats.resultadoMasComun}` : '🤫'}</div><div style={styles.statLabel}>{participantes.length >= 5 ? 'Resultado más apostado' : 'Secreto hasta 5 apuestas'}</div></div>
                             <div style={styles.statCard}>
+                                <div style={styles.statValue}>{participantes.length >= 5 ? `📊 ${jornadaStats.resultadoMasComun}` : '🤫'}</div>
+                                <div style={styles.statLabel}>{participantes.length >= 5 ? 'Resultado más apostado' : 'Secreto hasta 5 apuestas'}</div>
+                                {/* FASE 3: Panel de reacciones a estadísticas */}
+                                <div style={styles.reactionContainer}>
+                                    <div style={styles.reactionEmojis}>
+                                        {STAT_REACTION_EMOJIS.map(emoji => <button key={emoji} style={styles.reactionButton}>{emoji}</button>)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={styles.statCard}>
+                                 {/* FASE 3: Se reemplaza la visualización de porcentajes por el nuevo PieChart */}
                                 <PieChart data={[
                                     {label: 'Victoria', percentage: jornadaStats.porcentajeGana, color: colors.success},
                                     {label: 'Empate', percentage: jornadaStats.porcentajeEmpate, color: colors.warning},
                                     {label: 'Derrota', percentage: jornadaStats.porcentajePierde, color: colors.danger},
                                 ]} />
                                 <div style={styles.statLabel}>La Fe de la Afición</div>
+                                 {/* FASE 3: Panel de reacciones a estadísticas */}
+                                <div style={styles.reactionContainer}>
+                                    <div style={styles.reactionEmojis}>
+                                        {STAT_REACTION_EMOJIS.map(emoji => <button key={emoji} style={styles.reactionButton}>{emoji}</button>)}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1239,7 +1266,6 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                     <div style={styles.interJornadaBox}>
                         <h3 style={styles.interJornadaTitle}>Próxima Jornada</h3>
                         <p style={styles.interJornadaTeams}>{proximaJornada.equipoLocal} vs {proximaJornada.equipoVisitante}</p>
-                        {/* --- MEJORA 1: Usar fechaPartido para la fecha del partido --- */}
                         <p>{formatFullDateTime(proximaJornada.fechaPartido || proximaJornada.fechaCierre)}</p>
                         {proximaJornada.bote > 0 && <p style={styles.interJornadaBote}>¡Bote de {proximaJornada.bote}€ en juego!</p>}
                     </div>
@@ -1285,7 +1311,6 @@ const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
     useEffect(() => { const q = query(collection(db, "jornadas"), orderBy("numeroJornada")); const unsubscribe = onSnapshot(q, (querySnapshot) => { setJornadas(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); setLoading(false); }, (error) => { console.error("Error cargando calendario: ", error); setLoading(false); }); return () => unsubscribe(); }, []);
     if (loading) return <LoadingSkeleton />;
     return (<div><h2 style={styles.title}>CALENDARIO</h2><div style={styles.jornadaList}>{jornadas.map(jornada => {
-        // --- MEJORA 1: Usar fechaPartido para la fecha del partido ---
         const fechaMostrada = jornada.fechaPartido || jornada.fechaCierre;
         return (<div key={jornada.id} style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`} : {...styles.jornadaItem, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`}} onClick={() => onViewJornada(jornada.id)}><div style={styles.jornadaInfo}><div style={styles.jornadaTeams}><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 25, height: 25}} /><span style={{color: styles.colors.yellow, margin: '0 10px'}}>vs</span><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 25, height: 25}} /></div><strong>{jornada.esVip && '⭐ '}{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}</strong>
     <small>{formatFullDateTime(fechaMostrada)} - {jornada.estadio || 'Estadio por confirmar'}</small>
@@ -1439,8 +1464,6 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     );
 };
 
-// --- FIN DE LA PRIMERA PARTE ---
-// MODIFICADO: El componente JornadaAdminItem ahora incluye el botón para re-calcular insignias.
 const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
@@ -1501,7 +1524,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         setIsSaving(false);
     };
 
-    // MODIFICADO: La lógica de cálculo de puntos y asignación de insignias se ha movido a una función reutilizable.
     const runPointsAndBadgesLogic = async (isRecalculation = false) => {
         const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
         const pronosticosSnap = await getDocs(pronosticosRef);
@@ -1629,7 +1651,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         setIsCalculating(false);
     };
 
-    // NUEVO: Función para el botón de re-calcular insignias.
     const handleRecalcularInsignias = async () => {
         if (!window.confirm(`¿Seguro que quieres re-calcular las insignias para la Jornada ${jornada.numeroJornada}? Esto es útil si la jornada se cerró antes de implementar el sistema de insignias.`)) return;
         setIsCalculating(true);
@@ -1691,7 +1712,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 <button onClick={handleCalcularPuntos} disabled={isCalculating || jornada.estado === 'Finalizada'} style={styles.saveButton}>
                     {isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar'}
                 </button>
-                 {/* NUEVO: Botón para re-calcular insignias, solo visible en jornadas finalizadas */}
                 {jornada.estado === 'Finalizada' && (
                     <button onClick={handleRecalcularInsignias} disabled={isCalculating} style={{...styles.saveButton, backgroundColor: colors.blue}}>
                         {isCalculating ? 'Calculando...' : 'Re-calcular Insignias'}
@@ -1805,7 +1825,6 @@ const AdminEscudosManager = ({ onBack, teamLogos }) => {
     );
 };
 
-// MODIFICADO: Añadida la herramienta de verificación de imágenes.
 const AdminPlantillaManager = ({ onBack, plantilla, setPlantilla }) => {
     const [jugadores, setJugadores] = useState(plantilla);
     const [newJugador, setNewJugador] = useState({ dorsal: '', nombre: '', imageUrl: '' });
@@ -1946,7 +1965,6 @@ const AdminPlantillaManager = ({ onBack, plantilla, setPlantilla }) => {
     );
 };
 
-// MODIFICADO: Añadida la fecha de cierre para la Porra Anual
 const AdminPorraAnual = ({ onBack }) => {
     const [config, setConfig] = useState({ estado: '', ascensoFinal: '', posicionFinal: '', fechaCierre: '' });
     const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [calculating, setCalculating] = useState(false); const [message, setMessage] = useState('');
@@ -2155,7 +2173,6 @@ const AdminNotifications = ({ onBack }) => {
     );
 };
 
-// MODIFICADO: El panel de admin ahora tiene un menú para navegar entre las diferentes secciones.
 const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla }) => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -2339,7 +2356,6 @@ const PagosScreen = ({ user, userProfiles }) => {
     <div style={{marginTop: '40px'}}>{jornadas.filter(j => j.estado === 'Finalizada').reverse().map(jornada => (<div key={jornada.id} style={styles.pagoCard}><h4 style={styles.pagoCardTitle}>Jornada {jornada.numeroJornada}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</h4><div style={styles.pagoCardDetails}><span><strong>Recaudado:</strong> {jornada.recaudadoJornada}€</span><span><strong>Bote Anterior:</strong> {jornada.bote || 0}€</span><span><strong>Premio Total:</strong> {jornada.premioTotal}€</span></div>{jornada.ganadores && jornada.ganadores.length > 0 ? (<div style={styles.pagoCardWinnerInfo}><p><strong>🏆 Ganador(es):</strong> {jornada.ganadores.join(', ')}</p><p><strong>Premio por ganador:</strong> {(jornada.premioTotal / jornada.ganadores.length).toFixed(2)}€</p></div>) : (<div style={styles.pagoCardBoteInfo}>¡BOTE! El premio se acumula para la siguiente jornada.</div>)}<table style={{...styles.table, marginTop: '15px'}}><thead><tr><th style={styles.th}>Jugador</th><th style={styles.th}>Aportación</th>{jornada.ganadores && jornada.ganadores.length > 0 && <th style={styles.th}>Premio Cobrado</th>}</tr></thead><tbody>{jornada.pronosticos.map(p => { const esGanador = jornada.ganadores?.includes(p.id); return (<tr key={p.id} style={styles.tr}><td style={styles.td}><PlayerProfileDisplay name={p.id} profile={userProfiles[p.id]} /></td><td style={styles.td}><input type="checkbox" checked={p.pagado || false} onChange={(e) => handlePagoChange(jornada.id, p.id, e.target.checked)} disabled={user !== 'Juanma'} style={styles.checkbox}/></td>{esGanador && (<td style={styles.td}><input type="checkbox" checked={p.premioCobrado || false} onChange={(e) => handlePremioCobradoChange(jornada.id, p.id, e.target.checked)} disabled={user !== 'Juanma'} style={styles.checkbox}/></td>)}</tr>); })}</tbody></table></div>))}</div></div>);
 };
 
-// MODIFICADO: El componente PorraAnualScreen ahora gestiona los cambios restantes.
 const PorraAnualScreen = ({ user, onBack, config }) => {
     const [pronostico, setPronostico] = useState({ ascenso: '', posicion: '' });
     const [miPronostico, setMiPronostico] = useState(null);
@@ -2555,7 +2571,6 @@ function App() {
   const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
   const [winnerData, setWinnerData] = useState(null);
   const [liveJornada, setLiveJornada] = useState(null);
-  // SOLUCIÓN: El estado de la plantilla ahora se gestiona aquí y se inicializa con la lista de respaldo.
   const [plantilla, setPlantilla] = useState(PLANTILLA_ACTUALIZADA);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [userProfiles, setUserProfiles] = useState({});
@@ -2625,13 +2640,11 @@ function App() {
     const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
     const qLive = query(collection(db, "jornadas"), where("liveData.isLive", "==", true), limit(1)); const unsubscribeLive = onSnapshot(qLive, (snapshot) => { if (!snapshot.empty) { const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }; setLiveJornada(jornada); } else { setLiveJornada(null); } });
     
-    // SOLUCIÓN: Se lee la plantilla desde la base de datos, pero si falla o está vacía, se mantiene la lista de respaldo.
     const plantillaRef = doc(db, "configuracion", "plantilla"); 
     const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => { 
         if (docSnap.exists() && docSnap.data().jugadores && docSnap.data().jugadores.length > 0) { 
             setPlantilla(docSnap.data().jugadores); 
         } else {
-            // Si no existe o está vacía en Firebase, no hacemos nada para mantener la PLANTILLA_ACTUALIZADA
             console.log("No se encontró plantilla en Firebase o está vacía. Usando la lista local de respaldo.");
         } 
     });
@@ -2658,11 +2671,9 @@ function App() {
       } catch (error) { console.error('Ocurrió un error al obtener el token. ', error); }
   };
 
-  // MODIFICADO: handleLogin ahora actualiza el campo `ultimaConexion`.
   const handleLogin = async (user) => {
       setCurrentUser(user);
       
-      // Actualizar estado online y última conexión
       const userStatusRef = ref(rtdb, 'status/' + user);
       await set(userStatusRef, true);
       onDisconnect(userStatusRef).set(false);
@@ -2730,7 +2741,6 @@ function App() {
                 case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
                 case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} userProfiles={userProfiles} />;
                 case 'pagos': return <PagosScreen user={currentUser} userProfiles={userProfiles} />;
-                // MODIFICADO: Se pasa la plantilla y el setter al panel de admin.
                 case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} plantilla={plantilla} setPlantilla={setPlantilla} /> : null;
                 default: return null;
             }
@@ -2781,7 +2791,6 @@ const styles = {
     userButtonRecent: { borderColor: colors.silver },
     recentUserIndicator: { position: 'absolute', top: '5px', right: '10px', color: colors.yellow, fontSize: '1.2rem' },
     loginProfileIconCircle: { width: '40px', height: '40px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1.5rem', color: colors.darkText },
-    // NUEVO: Estilos para la información de conexión en el login
     loginUserInfo: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' },
     onlineStatusText: { color: '#0f0', fontSize: '0.8rem', fontWeight: 'bold' },
     lastSeenText: { color: colors.silver, fontSize: '0.75rem', fontStyle: 'italic' },
@@ -2865,7 +2874,6 @@ const styles = {
     jokerIcon: { position: 'absolute', top: '-50px', animationName: 'fall', animationTimingFunction: 'linear', animationIterationCount: '1' },
     porraAnualBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70`, cursor: 'pointer' },
     porraAnualContainer: { marginTop: '30px', padding: '20px', borderTop: `2px solid ${colors.yellow}`, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px' },
-    // NUEVO: Estilos para la Porra Anual
     porraAnualInfoBox: { backgroundColor: 'rgba(0,0,0,0.3)', padding: '10px', borderRadius: '8px', textAlign: 'center', marginBottom: '15px', border: `1px solid ${colors.blue}` },
     porraAnualCountdown: { color: colors.yellow, fontWeight: 'bold', fontFamily: "'Orbitron', sans-serif" },
     ascensoButtonsContainer: { display: 'flex', gap: '10px', justifyContent: 'center' },
@@ -2952,17 +2960,14 @@ const styles = {
     interJornadaWinner: { color: colors.gold, fontWeight: 'bold', marginTop: '10px' },
     interJornadaBote: { color: colors.success, fontWeight: 'bold', marginTop: '10px' },
     paymentStatus: { fontSize: '1.1rem', fontWeight: 'bold', margin: '20px 0', padding: '15px', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', border: `2px solid` },
-    // NUEVO: Estilos para el gestor de plantilla
     plantillaList: { display: 'flex', flexDirection: 'column', gap: '10px' },
     plantillaItem: { display: 'flex', gap: '10px', alignItems: 'center' },
     plantillaInput: { flex: 1, padding: '8px', fontSize: '0.9rem', backgroundColor: colors.deepBlue, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '4px' },
     plantillaRemoveBtn: { backgroundColor: colors.danger, color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontWeight: 'bold' },
     plantillaAddBtn: { backgroundColor: colors.success, color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontWeight: 'bold' },
-    // NUEVO: Estilos para el selector de goleador con imagen
     goleadorSelectorContainer: { position: 'relative' },
     goleadorPreview: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', backgroundColor: 'rgba(0,0,0,0.2)', padding: '5px', borderRadius: '8px' },
     goleadorPreviewImg: { width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' },
-    // NUEVO: Estilos para el carrusel de estadísticas
     statsReactionContainer: { borderTop: `1px solid ${colors.blue}`, marginTop: '15px', paddingTop: '15px', minHeight: '150px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' },
     splashStatTitle: { color: colors.lightText, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '1px' },
     splashStatValue: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, fontSize: '2.5rem', margin: '5px 0' },
@@ -2974,12 +2979,13 @@ const styles = {
     barChartLabel: { fontSize: '0.8rem', color: colors.silver },
     verificationResultsContainer: { marginTop: '20px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: `1px solid ${colors.blue}` },
     verificationList: { listStyleType: 'none', padding: 0, columns: 2, columnGap: '20px' },
-    // NUEVO: Estilos para el gráfico circular
     pieChartContainer: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginTop: '15px' },
     pieChartSvg: { width: '120px', height: '120px' },
     pieChartLegend: { display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' },
     pieChartLegendItem: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' },
-    pieChartLegendColor: { width: '15px', height: '15px', borderRadius: '50%' }
+    pieChartLegendColor: { width: '15px', height: '15px', borderRadius: '50%' },
+    // NUEVO: Estilos para los paneles de reacciones
+    liveReactionsPanel: { display: 'flex', justifyContent: 'center', gap: '10px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '12px', margin: '20px 0' }
 };
 
 export default App;
