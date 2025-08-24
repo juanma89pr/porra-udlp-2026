@@ -693,7 +693,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     
     // --- MODIFICACIÓN: Estados para la nueva lógica de API ---
     const [preMatchStats, setPreMatchStats] = useState(null);
-    const [showPreMatchStats, setShowPreMatchStats] = useState(false);
     const [loadingPreMatch, setLoadingPreMatch] = useState(false);
     const [lastApiUpdate, setLastApiUpdate] = useState(null);
     const apiTimerRef = useRef(null);
@@ -748,7 +747,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 setCurrentJornada(null);
                 setLoading(false);
                 setPreMatchStats(null);
-                setShowPreMatchStats(false);
                 const ultimaFinalizada = todasLasJornadas.filter(j => j.estado === 'Finalizada' && j.id !== 'jornada_test').sort((a, b) => b.numeroJornada - a.numeroJornada)[0];
 
                 if (ultimaFinalizada) {
@@ -770,7 +768,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     // --- MODIFICACIÓN: Hook reescrito para la nueva lógica de actualización de la API ---
     useEffect(() => {
         if (!currentJornada || !currentJornada.fechaPartido || !currentJornada.apiLeagueId) {
-            setShowPreMatchStats(false);
             if (apiTimerRef.current) clearInterval(apiTimerRef.current);
             return;
         }
@@ -828,15 +825,12 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             const isMatchDay = now.toDateString() === matchTime.toDateString();
             const isPreMatchWindow = isMatchDay && now >= oneHourBefore && now <= matchTime;
 
-            // Lógica de visibilidad
-            setShowPreMatchStats(isPreMatchWindow);
-
             if (apiTimerRef.current) clearInterval(apiTimerRef.current);
 
             if (isPreMatchWindow) {
                 // Modo intensivo: cada 5 minutos
                 console.log("Entering PRE-MATCH update mode (every 5 minutes).");
-                fetchData(); // Primera llamada al entrar en la ventana
+                if(!preMatchStats) fetchData(); // Primera llamada si no hay datos
                 apiTimerRef.current = setInterval(fetchData, 5 * 60 * 1000);
             } else {
                 // Modo normal: una vez al día a las 22:00
@@ -851,6 +845,10 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             }
         };
         
+        // Carga inicial de datos si no existen
+        if (!preMatchStats) {
+            fetchData();
+        }
         manageUpdates(); // Iniciar la gestión de actualizaciones
 
         return () => {
@@ -991,11 +989,10 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             const isVip = currentJornada.esVip;
             return (
                 <>
-                    {showPreMatchStats && (
-                        loadingPreMatch 
-                            ? <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div> 
-                            : <PreMatchStats stats={preMatchStats} teamLogos={teamLogos} lastUpdated={lastApiUpdate} />
-                    )}
+                    {/* --- MODIFICACIÓN: El panel ahora es siempre visible si hay datos --- */}
+                    {loadingPreMatch && !preMatchStats && <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div>}
+                    {preMatchStats && <PreMatchStats stats={preMatchStats} teamLogos={teamLogos} lastUpdated={lastApiUpdate} />}
+
                     <form onSubmit={handleGuardarPronostico} style={styles.form}>
                         {currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}
                         {isVip && (<div style={styles.vipBanner}>⭐ JORNADA VIP ⭐ (Apuesta: 2€ - Puntos Dobles)</div>)}
