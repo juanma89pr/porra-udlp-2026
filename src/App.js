@@ -578,18 +578,55 @@ const ProximaJornadaInfo = ({ jornada }) => {
     );
 };
 
-// --- NUEVO COMPONENTE ---
-// Componente para mostrar las estadísticas pre-partido obtenidas de la API
-const PreMatchStats = ({ stats, teamLogos }) => {
+// --- MODIFICACIÓN: Nuevo componente para animar los números de las estadísticas ---
+const AnimatedStat = ({ value, duration = 800 }) => {
+    const [displayValue, setDisplayValue] = useState(0);
+    const valueRef = useRef(0);
+
+    useEffect(() => {
+        const startValue = valueRef.current;
+        const endValue = parseInt(value) || 0;
+        let startTime = null;
+
+        const animation = (currentTime) => {
+            if (!startTime) startTime = currentTime;
+            const progress = Math.min((currentTime - startTime) / duration, 1);
+            const newDisplayValue = Math.floor(progress * (endValue - startValue) + startValue);
+            setDisplayValue(newDisplayValue);
+            if (progress < 1) {
+                requestAnimationFrame(animation);
+            } else {
+                valueRef.current = endValue;
+            }
+        };
+        requestAnimationFrame(animation);
+        return () => { valueRef.current = parseInt(value) || 0; };
+    }, [value, duration]);
+
+    return <span className="stat-value-animation">{displayValue}</span>;
+};
+
+
+// --- MODIFICACIÓN: Componente de estadísticas rediseñado para ser más dinámico ---
+const PreMatchStats = ({ stats, teamLogos, lastUpdated }) => {
+    const [pulsing, setPulsing] = useState(false);
+
+    useEffect(() => {
+        // Cada vez que 'lastUpdated' cambia, activamos la animación de pulso
+        if (lastUpdated) {
+            setPulsing(true);
+            // Quitamos la clase de animación después de que termine para poder volver a activarla
+            const timer = setTimeout(() => setPulsing(false), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [lastUpdated]);
+
     if (!stats) return null;
 
     const renderTeamStats = (teamData) => {
-        // Usamos el logo de la API si existe, si no, el que ya teníamos en la app
         const logo = teamData?.logo || teamLogos[teamData?.name] || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?';
-        
         if (!teamData) return <div style={styles.preMatchTeamContainer}><p>Datos no disponibles</p></div>;
-        
-        const formString = (teamData.form || '').slice(-5); // Asegurarnos de que solo mostramos 5
+        const formString = (teamData.form || '').slice(-5);
 
         return (
             <div style={styles.preMatchTeamContainer}>
@@ -598,9 +635,9 @@ const PreMatchStats = ({ stats, teamLogos }) => {
                     <span style={styles.preMatchTeamName}>{teamData.name}</span>
                 </div>
                 <div style={styles.preMatchStatsBody}>
-                    <div style={styles.preMatchStatItem}><strong>Posición:</strong> <span>{teamData.rank || 'N/A'}º</span></div>
-                    <div style={styles.preMatchStatItem}><strong>Puntos:</strong> <span>{teamData.points || 'N/A'}</span></div>
-                    <div style={styles.preMatchStatItem}><strong>Últimos 5:</strong></div>
+                    <div style={styles.preMatchStatItem}><span>📈 Posición</span> <strong><AnimatedStat value={teamData.rank} />º</strong></div>
+                    <div style={styles.preMatchStatItem}><span>✅ Puntos</span> <strong><AnimatedStat value={teamData.points} /></strong></div>
+                    <div style={styles.preMatchStatItem}><span>⚽ Goles</span> <strong><AnimatedStat value={teamData.golesFavor} />:<AnimatedStat value={teamData.golesContra} /></strong></div>
                     <div style={styles.preMatchFormContainer}>
                         {formString.split('').map((result, index) => {
                             let backgroundColor = styles.colors.darkUIAlt;
@@ -608,12 +645,7 @@ const PreMatchStats = ({ stats, teamLogos }) => {
                             if (result.toLowerCase() === 'w') { backgroundColor = styles.colors.success; letter = 'V'; }
                             else if (result.toLowerCase() === 'd') { backgroundColor = styles.colors.warning; letter = 'E'; }
                             else if (result.toLowerCase() === 'l') { backgroundColor = styles.colors.danger; letter = 'D'; }
-                            
-                            return (
-                                <span key={index} style={{ ...styles.preMatchFormIndicator, backgroundColor }}>
-                                    {letter}
-                                </span>
-                            );
+                            return (<span key={index} style={{ ...styles.preMatchFormIndicator, backgroundColor }}>{letter}</span>);
                         })}
                     </div>
                 </div>
@@ -622,8 +654,14 @@ const PreMatchStats = ({ stats, teamLogos }) => {
     };
 
     return (
-        <div style={styles.preMatchContainer}>
-            <h4 style={styles.preMatchTitle}>ESTADÍSTICAS PRE-PARTIDO</h4>
+        <div className={pulsing ? 'pulse-animation' : ''} style={styles.preMatchContainer}>
+            <div style={styles.preMatchTitleContainer}>
+                <h4 style={styles.preMatchTitle}>DATOS EN VIVO</h4>
+                <div style={styles.lastUpdatedContainer}>
+                    <span className="live-dot-animation" style={styles.liveDot}></span>
+                    <span>Actualizado: {new Date(lastUpdated).toLocaleTimeString('es-ES')}</span>
+                </div>
+            </div>
             <div style={styles.preMatchComparison}>
                 {renderTeamStats(stats.local)}
                 <div style={styles.preMatchVS}>VS</div>
@@ -652,12 +690,14 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
     const [tieneDeuda, setTieneDeuda] = useState(false);
     const [interJornadaStatus, setInterJornadaStatus] = useState(null);
-    // --- NUEVOS ESTADOS ---
+    
+    // --- MODIFICACIÓN: Estados para la nueva lógica de API ---
     const [preMatchStats, setPreMatchStats] = useState(null);
     const [showPreMatchStats, setShowPreMatchStats] = useState(false);
     const [loadingPreMatch, setLoadingPreMatch] = useState(false);
-    const apiCallTimer = useRef(null);
-    const lastApiCallDate = useRef(null);
+    const [lastApiUpdate, setLastApiUpdate] = useState(null);
+    const apiTimerRef = useRef(null);
+    const lastApiCallDay = useRef(null);
     
     const initialJokerStatus = useRef(false);
     
@@ -707,7 +747,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 const proximaJornada = todasLasJornadas.find(j => j.estado === 'Próximamente');
                 setCurrentJornada(null);
                 setLoading(false);
-                setPreMatchStats(null); // Limpiamos stats si no hay jornada
+                setPreMatchStats(null);
                 setShowPreMatchStats(false);
                 const ultimaFinalizada = todasLasJornadas.filter(j => j.estado === 'Finalizada' && j.id !== 'jornada_test').sort((a, b) => b.numeroJornada - a.numeroJornada)[0];
 
@@ -727,13 +767,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         return () => unsubscribe();
     }, [user]);
 
-    // --- NUEVO HOOK ---
-    // Gestiona la carga y actualización de datos de API-Football
+    // --- MODIFICACIÓN: Hook reescrito para la nueva lógica de actualización de la API ---
     useEffect(() => {
-        // Si no hay jornada activa o faltan los IDs de la API, detenemos todo.
-        if (!currentJornada || !currentJornada.fechaPartido || !currentJornada.apiLeagueId || !currentJornada.apiLocalTeamId || !currentJornada.apiVisitorTeamId) {
+        if (!currentJornada || !currentJornada.fechaPartido || !currentJornada.apiLeagueId) {
             setShowPreMatchStats(false);
-            if (apiCallTimer.current) clearInterval(apiCallTimer.current);
+            if (apiTimerRef.current) clearInterval(apiTimerRef.current);
             return;
         }
 
@@ -744,15 +782,13 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
         const fetchTeamStats = async (leagueId, teamId, season) => {
             try {
-                // Hacemos la llamada a la API
                 const response = await fetch(`https://v3.football.api-sports.io/standings?league=${leagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
-                if (!response.ok) throw new Error(`API call failed with status: ${response.status}`);
+                if (!response.ok) throw new Error(`API call failed: ${response.status}`);
                 const data = await response.json();
                 
-                // Procesamos la respuesta
                 if (data.results === 0 || !data.response[0]) {
-                    console.warn(`No standings data found for team ${teamId} in league ${leagueId}`);
-                    return { name: 'N/A', logo: '', rank: 'N/A', points: 'N/A', form: '-----' };
+                    console.warn(`No data for team ${teamId}`);
+                    return null;
                 }
                 const teamStanding = data.response[0]?.league?.standings[0]?.[0];
                 return {
@@ -760,16 +796,18 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                     logo: teamStanding?.team?.logo || '',
                     rank: teamStanding?.rank || 'N/A',
                     points: teamStanding?.points || 'N/A',
-                    form: teamStanding?.form || '-----'
+                    form: teamStanding?.form || '-----',
+                    golesFavor: teamStanding?.all?.goals?.for || 0,
+                    golesContra: teamStanding?.all?.goals?.against || 0,
                 };
             } catch (error) {
                 console.error(`Error fetching stats for team ${teamId}:`, error);
-                return null; // Devolvemos null si hay un error
+                return null;
             }
         };
 
         const fetchData = async () => {
-            console.log("Fetching API data...");
+            console.log(`[${new Date().toLocaleTimeString()}] Fetching API data...`);
             setLoadingPreMatch(true);
             const season = new Date(currentJornada.fechaPartido.seconds * 1000).getFullYear();
             const localStats = await fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season);
@@ -777,47 +815,48 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             
             if (localStats && visitorStats) {
                 setPreMatchStats({ local: localStats, visitante: visitorStats });
+                setLastApiUpdate(Date.now()); // Para la animación
             }
             setLoadingPreMatch(false);
         };
-        
-        // Función principal que decide si mostrar y cuándo actualizar los datos
-        const checkTimeAndManageUpdates = () => {
+
+        const manageUpdates = () => {
             const now = new Date();
             const matchTime = currentJornada.fechaPartido.toDate();
             const oneHourBefore = new Date(matchTime.getTime() - 60 * 60 * 1000);
+            
+            const isMatchDay = now.toDateString() === matchTime.toDateString();
+            const isPreMatchWindow = isMatchDay && now >= oneHourBefore && now <= matchTime;
 
-            // Comprobamos si estamos en la ventana de 1 hora antes del partido
-            const shouldBeVisible = now >= oneHourBefore && now <= matchTime;
-            setShowPreMatchStats(shouldBeVisible);
+            // Lógica de visibilidad
+            setShowPreMatchStats(isPreMatchWindow);
 
-            if (apiCallTimer.current) clearInterval(apiCallTimer.current);
+            if (apiTimerRef.current) clearInterval(apiTimerRef.current);
 
-            if (shouldBeVisible) {
-                // Dentro de la ventana: actualizar cada minuto
-                fetchData(); // Llamada inicial al entrar en la ventana
-                apiCallTimer.current = setInterval(fetchData, 60 * 1000);
+            if (isPreMatchWindow) {
+                // Modo intensivo: cada 5 minutos
+                console.log("Entering PRE-MATCH update mode (every 5 minutes).");
+                fetchData(); // Primera llamada al entrar en la ventana
+                apiTimerRef.current = setInterval(fetchData, 5 * 60 * 1000);
             } else {
-                // Fuera de la ventana: actualizar una vez al día
-                const today = new Date().toISOString().split('T')[0];
-                if (lastApiCallDate.current !== today) {
+                // Modo normal: una vez al día a las 22:00
+                const todayStr = now.toDateString();
+                if (now.getHours() >= 22 && lastApiCallDay.current !== todayStr) {
+                    console.log("Performing DAILY update (after 22:00).");
                     fetchData();
-                    lastApiCallDate.current = today;
+                    lastApiCallDay.current = todayStr;
                 }
+                // Programamos una comprobación para más tarde
+                apiTimerRef.current = setInterval(manageUpdates, 60 * 1000); // Revisa cada minuto
             }
         };
         
-        checkTimeAndManageUpdates();
-        // También comprobamos cada minuto si hemos entrado en la ventana de visualización
-        const visibilityCheckInterval = setInterval(checkTimeAndManageUpdates, 60 * 1000);
+        manageUpdates(); // Iniciar la gestión de actualizaciones
 
-        // Limpieza al desmontar el componente
         return () => {
-            if (apiCallTimer.current) clearInterval(apiCallTimer.current);
-            if (visibilityCheckInterval) clearInterval(visibilityCheckInterval);
+            if (apiTimerRef.current) clearInterval(apiTimerRef.current);
         };
-
-    }, [currentJornada]); // Este efecto se ejecuta cada vez que cambia la jornada actual
+    }, [currentJornada]);
     
     useEffect(() => {
         if (currentJornada?.estado === 'Cerrada' && liveData?.isLive && allPronosticos.length > 0) {
@@ -955,7 +994,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                     {showPreMatchStats && (
                         loadingPreMatch 
                             ? <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div> 
-                            : <PreMatchStats stats={preMatchStats} teamLogos={teamLogos} />
+                            : <PreMatchStats stats={preMatchStats} teamLogos={teamLogos} lastUpdated={lastApiUpdate} />
                     )}
                     <form onSubmit={handleGuardarPronostico} style={styles.form}>
                         {currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}
@@ -2639,6 +2678,11 @@ function App() {
         .fly-away { display: inline-block; animation: reaction-fly 1s cubic-bezier(0.5, -0.5, 1, 1) forwards; position: absolute; z-index: 10; pointer-events: none; }
         @keyframes status-blink-red { 0%, 100% { background-color: ${colors.danger}; box-shadow: 0 0 8px ${colors.danger}; } 50% { background-color: #a11d27; box-shadow: 0 0 15px ${colors.danger}; } }
         @keyframes status-pulse-green { 0%, 100% { background-color: ${colors.success}; box-shadow: 0 0 5px ${colors.success}; } 50% { background-color: #3a9a6a; box-shadow: 0 0 10px ${colors.success}; } }
+        .stat-value-animation { animation: pop-in 0.5s ease-out; }
+        @keyframes pulse-animation-kf { 0% { box-shadow: 0 0 0 0 rgba(255, 200, 44, 0.7); } 70% { box-shadow: 0 0 10px 15px rgba(255, 200, 44, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 200, 44, 0); } }
+        .pulse-animation { border-color: ${colors.yellow}; animation: pulse-animation-kf 1s ease-out; }
+        @keyframes live-dot-kf { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .live-dot-animation { animation: live-dot-kf 1.5s infinite; }
     `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
@@ -2991,13 +3035,36 @@ const styles = {
         padding: '20px',
         margin: '20px 0',
         border: `1px solid ${colors.blue}`,
+        transition: 'border-color 0.5s ease, box-shadow 0.5s ease',
+    },
+    preMatchTitleContainer: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderBottom: `1px solid ${colors.blue}`,
+        paddingBottom: '10px',
+        marginBottom: '15px',
     },
     preMatchTitle: {
-        textAlign: 'center',
+        textAlign: 'left',
         color: colors.yellow,
-        margin: '0 0 20px 0',
+        margin: 0,
         fontSize: '1.3rem',
         fontFamily: "'Orbitron', sans-serif",
+    },
+    lastUpdatedContainer: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        color: colors.silver,
+        fontSize: '0.8rem',
+    },
+    liveDot: {
+        width: '10px',
+        height: '10px',
+        backgroundColor: colors.success,
+        borderRadius: '50%',
+        boxShadow: `0 0 8px ${colors.success}`,
     },
     preMatchComparison: {
         display: 'flex',
@@ -3039,6 +3106,7 @@ const styles = {
     preMatchStatItem: {
         display: 'flex',
         justifyContent: 'space-between',
+        alignItems: 'center',
         color: colors.lightText,
         fontSize: '1rem',
         marginBottom: '8px',
