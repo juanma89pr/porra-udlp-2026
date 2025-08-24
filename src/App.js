@@ -29,8 +29,10 @@ const messaging = getMessaging(app);
 const rtdb = getDatabase(app);
 const functions = getFunctions(app);
 
-// --- CLAVE VAPID PARA NOTIFICACIONES ---
+// --- CLAVES DE APIs EXTERNAS ---
 const VAPID_KEY = "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE";
+// API Key para API-Football
+const API_FOOTBALL_KEY = "8984843ec9df5109e0bc0ddb700f3848";
 
 
 // --- DATOS DE LA APLICACIÓN ---
@@ -576,6 +578,62 @@ const ProximaJornadaInfo = ({ jornada }) => {
     );
 };
 
+// --- NUEVO COMPONENTE ---
+// Componente para mostrar las estadísticas pre-partido obtenidas de la API
+const PreMatchStats = ({ stats, teamLogos }) => {
+    if (!stats) return null;
+
+    const renderTeamStats = (teamData) => {
+        // Usamos el logo de la API si existe, si no, el que ya teníamos en la app
+        const logo = teamData?.logo || teamLogos[teamData?.name] || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?';
+        
+        if (!teamData) return <div style={styles.preMatchTeamContainer}><p>Datos no disponibles</p></div>;
+        
+        const formString = (teamData.form || '').slice(-5); // Asegurarnos de que solo mostramos 5
+
+        return (
+            <div style={styles.preMatchTeamContainer}>
+                <div style={styles.preMatchTeamHeader}>
+                    <img src={logo} alt={teamData.name} style={styles.preMatchTeamLogo} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }} />
+                    <span style={styles.preMatchTeamName}>{teamData.name}</span>
+                </div>
+                <div style={styles.preMatchStatsBody}>
+                    <div style={styles.preMatchStatItem}><strong>Posición:</strong> <span>{teamData.rank || 'N/A'}º</span></div>
+                    <div style={styles.preMatchStatItem}><strong>Puntos:</strong> <span>{teamData.points || 'N/A'}</span></div>
+                    <div style={styles.preMatchStatItem}><strong>Últimos 5:</strong></div>
+                    <div style={styles.preMatchFormContainer}>
+                        {formString.split('').map((result, index) => {
+                            let backgroundColor = styles.colors.darkUIAlt;
+                            let letter = '?';
+                            if (result.toLowerCase() === 'w') { backgroundColor = styles.colors.success; letter = 'V'; }
+                            else if (result.toLowerCase() === 'd') { backgroundColor = styles.colors.warning; letter = 'E'; }
+                            else if (result.toLowerCase() === 'l') { backgroundColor = styles.colors.danger; letter = 'D'; }
+                            
+                            return (
+                                <span key={index} style={{ ...styles.preMatchFormIndicator, backgroundColor }}>
+                                    {letter}
+                                </span>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div style={styles.preMatchContainer}>
+            <h4 style={styles.preMatchTitle}>ESTADÍSTICAS PRE-PARTIDO</h4>
+            <div style={styles.preMatchComparison}>
+                {renderTeamStats(stats.local)}
+                <div style={styles.preMatchVS}>VS</div>
+                {renderTeamStats(stats.visitante)}
+            </div>
+        </div>
+    );
+};
+
+
 const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -594,6 +652,12 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
     const [tieneDeuda, setTieneDeuda] = useState(false);
     const [interJornadaStatus, setInterJornadaStatus] = useState(null);
+    // --- NUEVOS ESTADOS ---
+    const [preMatchStats, setPreMatchStats] = useState(null);
+    const [showPreMatchStats, setShowPreMatchStats] = useState(false);
+    const [loadingPreMatch, setLoadingPreMatch] = useState(false);
+    const apiCallTimer = useRef(null);
+    const lastApiCallDate = useRef(null);
     
     const initialJokerStatus = useRef(false);
     
@@ -643,6 +707,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 const proximaJornada = todasLasJornadas.find(j => j.estado === 'Próximamente');
                 setCurrentJornada(null);
                 setLoading(false);
+                setPreMatchStats(null); // Limpiamos stats si no hay jornada
+                setShowPreMatchStats(false);
                 const ultimaFinalizada = todasLasJornadas.filter(j => j.estado === 'Finalizada' && j.id !== 'jornada_test').sort((a, b) => b.numeroJornada - a.numeroJornada)[0];
 
                 if (ultimaFinalizada) {
@@ -661,6 +727,97 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         return () => unsubscribe();
     }, [user]);
 
+    // --- NUEVO HOOK ---
+    // Gestiona la carga y actualización de datos de API-Football
+    useEffect(() => {
+        // Si no hay jornada activa o faltan los IDs de la API, detenemos todo.
+        if (!currentJornada || !currentJornada.fechaPartido || !currentJornada.apiLeagueId || !currentJornada.apiLocalTeamId || !currentJornada.apiVisitorTeamId) {
+            setShowPreMatchStats(false);
+            if (apiCallTimer.current) clearInterval(apiCallTimer.current);
+            return;
+        }
+
+        const fetchHeaders = {
+            "x-rapidapi-host": "v3.football.api-sports.io",
+            "x-rapidapi-key": API_FOOTBALL_KEY
+        };
+
+        const fetchTeamStats = async (leagueId, teamId, season) => {
+            try {
+                // Hacemos la llamada a la API
+                const response = await fetch(`https://v3.football.api-sports.io/standings?league=${leagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
+                if (!response.ok) throw new Error(`API call failed with status: ${response.status}`);
+                const data = await response.json();
+                
+                // Procesamos la respuesta
+                if (data.results === 0 || !data.response[0]) {
+                    console.warn(`No standings data found for team ${teamId} in league ${leagueId}`);
+                    return { name: 'N/A', logo: '', rank: 'N/A', points: 'N/A', form: '-----' };
+                }
+                const teamStanding = data.response[0]?.league?.standings[0]?.[0];
+                return {
+                    name: teamStanding?.team?.name || 'N/A',
+                    logo: teamStanding?.team?.logo || '',
+                    rank: teamStanding?.rank || 'N/A',
+                    points: teamStanding?.points || 'N/A',
+                    form: teamStanding?.form || '-----'
+                };
+            } catch (error) {
+                console.error(`Error fetching stats for team ${teamId}:`, error);
+                return null; // Devolvemos null si hay un error
+            }
+        };
+
+        const fetchData = async () => {
+            console.log("Fetching API data...");
+            setLoadingPreMatch(true);
+            const season = new Date(currentJornada.fechaPartido.seconds * 1000).getFullYear();
+            const localStats = await fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season);
+            const visitorStats = await fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiVisitorTeamId, season);
+            
+            if (localStats && visitorStats) {
+                setPreMatchStats({ local: localStats, visitante: visitorStats });
+            }
+            setLoadingPreMatch(false);
+        };
+        
+        // Función principal que decide si mostrar y cuándo actualizar los datos
+        const checkTimeAndManageUpdates = () => {
+            const now = new Date();
+            const matchTime = currentJornada.fechaPartido.toDate();
+            const oneHourBefore = new Date(matchTime.getTime() - 60 * 60 * 1000);
+
+            // Comprobamos si estamos en la ventana de 1 hora antes del partido
+            const shouldBeVisible = now >= oneHourBefore && now <= matchTime;
+            setShowPreMatchStats(shouldBeVisible);
+
+            if (apiCallTimer.current) clearInterval(apiCallTimer.current);
+
+            if (shouldBeVisible) {
+                // Dentro de la ventana: actualizar cada minuto
+                fetchData(); // Llamada inicial al entrar en la ventana
+                apiCallTimer.current = setInterval(fetchData, 60 * 1000);
+            } else {
+                // Fuera de la ventana: actualizar una vez al día
+                const today = new Date().toISOString().split('T')[0];
+                if (lastApiCallDate.current !== today) {
+                    fetchData();
+                    lastApiCallDate.current = today;
+                }
+            }
+        };
+        
+        checkTimeAndManageUpdates();
+        // También comprobamos cada minuto si hemos entrado en la ventana de visualización
+        const visibilityCheckInterval = setInterval(checkTimeAndManageUpdates, 60 * 1000);
+
+        // Limpieza al desmontar el componente
+        return () => {
+            if (apiCallTimer.current) clearInterval(apiCallTimer.current);
+            if (visibilityCheckInterval) clearInterval(visibilityCheckInterval);
+        };
+
+    }, [currentJornada]); // Este efecto se ejecuta cada vez que cambia la jornada actual
     
     useEffect(() => {
         if (currentJornada?.estado === 'Cerrada' && liveData?.isLive && allPronosticos.length > 0) {
@@ -760,6 +917,31 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
     if (loading) return <LoadingSkeleton />;
 
+    // Componente para animar los puntos provisionales
+    const AnimatedPoints = ({ value }) => {
+        const [displayValue, setDisplayValue] = useState(value);
+        const prevValueRef = useRef(value);
+
+        useEffect(() => {
+            if (value !== prevValueRef.current) {
+                // Simple animación de "pop"
+                const element = document.getElementById('animated-points');
+                if (element) {
+                    element.style.transform = 'scale(1.3)';
+                    element.style.transition = 'transform 0.2s ease-out';
+                    setTimeout(() => {
+                        element.style.transform = 'scale(1)';
+                    }, 200);
+                }
+                setDisplayValue(value);
+                prevValueRef.current = value;
+            }
+        }, [value]);
+
+        return <span id="animated-points">{displayValue}</span>;
+    };
+
+
     const renderContent = () => {
         const ahora = new Date();
         const apertura = currentJornada?.fechaApertura?.toDate();
@@ -769,65 +951,72 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         if (isBettingOpen) {
             const isVip = currentJornada.esVip;
             return (
-                <form onSubmit={handleGuardarPronostico} style={styles.form}>
-                    {currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}
-                    {isVip && (<div style={styles.vipBanner}>⭐ JORNADA VIP ⭐ (Apuesta: 2€ - Puntos Dobles)</div>)}
-                    <h3 style={styles.formSectionTitle}>{currentJornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${currentJornada.numeroJornada}`}: {currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</h3>
-                    
-                    {!hasSubmitted && <button type="button" onClick={handleCopyLastBet} style={styles.secondaryButton}>Copiar mi última apuesta</button>}
-
-                    {hasSubmitted && isLocked ? (
-                        <div style={styles.placeholder}><h3>¡Pronóstico guardado y secreto!</h3><p>Tu apuesta está protegida con PIN. Podrás ver los pronósticos de todos cuando la jornada se cierre.</p><div style={{marginTop: '20px'}}><input type="password" maxLength="4" value={pinInput} onChange={(e) => setPinInput(e.target.value)} style={styles.input} placeholder="PIN de 4 dígitos" /><button type="button" onClick={handleUnlock} style={styles.mainButton}>Desbloquear</button></div></div>
-                    ) : hasSubmitted && !isLocked ? (
-                         <div style={styles.placeholder}><h3>¡Pronóstico guardado!</h3><p>Tu apuesta no está protegida con PIN. Cualquiera podría modificarla si accede con tu perfil. Puedes añadir un PIN y volver a guardar.</p><button type="button" onClick={() => { setIsLocked(false); setHasSubmitted(false); }} style={styles.mainButton}>Modificar Apuesta</button></div>
-                    ) : (
-                        <fieldset style={{border: 'none', padding: 0, margin: 0}}>
-                            <fieldset style={{border: 'none', padding: 0, margin: 0}} >
-                                <div style={styles.formGroup}><label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label><div style={styles.miJornadaMatchInfo}><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} /><div style={styles.miJornadaScoreInputs}><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} /></div><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} /></div>{(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}</div>
-                                <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
-                                
-                                <div style={styles.formGroup}>
-                                    <label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label>
-                                    <div style={styles.goleadorSelectorContainer}>
-                                        {pronostico.goleador && !pronostico.sinGoleador && (<div style={styles.goleadorPreview}><img src={plantilla.find(j => j.nombre === pronostico.goleador)?.imageUrl || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'} alt={pronostico.goleador} style={styles.goleadorPreviewImg} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }}/><span>{pronostico.goleador}</span></div>)}
-                                        <select name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador}>
-                                            <option value="">-- Elige un jugador --</option>
-                                            {plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}
-                                        </select>
-                                    </div>
-                                    <div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>(1 Punto)</span></label></div>
-                                </div>
-                            </fieldset>
-                            
-                            <div style={styles.jokerContainer}>
-                                {!pronostico.jokerActivo ? (<><button type="button" onClick={handleActivarJoker} style={styles.jokerButton} disabled={jokersRestantes <= 0}>🃏 Activar JOKER</button><span style={{marginLeft: '15px', color: styles.colors.lightText}}>Te quedan: <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{jokersRestantes}</span></span></>) : (
-                                    <div>
-                                        <h3 style={styles.formSectionTitle}>Apuestas JOKER (10 Resultados Extra)</h3>
-                                        <p style={{textAlign: 'center', marginBottom: '15px'}}>Añade hasta 10 resultados exactos adicionales. Cada uno cuenta como una apuesta para el bote.</p>
-                                        <div style={styles.jokerGrid}>
-                                            {pronostico.jokerPronosticos.map((p, index) => (
-                                                <div key={index} style={styles.jokerBetRow}>
-                                                    <label style={{...styles.label, justifyContent: 'center', fontSize: '0.8rem'}}>Apuesta Joker {index + 1}</label>
-                                                    <div style={styles.resultInputContainer}><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="L" /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="V"/></div>
-                                                    {jokerStats[index] && (<small style={{...styles.statsIndicator, color: jokerStats[index].color, fontSize: '0.8rem', textAlign: 'center', display: 'block', marginTop: '5px'}}>{jokerStats[index].text}</small>)}
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, ...styles.dangerButton, marginTop: '20px'}} disabled={panicButtonDisabled}>BOTÓN DEL PÁNICO</button>
-                                        {panicButtonDisabled && <small style={{display: 'block', color: styles.colors.danger, marginTop: '5px'}}>El botón del pánico se ha desactivado (menos de 1h para el cierre).</small>}
-                                    </div>
-                                )}
-                            </div>
-                             <div style={{...styles.formGroup, marginTop: '30px', borderTop: `1px solid ${colors.blue}`, paddingTop: '20px'}}>
-                                <label style={styles.label}>PIN DE SEGURIDAD (4 dígitos, opcional)</label>
-                                <input type="password" name="pin" value={pronostico.pin} onChange={handlePronosticoChange} maxLength="4" style={styles.input} placeholder="Crea un PIN para proteger tu apuesta" />
-                                <input type="password" name="pinConfirm" value={pronostico.pinConfirm} onChange={handlePronosticoChange} maxLength="4" style={{...styles.input, marginTop: '10px'}} placeholder="Confirma tu PIN" />
-                            </div>
-                            <button type="submit" disabled={isSaving} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR Y BLOQUEAR'}</button>
-                        </fieldset>
+                <>
+                    {showPreMatchStats && (
+                        loadingPreMatch 
+                            ? <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div> 
+                            : <PreMatchStats stats={preMatchStats} teamLogos={teamLogos} />
                     )}
-                    {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : styles.colors.danger}}>{message.text}</p>}
-                </form>
+                    <form onSubmit={handleGuardarPronostico} style={styles.form}>
+                        {currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}
+                        {isVip && (<div style={styles.vipBanner}>⭐ JORNADA VIP ⭐ (Apuesta: 2€ - Puntos Dobles)</div>)}
+                        <h3 style={styles.formSectionTitle}>{currentJornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${currentJornada.numeroJornada}`}: {currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</h3>
+                        
+                        {!hasSubmitted && <button type="button" onClick={handleCopyLastBet} style={styles.secondaryButton}>Copiar mi última apuesta</button>}
+
+                        {hasSubmitted && isLocked ? (
+                            <div style={styles.placeholder}><h3>¡Pronóstico guardado y secreto!</h3><p>Tu apuesta está protegida con PIN. Podrás ver los pronósticos de todos cuando la jornada se cierre.</p><div style={{marginTop: '20px'}}><input type="password" maxLength="4" value={pinInput} onChange={(e) => setPinInput(e.target.value)} style={styles.input} placeholder="PIN de 4 dígitos" /><button type="button" onClick={handleUnlock} style={styles.mainButton}>Desbloquear</button></div></div>
+                        ) : hasSubmitted && !isLocked ? (
+                             <div style={styles.placeholder}><h3>¡Pronóstico guardado!</h3><p>Tu apuesta no está protegida con PIN. Cualquiera podría modificarla si accede con tu perfil. Puedes añadir un PIN y volver a guardar.</p><button type="button" onClick={() => { setIsLocked(false); setHasSubmitted(false); }} style={styles.mainButton}>Modificar Apuesta</button></div>
+                        ) : (
+                            <fieldset style={{border: 'none', padding: 0, margin: 0}}>
+                                <fieldset style={{border: 'none', padding: 0, margin: 0}} >
+                                    <div style={styles.formGroup}><label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label><div style={styles.miJornadaMatchInfo}><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} /><div style={styles.miJornadaScoreInputs}><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} /></div><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} /></div>{(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}</div>
+                                    <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
+                                    
+                                    <div style={styles.formGroup}>
+                                        <label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label>
+                                        <div style={styles.goleadorSelectorContainer}>
+                                            {pronostico.goleador && !pronostico.sinGoleador && (<div style={styles.goleadorPreview}><img src={plantilla.find(j => j.nombre === pronostico.goleador)?.imageUrl || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'} alt={pronostico.goleador} style={styles.goleadorPreviewImg} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }}/><span>{pronostico.goleador}</span></div>)}
+                                            <select name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador}>
+                                                <option value="">-- Elige un jugador --</option>
+                                                {plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}
+                                            </select>
+                                        </div>
+                                        <div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>(1 Punto)</span></label></div>
+                                    </div>
+                                </fieldset>
+                                
+                                <div style={styles.jokerContainer}>
+                                    {!pronostico.jokerActivo ? (<><button type="button" onClick={handleActivarJoker} style={styles.jokerButton} disabled={jokersRestantes <= 0}>🃏 Activar JOKER</button><span style={{marginLeft: '15px', color: styles.colors.lightText}}>Te quedan: <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{jokersRestantes}</span></span></>) : (
+                                        <div>
+                                            <h3 style={styles.formSectionTitle}>Apuestas JOKER (10 Resultados Extra)</h3>
+                                            <p style={{textAlign: 'center', marginBottom: '15px'}}>Añade hasta 10 resultados exactos adicionales. Cada uno cuenta como una apuesta para el bote.</p>
+                                            <div style={styles.jokerGrid}>
+                                                {pronostico.jokerPronosticos.map((p, index) => (
+                                                    <div key={index} style={styles.jokerBetRow}>
+                                                        <label style={{...styles.label, justifyContent: 'center', fontSize: '0.8rem'}}>Apuesta Joker {index + 1}</label>
+                                                        <div style={styles.resultInputContainer}><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="L" /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="V"/></div>
+                                                        {jokerStats[index] && (<small style={{...styles.statsIndicator, color: jokerStats[index].color, fontSize: '0.8rem', textAlign: 'center', display: 'block', marginTop: '5px'}}>{jokerStats[index].text}</small>)}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, ...styles.dangerButton, marginTop: '20px'}} disabled={panicButtonDisabled}>BOTÓN DEL PÁNICO</button>
+                                            {panicButtonDisabled && <small style={{display: 'block', color: styles.colors.danger, marginTop: '5px'}}>El botón del pánico se ha desactivado (menos de 1h para el cierre).</small>}
+                                        </div>
+                                    )}
+                                </div>
+                                 <div style={{...styles.formGroup, marginTop: '30px', borderTop: `1px solid ${styles.colors.blue}`, paddingTop: '20px'}}>
+                                    <label style={styles.label}>PIN DE SEGURIDAD (4 dígitos, opcional)</label>
+                                    <input type="password" name="pin" value={pronostico.pin} onChange={handlePronosticoChange} maxLength="4" style={styles.input} placeholder="Crea un PIN para proteger tu apuesta" />
+                                    <input type="password" name="pinConfirm" value={pronostico.pinConfirm} onChange={handlePronosticoChange} maxLength="4" style={{...styles.input, marginTop: '10px'}} placeholder="Confirma tu PIN" />
+                                </div>
+                                <button type="submit" disabled={isSaving} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR Y BLOQUEAR'}</button>
+                            </fieldset>
+                        )}
+                        {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : styles.colors.danger}}>{message.text}</p>}
+                    </form>
+                </>
             );
         }
 
@@ -1064,7 +1253,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                                 <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions?.resultadoComun?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.resultadoComun[emoji]}</span>)}</div>
                             </div>
                             <div style={{...styles.statCard, position: 'relative', overflow: 'hidden'}}>
-                                <PieChart data={[{label: 'Victoria', percentage: jornadaStats.porcentajeGana, color: colors.success}, {label: 'Empate', percentage: jornadaStats.porcentajeEmpate, color: colors.warning}, {label: 'Derrota', percentage: jornadaStats.porcentajePierde, color: colors.danger}]} />
+                                <PieChart data={[{label: 'Victoria', percentage: jornadaStats.porcentajeGana, color: styles.colors.success}, {label: 'Empate', percentage: jornadaStats.porcentajeEmpate, color: styles.colors.warning}, {label: 'Derrota', percentage: jornadaStats.porcentajePierde, color: styles.colors.danger}]} />
                                 <div style={styles.statLabel}>La Fe de la Afición</div>
                                 <div style={styles.reactionContainer}>
                                     <div style={styles.reactionEmojis}>
@@ -1315,6 +1504,11 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [fechaPartido, setFechaPartido] = useState(toInputFormat(jornada.fechaPartido));
     
     const [estadioImageUrl, setEstadioImageUrl] = useState(jornada.estadioImageUrl || '');
+    // --- MODIFICACIÓN: Añadimos estados para los nuevos campos de la API ---
+    const [apiLeagueId, setApiLeagueId] = useState(jornada.apiLeagueId || '');
+    const [apiLocalTeamId, setApiLocalTeamId] = useState(jornada.apiLocalTeamId || '');
+    const [apiVisitorTeamId, setApiVisitorTeamId] = useState(jornada.apiVisitorTeamId || '');
+
     const [isSaving, setIsSaving] = useState(false);
     const [isCalculating, setIsCalculating] = useState(false);
     const [message, setMessage] = useState('');
@@ -1337,7 +1531,11 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 fechaApertura: fechaApertura ? new Date(fechaApertura) : null, 
                 fechaCierre: fechaCierre ? new Date(fechaCierre) : null, 
                 fechaPartido: fechaPartido ? new Date(fechaPartido) : null,
-                estadioImageUrl 
+                estadioImageUrl,
+                // --- MODIFICACIÓN: Guardamos los nuevos campos de la API ---
+                apiLeagueId,
+                apiLocalTeamId,
+                apiVisitorTeamId
             });
             setMessage('¡Guardado!'); setTimeout(() => setMessage(''), 2000);
         } catch (error) { console.error("Error al actualizar: ", error); setMessage('Error al guardar.'); }
@@ -1537,17 +1735,28 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
             </div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>Mensaje para la Pantalla Principal:</label><textarea value={splashMessage} onChange={(e) => setSplashMessage(e.target.value)} style={{...styles.input, width: '95%', height: '50px'}} /></div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>URL Imagen del Estadio:</label><input type="text" value={estadioImageUrl} onChange={(e) => setEstadioImageUrl(e.target.value)} style={{...styles.input, width: '95%'}} /></div>
+            
+            {/* --- MODIFICACIÓN: Añadimos los nuevos inputs para la API --- */}
+            <div style={{marginTop: '20px', paddingTop: '15px', borderTop: `1px dashed ${styles.colors.blue}`}}>
+                <h4 style={{color: styles.colors.yellow, marginBottom: '15px', textAlign: 'center'}}>Configuración API-Football</h4>
+                <div style={styles.adminControls}>
+                    <div><label style={styles.label}>ID Liga (API):</label><input type="text" value={apiLeagueId} onChange={(e) => setApiLeagueId(e.target.value)} style={styles.adminInput} placeholder="Ej: 140" /></div>
+                    <div><label style={styles.label}>ID Equipo Local (API):</label><input type="text" value={apiLocalTeamId} onChange={(e) => setApiLocalTeamId(e.target.value)} style={styles.adminInput} placeholder="Ej: 720" /></div>
+                    <div><label style={styles.label}>ID Equipo Visitante (API):</label><input type="text" value={apiVisitorTeamId} onChange={(e) => setApiVisitorTeamId(e.target.value)} style={styles.adminInput} placeholder="Ej: 727" /></div>
+                </div>
+            </div>
+
             <div style={{marginTop: '20px', display: 'flex', flexWrap: 'wrap', gap: '10px'}}>
                 <button onClick={handleSaveChanges} disabled={isSaving} style={styles.saveButton}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</button>
                 <button onClick={handleCalcularPuntos} disabled={isCalculating || jornada.estado === 'Finalizada'} style={styles.saveButton}>
                     {isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar'}
                 </button>
                 {jornada.estado === 'Finalizada' && (
-                    <button onClick={handleRecalcularInsignias} disabled={isCalculating} style={{...styles.saveButton, backgroundColor: colors.blue}}>
+                    <button onClick={handleRecalcularInsignias} disabled={isCalculating} style={{...styles.saveButton, backgroundColor: styles.colors.blue}}>
                         {isCalculating ? 'Calculando...' : 'Re-calcular Insignias'}
                     </button>
                 )}
-                <button onClick={handleResetBote} disabled={isSaving} style={{...styles.saveButton, backgroundColor: colors.warning, color: colors.deepBlue}}>
+                <button onClick={handleResetBote} disabled={isSaving} style={{...styles.saveButton, backgroundColor: styles.colors.warning, color: styles.colors.deepBlue}}>
                     Resetear Bote a 0€
                 </button>
                 {message && <span style={{marginLeft: '10px', color: styles.colors.success, alignSelf: 'center'}}>{message}</span>}
@@ -1570,7 +1779,7 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                             <input type="text" value={liveData.ultimoGoleador} onChange={(e) => setLiveData(d => ({...d, ultimoGoleador: e.target.value}))} style={styles.adminInput} placeholder="Nombre o 'SG'"/>
                         </div>
                     </div>
-                    <button onClick={handleUpdateLiveScore} disabled={isSaving} style={{...styles.saveButton, backgroundColor: colors.danger, marginTop: '15px'}}>
+                    <button onClick={handleUpdateLiveScore} disabled={isSaving} style={{...styles.saveButton, backgroundColor: styles.colors.danger, marginTop: '15px'}}>
                         {isSaving ? 'Actualizando...' : 'Actualizar Marcador en Vivo'}
                     </button>
                 </div>
@@ -1615,7 +1824,7 @@ const AdminTestJornada = () => {
             <h3 style={styles.formSectionTitle}>🧪 Gestión de Jornada de Prueba</h3>
             <p style={{textAlign: 'center', margin: '10px 0', lineHeight: 1.5}}>Usa esta opción para crear una jornada de prueba. Una vez activada, aparecerá en la lista de abajo y podrás gestionarla como cualquier otra jornada.</p>
             <div style={{display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap'}}>
-                <button onClick={handleToggleTestJornada} disabled={loading} style={{...styles.mainButton, backgroundColor: isActive ? colors.danger : colors.success, borderColor: isActive ? colors.danger : colors.success, margin: '10px 0'}}>
+                <button onClick={handleToggleTestJornada} disabled={loading} style={{...styles.mainButton, backgroundColor: isActive ? styles.colors.danger : styles.colors.success, borderColor: isActive ? styles.colors.danger : styles.colors.success, margin: '10px 0'}}>
                     {loading ? 'Cargando...' : (isActive ? 'Desactivar y Borrar Jornada' : 'Activar Jornada de Prueba')}
                 </button>
             </div>
@@ -1749,7 +1958,7 @@ const AdminPlantillaManager = ({ onBack, plantilla, setPlantilla }) => {
                 ))}
             </div>
 
-            <div style={{...styles.plantillaItem, marginTop: '20px', borderTop: `2px dashed ${colors.blue}`, paddingTop: '20px'}}>
+            <div style={{...styles.plantillaItem, marginTop: '20px', borderTop: `2px dashed ${styles.colors.blue}`, paddingTop: '20px'}}>
                 <input type="text" value={newJugador.dorsal} onChange={(e) => handleNewJugadorChange('dorsal', e.target.value)} placeholder="Dorsal" style={styles.plantillaInput} />
                 <input type="text" value={newJugador.nombre} onChange={(e) => handleNewJugadorChange('nombre', e.target.value)} placeholder="Nombre" style={{...styles.plantillaInput, flex: 2}} />
                 <input type="text" value={newJugador.imageUrl} onChange={(e) => handleNewJugadorChange('imageUrl', e.target.value)} placeholder="URL Imagen (PNG)" style={{...styles.plantillaInput, flex: 3}} />
@@ -1760,7 +1969,7 @@ const AdminPlantillaManager = ({ onBack, plantilla, setPlantilla }) => {
                 <button onClick={handleSaveChanges} disabled={saving || verifying} style={{...styles.saveButton}}>
                     {saving ? 'Guardando...' : 'Guardar Cambios en la Plantilla'}
                 </button>
-                <button onClick={handleVerifyImages} disabled={verifying || saving} style={{...styles.saveButton, backgroundColor: colors.blue}}>
+                <button onClick={handleVerifyImages} disabled={verifying || saving} style={{...styles.saveButton, backgroundColor: styles.colors.blue}}>
                     {verifying ? 'Verificando...' : 'Verificar Fotos de Jugadores'}
                 </button>
             </div>
@@ -1769,10 +1978,10 @@ const AdminPlantillaManager = ({ onBack, plantilla, setPlantilla }) => {
             {verificationResults && (
                 <div style={styles.verificationResultsContainer}>
                     <h4>Resultados de la Verificación:</h4>
-                    <p style={{color: colors.success}}><strong>{verificationResults.ok.length} imágenes OK</strong></p>
+                    <p style={{color: styles.colors.success}}><strong>{verificationResults.ok.length} imágenes OK</strong></p>
                     {verificationResults.failed.length > 0 && (
                         <div>
-                            <p style={{color: colors.danger}}><strong>{verificationResults.failed.length} imágenes fallidas:</strong></p>
+                            <p style={{color: styles.colors.danger}}><strong>{verificationResults.failed.length} imágenes fallidas:</strong></p>
                             <ul style={styles.verificationList}>
                                 {verificationResults.failed.map(fail => (
                                     <li key={fail.nombre}>{fail.nombre} ({fail.reason})</li>
@@ -1863,7 +2072,7 @@ const AdminPorraAnual = ({ onBack }) => {
             </div>
             <div style={{marginTop: '20px'}}>
                 <button onClick={handleSaveConfig} disabled={saving} style={styles.saveButton}>{saving ? 'Guardando...' : 'Guardar Configuración'}</button>
-                <button onClick={handleCalcularPuntosAnual} disabled={calculating || config.estado !== 'Cerrada'} style={{...styles.saveButton, backgroundColor: colors.gold, color: colors.deepBlue}}>{calculating ? 'Calculando...' : 'Calcular Puntos Finales'}</button>
+                <button onClick={handleCalcularPuntosAnual} disabled={calculating || config.estado !== 'Cerrada'} style={{...styles.saveButton, backgroundColor: styles.colors.gold, color: styles.colors.deepBlue}}>{calculating ? 'Calculando...' : 'Calcular Puntos Finales'}</button>
             </div>
              {message && <p style={{...styles.message, marginTop: '15px'}}>{message}</p>}
         </div>
@@ -2775,6 +2984,92 @@ const styles = {
     reactionCountCorner: { position: 'absolute', top: '10px', right: '10px', display: 'flex', flexDirection: 'column', gap: '5px', background: 'rgba(0,0,0,0.5)', padding: '5px', borderRadius: '8px', fontSize: '0.8rem' },
     statusIndicatorRed: { width: '10px', height: '10px', backgroundColor: colors.danger, borderRadius: '50%', animation: 'status-blink-red 1.5s infinite' },
     statusIndicatorGreen: { width: '10px', height: '10px', backgroundColor: colors.success, borderRadius: '50%', animation: 'status-pulse-green 2s infinite' },
+    // --- NUEVOS ESTILOS PARA PRE-MATCH STATS ---
+    preMatchContainer: {
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        borderRadius: '12px',
+        padding: '20px',
+        margin: '20px 0',
+        border: `1px solid ${colors.blue}`,
+    },
+    preMatchTitle: {
+        textAlign: 'center',
+        color: colors.yellow,
+        margin: '0 0 20px 0',
+        fontSize: '1.3rem',
+        fontFamily: "'Orbitron', sans-serif",
+    },
+    preMatchComparison: {
+        display: 'flex',
+        justifyContent: 'space-around',
+        alignItems: 'flex-start',
+        gap: '15px',
+    },
+    preMatchTeamContainer: {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '10px',
+    },
+    preMatchTeamHeader: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '10px',
+        marginBottom: '10px',
+    },
+    preMatchTeamLogo: {
+        width: '60px',
+        height: '60px',
+        objectFit: 'contain',
+    },
+    preMatchTeamName: {
+        color: colors.lightText,
+        fontWeight: 'bold',
+        fontSize: '1.1rem',
+        textAlign: 'center',
+    },
+    preMatchStatsBody: {
+        width: '100%',
+        backgroundColor: colors.darkUIAlt,
+        padding: '10px',
+        borderRadius: '8px',
+    },
+    preMatchStatItem: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        color: colors.lightText,
+        fontSize: '1rem',
+        marginBottom: '8px',
+        paddingBottom: '5px',
+        borderBottom: `1px solid ${colors.deepBlue}`
+    },
+    preMatchFormContainer: {
+        display: 'flex',
+        justifyContent: 'center',
+        gap: '8px',
+        marginTop: '10px',
+    },
+    preMatchFormIndicator: {
+        width: '25px',
+        height: '25px',
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: '0.9rem',
+        boxShadow: 'inset 0 0 5px rgba(0,0,0,0.4)',
+    },
+    preMatchVS: {
+        color: colors.yellow,
+        fontWeight: 'bold',
+        fontSize: '2rem',
+        alignSelf: 'center',
+        fontFamily: "'Orbitron', sans-serif",
+    },
 };
 
 export default App;
