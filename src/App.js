@@ -258,21 +258,24 @@ const LiveBanner = ({ liveData, jornada }) => {
 
 const TeamDisplay = ({ teamLogos, teamName, shortName = false, imgStyle }) => (<div style={styles.teamDisplay}><img src={teamLogos[teamName] || 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'} style={{...styles.teamLogo, ...imgStyle}} alt={`${teamName} logo`} onError={(e) => { e.target.src = 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'; }} /><span style={styles.teamNameText}>{shortName && teamName === "UD Las Palmas" ? "UDLP" : teamName}</span></div>);
 
+// MODIFICADO: Animación de Joker mejorada
 const JokerAnimation = () => {
     const [exploded, setExploded] = useState(false);
     useEffect(() => { const timer = setTimeout(() => setExploded(true), 5500); return () => clearTimeout(timer); }, []);
-    const jokers = Array.from({ length: 80 });
-    return (<div style={styles.jokerAnimationOverlay}>{jokers.map((_, i) => (<span key={i} className={exploded ? 'exploded' : ''} style={{...styles.jokerIcon, left: `${Math.random() * 100}vw`, animationDelay: `${Math.random() * 4}s`, animationDuration: `${3 + Math.random() * 3}s`, transform: exploded ? `translate(${Math.random() * 800 - 400}px, ${Math.random() * 800 - 400}px) rotate(720deg)` : 'translateY(-100px) rotate(0deg)', opacity: exploded ? 0 : 1 }}>🃏</span>))}</div>);
+    const jokers = Array.from({ length: 100 });
+    return (<div style={styles.jokerAnimationOverlay}>{jokers.map((_, i) => (<span key={i} className={exploded ? 'exploded' : ''} style={{...styles.jokerIcon, left: `${Math.random() * 100}vw`, fontSize: `${1.5 + Math.random() * 2}rem`, animationDelay: `${Math.random() * 4}s`, animationDuration: `${4 + Math.random() * 4}s`, transform: exploded ? `translate(${Math.random() * 800 - 400}px, ${Math.random() * 800 - 400}px) rotate(720deg)` : 'translateY(-100px) rotate(0deg)', opacity: exploded ? 0 : 1 }}>🃏</span>))}</div>);
 };
 
+// MODIFICADO: Animación de Confeti mejorada
 const Confetti = () => {
-    const particles = Array.from({ length: 150 });
-    return (<div style={styles.confettiOverlay}>{particles.map((_, i) => (<div key={i} className="confetti-particle" style={{ '--x': `${Math.random() * 100}vw`, '--angle': `${Math.random() * 360}deg`, '--delay': `${Math.random() * 5}s`, '--color': i % 2 === 0 ? styles.colors.yellow : styles.colors.blue, }} />))}</div>);
+    const particles = Array.from({ length: 200 });
+    return (<div style={styles.confettiOverlay}>{particles.map((_, i) => (<div key={i} className="confetti-particle" style={{ '--x': `${Math.random() * 100}vw`, '--angle': `${Math.random() * 360}deg`, '--delay': `${Math.random() * 5}s`, '--color': i % 3 === 0 ? styles.colors.yellow : (i % 3 === 1 ? styles.colors.blue : styles.colors.lightText), '--size': `${5 + Math.random() * 10}px` }} />))}</div>);
 };
 
+// MODIFICADO: Animación de ganador con contadores
 const WinnerAnimation = ({ winnerData, onClose }) => {
     const { pronostico, prize } = winnerData;
-    return (<div style={styles.winnerAnimationOverlay}><Confetti /><div style={styles.winnerModal}><div style={styles.trophy}>🏆</div><h2 style={styles.winnerTitle}>¡FELICIDADES, {pronostico.id}!</h2><p style={styles.winnerText}>¡Has ganado la porra de la jornada!</p><div style={styles.winnerStats}><span>Puntos Obtenidos: <strong>{pronostico.puntosObtenidos}</strong></span><span>Premio: <strong>{prize.toFixed(2)}€</strong></span></div><button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>CERRAR</button></div></div>);
+    return (<div style={styles.winnerAnimationOverlay}><Confetti /><div style={styles.winnerModal}><div style={styles.trophy}>🏆</div><h2 style={styles.winnerTitle}>¡FELICIDADES, {pronostico.id}!</h2><p style={styles.winnerText}>¡Has ganado la porra de la jornada!</p><div style={styles.winnerStats}><span>Puntos Obtenidos: <strong><AnimatedCount endValue={pronostico.puntosObtenidos} duration={1500} /></strong></span><span>Premio: <strong><AnimatedCount endValue={prize} duration={1500} decimals={2} />€</strong></span></div><button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>CERRAR</button></div></div>);
 };
 
 const InstallGuideModal = ({ onClose }) => {
@@ -308,6 +311,34 @@ const LoadingSkeleton = ({ type = 'list' }) => {
     return (<div style={styles.skeletonContainer}><div style={{...styles.skeletonBox, height: '40px', width: '80%', marginBottom: '20px'}}></div><div style={{...styles.skeletonBox, height: '20px', width: '60%'}}></div><div style={{...styles.skeletonBox, height: '20px', width: '70%', marginTop: '10px'}}></div></div>);
 };
 
+// NUEVO: Componente para animar contadores
+const AnimatedCount = ({ endValue, duration = 1000, decimals = 0 }) => {
+    const [currentValue, setCurrentValue] = useState(0);
+    const prevValueRef = useRef(0);
+
+    useEffect(() => {
+        const startValue = prevValueRef.current;
+        let startTime = null;
+
+        const animation = (currentTime) => {
+            if (!startTime) startTime = currentTime;
+            const progress = Math.min((currentTime - startTime) / duration, 1);
+            const newDisplayValue = progress * (endValue - startValue) + startValue;
+            setCurrentValue(newDisplayValue);
+            if (progress < 1) {
+                requestAnimationFrame(animation);
+            } else {
+                prevValueRef.current = endValue;
+            }
+        };
+        requestAnimationFrame(animation);
+        return () => { prevValueRef.current = endValue; };
+    }, [endValue, duration]);
+
+    return <span>{currentValue.toFixed(decimals)}</span>;
+};
+
+
 // ============================================================================
 // --- COMPONENTES DE LAS PANTALLAS ---
 // ============================================================================
@@ -330,6 +361,7 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, plantilla }) => {
     const [pronosticos, setPronosticos] = useState([]);
     const [stats, setStats] = useState([]);
     const [currentStatIndex, setCurrentStatIndex] = useState(0);
+    const [pulsedEmoji, setPulsedEmoji] = useState(null);
 
     // Se suscribe a los datos de la jornada para obtener las reacciones
     useEffect(() => {
@@ -507,10 +539,13 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, plantilla }) => {
         return () => clearInterval(interval);
     }, [jornadaInfo]);
     
-    // MODIFICADO: handleReaction ahora guarda la reacción por estadística
+    // MODIFICADO: handleReaction ahora guarda la reacción por estadística y añade animación de pulso
     const handleReaction = async (emoji) => {
         if (!currentUser || !jornadaInfo || stats.length === 0) return;
         
+        setPulsedEmoji(emoji);
+        setTimeout(() => setPulsedEmoji(null), 400);
+
         const currentStat = stats[currentStatIndex];
         if (!currentStat) return;
 
@@ -621,15 +656,25 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, plantilla }) => {
 
                         <div style={styles.reactionContainer}>
                             <div style={styles.reactionEmojis}>
-                                {REACTION_EMOJIS.map(emoji => (
-                                    <button key={emoji} onClick={() => handleReaction(emoji)} style={userReaction === emoji ? {...styles.reactionButton, ...styles.reactionButtonSelected} : styles.reactionButton} disabled={!currentStat}>
+                                {REACTION_EMOJIS.map((emoji, index) => (
+                                    <button 
+                                        key={emoji} 
+                                        onClick={() => handleReaction(emoji)} 
+                                        className={pulsedEmoji === emoji ? 'pulsed' : ''}
+                                        style={{
+                                            ...styles.reactionButton, 
+                                            ...(userReaction === emoji ? styles.reactionButtonSelected : {}),
+                                            animationDelay: `${index * 50}ms`
+                                        }} 
+                                        disabled={!currentStat}
+                                    >
                                         {emoji}
                                     </button>
                                 ))}
                             </div>
                             <div style={styles.reactionCounts}>
                                 {Object.entries(reactionsForStat.counts || {}).map(([emoji, count]) => (
-                                    count > 0 && <span key={emoji} style={styles.reactionCountChip}>{emoji} {count}</span>
+                                    count > 0 && <span key={emoji} style={styles.reactionCountChip}>{emoji} <AnimatedCount endValue={count} duration={500} /></span>
                                 ))}
                             </div>
                         </div>
@@ -2699,14 +2744,14 @@ function App() {
         html { font-size: 16px !important; -webkit-text-size-adjust: 100%; }
         body, #root { width: 100%; min-width: 100%; overflow-x: hidden; }
         @keyframes gold-leader-animation { 
-            0% { box-shadow: 0 0 5px ${colors.gold}, 0 0 10px ${colors.gold}, 0 0 15px ${colors.gold}80; } 
-            50% { box-shadow: 0 0 15px ${colors.gold}, 0 0 25px ${colors.gold}, 0 0 35px ${colors.gold}80; }
-            100% { box-shadow: 0 0 5px ${colors.gold}, 0 0 10px ${colors.gold}, 0 0 15px ${colors.gold}80; }
+            0% { box-shadow: 0 0 8px ${colors.gold}, 0 0 15px ${colors.gold}, 0 0 25px ${colors.gold}80; } 
+            50% { box-shadow: 0 0 15px ${colors.gold}, 0 0 30px ${colors.gold}, 0 0 45px ${colors.gold}80; }
+            100% { box-shadow: 0 0 8px ${colors.gold}, 0 0 15px ${colors.gold}, 0 0 25px ${colors.gold}80; }
         }
         @keyframes fire-streak-animation {
-            0% { box-shadow: 0 0 5px #fca311, 0 0 10px #e63946, 0 0 15px #fca31180; }
-            50% { box-shadow: 0 0 15px #fca311, 0 0 25px #e63946, 0 0 35px #fca31180; }
-            100% { box-shadow: 0 0 5px #fca311, 0 0 10px #e63946, 0 0 15px #fca31180; }
+            0% { box-shadow: 0 0 8px #fca311, 0 0 15px #e63946, 0 0 25px #fca31180; }
+            50% { box-shadow: 0 0 15px #fca311, 0 0 30px #e63946, 0 0 45px #fca31180; }
+            100% { box-shadow: 0 0 8px #fca311, 0 0 15px #e63946, 0 0 25px #fca31180; }
         }
         @keyframes cold-streak-animation {
             0% { box-shadow: 0 0 8px #00aaff, 0 0 15px #00aaff, 0 0 20px #00aaff80; }
@@ -2723,8 +2768,8 @@ function App() {
         .content-enter-active { animation: slideInFromRight 0.4s ease-out; }
         @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
         .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
-        @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(720deg); } }
-        .confetti-particle { position: absolute; width: 10px; height: 10px; background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; }
+        @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(var(--angle)); } }
+        .confetti-particle { position: absolute; width: var(--size); height: var(--size); background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spinner { animation: spin 1.5s linear infinite; }
         @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
@@ -2733,6 +2778,9 @@ function App() {
         @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } }
         .point-jump-up { animation: point-jump-up 0.7s ease-out; }
         .stat-fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes bounce-in { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
+        @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
+        .pulsed { animation: pulse-once 0.4s ease-in-out; }
     `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
@@ -2975,8 +3023,8 @@ const styles = {
     jokerChipsContainer: { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' },
     pinReminder: { display: 'block', fontSize: '0.8rem', color: colors.warning, marginTop: '10px', fontStyle: 'italic' },
     statsIndicator: { display: 'block', textAlign: 'center', marginTop: '10px', fontWeight: 'bold' },
-    jokerAnimationOverlay: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', zIndex: 9999, pointerEvents: 'none' },
-    jokerIcon: { position: 'absolute', top: '-50px', fontSize: '3rem', animationName: 'fall', animationTimingFunction: 'linear', animationIterationCount: '1' },
+    jokerAnimationOverlay: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', zIndex: 9999, pointerEvents: 'none', backdropFilter: 'blur(3px) brightness(0.7)', transition: 'backdrop-filter 0.5s ease' },
+    jokerIcon: { position: 'absolute', top: '-50px', animationName: 'fall', animationTimingFunction: 'linear', animationIterationCount: '1' },
     porraAnualBanner: { background: `linear-gradient(45deg, ${colors.gold}, ${colors.yellow})`, color: colors.darkText, fontWeight: 'bold', padding: '15px', borderRadius: '8px', textAlign: 'center', marginBottom: '20px', fontSize: '1rem', fontFamily: "'Orbitron', sans-serif", boxShadow: `0 0 20px ${colors.gold}70`, cursor: 'pointer' },
     porraAnualContainer: { marginTop: '30px', padding: '20px', borderTop: `2px solid ${colors.yellow}`, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px' },
     // NUEVO: Estilos para la Porra Anual
@@ -3046,7 +3094,7 @@ const styles = {
     skeletonRow: { display: 'flex', justifyContent: 'space-between', gap: '10px' },
     reactionContainer: { borderTop: `1px solid ${colors.blue}`, marginTop: '15px', paddingTop: '15px' },
     reactionEmojis: { display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '10px' },
-    reactionButton: { background: 'rgba(255,255,255,0.1)', border: '1px solid transparent', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.5rem', cursor: 'pointer', transition: 'all 0.2s ease' },
+    reactionButton: { background: 'rgba(255,255,255,0.1)', border: '1px solid transparent', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.5rem', cursor: 'pointer', transition: 'all 0.2s ease', animation: 'bounce-in 0.5s ease-out forwards' },
     reactionButtonSelected: { borderColor: colors.yellow, transform: 'scale(1.15)' },
     reactionCounts: { display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' },
     reactionCountChip: { backgroundColor: colors.blue, padding: '3px 8px', borderRadius: '12px', fontSize: '0.8rem' },
