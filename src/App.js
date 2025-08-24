@@ -355,7 +355,7 @@ const PieChart = ({ data }) => {
                 {data.map((segment, index) => {
                     const strokeDashoffset = circumference - (accumulatedPercentage / 100 * circumference);
                     const strokeDasharray = `${(segment.percentage / 100 * circumference)} ${circumference}`;
-                    accumulatedPercentage += segment.percentage;
+                    accumulatedPercentage += parseFloat(segment.percentage);
                     
                     return (
                         <circle
@@ -366,9 +366,10 @@ const PieChart = ({ data }) => {
                             fill="transparent"
                             stroke={segment.color}
                             strokeWidth="20"
-                            strokeDasharray={strokeDasharray}
-                            strokeDashoffset={strokeDashoffset}
+                            strokeDasharray={circumference}
+                            strokeDashoffset={circumference}
                             transform="rotate(-90 60 60)"
+                            style={{ '--stroke-dasharray': strokeDasharray, '--stroke-dashoffset': strokeDashoffset }}
                             className="pie-chart-segment"
                         />
                     );
@@ -1122,7 +1123,7 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                         const total = pronosticosData.length;
                         const ganaLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Gana UD Las Palmas').length;
                         const empateCount = pronosticosData.filter(p => p.resultado1x2 === 'Empate').length;
-                        const pierdeLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Pierde UD Las Palmas').length;
+                        const pierdeLocalCount = total - ganaLocalCount - empateCount;
 
                         setJornadaStats({
                             resultadoMasComun: `${resultadoMasComun[0]} (${resultadoMasComun[1]} veces)`,
@@ -2617,7 +2618,7 @@ function App() {
         @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
         .pulsed { animation: pulse-once 0.4s ease-in-out; }
         @keyframes draw-stroke { to { stroke-dashoffset: 0; } }
-        .pie-chart-segment { animation: draw-stroke 1s ease-out forwards; }
+        .pie-chart-segment { stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dashoffset); animation: draw-stroke 1s 0.5s ease-out forwards; }
     `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
