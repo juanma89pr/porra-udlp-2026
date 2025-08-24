@@ -5,7 +5,8 @@ import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
-import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
+// MODIFICADO: Añadimos push y onChildAdded para las reacciones en tiempo real
+import { getDatabase, ref, onValue, onDisconnect, set, push, onChildAdded } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 
@@ -43,7 +44,10 @@ const SECRET_MESSAGES = [
     "Consultando con el Oráculo", "Shhh... es un secreto", "Apuesta Fantasma 👻",
     "Resultado 'Confidencial'", "Cargando... 99%", "El que lo sabe, lo sabe", "Mejor no digo nada..."
 ];
-const REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
+// MODIFICADO: Emojis separados por tipo de reacción
+const STAT_REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
+const GOAL_REACTION_EMOJIS = ['🙌', '⚽', '🎉', '🤩', '🤯'];
+
 
 // --- MEJORA 2: Definición de Insignias ---
 const BADGE_DEFINITIONS = {
@@ -349,118 +353,14 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
-// MODIFICADO: SplashScreen ahora muestra estadísticas interactivas
-const SplashScreen = ({ onEnter, teamLogos, currentUser, plantilla }) => {
+// MODIFICADO: SplashScreen ahora es más simple, sin reacciones.
+const SplashScreen = ({ onEnter, teamLogos }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
     const [loading, setLoading] = useState(true);
     const [showInstallGuide, setShowInstallGuide] = useState(false);
     const isMobile = useMemo(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
     
-    // NUEVO: Estados para las estadísticas y pronósticos
-    const [pronosticos, setPronosticos] = useState([]);
-    const [stats, setStats] = useState([]);
-    const [currentStatIndex, setCurrentStatIndex] = useState(0);
-    const [pulsedEmoji, setPulsedEmoji] = useState(null);
-
-    // Se suscribe a los datos de la jornada para obtener las reacciones
-    useEffect(() => {
-        if (!jornadaInfo || !jornadaInfo.id) return;
-        const reactionsRef = doc(db, "jornadas", jornadaInfo.id);
-        const unsubscribe = onSnapshot(reactionsRef, (docSnap) => {
-            if (docSnap.exists()) {
-                // Actualizamos la jornadaInfo para tener las reacciones más recientes
-                setJornadaInfo(prev => ({...prev, ...docSnap.data()}));
-            }
-        });
-        return () => unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [jornadaInfo?.id]);
-
-
-    // Se suscribe a los pronósticos de la jornada activa para calcular estadísticas
-    useEffect(() => {
-        if (!jornadaInfo || !jornadaInfo.id || jornadaInfo.type !== 'activa') {
-            setPronosticos([]);
-            return;
-        };
-        const pronosticosRef = collection(db, "pronosticos", jornadaInfo.id, "jugadores");
-        const unsubscribe = onSnapshot(pronosticosRef, (snapshot) => {
-            const pronosticosData = snapshot.docs.map(d => d.data());
-            setPronosticos(pronosticosData);
-        });
-        return () => unsubscribe();
-    }, [jornadaInfo]);
-
-    // Calcula las estadísticas cuando cambian los pronósticos
-    useEffect(() => {
-        if (pronosticos.length < 5) { // Condición de 5 apuestas mínimas
-            setStats([]);
-            return;
-        }
-
-        const newStats = [];
-
-        // Stat 1: Resultado más común
-        const resultados = pronosticos.map(p => `${p.golesLocal}-${p.golesVisitante}`);
-        const countsResultados = resultados.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
-        const [resultadoMasComun, countResultado] = Object.entries(countsResultados).sort((a,b) => b[1] - a[1])[0];
-        newStats.push({
-            type: 'stat',
-            id: 'resultado_mas_comun',
-            title: 'El Termómetro de la Porra',
-            value: resultadoMasComun,
-            description: `(apostado ${countResultado} veces)`
-        });
-
-        // Stat 2: El Más Elegido
-        const goleadores = pronosticos.map(p => p.goleador).filter(Boolean);
-        if (goleadores.length > 0) {
-            const countsGoleadores = goleadores.reduce((acc, val) => ({...acc, [val]: (acc[val] || 0) + 1}), {});
-            const [pichichi, countPichichi] = Object.entries(countsGoleadores).sort((a,b) => b[1] - a[1])[0];
-            const pichichiData = plantilla.find(j => j.nombre === pichichi);
-            newStats.push({
-                type: 'stat',
-                id: 'el_mas_elegido',
-                title: 'El Más Elegido',
-                value: pichichi,
-                imageUrl: pichichiData?.imageUrl,
-                description: `(elegido ${countPichichi} veces)`
-            });
-        }
-        
-        // Stat 3: Tendencia 1X2 con gráfico
-        const total = pronosticos.length;
-        const ganaCount = pronosticos.filter(p => p.resultado1x2 === 'Gana UD Las Palmas').length;
-        const empateCount = pronosticos.filter(p => p.resultado1x2 === 'Empate').length;
-        const pierdeCount = total - ganaCount - empateCount;
-
-        newStats.push({
-            type: 'graph',
-            id: 'tendencia_1x2',
-            title: 'La Fe de la Afición',
-            data: [
-                { label: 'Victoria', value: ganaCount, percentage: ((ganaCount / total) * 100).toFixed(0) },
-                { label: 'Empate', value: empateCount, percentage: ((empateCount / total) * 100).toFixed(0) },
-                { label: 'Derrota', value: pierdeCount, percentage: ((pierdeCount / total) * 100).toFixed(0) },
-            ]
-        });
-
-        setStats(newStats);
-
-    }, [pronosticos, plantilla]);
-
-    // Carrusel automático para las estadísticas
-    useEffect(() => {
-        if (stats.length > 1) {
-            const interval = setInterval(() => {
-                setCurrentStatIndex(prevIndex => (prevIndex + 1) % stats.length);
-            }, 5000); // Cambia cada 5 segundos
-            return () => clearInterval(interval);
-        }
-    }, [stats]);
-
-
     // Lógica para encontrar la jornada activa/próxima/finalizada
     useEffect(() => {
         setLoading(true);
@@ -539,63 +439,9 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, plantilla }) => {
         return () => clearInterval(interval);
     }, [jornadaInfo]);
     
-    // MODIFICADO: handleReaction ahora guarda la reacción por estadística y añade animación de pulso
-    const handleReaction = async (emoji) => {
-        if (!currentUser || !jornadaInfo || stats.length === 0) return;
-        
-        setPulsedEmoji(emoji);
-        setTimeout(() => setPulsedEmoji(null), 400);
-
-        const currentStat = stats[currentStatIndex];
-        if (!currentStat) return;
-
-        const reactionRef = doc(db, "jornadas", jornadaInfo.id);
-
-        try {
-            await runTransaction(db, async (transaction) => {
-                const jornadaDoc = await transaction.get(reactionRef);
-                if (!jornadaDoc.exists()) { 
-                    throw new Error("Document does not exist!"); 
-                }
-                
-                const allStatReactions = jornadaDoc.data().statReactions || {};
-                const currentStatReactions = allStatReactions[currentStat.id] || { counts: {}, userReactions: {} };
-                const currentUserReaction = currentStatReactions.userReactions?.[currentUser];
-
-                // Lógica para añadir/quitar/cambiar reacción
-                if (currentUserReaction === emoji) { // Quitar reacción
-                    delete currentStatReactions.userReactions[currentUser];
-                    currentStatReactions.counts[emoji] = (currentStatReactions.counts[emoji] || 1) - 1;
-                } else { // Añadir o cambiar reacción
-                    if (currentUserReaction) { // Si ya había una, quitar la vieja
-                         currentStatReactions.counts[currentUserReaction] = (currentStatReactions.counts[currentUserReaction] || 1) - 1;
-                    }
-                    currentStatReactions.userReactions[currentUser] = emoji;
-                    currentStatReactions.counts[emoji] = (currentStatReactions.counts[emoji] || 0) + 1;
-                }
-                
-                // Limpiar contadores en 0
-                Object.keys(currentStatReactions.counts).forEach(key => {
-                    if (currentStatReactions.counts[key] <= 0) {
-                        delete currentStatReactions.counts[key];
-                    }
-                });
-
-                allStatReactions[currentStat.id] = currentStatReactions;
-                transaction.update(reactionRef, { statReactions: allStatReactions });
-            });
-        } catch (e) {
-            console.error("Transaction failed: ", e);
-        }
-    };
-
     const renderJornadaInfo = () => {
         if (!jornadaInfo) { return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>); }
         
-        const currentStat = stats.length > 0 ? stats[currentStatIndex] : null;
-        const reactionsForStat = jornadaInfo.statReactions?.[currentStat?.id] || { counts: {}, userReactions: {} };
-        const userReaction = reactionsForStat.userReactions?.[currentUser];
-
         let infoContent;
         const fechaMostrada = jornadaInfo.fechaPartido || jornadaInfo.fechaCierre;
 
@@ -620,66 +466,6 @@ const SplashScreen = ({ onEnter, teamLogos, currentUser, plantilla }) => {
             <div style={styles.splashInfoBox}>
                 {infoContent}
                 {jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}
-                
-                {/* NUEVO: Contenedor de estadísticas y reacciones */}
-                {jornadaInfo.type === 'activa' && (
-                    <div style={styles.statsReactionContainer}>
-                        {stats.length > 0 && currentStat ? (
-                            <div key={currentStat.id} className="stat-fade-in" style={{minHeight: '130px'}}>
-                                <h4 style={styles.splashStatTitle}>{currentStat.title}</h4>
-                                {currentStat.type === 'stat' && (
-                                    <>
-                                        {currentStat.imageUrl && (
-                                            <img src={currentStat.imageUrl} alt={currentStat.value} style={styles.splashStatImage} onError={(e) => { e.target.style.display = 'none'; }} />
-                                        )}
-                                        <p style={styles.splashStatValue}>{currentStat.value}</p>
-                                        <p style={styles.splashStatDescription}>{currentStat.description}</p>
-                                    </>
-                                )}
-                                {currentStat.type === 'graph' && (
-                                    <div style={styles.barChartContainer}>
-                                        {currentStat.data.map(item => (
-                                            <div key={item.label} style={styles.barChartItem}>
-                                                <div style={styles.barChartLabel}>{item.percentage}%</div>
-                                                <div style={{...styles.barChartBar, height: `${item.percentage}%`}}></div>
-                                                <div style={styles.barChartLabel}>{item.label}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div style={{textAlign: 'center', padding: '20px 0', minHeight: '130px'}}>
-                                <p>🤫 Los datos de la porra serán públicos cuando haya al menos 5 apuestas.</p>
-                            </div>
-                        )}
-
-                        <div style={styles.reactionContainer}>
-                            <div style={styles.reactionEmojis}>
-                                {REACTION_EMOJIS.map((emoji, index) => (
-                                    <button 
-                                        key={emoji} 
-                                        onClick={() => handleReaction(emoji)} 
-                                        className={pulsedEmoji === emoji ? 'pulsed' : ''}
-                                        style={{
-                                            ...styles.reactionButton, 
-                                            ...(userReaction === emoji ? styles.reactionButtonSelected : {}),
-                                            animationDelay: `${index * 50}ms`
-                                        }} 
-                                        disabled={!currentStat}
-                                    >
-                                        {emoji}
-                                    </button>
-                                ))}
-                            </div>
-                            <div style={styles.reactionCounts}>
-                                {Object.entries(reactionsForStat.counts || {}).map(([emoji, count]) => (
-                                    count > 0 && <span key={emoji} style={styles.reactionCountChip}>{emoji} <AnimatedCount endValue={count} duration={500} /></span>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         );
     };
@@ -2878,7 +2664,7 @@ function App() {
 
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => {setShowInitialSplash(false);}} />;
-    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} currentUser={currentUser} plantilla={plantilla} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
     if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
     if (screen === 'app') {
