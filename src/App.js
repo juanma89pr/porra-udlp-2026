@@ -3,9 +3,10 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from "firebase/app";
 // MODIFICADO: Añadimos signInWithEmailAndPassword y signOut para el login de admin
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction } from "firebase/firestore";
+// MODIFICADO: Limpiamos 'runTransaction' que no se usaba
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
-// MODIFICADO: Añadimos push y onChildAdded para las reacciones en tiempo real
+// MODIFICADO: Mantenemos push y onChildAdded para las futuras reacciones en vivo
 import { getDatabase, ref, onValue, onDisconnect, set, push, onChildAdded } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
@@ -340,6 +341,49 @@ const AnimatedCount = ({ endValue, duration = 1000, decimals = 0 }) => {
     }, [endValue, duration]);
 
     return <span>{currentValue.toFixed(decimals)}</span>;
+};
+
+// NUEVO: Componente para el gráfico circular
+const PieChart = ({ data }) => {
+    const radius = 50;
+    const circumference = 2 * Math.PI * radius;
+    let accumulatedPercentage = 0;
+
+    return (
+        <div style={styles.pieChartContainer}>
+            <svg viewBox="0 0 120 120" style={styles.pieChartSvg}>
+                {data.map((segment, index) => {
+                    const strokeDashoffset = circumference - (accumulatedPercentage / 100 * circumference);
+                    const strokeDasharray = `${(segment.percentage / 100 * circumference)} ${circumference}`;
+                    accumulatedPercentage += segment.percentage;
+                    
+                    return (
+                        <circle
+                            key={index}
+                            cx="60"
+                            cy="60"
+                            r={radius}
+                            fill="transparent"
+                            stroke={segment.color}
+                            strokeWidth="20"
+                            strokeDasharray={strokeDasharray}
+                            strokeDashoffset={strokeDashoffset}
+                            transform="rotate(-90 60 60)"
+                            className="pie-chart-segment"
+                        />
+                    );
+                })}
+            </svg>
+            <div style={styles.pieChartLegend}>
+                {data.map((segment, index) => (
+                    <div key={index} style={styles.pieChartLegendItem}>
+                        <span style={{...styles.pieChartLegendColor, backgroundColor: segment.color}}></span>
+                        <span>{segment.label} ({segment.percentage}%)</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 };
 
 
@@ -2567,6 +2611,8 @@ function App() {
         @keyframes bounce-in { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
         @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
         .pulsed { animation: pulse-once 0.4s ease-in-out; }
+        @keyframes draw-stroke { to { stroke-dashoffset: 0; } }
+        .pie-chart-segment { animation: draw-stroke 1s ease-out forwards; }
     `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
@@ -2921,7 +2967,13 @@ const styles = {
     barChartBar: { width: '70%', backgroundColor: colors.blue, borderRadius: '4px 4px 0 0', transition: 'height 0.5s ease-out' },
     barChartLabel: { fontSize: '0.8rem', color: colors.silver },
     verificationResultsContainer: { marginTop: '20px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: `1px solid ${colors.blue}` },
-    verificationList: { listStyleType: 'none', padding: 0, columns: 2, columnGap: '20px' }
+    verificationList: { listStyleType: 'none', padding: 0, columns: 2, columnGap: '20px' },
+    // NUEVO: Estilos para el gráfico circular
+    pieChartContainer: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginTop: '15px' },
+    pieChartSvg: { width: '120px', height: '120px' },
+    pieChartLegend: { display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' },
+    pieChartLegendItem: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' },
+    pieChartLegendColor: { width: '15px', height: '15px', borderRadius: '50%' }
 };
 
 export default App;
