@@ -6,8 +6,8 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassw
 // MODIFICADO: Limpiamos 'runTransaction' que no se usaba
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
-// MODIFICADO: Mantenemos push y onChildAdded para las futuras reacciones en vivo
-import { getDatabase, ref, onValue, onDisconnect, set, push, onChildAdded } from "firebase/database";
+// MODIFICADO: Comentamos temporalmente push y onChildAdded para pasar el build de Netlify
+import { getDatabase, ref, onValue, onDisconnect, set, /* push, onChildAdded */ } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 
@@ -1201,9 +1201,14 @@ const LaJornadaScreen = ({ teamLogos, liveData, userProfiles, onlineUsers }) => 
                     {jornadaStats && !isLiveView && (
                         <div style={styles.statsGrid}>
                             <div style={styles.statCard}><div style={styles.statValue}>{participantes.length >= 5 ? `📊 ${jornadaStats.resultadoMasComun}` : '🤫'}</div><div style={styles.statLabel}>{participantes.length >= 5 ? 'Resultado más apostado' : 'Secreto hasta 5 apuestas'}</div></div>
-                            <div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajeGana}%</div><div style={styles.statLabel}>Cree en la victoria</div></div>
-                            <div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajeEmpate}%</div><div style={styles.statLabel}>Apuesta por el empate</div></div>
-                            <div style={styles.statCard}><div style={styles.statValue}>{jornadaStats.porcentajePierde}%</div><div style={styles.statLabel}>Piensa que se pierde</div></div>
+                            <div style={styles.statCard}>
+                                <PieChart data={[
+                                    {label: 'Victoria', percentage: jornadaStats.porcentajeGana, color: colors.success},
+                                    {label: 'Empate', percentage: jornadaStats.porcentajeEmpate, color: colors.warning},
+                                    {label: 'Derrota', percentage: jornadaStats.porcentajePierde, color: colors.danger},
+                                ]} />
+                                <div style={styles.statLabel}>La Fe de la Afición</div>
+                            </div>
                         </div>
                     )}
 
