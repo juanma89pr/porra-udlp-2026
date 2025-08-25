@@ -606,9 +606,75 @@ const AnimatedStat = ({ value, duration = 800 }) => {
     return <span className="stat-value-animation">{displayValue}</span>;
 };
 
+// --- MODIFICACIÓN: Componente del Modal de Comparador Completo ---
+const FullStatsModal = ({ stats, onClose }) => {
+    if (!stats) return null;
 
-// --- MODIFICACIÓN: Componente de estadísticas rediseñado para ser más dinámico ---
-const PreMatchStats = ({ stats, teamLogos, lastUpdated }) => {
+    const renderTeamDetails = (teamData, homeOrAway) => {
+        if (!teamData) return <p>Datos no disponibles</p>;
+        const formString = (teamData.form || '').slice(-5);
+        return (
+            <div style={styles.modalTeamColumn}>
+                <div style={styles.preMatchTeamHeader}>
+                    <img src={teamData.logo} alt={teamData.name} style={styles.preMatchTeamLogo} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }} />
+                    <span style={styles.preMatchTeamName}>{teamData.name}</span>
+                </div>
+                <div style={styles.modalStatSection}>
+                    <h4>Últimos 5 Partidos</h4>
+                    <div style={styles.preMatchFormContainer}>
+                        {formString.split('').map((result, index) => {
+                            let backgroundColor = styles.colors.darkUIAlt;
+                            let letter = '?';
+                            if (result.toLowerCase() === 'w') { backgroundColor = styles.colors.success; letter = 'V'; }
+                            else if (result.toLowerCase() === 'd') { backgroundColor = styles.colors.warning; letter = 'E'; }
+                            else if (result.toLowerCase() === 'l') { backgroundColor = styles.colors.danger; letter = 'D'; }
+                            return (<span key={index} style={{ ...styles.preMatchFormIndicator, backgroundColor }}>{letter}</span>);
+                        })}
+                    </div>
+                </div>
+                <div style={styles.modalStatSection}>
+                    <h4>Estadísticas ({homeOrAway})</h4>
+                    <div style={styles.preMatchStatItem}><span>Partidos Jugados</span> <strong>{teamData.statsHomeOrAway?.played || 'N/A'}</strong></div>
+                    <div style={styles.preMatchStatItem}><span>Victorias</span> <strong>{teamData.statsHomeOrAway?.win || 'N/A'}</strong></div>
+                    <div style={styles.preMatchStatItem}><span>Empates</span> <strong>{teamData.statsHomeOrAway?.draw || 'N/A'}</strong></div>
+                    <div style={styles.preMatchStatItem}><span>Derrotas</span> <strong>{teamData.statsHomeOrAway?.lose || 'N/A'}</strong></div>
+                    <div style={styles.preMatchStatItem}><span>Goles</span> <strong>{teamData.statsHomeOrAway?.goals?.for || 'N/A'}:{teamData.statsHomeOrAway?.goals?.against || 'N/A'}</strong></div>
+                </div>
+                <div style={styles.modalStatSection}>
+                    <h4>Máximos Goleadores</h4>
+                    {teamData.topScorers && teamData.topScorers.length > 0 ? (
+                        <ul style={styles.topScorersList}>
+                            {teamData.topScorers.slice(0, 3).map((scorer, index) => (
+                                <li key={index}>
+                                    <span>{scorer.player.name}</span>
+                                    <strong>{scorer.statistics[0].goals.total} Goles</strong>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : <p>No disponible</p>}
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div style={styles.modalOverlay} onClick={onClose}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <h3 style={styles.title}>COMPARADOR COMPLETO</h3>
+                <div style={styles.modalComparison}>
+                    {renderTeamDetails(stats.local, 'Local')}
+                    <div style={styles.preMatchVS}>VS</div>
+                    {renderTeamDetails(stats.visitante, 'Visitante')}
+                </div>
+                <button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>CERRAR</button>
+            </div>
+        </div>
+    );
+};
+
+
+// --- MODIFICACIÓN: Componente de estadísticas rediseñado para ser dinámico y siempre visible ---
+const PreMatchStats = ({ stats, lastUpdated, onOpenModal }) => {
     const [pulsing, setPulsing] = useState(false);
 
     useEffect(() => {
@@ -624,30 +690,16 @@ const PreMatchStats = ({ stats, teamLogos, lastUpdated }) => {
     if (!stats) return null;
 
     const renderTeamStats = (teamData) => {
-        const logo = teamData?.logo || teamLogos[teamData?.name] || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?';
+        const logo = teamData?.logo || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?';
         if (!teamData) return <div style={styles.preMatchTeamContainer}><p>Datos no disponibles</p></div>;
-        const formString = (teamData.form || '').slice(-5);
 
         return (
             <div style={styles.preMatchTeamContainer}>
-                <div style={styles.preMatchTeamHeader}>
-                    <img src={logo} alt={teamData.name} style={styles.preMatchTeamLogo} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }} />
-                    <span style={styles.preMatchTeamName}>{teamData.name}</span>
-                </div>
+                <img src={logo} alt={teamData.name} style={styles.preMatchTeamLogo} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }} />
                 <div style={styles.preMatchStatsBody}>
-                    <div style={styles.preMatchStatItem}><span>📈 Posición</span> <strong><AnimatedStat value={teamData.rank} />º</strong></div>
-                    <div style={styles.preMatchStatItem}><span>✅ Puntos</span> <strong><AnimatedStat value={teamData.points} /></strong></div>
-                    <div style={styles.preMatchStatItem}><span>⚽ Goles</span> <strong><AnimatedStat value={teamData.golesFavor} />:<AnimatedStat value={teamData.golesContra} /></strong></div>
-                    <div style={styles.preMatchFormContainer}>
-                        {formString.split('').map((result, index) => {
-                            let backgroundColor = styles.colors.darkUIAlt;
-                            let letter = '?';
-                            if (result.toLowerCase() === 'w') { backgroundColor = styles.colors.success; letter = 'V'; }
-                            else if (result.toLowerCase() === 'd') { backgroundColor = styles.colors.warning; letter = 'E'; }
-                            else if (result.toLowerCase() === 'l') { backgroundColor = styles.colors.danger; letter = 'D'; }
-                            return (<span key={index} style={{ ...styles.preMatchFormIndicator, backgroundColor }}>{letter}</span>);
-                        })}
-                    </div>
+                    <div style={styles.preMatchStatItem}><span>Posición</span> <strong><AnimatedStat value={teamData.rank} />º</strong></div>
+                    <div style={styles.preMatchStatItem}><span>Puntos</span> <strong><AnimatedStat value={teamData.points} /></strong></div>
+                    <div style={styles.preMatchStatItem}><span>Goles</span> <strong><AnimatedStat value={teamData.golesFavor} />:<AnimatedStat value={teamData.golesContra} /></strong></div>
                 </div>
             </div>
         );
@@ -656,10 +708,10 @@ const PreMatchStats = ({ stats, teamLogos, lastUpdated }) => {
     return (
         <div className={pulsing ? 'pulse-animation' : ''} style={styles.preMatchContainer}>
             <div style={styles.preMatchTitleContainer}>
-                <h4 style={styles.preMatchTitle}>DATOS EN VIVO</h4>
+                <h4 style={styles.preMatchTitle}>ESTADÍSTICAS</h4>
                 <div style={styles.lastUpdatedContainer}>
                     <span className="live-dot-animation" style={styles.liveDot}></span>
-                    <span>Actualizado: {new Date(lastUpdated).toLocaleTimeString('es-ES')}</span>
+                    <span>Actualizado: {new Date(lastUpdated).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
             </div>
             <div style={styles.preMatchComparison}>
@@ -667,6 +719,7 @@ const PreMatchStats = ({ stats, teamLogos, lastUpdated }) => {
                 <div style={styles.preMatchVS}>VS</div>
                 {renderTeamStats(stats.visitante)}
             </div>
+            <button onClick={onOpenModal} style={{...styles.secondaryButton, width: '100%', marginTop: '15px'}}>Ver Comparador Completo</button>
         </div>
     );
 };
@@ -693,10 +746,12 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     
     // --- MODIFICACIÓN: Estados para la nueva lógica de API ---
     const [preMatchStats, setPreMatchStats] = useState(null);
+    const [fullPreMatchStats, setFullPreMatchStats] = useState(null); // Para el modal
+    const [showStatsModal, setShowStatsModal] = useState(false);
     const [loadingPreMatch, setLoadingPreMatch] = useState(false);
     const [lastApiUpdate, setLastApiUpdate] = useState(null);
     const apiTimerRef = useRef(null);
-    const lastApiCallDay = useRef(null);
+    const lastApiCallDay = useRef(null); // Formato YYYY-MM-DD
     
     const initialJokerStatus = useRef(false);
     
@@ -711,10 +766,19 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         const unsubscribe = onSnapshot(qJornadas, (snap) => {
             const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            let jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta' || (j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate()));
+            let jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta' || j.estado === 'Cerrada' || (j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate()));
             
             if(jornadaActiva){
-                setCurrentJornada(jornadaActiva);
+                // Si la jornada activa es diferente, reseteamos las stats para forzar recarga
+                setCurrentJornada(prevJornada => {
+                    if (prevJornada && prevJornada.id !== jornadaActiva.id) {
+                        setPreMatchStats(null);
+                        setFullPreMatchStats(null);
+                        lastApiCallDay.current = null;
+                    }
+                    return jornadaActiva;
+                });
+
                 setInterJornadaStatus(null); 
                 if (jornadaActiva.fechaCierre) { setPanicButtonDisabled(new Date().getTime() > (jornadaActiva.fechaCierre.toDate().getTime() - 3600 * 1000)); }
                 const pronosticoRef = doc(db, "pronosticos", jornadaActiva.id, "jugadores", user);
@@ -743,21 +807,22 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 } else { setTieneDeuda(false); }
 
             } else {
-                const proximaJornada = todasLasJornadas.find(j => j.estado === 'Próximamente');
                 setCurrentJornada(null);
                 setLoading(false);
                 setPreMatchStats(null);
+                setFullPreMatchStats(null);
                 const ultimaFinalizada = todasLasJornadas.filter(j => j.estado === 'Finalizada' && j.id !== 'jornada_test').sort((a, b) => b.numeroJornada - a.numeroJornada)[0];
 
                 if (ultimaFinalizada) {
                     getDoc(doc(db, "pronosticos", ultimaFinalizada.id, "jugadores", user)).then(pronosticoSnap => {
                         if (pronosticoSnap.exists()) {
-                            setInterJornadaStatus({ status: pronosticoSnap.data().pagado ? 'pagado' : 'debe', jornada: ultimaFinalizada, proxima: proximaJornada });
+                            setInterJornadaStatus({ status: pronosticoSnap.data().pagado ? 'pagado' : 'debe', jornada: ultimaFinalizada });
                         } else {
-                            setInterJornadaStatus({ status: 'no_participo', jornada: ultimaFinalizada, proxima: proximaJornada });
+                            setInterJornadaStatus({ status: 'no_participo', jornada: ultimaFinalizada });
                         }
                     });
                 } else {
+                    const proximaJornada = todasLasJornadas.find(j => j.estado === 'Próximamente');
                     setInterJornadaStatus({ status: 'sin_finalizadas', proxima: proximaJornada });
                 }
             }
@@ -767,8 +832,13 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
     // --- MODIFICACIÓN: Hook reescrito para la nueva lógica de actualización de la API ---
     useEffect(() => {
-        if (!currentJornada || !currentJornada.fechaPartido || !currentJornada.apiLeagueId) {
-            if (apiTimerRef.current) clearInterval(apiTimerRef.current);
+        // Cancela cualquier timer anterior si la jornada cambia o no es válida
+        if (apiTimerRef.current) {
+            clearInterval(apiTimerRef.current);
+            apiTimerRef.current = null;
+        }
+
+        if (!currentJornada || !currentJornada.fechaPartido || !currentJornada.apiLeagueId || !currentJornada.apiLocalTeamId || !currentJornada.apiVisitorTeamId) {
             return;
         }
 
@@ -796,23 +866,46 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                     form: teamStanding?.form || '-----',
                     golesFavor: teamStanding?.all?.goals?.for || 0,
                     golesContra: teamStanding?.all?.goals?.against || 0,
+                    statsHomeOrAway: teamStanding?.home?.team?.id === teamId ? teamStanding.home : teamStanding.away,
                 };
             } catch (error) {
                 console.error(`Error fetching stats for team ${teamId}:`, error);
                 return null;
             }
         };
+        
+        const fetchTopScorers = async (leagueId, teamId, season) => {
+             try {
+                const response = await fetch(`https://v3.football.api-sports.io/players/topscorers?league=${leagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
+                 if (!response.ok) throw new Error(`API call failed: ${response.status}`);
+                 const data = await response.json();
+                 return data.response || [];
+             } catch (error) {
+                 console.error(`Error fetching top scorers for team ${teamId}:`, error);
+                 return [];
+             }
+        };
 
         const fetchData = async () => {
             console.log(`[${new Date().toLocaleTimeString()}] Fetching API data...`);
             setLoadingPreMatch(true);
             const season = new Date(currentJornada.fechaPartido.seconds * 1000).getFullYear();
-            const localStats = await fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season);
-            const visitorStats = await fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiVisitorTeamId, season);
+            
+            const [localStats, visitorStats, localScorers, visitorScorers] = await Promise.all([
+                fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season),
+                fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiVisitorTeamId, season),
+                fetchTopScorers(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season),
+                fetchTopScorers(currentJornada.apiLeagueId, currentJornada.apiVisitorTeamId, season)
+            ]);
             
             if (localStats && visitorStats) {
-                setPreMatchStats({ local: localStats, visitante: visitorStats });
-                setLastApiUpdate(Date.now()); // Para la animación
+                const statsData = { 
+                    local: {...localStats, topScorers: localScorers}, 
+                    visitante: {...visitorStats, topScorers: visitorScorers} 
+                };
+                setPreMatchStats(statsData);
+                setFullPreMatchStats(statsData); // Guardamos los datos completos para el modal
+                setLastApiUpdate(Date.now());
             }
             setLoadingPreMatch(false);
         };
@@ -823,7 +916,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             const oneHourBefore = new Date(matchTime.getTime() - 60 * 60 * 1000);
             
             const isMatchDay = now.toDateString() === matchTime.toDateString();
-            const isPreMatchWindow = isMatchDay && now >= oneHourBefore && now <= matchTime;
+            const isPreMatchWindow = isMatchDay && now >= oneHourBefore && now < matchTime;
 
             if (apiTimerRef.current) clearInterval(apiTimerRef.current);
 
@@ -833,14 +926,14 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 if(!preMatchStats) fetchData(); // Primera llamada si no hay datos
                 apiTimerRef.current = setInterval(fetchData, 5 * 60 * 1000);
             } else {
-                // Modo normal: una vez al día a las 22:00
-                const todayStr = now.toDateString();
+                // Modo normal: una vez al día después de las 22:00
+                const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
                 if (now.getHours() >= 22 && lastApiCallDay.current !== todayStr) {
                     console.log("Performing DAILY update (after 22:00).");
                     fetchData();
                     lastApiCallDay.current = todayStr;
                 }
-                // Programamos una comprobación para más tarde
+                // Programamos una comprobación para más tarde para re-evaluar si entramos en la ventana pre-partido
                 apiTimerRef.current = setInterval(manageUpdates, 60 * 1000); // Revisa cada minuto
             }
         };
@@ -852,9 +945,12 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         manageUpdates(); // Iniciar la gestión de actualizaciones
 
         return () => {
-            if (apiTimerRef.current) clearInterval(apiTimerRef.current);
+            if (apiTimerRef.current) {
+                clearInterval(apiTimerRef.current);
+                apiTimerRef.current = null;
+            }
         };
-    }, [currentJornada, preMatchStats]);
+    }, [currentJornada]); // Solo depende de la jornada actual
     
     useEffect(() => {
         if (currentJornada?.estado === 'Cerrada' && liveData?.isLive && allPronosticos.length > 0) {
@@ -977,8 +1073,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
         return <span id="animated-points">{displayValue}</span>;
     };
-
-
     const renderContent = () => {
         const ahora = new Date();
         const apertura = currentJornada?.fechaApertura?.toDate();
@@ -1061,15 +1155,16 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     return (
       <div>
         {showJokerAnimation && <JokerAnimation />}
+        {showStatsModal && <FullStatsModal stats={fullPreMatchStats} onClose={() => setShowStatsModal(false)} />}
         {tieneDeuda && !interJornadaStatus && (<div style={styles.debtBanner}>⚠️ Tienes pendiente el pago de la jornada anterior. Por favor, ve a la sección de "Pagos" para regularizarlo.</div>)}
         <h2 style={styles.title}>MI JORNADA</h2>
         <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>
         
-        {/* --- CORRECCIÓN FINAL: El panel de estadísticas se renderiza aquí, fuera del `renderContent` --- */}
-        {currentJornada && (
+        {/* --- MODIFICACIÓN: El panel de estadísticas se renderiza aquí, fuera del `renderContent`, y es siempre visible si hay jornada activa y datos --- */}
+        {currentJornada && (currentJornada.estado === 'Abierta' || currentJornada.estado === 'Cerrada') && (
             <>
                 {loadingPreMatch && !preMatchStats && <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div>}
-                {preMatchStats && <PreMatchStats stats={preMatchStats} teamLogos={teamLogos} lastUpdated={lastApiUpdate} />}
+                {preMatchStats && <PreMatchStats stats={preMatchStats} lastUpdated={lastApiUpdate} onOpenModal={() => setShowStatsModal(true)} />}
             </>
         )}
 
@@ -1078,6 +1173,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
+// --- FIN DE LA PRIMERA PARTE ---
+
 // --- INICIO DE LA SEGUNDA PARTE ---
 // CORREGIDO: LaJornadaScreen ahora gestiona el estado y la lógica de las reacciones.
 const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers }) => {
@@ -2902,7 +2999,7 @@ const styles = {
     jokerDetailRow: { backgroundColor: `${colors.deepBlue}99` },
     jokerDetailChip: { backgroundColor: colors.blue, padding: '5px 10px', borderRadius: '15px', fontSize: '0.9rem', fontFamily: "'Orbitron', sans-serif", },
     modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, backdropFilter: 'blur(5px)' },
-    modalContent: { backgroundColor: colors.darkUI, padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '500px', border: `1px solid ${colors.yellow}` },
+    modalContent: { backgroundColor: colors.darkUI, padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '700px', border: `1px solid ${colors.yellow}` },
     resumenContainer: { display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' },
     resumenJugador: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px', borderLeft: `4px solid ${colors.blue}` },
     resumenJugadorTitle: { margin: '0 0 10px 0', paddingBottom: '10px', borderBottom: `1px solid ${colors.blue}80`, fontFamily: "'Orbitron', sans-serif", },
@@ -3138,6 +3235,35 @@ const styles = {
         alignSelf: 'center',
         fontFamily: "'Orbitron', sans-serif",
     },
+    modalComparison: {
+        display: 'flex',
+        justifyContent: 'space-around',
+        alignItems: 'flex-start',
+        gap: '15px',
+    },
+    modalTeamColumn: {
+        flex: 1,
+    },
+    modalStatSection: {
+        marginTop: '20px',
+        paddingTop: '15px',
+        borderTop: `1px solid ${colors.blue}`,
+        '& h4': {
+            color: colors.yellow,
+            marginBottom: '10px',
+            textAlign: 'center',
+        }
+    },
+    topScorersList: {
+        listStyle: 'none',
+        padding: 0,
+        '& li': {
+            display: 'flex',
+            justifyContent: 'space-between',
+            padding: '5px 0',
+            borderBottom: `1px solid ${colors.deepBlue}`
+        }
+    }
 };
 
 export default App;
