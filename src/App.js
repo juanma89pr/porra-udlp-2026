@@ -830,9 +830,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         return () => unsubscribe();
     }, [user]);
 
-    // --- MODIFICACIÓN: Hook reescrito para la nueva lógica de actualización de la API ---
+    // --- CORRECCIÓN DE ERROR DE BUILD: Se añade preMatchStats al array de dependencias ---
     useEffect(() => {
-        // Cancela cualquier timer anterior si la jornada cambia o no es válida
         if (apiTimerRef.current) {
             clearInterval(apiTimerRef.current);
             apiTimerRef.current = null;
@@ -904,7 +903,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                     visitante: {...visitorStats, topScorers: visitorScorers} 
                 };
                 setPreMatchStats(statsData);
-                setFullPreMatchStats(statsData); // Guardamos los datos completos para el modal
+                setFullPreMatchStats(statsData);
                 setLastApiUpdate(Date.now());
             }
             setLoadingPreMatch(false);
@@ -921,28 +920,24 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             if (apiTimerRef.current) clearInterval(apiTimerRef.current);
 
             if (isPreMatchWindow) {
-                // Modo intensivo: cada 5 minutos
                 console.log("Entering PRE-MATCH update mode (every 5 minutes).");
-                if(!preMatchStats) fetchData(); // Primera llamada si no hay datos
+                if(!preMatchStats) fetchData();
                 apiTimerRef.current = setInterval(fetchData, 5 * 60 * 1000);
             } else {
-                // Modo normal: una vez al día después de las 22:00
-                const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+                const todayStr = now.toISOString().split('T')[0];
                 if (now.getHours() >= 22 && lastApiCallDay.current !== todayStr) {
                     console.log("Performing DAILY update (after 22:00).");
                     fetchData();
                     lastApiCallDay.current = todayStr;
                 }
-                // Programamos una comprobación para más tarde para re-evaluar si entramos en la ventana pre-partido
-                apiTimerRef.current = setInterval(manageUpdates, 60 * 1000); // Revisa cada minuto
+                apiTimerRef.current = setInterval(manageUpdates, 60 * 1000);
             }
         };
         
-        // Carga inicial de datos si no existen
         if (!preMatchStats) {
             fetchData();
         }
-        manageUpdates(); // Iniciar la gestión de actualizaciones
+        manageUpdates();
 
         return () => {
             if (apiTimerRef.current) {
@@ -950,7 +945,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 apiTimerRef.current = null;
             }
         };
-    }, [currentJornada]); // Solo depende de la jornada actual
+    }, [currentJornada, preMatchStats]);
     
     useEffect(() => {
         if (currentJornada?.estado === 'Cerrada' && liveData?.isLive && allPronosticos.length > 0) {
