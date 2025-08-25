@@ -145,10 +145,13 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
     const esVip = jornada.esVip || false;
     const { golesLocal, golesVisitante } = liveData;
 
-    if (pronostico.golesLocal !== '' && pronostico.golesVisitante !== '' && parseInt(pronostico.golesLocal) === golesLocal && parseInt(pronostico.golesVisitante) === golesVisitante) {
+    // Acierto Resultado Exacto
+    const aciertoExacto = pronostico.golesLocal !== '' && pronostico.golesVisitante !== '' && parseInt(pronostico.golesLocal) === golesLocal && parseInt(pronostico.golesVisitante) === golesVisitante;
+    if (aciertoExacto) {
         puntosJornada += esVip ? 6 : 3;
     }
 
+    // Acierto 1X2
     let resultado1x2Real = '';
     if (jornada.equipoLocal === "UD Las Palmas") {
         if (golesLocal > golesVisitante) resultado1x2Real = 'Gana UD Las Palmas';
@@ -163,6 +166,7 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
         puntosJornada += esVip ? 2 : 1;
     }
 
+    // Acierto Goleador
     const goleadorReal = (liveData.ultimoGoleador || '').trim().toLowerCase();
     const goleadorApostado = (pronostico.goleador || '').trim().toLowerCase();
     if (pronostico.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) {
@@ -171,6 +175,7 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
         puntosJornada += esVip ? 4 : 2;
     }
 
+    // Acierto Joker
     if (pronostico.jokerActivo && pronostico.jokerPronosticos?.length > 0) {
         for (const jokerP of pronostico.jokerPronosticos) {
             if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === golesLocal && parseInt(jokerP.golesVisitante) === golesVisitante) {
@@ -1169,7 +1174,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     );
 };
 // --- FIN DE LA PRIMERA PARTE ---
-
 // --- INICIO DE LA SEGUNDA PARTE ---
 // CORREGIDO: LaJornadaScreen ahora gestiona el estado y la lógica de las reacciones.
 const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers }) => {
@@ -1259,7 +1263,16 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
     // Lógica del ranking provisional y cuenta atrás
     useEffect(() => {
         if (jornadaActual?.estado === 'Cerrada' && liveData?.isLive && participantes.length > 0) {
-            const ranking = participantes.map(p => ({ id: p.id, puntos: calculateProvisionalPoints(p, liveData, jornadaActual) })).sort((a, b) => b.puntos - a.puntos);
+            const ranking = participantes.map(p => {
+                const puntos = calculateProvisionalPoints(p, liveData, jornadaActual);
+                const aciertoExacto = p.golesLocal !== '' && p.golesVisitante !== '' && parseInt(p.golesLocal) === liveData.golesLocal && parseInt(p.golesVisitante) === liveData.golesVisitante;
+                return { id: p.id, puntos, aciertoExacto };
+            }).sort((a, b) => {
+                if (a.puntos !== b.puntos) {
+                    return b.puntos - a.puntos;
+                }
+                return (b.aciertoExacto ? 1 : 0) - (a.aciertoExacto ? 1 : 0);
+            });
             setProvisionalRanking(ranking);
         } else { setProvisionalRanking([]); }
     }, [liveData, jornadaActual, participantes]);
@@ -1328,6 +1341,38 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
         }
     };
 
+    // --- NUEVO: Lógica para el panel de ganador y simulación ---
+    const liveWinnerPanelData = useMemo(() => {
+        if (!liveData || !liveData.isLive || !jornadaActual || participantes.length === 0) {
+            return { currentWinner: null, simulationLocal: null, simulationVisitor: null };
+        }
+
+        const findWinner = (simulatedLiveData) => {
+            const ranking = participantes.map(p => ({
+                id: p.id,
+                puntos: calculateProvisionalPoints(p, simulatedLiveData, jornadaActual)
+            })).sort((a, b) => b.puntos - a.puntos);
+
+            if (ranking.length > 0 && ranking[0].puntos > 0) {
+                const topScore = ranking[0].puntos;
+                const winners = ranking.filter(p => p.puntos === topScore);
+                return winners.length > 1 ? "Empate" : winners[0].id;
+            }
+            return "Nadie";
+        };
+
+        const currentWinner = findWinner(liveData);
+
+        const localGoalLiveData = { ...liveData, golesLocal: liveData.golesLocal + 1 };
+        const simulationLocal = findWinner(localGoalLiveData);
+
+        const visitorGoalLiveData = { ...liveData, golesVisitante: liveData.golesVisitante + 1 };
+        const simulationVisitor = findWinner(visitorGoalLiveData);
+
+        return { currentWinner, simulationLocal, simulationVisitor };
+    }, [liveData, jornadaActual, participantes]);
+
+
     if (loading) return <LoadingSkeleton />;
     const isLiveView = jornadaActual?.estado === 'Cerrada' && liveData?.isLive;
 
@@ -1341,24 +1386,56 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                     <div style={styles.matchDetails}><span>📍 {jornadaActual.estadio || 'Estadio por confirmar'}</span><span>🗓️ {formatFullDateTime(fechaMostrada)}</span></div>
                     
                     {isLiveView && (
-                        <div style={styles.liveReactionsPanel}>
-                             <div style={styles.reactionEmojis}>
-                                {GOAL_REACTION_EMOJIS.map(emoji => (
-                                    <button 
-                                        key={emoji} 
-                                        onClick={() => handleReaction('liveEvents', emoji)} 
-                                        disabled={isSubmittingReaction['liveEvents']}
-                                        className={animatingReaction?.cardId === 'liveEvents' && animatingReaction.emoji !== emoji ? 'fade-out' : ''}
-                                        style={{...styles.reactionButton, ...(userReactions['liveEvents'] === emoji ? styles.reactionButtonSelected : {})}}
-                                    >
-                                        {animatingReaction?.cardId === 'liveEvents' && animatingReaction.emoji === emoji ? <span className="fly-away">{emoji}</span> : emoji}
-                                    </button>
-                                ))}
+                        <>
+                            {/* --- NUEVO: Panel de Ganador y Simulación --- */}
+                            <div style={styles.liveWinnerPanel}>
+                                <div style={styles.liveWinnerCurrent}>
+                                    <span style={styles.liveWinnerLabel}>Ganador Actual</span>
+                                    <div style={styles.liveWinnerName}>
+                                        {liveWinnerPanelData.currentWinner ? (
+                                            <PlayerProfileDisplay name={liveWinnerPanelData.currentWinner} profile={userProfiles[liveWinnerPanelData.currentWinner]} />
+                                        ) : 'Nadie'}
+                                    </div>
+                                </div>
+                                <div style={styles.liveWinnerSimulations}>
+                                    <div style={styles.liveWinnerSimulationItem}>
+                                        <span style={styles.liveWinnerLabel}>Si marca {jornadaActual.equipoLocal}...</span>
+                                        <div style={styles.liveWinnerName}>
+                                            {liveWinnerPanelData.simulationLocal ? (
+                                                <PlayerProfileDisplay name={liveWinnerPanelData.simulationLocal} profile={userProfiles[liveWinnerPanelData.simulationLocal]} />
+                                            ) : 'Nadie'}
+                                        </div>
+                                    </div>
+                                    <div style={styles.liveWinnerSimulationItem}>
+                                        <span style={styles.liveWinnerLabel}>Si marca {jornadaActual.equipoVisitante}...</span>
+                                        <div style={styles.liveWinnerName}>
+                                            {liveWinnerPanelData.simulationVisitor ? (
+                                                <PlayerProfileDisplay name={liveWinnerPanelData.simulationVisitor} profile={userProfiles[liveWinnerPanelData.simulationVisitor]} />
+                                            ) : 'Nadie'}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div style={styles.reactionCountCorner}>
-                                {GOAL_REACTION_EMOJIS.map(emoji => reactions?.liveEvents?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.liveEvents[emoji]}</span>)}
+
+                            <div style={styles.liveReactionsPanel}>
+                                 <div style={styles.reactionEmojis}>
+                                    {GOAL_REACTION_EMOJIS.map(emoji => (
+                                        <button 
+                                            key={emoji} 
+                                            onClick={() => handleReaction('liveEvents', emoji)} 
+                                            disabled={isSubmittingReaction['liveEvents']}
+                                            className={animatingReaction?.cardId === 'liveEvents' && animatingReaction.emoji !== emoji ? 'fade-out' : ''}
+                                            style={{...styles.reactionButton, ...(userReactions['liveEvents'] === emoji ? styles.reactionButtonSelected : {})}}
+                                        >
+                                            {animatingReaction?.cardId === 'liveEvents' && animatingReaction.emoji === emoji ? <span className="fly-away">{emoji}</span> : emoji}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div style={styles.reactionCountCorner}>
+                                    {GOAL_REACTION_EMOJIS.map(emoji => reactions?.liveEvents?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.liveEvents[emoji]}</span>)}
+                                </div>
                             </div>
-                        </div>
+                        </>
                     )}
 
                     {jornadaStats && !isLiveView && (
@@ -1408,7 +1485,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
 
                     {jornadaActual.estado === 'Abierta' && (<><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; const profile = userProfiles[jugador] || {}; const isOnline = onlineUsers[jugador]; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{isOnline && <div style={styles.onlineIndicatorDot} />}<PlayerProfileDisplay name={jugador} profile={profile} /> {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></>)}
                     {jornadaActual.estado === 'Cerrada' && !isLiveView && (<div><p style={{textAlign: 'center', marginTop: '20px'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => { const profile = userProfiles[p.id] || {}; return (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}><PlayerProfileDisplay name={p.id} profile={profile} defaultColor={styles.colors.yellow} /> {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>)})}</div></div>)}
-                    {isLiveView && (<div><h3 style={styles.provisionalTitle}>Clasificación Provisional</h3><table style={{...styles.table, backgroundColor: 'rgba(0,0,0,0.3)'}}><thead><tr><th style={styles.th}>POS</th><th style={styles.th}>Jugador</th><th style={styles.th}>Puntos</th></tr></thead><tbody>{provisionalRanking.map((jugador, index) => { const profile = userProfiles[jugador.id] || {}; return (<tr key={jugador.id} style={jugador.puntos > 0 && provisionalRanking[0].puntos === jugador.puntos ? styles.provisionalWinnerRow : styles.tr}><td style={styles.tdRank}>{index + 1}º</td><td style={styles.td}><PlayerProfileDisplay name={jugador.id} profile={profile} /></td><td style={styles.td}><AnimatedPoints value={jugador.puntos} /></td></tr>)})}</tbody></table></div>)}
+                    {isLiveView && (<div><h3 style={styles.provisionalTitle}>Clasificación Provisional</h3><table style={{...styles.table, backgroundColor: 'rgba(0,0,0,0.3)'}}><thead><tr><th style={styles.th}>POS</th><th style={styles.th}>Jugador</th><th style={styles.th}>Puntos</th></tr></thead><tbody>{provisionalRanking.map((jugador, index) => { const profile = userProfiles[jugador.id] || {}; return (<tr key={jugador.id} style={jugador.puntos > 0 && provisionalRanking[0].puntos === jugador.puntos ? styles.provisionalWinnerRow : styles.tr}><td style={styles.tdRank}>{index + 1}º</td><td style={styles.td}><PlayerProfileDisplay name={jugador.id} profile={profile} /> {jugador.aciertoExacto && '🎯'}</td><td style={styles.td}><AnimatedPoints value={jugador.puntos} /></td></tr>)})}</tbody></table></div>)}
                 </div>
             );
         }
@@ -1613,7 +1690,6 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
         </div>
     );
 };
-
 const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
@@ -1635,7 +1711,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [fechaPartido, setFechaPartido] = useState(toInputFormat(jornada.fechaPartido));
     
     const [estadioImageUrl, setEstadioImageUrl] = useState(jornada.estadioImageUrl || '');
-    // --- MODIFICACIÓN: Añadimos estados para los nuevos campos de la API ---
     const [apiLeagueId, setApiLeagueId] = useState(jornada.apiLeagueId || '');
     const [apiLocalTeamId, setApiLocalTeamId] = useState(jornada.apiLocalTeamId || '');
     const [apiVisitorTeamId, setApiVisitorTeamId] = useState(jornada.apiVisitorTeamId || '');
@@ -1663,7 +1738,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 fechaCierre: fechaCierre ? new Date(fechaCierre) : null, 
                 fechaPartido: fechaPartido ? new Date(fechaPartido) : null,
                 estadioImageUrl,
-                // --- MODIFICACIÓN: Guardamos los nuevos campos de la API ---
                 apiLeagueId,
                 apiLocalTeamId,
                 apiVisitorTeamId
@@ -1867,7 +1941,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
             <div style={{marginTop: '10px'}}><label style={styles.label}>Mensaje para la Pantalla Principal:</label><textarea value={splashMessage} onChange={(e) => setSplashMessage(e.target.value)} style={{...styles.input, width: '95%', height: '50px'}} /></div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>URL Imagen del Estadio:</label><input type="text" value={estadioImageUrl} onChange={(e) => setEstadioImageUrl(e.target.value)} style={{...styles.input, width: '95%'}} /></div>
             
-            {/* --- MODIFICACIÓN: Añadimos los nuevos inputs para la API --- */}
             <div style={{marginTop: '20px', paddingTop: '15px', borderTop: `1px dashed ${styles.colors.blue}`}}>
                 <h4 style={{color: styles.colors.yellow, marginBottom: '15px', textAlign: 'center'}}>Configuración API-Football</h4>
                 <div style={styles.adminControls}>
@@ -1906,8 +1979,21 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                             </div>
                         </div>
                         <div>
+                            {/* --- CAMBIO REQUERIDO: Input de texto a Select --- */}
                             <label style={styles.label}>Último Goleador:</label>
-                            <input type="text" value={liveData.ultimoGoleador} onChange={(e) => setLiveData(d => ({...d, ultimoGoleador: e.target.value}))} style={styles.adminInput} placeholder="Nombre o 'SG'"/>
+                            <select 
+                                value={liveData.ultimoGoleador} 
+                                onChange={(e) => setLiveData(d => ({...d, ultimoGoleador: e.target.value}))} 
+                                style={styles.adminSelect}
+                            >
+                                <option value="">-- Elige un jugador --</option>
+                                <option value="SG">Sin Goleador (SG)</option>
+                                {plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (
+                                    <option key={jugador.nombre} value={jugador.nombre}>
+                                        {jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                     <button onClick={handleUpdateLiveScore} disabled={isSaving} style={{...styles.saveButton, backgroundColor: styles.colors.danger, marginTop: '15px'}}>
@@ -3258,6 +3344,42 @@ const styles = {
             padding: '5px 0',
             borderBottom: `1px solid ${colors.deepBlue}`
         }
+    },
+    // --- NUEVOS ESTILOS PARA EL PANEL DE GANADOR EN VIVO ---
+    liveWinnerPanel: {
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        borderRadius: '12px',
+        padding: '20px',
+        margin: '20px 0',
+        border: `2px solid ${colors.yellow}`,
+        boxShadow: `0 0 15px ${colors.yellow}50`,
+    },
+    liveWinnerCurrent: {
+        textAlign: 'center',
+        paddingBottom: '15px',
+        borderBottom: `1px dashed ${colors.blue}`,
+        marginBottom: '15px',
+    },
+    liveWinnerLabel: {
+        display: 'block',
+        textTransform: 'uppercase',
+        color: colors.silver,
+        fontSize: '0.9rem',
+        marginBottom: '8px',
+    },
+    liveWinnerName: {
+        fontFamily: "'Orbitron', sans-serif",
+        fontSize: '1.5rem',
+        fontWeight: 'bold',
+    },
+    liveWinnerSimulations: {
+        display: 'flex',
+        justifyContent: 'space-around',
+        gap: '15px',
+    },
+    liveWinnerSimulationItem: {
+        textAlign: 'center',
+        flex: 1,
     }
 };
 
