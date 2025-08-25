@@ -854,7 +854,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         return () => {
             if (apiTimerRef.current) clearInterval(apiTimerRef.current);
         };
-    }, [currentJornada, preMatchStats]); // CORRECCIÓN: Añadida dependencia que faltaba
+    }, [currentJornada, preMatchStats]);
     
     useEffect(() => {
         if (currentJornada?.estado === 'Cerrada' && liveData?.isLive && allPronosticos.length > 0) {
