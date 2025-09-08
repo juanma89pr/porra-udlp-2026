@@ -1951,7 +1951,7 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
             const proximaJornadaSnap = await getDocs(qProxima);
             if (!proximaJornadaSnap.empty) {
                 const proximaJornadaRef = proximaJornadaSnap.docs[0].ref;
-                batch.update(proximaJornadaRef, { bote: increment(boteGenerado) });
+                batch.update(proximaJornadaRef, { bote: boteGenerado });
             }
         }
         await batch.commit();
