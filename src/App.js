@@ -1277,6 +1277,7 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
         </div>
     );
 };
+
 const JornadaAdminItem = ({ jornada, plantilla, allJornadas }) => {
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
@@ -1537,8 +1538,7 @@ const JornadaAdminItem = ({ jornada, plantilla, allJornadas }) => {
         setIsCalculating(false);
     };
 
-    // SOLUCIÓN AL ERROR DE JSX: El span del mensaje estaba fuera del div principal.
-    // Lo he movido dentro del div que contiene los botones.
+
     return (
         <div style={jornada.id === 'jornada_test' ? {...styles.adminJornadaItem, ...styles.testJornadaAdminItem} : (jornada.esVip ? {...styles.adminJornadaItem, ...styles.jornadaVip} : styles.adminJornadaItem)}>
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap'}}>
@@ -1571,6 +1571,7 @@ const JornadaAdminItem = ({ jornada, plantilla, allJornadas }) => {
         </div>
     );
 };
+
 const AdminTestJornada = () => {
     const [isActive, setIsActive] = useState(false);
     const [loading, setLoading] = useState(true);
