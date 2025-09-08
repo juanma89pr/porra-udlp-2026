@@ -1537,7 +1537,8 @@ const JornadaAdminItem = ({ jornada, plantilla, allJornadas }) => {
         setIsCalculating(false);
     };
 
-
+    // SOLUCIÓN AL ERROR DE JSX: El span del mensaje estaba fuera del div principal.
+    // Lo he movido dentro del div que contiene los botones.
     return (
         <div style={jornada.id === 'jornada_test' ? {...styles.adminJornadaItem, ...styles.testJornadaAdminItem} : (jornada.esVip ? {...styles.adminJornadaItem, ...styles.jornadaVip} : styles.adminJornadaItem)}>
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap'}}>
@@ -1560,7 +1561,7 @@ const JornadaAdminItem = ({ jornada, plantilla, allJornadas }) => {
             <div style={{marginTop: '10px'}}><label style={styles.label}>Mensaje para la Pantalla Principal:</label><textarea value={splashMessage} onChange={(e) => setSplashMessage(e.target.value)} style={{...styles.input, width: '95%', height: '50px'}} /></div>
             <div style={{marginTop: '10px'}}><label style={styles.label}>URL Imagen del Estadio:</label><input type="text" value={estadioImageUrl} onChange={(e) => setEstadioImageUrl(e.target.value)} style={{...styles.input, width: '95%'}} /></div>
             <div style={{marginTop: '20px', paddingTop: '15px', borderTop: `1px dashed ${styles.colors.blue}`}><h4 style={{color: styles.colors.yellow, marginBottom: '15px', textAlign: 'center'}}>Configuración API-Football</h4><div style={styles.adminControls}><div><label style={styles.label}>ID Liga (API):</label><input type="text" value={apiLeagueId} onChange={(e) => setApiLeagueId(e.target.value)} style={styles.adminInput} placeholder="Ej: 140" /></div><div><label style={styles.label}>ID Equipo Local (API):</label><input type="text" value={apiLocalTeamId} onChange={(e) => setApiLocalTeamId(e.target.value)} style={styles.adminInput} placeholder="Ej: 720" /></div><div><label style={styles.label}>ID Equipo Visitante (API):</label><input type="text" value={apiVisitorTeamId} onChange={(e) => setApiVisitorTeamId(e.target.value)} style={styles.adminInput} placeholder="Ej: 727" /></div></div></div>
-            <div style={{marginTop: '20px', display: 'flex', flexWrap: 'wrap', gap: '10px'}}>
+            <div style={{marginTop: '20px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center'}}>
                 <button onClick={handleSaveChanges} disabled={isSaving} style={styles.saveButton}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</button>
                 <button onClick={handleCalcularPuntos} disabled={isCalculating || jornada.estado === 'Finalizada'} style={styles.saveButton}>{isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar'}</button>
                 {jornada.estado === 'Finalizada' && (<button onClick={handleReabrirJornada} disabled={isCalculating} style={{...styles.saveButton, backgroundColor: styles.colors.warning}}>{isCalculating ? 'Revirtiendo...' : 'Reabrir Jornada'}</button>)}
@@ -1570,7 +1571,6 @@ const JornadaAdminItem = ({ jornada, plantilla, allJornadas }) => {
         </div>
     );
 };
-
 const AdminTestJornada = () => {
     const [isActive, setIsActive] = useState(false);
     const [loading, setLoading] = useState(true);
