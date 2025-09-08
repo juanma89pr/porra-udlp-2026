@@ -1679,8 +1679,7 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
         const fetchClasificacionData = async () => {
             setLoading(true);
             
-            const qClasificacion = query(collection(db, "clasificacion"));
-            const clasificacionSnap = await getDocs(qClasificacion);
+            const clasificacionSnap = await getDocs(query(collection(db, "clasificacion")));
             const clasificacionData = {};
             clasificacionSnap.forEach((doc) => {
                 clasificacionData[doc.id] = { id: doc.id, ...doc.data() };
@@ -1915,22 +1914,20 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
 
         const batch = writeBatch(db);
         let ganadoresJornada = [];
-        const puntosPorJugador = {};
 
-        // 1. Calcular puntos para cada jugador en esta jornada
         for (const pDoc of pronosticosSnap.docs) {
             const p = pDoc.data();
-            const { puntosJornada, esPleno } = calculatePointsForPlayer(p, jornada);
-
-            puntosPorJugador[pDoc.id] = { puntos: puntosJornada, pleno: esPleno };
+            const { puntosJornada } = calculatePointsForPlayer(p, jornada);
             batch.update(pDoc.ref, { puntosObtenidos: puntosJornada });
 
+            let esGanador = false;
             const pLocal = parseInt(p.golesLocal, 10);
             const pVisitante = parseInt(p.golesVisitante, 10);
             const rLocal = parseInt(jornada.resultadoLocal, 10);
             const rVisitante = parseInt(jornada.resultadoVisitante, 10);
-            
-            let esGanador = !isNaN(pLocal) && !isNaN(pVisitante) && pLocal === rLocal && pVisitante === rVisitante;
+            if (!isNaN(pLocal) && !isNaN(pVisitante) && pLocal === rLocal && pVisitante === rVisitante) {
+                esGanador = true;
+            }
              if (!esGanador && p.jokerActivo && p.jokerPronosticos?.length > 0) {
                 for (const jokerP of p.jokerPronosticos) {
                     const jLocal = parseInt(jokerP.golesLocal, 10);
@@ -1944,11 +1941,9 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
             if(esGanador) ganadoresJornada.push(pDoc.id);
         }
 
-        // 2. Actualizar estado y ganadores de la jornada
         const jornadaRef = doc(db, "jornadas", jornada.id);
         batch.update(jornadaRef, { estado: "Finalizada", ganadores: ganadoresJornada, "liveData.isLive": false });
         
-        // 3. Gestionar bote
         if (ganadoresJornada.length === 0 && jornada.id !== 'jornada_test') {
             const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
             const boteGenerado = (jornada.bote || 0) + (pronosticosSnap.size * costeApuesta);
@@ -1964,14 +1959,14 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
 
     const handleCalcularPuntos = async () => {
         if (jornada.estado === 'Finalizada') {
-            alert("ERROR: Esta jornada ya ha sido finalizada. Usa el botón de CORREGIR PUNTOS o RECALCULAR INSIGNIAS.");
+            alert("ERROR: Esta jornada ya ha sido finalizada. Usa el botón de RECALCULAR INSIGNIAS si es necesario.");
             return;
         }
         if (resultadoLocal === '' || resultadoVisitante === '' || !resultado1x2) { alert("Introduce los goles de ambos equipos y el Resultado 1X2."); return; }
         setIsCalculating(true);
         try {
             await runPointsAndBadgesLogic();
-            alert("¡Puntos calculados y jornada cerrada! Ahora puedes recalcular las estadísticas globales desde Herramientas para actualizar el desglose y las rachas.");
+            alert("¡Puntos calculados y jornada cerrada! Ahora debes usar la herramienta 'Recalcular Estadísticas Globales' para actualizar todo.");
         } catch (error) { console.error("Error al calcular: ", error); alert("Error al calcular puntos."); }
         setIsCalculating(false);
     };
@@ -2000,10 +1995,8 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
             }
 
             const pronosticosJornadaSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
-            const puntosJornada = {};
             pronosticosJornadaSnap.forEach(doc => {
                  clasificacionHistorica[doc.id].puntosTotales += doc.data().puntosObtenidos || 0;
-                 puntosJornada[doc.id] = doc.data().puntosObtenidos || 0;
             });
 
             const sortedClasificacion = Object.entries(clasificacionHistorica).sort(([, a], [, b]) => b.puntosTotales - a.puntosTotales);
@@ -2587,7 +2580,6 @@ const AdminStatsRecalculator = ({ onBack }) => {
 
         try {
             setMessage('Paso 1/4: Reseteando clasificación...');
-            const clasificacionRef = collection(db, "clasificacion");
             const resetBatch = writeBatch(db);
             for(const player of JUGADORES) {
                 const playerRef = doc(db, "clasificacion", player);
@@ -2611,7 +2603,7 @@ const AdminStatsRecalculator = ({ onBack }) => {
                 setMessage(`Paso 3/4: Procesando Jornada ${jornada.numeroJornada}...`);
                 const pronosticosSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
                 
-                pronosticosSnap.forEach(pronosticoDoc => {
+                for(const pronosticoDoc of pronosticosSnap.docs){
                     const p = pronosticoDoc.data();
                     const esVipJornada = jornada.esVip || false;
                     let puntosExacto = 0, puntos1X2 = 0, puntosGoleadorCat = 0;
@@ -2650,7 +2642,7 @@ const AdminStatsRecalculator = ({ onBack }) => {
                             statsAccumulator[pronosticoDoc.id].plenos += 1;
                         }
                     }
-                });
+                }
             }
 
             setMessage('Paso 4/4: Guardando nuevos totales...');
@@ -3190,7 +3182,15 @@ function App() {
     const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
     const qLive = query(collection(db, "jornadas"), where("liveData.isLive", "==", true), limit(1)); const unsubscribeLive = onSnapshot(qLive, (snapshot) => { if (!snapshot.empty) { const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }; setLiveJornada(jornada); } else { setLiveJornada(null); } });
     const plantillaRef = doc(db, "configuracion", "plantilla"); const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => { if (docSnap.exists() && docSnap.data().jugadores?.length > 0) { setPlantilla(docSnap.data().jugadores); } else { console.log("Plantilla no encontrada en Firebase, usando respaldo local."); } });
-    const clasificacionRef = collection(db, "clasificacion"); const unsubscribeProfiles = onSnapshot(clasificacionRef, (snapshot) => { const profiles = {}; snapshot.forEach(doc => { profiles[doc.id] = doc.data(); }); setUserProfiles(profiles); });
+    
+    const unsubscribeProfiles = onSnapshot(collection(db, "clasificacion"), (snapshot) => {
+        const profiles = {};
+        snapshot.forEach(doc => {
+            profiles[doc.id] = doc.data();
+        });
+        setUserProfiles(profiles);
+    });
+
     const statusRef = ref(rtdb, 'status/'); const unsubscribeStatus = onValue(statusRef, (snapshot) => { const data = snapshot.val(); setOnlineUsers(data || {}); });
     return () => { document.head.removeChild(styleSheet); unsubscribeConfig(); unsubscribeAuth(); unsubscribeEscudos(); unsubscribeLive(); unsubscribePlantilla(); unsubscribeProfiles(); unsubscribeStatus(); }
   }, []);
