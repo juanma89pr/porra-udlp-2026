@@ -1308,6 +1308,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
             if (!snapshot.empty) {
                 const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
                 setJornadaActual(jornada);
+                // Resetear estas para evitar que se muestren datos viejos
                 setUltimaJornada(null);
                 setProximaJornada(null);
                 const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
@@ -1329,6 +1330,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
             } else {
                 setJornadaActual(null);
                 setParticipantes([]);
+                // Solo buscar última y próxima si no hay ninguna activa/cerrada/finalizada reciente
                 const qUltima = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
                 getDocs(qUltima).then(snap => { if (!snap.empty) setUltimaJornada({ id: snap.docs[0].id, ...snap.docs[0].data() }); });
                 const qProxima = query(collection(db, "jornadas"), where("estado", "==", "Próximamente"), orderBy("numeroJornada", "asc"), limit(1));
@@ -1570,13 +1572,18 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                 </div>
             );
         }
+        
+        if(ultimaJornada || proximaJornada) {
+            return (
+                <div style={styles.interJornadaContainer}>
+                    {ultimaJornada ? (<div style={styles.interJornadaBox}><h3 style={styles.interJornadaTitle}>Última Jornada Finalizada</h3><p style={styles.interJornadaTeams}>{ultimaJornada.equipoLocal} vs {ultimaJornada.equipoVisitante}</p><p style={styles.finalResult}>{ultimaJornada.resultadoLocal} - {ultimaJornada.resultadoVisitante}</p>{(ultimaJornada.ganadores?.length > 0) ? (<p style={styles.interJornadaWinner}>🏆 Ganador(es): {ultimaJornada.ganadores.join(', ')}</p>) : (<p style={styles.interJornadaBote}>💰 ¡BOTE ACUMULADO!</p>)}</div>) : <div style={styles.interJornadaBox}><p>Aún no ha finalizado ninguna jornada.</p></div>}
+                    {proximaJornada ? (<div style={styles.interJornadaBox}><h3 style={styles.interJornadaTitle}>Próxima Jornada</h3><p style={styles.interJornadaTeams}>{proximaJornada.equipoLocal} vs {proximaJornada.equipoVisitante}</p><p>{formatFullDateTime(proximaJornada.fechaPartido || proximaJornada.fechaCierre)}</p>{proximaJornada.bote > 0 && <p style={styles.interJornadaBote}>¡Bote de {proximaJornada.bote}€ en juego!</p>}</div>) : <div style={styles.interJornadaBox}><p>El administrador no ha configurado la próxima jornada.</p></div>}
+                </div>
+            );
+        }
 
-        return (
-            <div style={styles.interJornadaContainer}>
-                {ultimaJornada ? (<div style={styles.interJornadaBox}><h3 style={styles.interJornadaTitle}>Última Jornada Finalizada</h3><p style={styles.interJornadaTeams}>{ultimaJornada.equipoLocal} vs {ultimaJornada.equipoVisitante}</p><p style={styles.finalResult}>{ultimaJornada.resultadoLocal} - {ultimaJornada.resultadoVisitante}</p>{(ultimaJornada.ganadores?.length > 0) ? (<p style={styles.interJornadaWinner}>🏆 Ganador(es): {ultimaJornada.ganadores.join(', ')}</p>) : (<p style={styles.interJornadaBote}>💰 ¡BOTE ACUMULADO!</p>)}</div>) : <div style={styles.interJornadaBox}><p>Aún no ha finalizado ninguna jornada.</p></div>}
-                {proximaJornada ? (<div style={styles.interJornadaBox}><h3 style={styles.interJornadaTitle}>Próxima Jornada</h3><p style={styles.interJornadaTeams}>{proximaJornada.equipoLocal} vs {proximaJornada.equipoVisitante}</p><p>{formatFullDateTime(proximaJornada.fechaPartido || proximaJornada.fechaCierre)}</p>{proximaJornada.bote > 0 && <p style={styles.interJornadaBote}>¡Bote de {proximaJornada.bote}€ en juego!</p>}</div>) : <div style={styles.interJornadaBox}><p>El administrador no ha configurado la próxima jornada.</p></div>}
-            </div>
-        );
+        return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>;
+
     };
 
     return (
@@ -1645,7 +1652,6 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
         const fetchClasificacionData = async () => {
             setLoading(true);
             
-            // Obtener clasificación actual
             const qClasificacion = query(collection(db, "clasificacion"));
             const clasificacionSnap = await getDocs(qClasificacion);
             const clasificacionData = {};
@@ -1657,7 +1663,6 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
             });
             setClasificacion(processedData);
 
-            // Obtener la última jornada finalizada para calcular posiciones anteriores
             const qUltimaJornada = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
             const ultimaJornadaSnap = await getDocs(qUltimaJornada);
 
@@ -2983,14 +2988,12 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
     const [pronostico, setPronostico] = useState({ ascenso: '', posicion: '' });
     const [miPronostico, setMiPronostico] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [message, setMessage] = useState('');
+    const [message, setMessage] = useState({text: '', type: 'info'});
     const [loading, setLoading] = useState(true);
     const [countdown, setCountdown] = useState('');
 
     const fechaCierrePorraAnual = useMemo(() => {
-        // La fecha es el 15 de septiembre del año actual (2025) a las 21:00
-        const targetDate = new Date('2025-09-15T21:00:00');
-        return targetDate;
+        return new Date('2025-09-15T21:00:00');
     }, []);
 
     useEffect(() => {
@@ -3104,7 +3107,7 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
                 <button type="submit" disabled={isSaving} style={styles.mainButton}>
                     {isSaving ? 'GUARDANDO...' : 'GUARDAR PRONÓSTICO'}
                 </button>
-                {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : styles.colors.danger}}>{message.text}</p>}
+                {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : colors.colors.danger}}>{message.text}</p>}
             </form>
         </div>
     );
