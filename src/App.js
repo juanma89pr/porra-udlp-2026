@@ -1308,7 +1308,6 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
             if (!snapshot.empty) {
                 const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
                 setJornadaActual(jornada);
-                // Resetear estas para evitar que se muestren datos viejos
                 setUltimaJornada(null);
                 setProximaJornada(null);
                 const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
@@ -1330,7 +1329,6 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
             } else {
                 setJornadaActual(null);
                 setParticipantes([]);
-                // Solo buscar última y próxima si no hay ninguna activa/cerrada/finalizada reciente
                 const qUltima = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
                 getDocs(qUltima).then(snap => { if (!snap.empty) setUltimaJornada({ id: snap.docs[0].id, ...snap.docs[0].data() }); });
                 const qProxima = query(collection(db, "jornadas"), where("estado", "==", "Próximamente"), orderBy("numeroJornada", "asc"), limit(1));
@@ -1571,19 +1569,16 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                     )}
                 </div>
             );
-        }
-        
-        if(ultimaJornada || proximaJornada) {
+        } else if(ultimaJornada || proximaJornada) {
             return (
                 <div style={styles.interJornadaContainer}>
                     {ultimaJornada ? (<div style={styles.interJornadaBox}><h3 style={styles.interJornadaTitle}>Última Jornada Finalizada</h3><p style={styles.interJornadaTeams}>{ultimaJornada.equipoLocal} vs {ultimaJornada.equipoVisitante}</p><p style={styles.finalResult}>{ultimaJornada.resultadoLocal} - {ultimaJornada.resultadoVisitante}</p>{(ultimaJornada.ganadores?.length > 0) ? (<p style={styles.interJornadaWinner}>🏆 Ganador(es): {ultimaJornada.ganadores.join(', ')}</p>) : (<p style={styles.interJornadaBote}>💰 ¡BOTE ACUMULADO!</p>)}</div>) : <div style={styles.interJornadaBox}><p>Aún no ha finalizado ninguna jornada.</p></div>}
                     {proximaJornada ? (<div style={styles.interJornadaBox}><h3 style={styles.interJornadaTitle}>Próxima Jornada</h3><p style={styles.interJornadaTeams}>{proximaJornada.equipoLocal} vs {proximaJornada.equipoVisitante}</p><p>{formatFullDateTime(proximaJornada.fechaPartido || proximaJornada.fechaCierre)}</p>{proximaJornada.bote > 0 && <p style={styles.interJornadaBote}>¡Bote de {proximaJornada.bote}€ en juego!</p>}</div>) : <div style={styles.interJornadaBox}><p>El administrador no ha configurado la próxima jornada.</p></div>}
                 </div>
             );
+        } else {
+             return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>;
         }
-
-        return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>;
-
     };
 
     return (
@@ -1667,7 +1662,6 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
             const ultimaJornadaSnap = await getDocs(qUltimaJornada);
 
             if (!ultimaJornadaSnap.empty) {
-                const ultimaJornada = ultimaJornadaSnap.docs[0].data();
                 const pronosticosSnap = await getDocs(collection(db, "pronosticos", ultimaJornadaSnap.docs[0].id, "jugadores"));
                 
                 const puntosUltimaJornada = {};
