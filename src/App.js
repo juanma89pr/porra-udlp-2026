@@ -17,7 +17,7 @@ const firebaseConfig = {
     messagingSenderId: "611441868159",
     appId: "1:611441868159:web:13008731a05c4321946e4a",
     measurementId: "G-J9T3S8SZT6",
-    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedatabase.app"
+    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedabase.app"
 };
 
 // --- INICIALIZACIÓN DE FIREBASE ---
@@ -47,11 +47,11 @@ const STAT_REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
 const GOAL_REACTION_EMOJIS = ['🙌', '⚽', '🎉', '🤩', '🤯'];
 
 const BADGE_DEFINITIONS = {
-    lider_general: { icon: '👑', name: 'Líder General', priority: 1, style: 'lider_general' },
-    campeon_jornada: { icon: '🏆', name: 'Campeón de la Jornada', priority: 2, style: 'campeon_jornada' },
-    pleno_jornada: { icon: '🎯', name: 'Pleno en la Jornada', priority: 3, style: 'pleno_jornada' },
-    en_racha: { icon: '🔥', name: 'En Racha (3+ jornadas puntuando)', priority: 4, style: 'en_racha' },
-    mala_racha: { icon: '🥶', name: 'Mala Racha (3+ jornadas sin puntuar)', priority: 5, style: 'mala_racha' },
+    lider_general: { icon: '👑', name: 'Líder General', priority: 1 },
+    campeon_jornada: { icon: '🏆', name: 'Campeón de la Jornada', priority: 2 },
+    pleno_jornada: { icon: '🎯', name: 'Pleno en la Jornada', priority: 3 },
+    en_racha: { icon: '🔥', name: 'En Racha (3+ jornadas puntuando)', priority: 4 },
+    mala_racha: { icon: '🥶', name: 'Mala Racha (3+ jornadas sin puntuar)', priority: 5 },
 };
 
 
@@ -209,9 +209,7 @@ const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.ligh
     return (
         <span style={{...customStyle, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
             {badgesToDisplay.map(badge => (
-                 <span key={badge.key} title={badge.name} className={badge.style ? `badge-animation-${badge.style}` : ''}>
-                    {badge.icon}
-                </span>
+                 <span key={badge.key} title={badge.name} className={`badge-animation-${badge.key}`}>{badge.icon}</span>
             ))}
             {icon && <span>{icon}</span>}
             <span style={nameStyle}>{name}</span>
@@ -408,59 +406,41 @@ const HistoricalStatsDisplay = ({ userProfiles }) => {
 
     useEffect(() => {
         const fetchStats = async () => {
-            setLoading(true);
             const clasificacionSnap = await getDocs(query(collection(db, "clasificacion")));
-            const clasificacionData = [];
-            clasificacionSnap.forEach((doc) => {
-                clasificacionData.push({ id: doc.id, ...doc.data() });
-            });
+            const statsData = clasificacionSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            if (clasificacionData.length > 0) {
-                const topPuntos = [...clasificacionData].sort((a, b) => (b.puntosTotales || 0) - (a.puntosTotales || 0)).slice(0, 3);
-                const topExacto = [...clasificacionData].sort((a, b) => (b.puntosResultadoExacto || 0) - (a.puntosResultadoExacto || 0))[0];
-                const topGoleador = [...clasificacionData].sort((a, b) => (b.puntosGoleador || 0) - (a.puntosGoleador || 0))[0];
-                const topPlenos = [...clasificacionData].sort((a, b) => (b.plenos || 0) - (a.plenos || 0))[0];
-
-                setStats({
-                    topPuntos,
-                    topExacto,
-                    topGoleador,
-                    topPlenos
-                });
-            }
+            const masPuntos = [...statsData].sort((a, b) => (b.puntosTotales || 0) - (a.puntosTotales || 0)).slice(0, 3);
+            const masPlenos = [...statsData].sort((a, b) => (b.plenos || 0) - (a.plenos || 0)).slice(0, 3);
+            const masAciertosGoleador = [...statsData].sort((a, b) => (b.puntosGoleador || 0) - (a.puntosGoleador || 0)).slice(0, 3);
+            
+            setStats({ masPuntos, masPlenos, masAciertosGoleador });
             setLoading(false);
         };
         fetchStats();
     }, []);
 
-    if (loading) return <p>Cargando estadísticas...</p>;
-    if (!stats) return <p>No hay suficientes datos para mostrar estadísticas.</p>;
+    if (loading) return <div style={{textAlign: 'center'}}><p>Cargando estadísticas históricas...</p></div>;
+
+    const StatCard = ({ title, data, dataKey, unit }) => (
+        <div style={styles.historicalStatCard}>
+            <h4 style={{...styles.label, justifyContent: 'center'}}>{title}</h4>
+            <ul style={styles.historicalStatList}>
+                {data.map((player, index) => (
+                    <li key={player.id}>
+                        <PlayerProfileDisplay name={player.id} profile={userProfiles[player.id]} />
+                        <strong>{player[dataKey] || 0} {unit}</strong>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
     
     return (
         <div style={styles.historicalStatsContainer}>
-            <div style={styles.historicalStatCard}>
-                <h4>🏆 LÍDERES ACTUALES</h4>
-                <ol style={styles.historicalStatList}>
-                    {stats.topPuntos.map((jugador, index) => (
-                        <li key={jugador.id}>
-                            <span>{index + 1}. <PlayerProfileDisplay name={jugador.id} profile={userProfiles[jugador.id]}/></span>
-                            <strong>{jugador.puntosTotales || 0} pts</strong>
-                        </li>
-                    ))}
-                </ol>
-            </div>
-             <div style={styles.historicalStatCard}>
-                <h4>🎯 MÁS PLENOS</h4>
-                <p><PlayerProfileDisplay name={stats.topPlenos?.id} profile={userProfiles[stats.topPlenos?.id]}/> - <strong>{stats.topPlenos?.plenos || 0}</strong></p>
-            </div>
-            <div style={styles.historicalStatCard}>
-                <h4>🔮 REY DEL R. EXACTO</h4>
-                 <p><PlayerProfileDisplay name={stats.topExacto?.id} profile={userProfiles[stats.topExacto?.id]}/> - <strong>{stats.topExacto?.puntosResultadoExacto || 0} pts</strong></p>
-            </div>
-            <div style={styles.historicalStatCard}>
-                <h4>⚽️ PICHICHI DE LA PORRA</h4>
-                <p><PlayerProfileDisplay name={stats.topGoleador?.id} profile={userProfiles[stats.topGoleador?.id]}/> - <strong>{stats.topGoleador?.puntosGoleador || 0} pts</strong></p>
-            </div>
+             <h3 style={{...styles.formSectionTitle, fontSize: '1.2rem'}}>Salón de la Fama (Histórico)</h3>
+            <StatCard title="🎯 Más Plenos" data={stats.masPlenos} dataKey="plenos" unit="plenos" />
+            <StatCard title="⚽️ Ojo de Halcón (Goleadores)" data={stats.masAciertosGoleador} dataKey="puntosGoleador" unit="pts" />
+            <StatCard title="🏆 Máximos Puntuadores" data={stats.masPuntos} dataKey="puntosTotales" unit="pts" />
         </div>
     );
 };
@@ -478,13 +458,12 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla, userProfiles }) => {
         setLoading(true);
         const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
         const unsubscribe = onSnapshot(qJornadas, (snap) => {
-            const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             
-            let jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta' || j.estado === 'Pre-apertura' || (j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate()));
+            let jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta' || j.estado === 'Pre-apertura');
 
             if (jornadaActiva) {
-                const type = jornadaActiva.estado === 'Pre-apertura' ? 'pre-apertura' : (jornadaActiva.estado === 'Abierta' ? 'activa' : 'proxima');
+                const type = jornadaActiva.estado === 'Pre-apertura' ? 'pre-apertura' : 'activa';
                 setJornadaInfo({ ...jornadaActiva, type });
 
                 if (type === 'activa') {
@@ -598,7 +577,6 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla, userProfiles }) => {
         <div style={styles.splashContainer}>
             <div style={styles.splashLogoContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div></div>
             {loading ? <LoadingSkeleton type="splash" /> : renderJornadaInfo()}
-            
             {jornadaInfo?.type === 'activa' && stats && (
                 <div style={styles.statsCarouselContainer}>
                     <div style={{...styles.statsCarouselTrack, transform: `translateX(-${currentStatIndex * 25}%)`}}>
@@ -606,11 +584,9 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla, userProfiles }) => {
                     </div>
                 </div>
             )}
-
-            {jornadaInfo?.type === 'pre-apertura' && (
-                 <HistoricalStatsDisplay userProfiles={userProfiles} />
+             {jornadaInfo?.type === 'pre-apertura' && (
+                <HistoricalStatsDisplay userProfiles={userProfiles} />
             )}
-
             <button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>
             {isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}
         </div>
@@ -645,7 +621,9 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
             .map(key => ({ key, ...BADGE_DEFINITIONS[key] }))
             .filter(b => b.name)
             .sort((a, b) => a.priority - b.priority)[0];
-        if (highestPriorityBadge?.style === 'lider_general') return { animation: `gold-leader-animation 2s infinite alternate` };
+        if (highestPriorityBadge?.key) {
+            return { animation: `badge-${highestPriorityBadge.key}-animation-KF 2s infinite alternate` };
+        }
         return {};
     };
 
@@ -872,6 +850,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const [loadingPreMatch, setLoadingPreMatch] = useState(false);
     const [lastApiUpdate, setLastApiUpdate] = useState(null);
     const apiTimerRef = useRef(null);
+    const lastApiCallDay = useRef(null);
     const [showLiquidarPagoModal, setShowLiquidarPagoModal] = useState(false);
     const initialJokerStatus = useRef(false);
     const userProfile = userProfiles[user] || {};
@@ -883,10 +862,9 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
         const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
         const unsubscribe = onSnapshot(qJornadas, (snap) => {
-            const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             
-            let jornadaActiva = todasLasJornadas.find(j => ['Abierta', 'Pre-apertura', 'Cerrada'].includes(j.estado) || (j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate()));
+            let jornadaActiva = todasLasJornadas.find(j => ['Abierta', 'Pre-apertura', 'Cerrada'].includes(j.estado));
             
             if (!jornadaActiva) {
                 const finalizadas = todasLasJornadas
@@ -899,9 +877,10 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
             if(jornadaActiva){
                 setCurrentJornada(prevJornada => {
-                    if (!prevJornada || (prevJornada && prevJornada.id !== jornadaActiva.id)) {
+                    if (prevJornada && prevJornada.id !== jornadaActiva.id) {
                         setPreMatchStats(null);
                         setFullPreMatchStats(null);
+                        lastApiCallDay.current = null;
                     }
                     return jornadaActiva;
                 });
@@ -957,84 +936,114 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         return () => unsubscribe();
     }, [user]);
 
-     useEffect(() => {
+    useEffect(() => {
         if (apiTimerRef.current) {
             clearInterval(apiTimerRef.current);
             apiTimerRef.current = null;
         }
 
-        const isApiReady = currentJornada && ['Abierta', 'Pre-apertura'].includes(currentJornada.estado) && currentJornada.apiLeagueId && currentJornada.apiLocalTeamId && currentJornada.apiVisitorTeamId;
-
+        const isApiReady = currentJornada && ['Abierta', 'Pre-apertura'].includes(currentJornada.estado) && currentJornada.apiLeagueId;
         if (!isApiReady) {
-            return;
+             setPreMatchStats(null);
+             setFullPreMatchStats(null);
+             return;
         }
 
-        const fetchHeaders = { "x-rapidapi-host": "v3.football.api-sports.io", "x-rapidapi-key": API_FOOTBALL_KEY };
+        const fetchHeaders = {
+            "x-rapidapi-host": "v3.football.api-sports.io",
+            "x-rapidapi-key": API_FOOTBALL_KEY
+        };
 
-        const fetchData = async () => {
-            console.log(`[${new Date().toLocaleTimeString()}] Fetching API data for Jornada ${currentJornada.numeroJornada}...`);
-            setLoadingPreMatch(true);
-            
-            const season = new Date(currentJornada.fechaPartido.seconds * 1000).getFullYear();
-            
-            const fetchTeamStats = async (teamId) => {
-                const response = await fetch(`https://v3.football.api-sports.io/standings?league=${currentJornada.apiLeagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
+        const fetchTeamStats = async (leagueId, teamId, season) => {
+            try {
+                const response = await fetch(`https://v3.football.api-sports.io/standings?league=${leagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
                 if (!response.ok) throw new Error(`API call failed: ${response.status}`);
                 const data = await response.json();
-                if (data.results === 0 || !data.response[0]) return null;
-                const standing = data.response[0]?.league?.standings[0]?.[0];
+                
+                if (data.results === 0 || !data.response[0]) {
+                    console.warn(`No data for team ${teamId}`);
+                    return null;
+                }
+                const teamStanding = data.response[0]?.league?.standings[0]?.[0];
                 return {
-                    name: standing?.team?.name, logo: standing?.team?.logo, rank: standing?.rank, points: standing?.points,
-                    form: standing?.form, golesFavor: standing?.all?.goals?.for, golesContra: standing?.all?.goals?.against,
-                    statsHomeOrAway: standing?.home?.team?.id === teamId ? standing.home : standing.away,
+                    name: teamStanding?.team?.name || 'N/A',
+                    logo: teamStanding?.team?.logo || '',
+                    rank: teamStanding?.rank || 'N/A',
+                    points: teamStanding?.points || 'N/A',
+                    form: teamStanding?.form || '-----',
+                    golesFavor: teamStanding?.all?.goals?.for || 0,
+                    golesContra: teamStanding?.all?.goals?.against || 0,
+                    statsHomeOrAway: teamStanding?.home?.team?.id === teamId ? teamStanding.home : teamStanding.away,
                 };
-            };
-            
-            const fetchTopScorers = async (teamId) => {
-                 const response = await fetch(`https://v3.football.api-sports.io/players/topscorers?league=${currentJornada.apiLeagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
+            } catch (error) {
+                console.error(`Error fetching stats for team ${teamId}:`, error);
+                return null;
+            }
+        };
+        
+        const fetchTopScorers = async (leagueId, teamId, season) => {
+             try {
+                const response = await fetch(`https://v3.football.api-sports.io/players/topscorers?league=${leagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
                  if (!response.ok) throw new Error(`API call failed: ${response.status}`);
                  const data = await response.json();
                  return data.response || [];
-            };
+             } catch (error) {
+                 console.error(`Error fetching top scorers for team ${teamId}:`, error);
+                 return [];
+             }
+        };
 
-            try {
-                const [local, visitor, localScorers, visitorScorers] = await Promise.all([
-                    fetchTeamStats(currentJornada.apiLocalTeamId),
-                    fetchTeamStats(currentJornada.apiVisitorTeamId),
-                    fetchTopScorers(currentJornada.apiLocalTeamId),
-                    fetchTopScorers(currentJornada.apiVisitorTeamId)
-                ]);
-
-                if (local && visitor) {
-                    const statsData = { local: { ...local, topScorers: localScorers }, visitante: { ...visitor, topScorers: visitorScorers } };
-                    setPreMatchStats(statsData);
-                    setFullPreMatchStats(statsData);
-                    setLastApiUpdate(Date.now());
-                }
-            } catch (error) {
-                 console.error("Error fetching API data:", error);
-            } finally {
-                setLoadingPreMatch(false);
+        const fetchData = async () => {
+            console.log(`[${new Date().toLocaleTimeString()}] Fetching API data...`);
+            setLoadingPreMatch(true);
+            const season = new Date(currentJornada.fechaPartido.seconds * 1000).getFullYear();
+            
+            const [localStats, visitorStats, localScorers, visitorScorers] = await Promise.all([
+                fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season),
+                fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiVisitorTeamId, season),
+                fetchTopScorers(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season),
+                fetchTopScorers(currentJornada.apiLeagueId, currentJornada.apiVisitorTeamId, season)
+            ]);
+            
+            if (localStats && visitorStats) {
+                const statsData = { 
+                    local: {...localStats, topScorers: localScorers}, 
+                    visitante: {...visitorStats, topScorers: visitorScorers} 
+                };
+                setPreMatchStats(statsData);
+                setFullPreMatchStats(statsData);
+                setLastApiUpdate(Date.now());
             }
+            setLoadingPreMatch(false);
         };
 
         const manageUpdates = () => {
             const now = new Date();
             const matchTime = currentJornada.fechaPartido.toDate();
-            const twoHoursBefore = new Date(matchTime.getTime() - 2 * 60 * 60 * 1000);
-            const isPreMatchWindow = now >= twoHoursBefore && now < matchTime;
+            const oneHourBefore = new Date(matchTime.getTime() - 60 * 60 * 1000);
+            
+            const isMatchDay = now.toDateString() === matchTime.toDateString();
+            const isPreMatchWindow = isMatchDay && now >= oneHourBefore && now < matchTime;
+
+            if (apiTimerRef.current) clearInterval(apiTimerRef.current);
 
             if (isPreMatchWindow) {
-                if (apiTimerRef.current) clearInterval(apiTimerRef.current);
-                apiTimerRef.current = setInterval(fetchData, 5 * 60 * 1000); // Every 5 minutes
+                if(!preMatchStats) fetchData();
+                apiTimerRef.current = setInterval(fetchData, 5 * 60 * 1000);
+            } else {
+                const todayStr = now.toISOString().split('T')[0];
+                if (now.getHours() >= 9 && lastApiCallDay.current !== todayStr) {
+                    fetchData();
+                    lastApiCallDay.current = todayStr;
+                }
+                apiTimerRef.current = setInterval(manageUpdates, 60 * 60 * 1000);
             }
         };
         
         if (!preMatchStats) {
             fetchData();
         }
-
-        apiTimerRef.current = setInterval(manageUpdates, 30 * 60 * 1000); // Check every 30 mins to enter pre-match window
+        manageUpdates();
 
         return () => {
             if (apiTimerRef.current) {
@@ -1042,7 +1051,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 apiTimerRef.current = null;
             }
         };
-    }, [currentJornada]);
+    }, [currentJornada, preMatchStats]);
     
     useEffect(() => {
         if (currentJornada?.estado === 'Cerrada' && liveData?.isLive && allPronosticos.length > 0) {
@@ -1211,10 +1220,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     };
 
     const renderContent = () => {
-        const ahora = new Date();
-        const apertura = currentJornada?.fechaApertura?.toDate();
-        const cierre = currentJornada?.fechaCierre?.toDate();
-        const isBettingOpen = currentJornada && (currentJornada.estado === 'Abierta' || (currentJornada.estado === 'Próximamente' && apertura && cierre && ahora >= apertura && ahora < cierre));
+        const isBettingOpen = currentJornada && ['Abierta'].includes(currentJornada.estado);
         
         if (isBettingOpen) {
             const isVip = currentJornada.esVip;
@@ -1276,8 +1282,18 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                             <button type="submit" disabled={isSaving} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR Y BLOQUEAR'}</button>
                         </fieldset>
                     )}
-                    {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : colors.colors.danger}}>{message.text}</p>}
+                    {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : styles.colors.danger}}>{message.text}</p>}
                 </form>
+            );
+        }
+        
+        if (currentJornada?.estado === 'Pre-apertura') {
+            return (
+                 <div style={styles.placeholder}>
+                     <h3>Jornada {currentJornada.numeroJornada} en Pre-apertura</h3>
+                     <p>La jornada se abrirá pronto. ¡Prepárate!</p>
+                     <HistoricalStatsDisplay userProfiles={userProfiles} />
+                 </div>
             );
         }
 
@@ -1290,9 +1306,9 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                         {currentJornada.estado === 'Cerrada' ? 'Las apuestas para este partido han finalizado.' : 'Esta jornada ha concluido.'}
                     </p>
                     
-                    <RenderedPronostico pronosticoData={pronostico} jornadaData={currentJornada} teamLogos={teamLogos} />
+                    {hasSubmitted ? <RenderedPronostico pronosticoData={pronostico} jornadaData={currentJornada} teamLogos={teamLogos} /> : <p style={{margin: '20px 0'}}>No participaste en esta jornada.</p>}
                     
-                    <div style={{marginTop: '20px'}}>
+                    {hasSubmitted && <div style={{marginTop: '20px'}}>
                         {showLiquidarButton && (
                             <button onClick={() => setShowLiquidarPagoModal(true)} style={styles.mainButton}>
                                 Liquidar Pagos
@@ -1307,7 +1323,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                         <button onClick={() => setActiveTab('laJornada')} style={{...styles.mainButton, marginLeft: '10px', backgroundColor: styles.colors.blue}}>
                             Ver Resumen
                         </button>
-                    </div>
+                    </div>}
                     {message.text && <p style={{...styles.message, marginTop: '15px'}}>{message.text}</p>}
                 </div>
             );
@@ -1328,7 +1344,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         <h2 style={styles.title}>MI JORNADA</h2>
         <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>
         
-        {currentJornada && (currentJornada.estado === 'Abierta' || currentJornada.estado === 'Pre-apertura' || currentJornada.estado === 'Cerrada') && (
+        {currentJornada && (currentJornada.estado === 'Abierta' || currentJornada.estado === 'Pre-apertura') && (
             <>
                 {loadingPreMatch && !preMatchStats && <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div>}
                 {preMatchStats && <PreMatchStats stats={preMatchStats} lastUpdated={lastApiUpdate} onOpenModal={() => setShowStatsModal(true)} />}
@@ -1340,6 +1356,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
+
 // --- INICIO DE LA SEGUNDA PARTE ---
 const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
@@ -1369,7 +1386,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                 onSnapshot(pronosticosRef, (pronosticosSnap) => {
                     const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setParticipantes(pronosticosData);
-                    if (pronosticosData.length > 0 && jornada.estado === 'Abierta') {
+                    if (pronosticosData.length > 0 && jornada.estado !== 'Finalizada') {
                         const total = pronosticosData.length;
                         const ganaLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Gana UD Las Palmas').length;
                         const empateCount = pronosticosData.filter(p => p.resultado1x2 === 'Empate').length;
@@ -1590,11 +1607,6 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                             </div>
                         </>
                     )}
-                    
-                    {jornadaActual.estado === 'Pre-apertura' && (
-                        <HistoricalStatsDisplay userProfiles={userProfiles} />
-                    )}
-
 
                     {jornadaStats && !isLiveView && jornadaActual.estado !== 'Finalizada' && (
                         <div style={styles.statsGrid}>
@@ -1613,7 +1625,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                         </div>
                     )}
 
-                    {(jornadaActual.estado === 'Abierta') && (<><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS EN:</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; const profile = userProfiles[jugador] || {}; const isOnline = onlineUsers[jugador]; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{isOnline && <div style={styles.onlineIndicatorDot} />}<PlayerProfileDisplay name={jugador} profile={profile} /> {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></>)}
+                    {(jornadaActual.estado === 'Abierta' || jornadaActual.estado === 'Pre-apertura') && (<><div style={styles.countdownContainer}><p>{jornadaActual.estado === 'Abierta' ? 'CIERRE DE APUESTAS EN:' : 'APERTURA DE APUESTAS EN:'}</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; const profile = userProfiles[jugador] || {}; const isOnline = onlineUsers[jugador]; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{isOnline && <div style={styles.onlineIndicatorDot} />}<PlayerProfileDisplay name={jugador} profile={profile} /> {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></>)}
                     {jornadaActual.estado === 'Cerrada' && !isLiveView && (<div><p style={{textAlign: 'center', marginTop: '20px'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => { const profile = userProfiles[p.id] || {}; return (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}><PlayerProfileDisplay name={p.id} profile={profile} defaultColor={styles.colors.yellow} /> {p.jokerActivo && '🃏'}</h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>)})}</div></div>)}
                     {isLiveView && (<div><h3 style={styles.provisionalTitle}>Clasificación Provisional</h3><table style={{...styles.table, backgroundColor: 'rgba(0,0,0,0.3)'}}><thead><tr><th style={styles.th}>POS</th><th style={styles.th}>Jugador</th><th style={styles.th}>Puntos</th></tr></thead><tbody>{provisionalRanking.map((jugador, index) => { const profile = userProfiles[jugador.id] || {}; return (<tr key={jugador.id} style={jugador.puntos > 0 && provisionalRanking[0].puntos === jugador.puntos ? styles.provisionalWinnerRow : styles.tr}><td style={styles.tdRank}>{index + 1}º</td><td style={styles.td}><PlayerProfileDisplay name={jugador.id} profile={profile} /> {jugador.aciertoExacto && '🎯'}</td><td style={styles.td}><AnimatedPoints value={jugador.puntos} /></td></tr>)})}</tbody></table></div>)}
 
@@ -1816,10 +1828,15 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     const isLive = liveData && liveData.isLive;
 
     const getRankStyle = (index, jugador) => {
-        let style = {};
-        if (index === 0) style = styles.leaderRow;
-        else if (index === 1) style = styles.secondPlaceRow;
-        else if (index === 2) style = styles.thirdPlaceRow;
+        let style = {...styles.tr};
+        
+        if (index === 0) {
+            style = {...style, ...styles.leaderRow, position: 'relative'};
+        } else if (index === 1) {
+            style = {...style, ...styles.secondPlaceRow};
+        } else if (index === 2) {
+            style = {...style, ...styles.thirdPlaceRow};
+        }
         
         if (jugador.id === currentUser) {
             style = {...style, ...styles.currentUserRow};
@@ -1836,8 +1853,7 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     return (
         <div>
             <h2 style={styles.title}>CLASIFICACIÓN</h2>
-            <div style={{overflowX: 'auto', position: 'relative'}}>
-                 {liveClasificacion.length > 0 && <div className="leader-animation-particles" />}
+            <div style={{overflowX: 'auto'}}>
                 <table style={styles.table}>
                     <thead>
                         <tr>
@@ -1856,11 +1872,14 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
                             const puntosAMostrar = isLive ? jugador.puntosEnVivo : jugador.puntosTotales;
 
                             return (
-                                <tr key={jugador.id} style={styles.tr}>
-                                    <td style={{...styles.tdRank, ...getRankStyle(index, jugador)}}>{index + 1}º</td>
+                                <tr key={jugador.id} style={getRankStyle(index, jugador)}>
+                                    <td style={styles.tdRank}>
+                                        {index === 0 && <div className="leader-animation-particles" />}
+                                        {index + 1}º
+                                    </td>
                                     <td style={styles.td}>
                                         <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                                           <span style={{...getCambioStyle(jugador.cambio), fontSize: '1.2rem', width: '15px'}} className="position-change-animation">{jugador.cambio}</span>
+                                           <span className="position-change-animation" style={{...getCambioStyle(jugador.cambio), fontSize: '1.2rem', width: '15px'}}>{jugador.cambio}</span>
                                            <PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} />
                                         </div>
                                     </td>
@@ -3072,7 +3091,7 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
                 <button type="submit" disabled={isSaving} style={styles.mainButton}>
                     {isSaving ? 'GUARDANDO...' : 'GUARDAR PRONÓSTICO'}
                 </button>
-                {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : colors.colors.danger}}>{message.text}</p>}
+                {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : styles.colors.danger}}>{message.text}</p>}
             </form>
         </div>
     );
@@ -3143,8 +3162,6 @@ const ProfileScreen = ({ user, userProfile, onEdit, onBack }) => {
     )}
     <button onClick={onEdit} style={{...styles.mainButton, width: '100%', marginTop: '40px'}}>Editar Perfil (Icono y Color)</button></div>);
 };
-
-// ... (el código de la parte 3 que ya tienes termina aquí)
 
 function App() {
   const [showInitialSplash, setShowInitialSplash] = useState(true);
@@ -3420,9 +3437,9 @@ const styles = {
     td: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontSize: '0.9rem' },
     tdRank: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1rem', textAlign: 'center' },
     tdTotalPoints: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', color: colors.yellow },
-    leaderRow: { animation: 'leader-glow 2.5s infinite alternate' },
-    secondPlaceRow: { animation: 'silver-glow 2.5s infinite alternate' },
-    thirdPlaceRow: { animation: 'bronze-glow 2.5s infinite alternate' },
+    leaderRow: { animation: 'leader-glow 2s infinite alternate' },
+    secondPlaceRow: { animation: 'silver-glow 2s infinite alternate' },
+    thirdPlaceRow: { animation: 'bronze-glow 2s infinite alternate' },
     currentUserRow: { animation: 'user-highlight-glow 2s infinite alternate' },
     laJornadaContainer: { textAlign: 'center', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px', backgroundSize: 'cover', backgroundPosition: 'center' },
     matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 'clamp(5px, 2vw, 10px)', fontSize: '1.5rem', fontWeight: 'bold', margin: '20px 0', fontFamily: "'Orbitron', sans-serif", flexWrap: 'nowrap' },
