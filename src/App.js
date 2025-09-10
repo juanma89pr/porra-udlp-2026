@@ -17,7 +17,7 @@ const firebaseConfig = {
     messagingSenderId: "611441868159",
     appId: "1:611441868159:web:13008731a05c4321946e4a",
     measurementId: "G-J9T3S8SZT6",
-    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedatabase.app"
+    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedabase.app"
 };
 
 // --- INICIALIZACIÓN DE FIREBASE ---
@@ -46,10 +46,11 @@ const SECRET_MESSAGES = [
 const STAT_REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
 const GOAL_REACTION_EMOJIS = ['🙌', '⚽', '🎉', '🤩', '🤯'];
 
+// MEJORA: Se añaden nuevos estilos para las animaciones de las insignias
 const BADGE_DEFINITIONS = {
     lider_general: { name: 'Líder General', priority: 1, style: 'gold-leader' },
-    campeon_jornada: { icon: '🏆', name: 'Campeón de la Jornada', priority: 2, style: 'gold-leader' },
-    pleno_jornada: { icon: '🎯', name: 'Pleno en la Jornada', priority: 3 },
+    campeon_jornada: { icon: '🏆', name: 'Campeón de la Jornada', priority: 2, style: 'champion-glow' }, // Animación añadida
+    pleno_jornada: { icon: '🎯', name: 'Pleno en la Jornada', priority: 3, style: 'pleno-flash' }, // Animación añadida
     en_racha: { icon: '🔥', name: 'En Racha (3+ jornadas puntuando)', priority: 4, style: 'fire-streak' },
     mala_racha: { icon: '🥶', name: 'Mala Racha (3+ jornadas sin puntuar)', priority: 5, style: 'cold-streak' },
 };
@@ -399,7 +400,6 @@ const InitialSplashScreen = ({ onFinish }) => {
     useEffect(() => { const timer = setTimeout(() => { setFadingOut(true); setTimeout(onFinish, 500); }, 2500); return () => clearTimeout(timer); }, [onFinish]);
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
-
 const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
@@ -416,6 +416,7 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
             const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             
+            // MEJORA: Se incluye 'Pre-apertura' en la búsqueda de jornada activa.
             let jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta' || j.estado === 'Pre-apertura' || (j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate()));
 
             if (jornadaActiva) {
@@ -472,6 +473,7 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
 
     useEffect(() => {
         if (!jornadaInfo) return;
+        // MEJORA: El contador ahora funciona tanto para la fecha de cierre como para la de apertura.
         const targetDate = jornadaInfo.type === 'activa' ? jornadaInfo.fechaCierre?.toDate() : (jornadaInfo.type === 'proxima' || jornadaInfo.type === 'pre-apertura' ? jornadaInfo.fechaApertura?.toDate() : null);
         if (!targetDate) { setCountdown(''); return; }
 
@@ -508,7 +510,8 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
         
         const fechaMostrada = jornadaInfo.fechaPartido || jornadaInfo.fechaCierre;
         let infoContent;
-
+        
+        // MEJORA: Se añade el `case` para 'pre-apertura' para mostrar la información correcta.
         switch (jornadaInfo.type) {
             case 'activa': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
             case 'pre-apertura': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>LA APERTURA COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
@@ -567,7 +570,8 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
         const remainingJugadores = JUGADORES.filter(j => !recentUsers.includes(j));
         return [...recentUsers, ...remainingJugadores];
     }, [recentUsers]);
-
+    
+    // MEJORA: Se añade la clase de animación dinámicamente
     const getBadgeStyle = (profile) => {
         if (!profile?.badges?.length) return {};
         const highestPriorityBadge = profile.badges
@@ -816,6 +820,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             
+            // MEJORA: Se incluye 'Pre-apertura' en la búsqueda de jornada activa.
             let jornadaActiva = todasLasJornadas.find(j => ['Abierta', 'Pre-apertura', 'Cerrada'].includes(j.estado) || (j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate()));
             
             if (!jornadaActiva) {
@@ -887,7 +892,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         }, (error) => { console.error("Error: ", error); setLoading(false); });
         return () => unsubscribe();
     }, [user]);
-
+    
+    // MEJORA: La API ahora se activa también en estado 'Pre-apertura'.
     useEffect(() => {
         if (apiTimerRef.current) {
             clearInterval(apiTimerRef.current);
@@ -973,12 +979,15 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             
             const isMatchDay = now.toDateString() === matchTime.toDateString();
             const isPreMatchWindow = isMatchDay && now >= oneHourBefore && now < matchTime;
+            const isPreApertura = currentJornada.estado === 'Pre-apertura';
 
             if (apiTimerRef.current) clearInterval(apiTimerRef.current);
 
             if (isPreMatchWindow) {
                 if(!preMatchStats) fetchData();
                 apiTimerRef.current = setInterval(fetchData, 5 * 60 * 1000);
+            } else if (isPreApertura) {
+                if(!preMatchStats) fetchData(); // Llama a la API si está en pre-apertura y no hay datos
             } else {
                 const todayStr = now.toISOString().split('T')[0];
                 if (now.getHours() >= 22 && lastApiCallDay.current !== todayStr) {
@@ -989,7 +998,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             }
         };
         
-        if (!preMatchStats) {
+        if (!preMatchStats && (currentJornada.estado === 'Abierta' || currentJornada.estado === 'Pre-apertura')) {
             fetchData();
         }
         manageUpdates();
@@ -1176,6 +1185,19 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         
         if (isBettingOpen) {
             const isVip = currentJornada.esVip;
+            const isPreApertura = currentJornada.estado === 'Pre-apertura';
+
+            if (isPreApertura) {
+                 return (
+                    <div style={styles.placeholder}>
+                        <h3>Jornada {currentJornada.numeroJornada} en Pre-apertura</h3>
+                        <p>Las apuestas abrirán pronto. ¡Puedes ir consultando las estadísticas pre-partido!</p>
+                        {loadingPreMatch && !preMatchStats && <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div>}
+                        {preMatchStats && <PreMatchStats stats={preMatchStats} lastUpdated={lastApiUpdate} onOpenModal={() => setShowStatsModal(true)} />}
+                    </div>
+                 );
+            }
+            
             return (
                 <form onSubmit={handleGuardarPronostico} style={styles.form}>
                     {currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}
@@ -1286,7 +1308,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         <h2 style={styles.title}>MI JORNADA</h2>
         <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>
         
-        {currentJornada && (currentJornada.estado === 'Abierta' || currentJornada.estado === 'Cerrada') && (
+        {currentJornada && (currentJornada.estado === 'Abierta' || currentJornada.estado === 'Pre-apertura' || currentJornada.estado === 'Cerrada') && (
             <>
                 {loadingPreMatch && !preMatchStats && <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div>}
                 {preMatchStats && <PreMatchStats stats={preMatchStats} lastUpdated={lastApiUpdate} onOpenModal={() => setShowStatsModal(true)} />}
@@ -1354,7 +1376,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
         const pronAnualesRef = collection(db, "porraAnualPronosticos"); const unsubPronAnuales = onSnapshot(pronAnualesRef, (snap) => { setPronosticosAnuales(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
         return () => { unsubscribeJornada(); unsubConfig(); unsubPronAnuales(); };
     }, []);
-    
+
     useEffect(() => {
         if (jornadaActual) {
             setUserReactions({});
@@ -2102,6 +2124,7 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         <div style={jornada.id === 'jornada_test' ? {...styles.adminJornadaItem, ...styles.testJornadaAdminItem} : (jornada.esVip ? {...styles.adminJornadaItem, ...styles.jornadaVip} : styles.adminJornadaItem)}>
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap'}}><p><strong>{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}:</strong> {jornada.equipoLocal} vs {jornada.equipoVisitante}</p><div style={styles.vipToggleContainer}><label htmlFor={`vip-toggle-${jornada.id}`}>⭐ VIP</label><input id={`vip-toggle-${jornada.id}`} type="checkbox" checked={esVip} onChange={(e) => setEsVip(e.target.checked)} style={styles.checkbox}/></div></div>
             <div style={styles.adminControls}>
+                {/* MEJORA: Se añade 'Pre-apertura' a las opciones del administrador */}
                 <select value={estado} onChange={(e) => setEstado(e.target.value)} style={styles.adminSelect}><option value="Próximamente">Próximamente</option><option value="Pre-apertura">Pre-apertura</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="Finalizada">Finalizada</option></select>
                 <div style={styles.resultInputContainer}><input type="number" min="0" value={resultadoLocal} onChange={(e) => setResultadoLocal(e.target.value)} style={styles.resultInput} placeholder="L" /><span style={styles.separator}>-</span><input type="number" min="0" value={resultadoVisitante} onChange={(e) => setResultadoVisitante(e.target.value)} style={styles.resultInput} placeholder="V"/></div>
                 <select value={goleador} onChange={(e) => setGoleador(e.target.value)} style={styles.adminSelect}><option value="">-- Goleador --</option><option value="SG">Sin Goleador (SG)</option>{plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}</select>
@@ -3126,6 +3149,7 @@ function App() {
     });
     const styleSheet = document.createElement("style"); 
     const colors = styles.colors;
+    // MEJORA: Se añaden las nuevas animaciones para las insignias. La animación para el líder se ha hecho más pronunciada.
     styleSheet.innerText = `
         @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -3134,6 +3158,8 @@ function App() {
         @keyframes gold-leader-animation { 0%, 100% { box-shadow: 0 0 8px ${colors.gold}, 0 0 15px ${colors.gold}, 0 0 25px ${colors.gold}80; } 50% { box-shadow: 0 0 15px ${colors.gold}, 0 0 30px ${colors.gold}, 0 0 45px ${colors.gold}80; } }
         @keyframes fire-streak-animation { 0%, 100% { box-shadow: 0 0 8px #fca311, 0 0 15px #e63946, 0 0 25px #fca31180; } 50% { box-shadow: 0 0 15px #fca311, 0 0 30px #e63946, 0 0 45px #fca31180; } }
         @keyframes cold-streak-animation { 0%, 100% { box-shadow: 0 0 8px #00aaff, 0 0 15px #00aaff, 0 0 20px #00aaff80; } }
+        @keyframes champion-glow-animation { 0%, 100% { text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px ${colors.gold}, 0 0 20px ${colors.gold}; } 50% { text-shadow: 0 0 10px #fff, 0 0 20px ${colors.gold}, 0 0 30px ${colors.gold}; } }
+        @keyframes pleno-flash-animation { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2) rotate(5deg); } }
         @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
         .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
         @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -3171,7 +3197,7 @@ function App() {
         .pulse-animation { border-color: ${colors.yellow}; animation: pulse-animation-kf 1s ease-out; }
         @keyframes live-dot-kf { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .live-dot-animation { animation: live-dot-kf 1.5s infinite; }
-        @keyframes leader-glow { 0%, 100% { background-color: rgba(255, 215, 0, 0.15); box-shadow: inset 0 0 15px rgba(255, 215, 0, 0.5), 0 0 10px rgba(255, 215, 0, 0.3); } 50% { background-color: rgba(255, 215, 0, 0.25); box-shadow: inset 0 0 20px rgba(255, 215, 0, 0.7), 0 0 15px rgba(255, 215, 0, 0.5); } }
+        @keyframes leader-glow { 0%, 100% { background-color: rgba(255, 215, 0, 0.15); box-shadow: inset 0 0 25px rgba(255, 215, 0, 0.7), 0 0 15px rgba(255, 215, 0, 0.5); } 50% { background-color: rgba(255, 215, 0, 0.35); box-shadow: inset 0 0 35px rgba(255, 215, 0, 1), 0 0 25px rgba(255, 215, 0, 0.7); } }
         @keyframes silver-glow { 0%, 100% { background-color: rgba(192, 192, 192, 0.15); box-shadow: inset 0 0 15px rgba(192, 192, 192, 0.5), 0 0 10px rgba(192, 192, 192, 0.3); } 50% { background-color: rgba(192, 192, 192, 0.25); box-shadow: inset 0 0 20px rgba(192, 192, 192, 0.7), 0 0 15px rgba(192, 192, 192, 0.5); } }
         @keyframes bronze-glow { 0%, 100% { background-color: rgba(205, 127, 50, 0.15); box-shadow: inset 0 0 15px rgba(205, 127, 50, 0.5), 0 0 10px rgba(205, 127, 50, 0.3); } 50% { background-color: rgba(205, 127, 50, 0.25); box-shadow: inset 0 0 20px rgba(205, 127, 50, 0.7), 0 0 15px rgba(205, 127, 50, 0.5); } }
         @keyframes user-highlight-glow { 0%, 100% { background-color: rgba(0, 85, 164, 0.5); box-shadow: inset 0 0 15px rgba(0, 85, 164, 1), 0 0 10px rgba(0, 85, 164, 0.7); } 50% { background-color: rgba(0, 85, 164, 0.7); box-shadow: inset 0 0 20px rgba(0, 85, 164, 1), 0 0 15px rgba(0, 85, 164, 1); } }
@@ -3575,4 +3601,5 @@ const styles = {
 };
 
 export default App;
+}
 
