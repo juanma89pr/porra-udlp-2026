@@ -17,7 +17,7 @@ const firebaseConfig = {
     messagingSenderId: "611441868159",
     appId: "1:611441868159:web:13008731a05c4321946e4a",
     measurementId: "G-J9T3S8SZT6",
-    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedabase.app"
+    databaseURL: "https://porra-udlp-2026-v2-default-rtdb.europe-west1.firebasedatabase.app"
 };
 
 // --- INICIALIZACIÓN DE FIREBASE ---
@@ -47,11 +47,11 @@ const STAT_REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
 const GOAL_REACTION_EMOJIS = ['🙌', '⚽', '🎉', '🤩', '🤯'];
 
 const BADGE_DEFINITIONS = {
-    lider_general: { icon: '👑', name: 'Líder General', priority: 1 },
-    campeon_jornada: { icon: '🏆', name: 'Campeón de la Jornada', priority: 2 },
+    lider_general: { name: 'Líder General', priority: 1, style: 'gold-leader' },
+    campeon_jornada: { icon: '🏆', name: 'Campeón de la Jornada', priority: 2, style: 'gold-leader' },
     pleno_jornada: { icon: '🎯', name: 'Pleno en la Jornada', priority: 3 },
-    en_racha: { icon: '🔥', name: 'En Racha (3+ jornadas puntuando)', priority: 4 },
-    mala_racha: { icon: '🥶', name: 'Mala Racha (3+ jornadas sin puntuar)', priority: 5 },
+    en_racha: { icon: '🔥', name: 'En Racha (3+ jornadas puntuando)', priority: 4, style: 'fire-streak' },
+    mala_racha: { icon: '🥶', name: 'Mala Racha (3+ jornadas sin puntuar)', priority: 5, style: 'cold-streak' },
 };
 
 
@@ -209,7 +209,7 @@ const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.ligh
     return (
         <span style={{...customStyle, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
             {badgesToDisplay.map(badge => (
-                 <span key={badge.key} title={badge.name} className={`badge-animation-${badge.key}`}>{badge.icon}</span>
+                <span key={badge.key} title={badge.name}>{badge.icon}</span>
             ))}
             {icon && <span>{icon}</span>}
             <span style={nameStyle}>{name}</span>
@@ -400,52 +400,7 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
-const HistoricalStatsDisplay = ({ userProfiles }) => {
-    const [stats, setStats] = useState(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchStats = async () => {
-            const clasificacionSnap = await getDocs(query(collection(db, "clasificacion")));
-            const statsData = clasificacionSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            const masPuntos = [...statsData].sort((a, b) => (b.puntosTotales || 0) - (a.puntosTotales || 0)).slice(0, 3);
-            const masPlenos = [...statsData].sort((a, b) => (b.plenos || 0) - (a.plenos || 0)).slice(0, 3);
-            const masAciertosGoleador = [...statsData].sort((a, b) => (b.puntosGoleador || 0) - (a.puntosGoleador || 0)).slice(0, 3);
-            
-            setStats({ masPuntos, masPlenos, masAciertosGoleador });
-            setLoading(false);
-        };
-        fetchStats();
-    }, []);
-
-    if (loading) return <div style={{textAlign: 'center'}}><p>Cargando estadísticas históricas...</p></div>;
-
-    const StatCard = ({ title, data, dataKey, unit }) => (
-        <div style={styles.historicalStatCard}>
-            <h4 style={{...styles.label, justifyContent: 'center'}}>{title}</h4>
-            <ul style={styles.historicalStatList}>
-                {data.map((player, index) => (
-                    <li key={player.id}>
-                        <PlayerProfileDisplay name={player.id} profile={userProfiles[player.id]} />
-                        <strong>{player[dataKey] || 0} {unit}</strong>
-                    </li>
-                ))}
-            </ul>
-        </div>
-    );
-    
-    return (
-        <div style={styles.historicalStatsContainer}>
-             <h3 style={{...styles.formSectionTitle, fontSize: '1.2rem'}}>Salón de la Fama (Histórico)</h3>
-            <StatCard title="🎯 Más Plenos" data={stats.masPlenos} dataKey="plenos" unit="plenos" />
-            <StatCard title="⚽️ Ojo de Halcón (Goleadores)" data={stats.masAciertosGoleador} dataKey="puntosGoleador" unit="pts" />
-            <StatCard title="🏆 Máximos Puntuadores" data={stats.masPuntos} dataKey="puntosTotales" unit="pts" />
-        </div>
-    );
-};
-
-const SplashScreen = ({ onEnter, teamLogos, plantilla, userProfiles }) => {
+const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
     const [loading, setLoading] = useState(true);
@@ -458,9 +413,10 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla, userProfiles }) => {
         setLoading(true);
         const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
         const unsubscribe = onSnapshot(qJornadas, (snap) => {
+            const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             
-            let jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta' || j.estado === 'Pre-apertura');
+            let jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta' || j.estado === 'Pre-apertura' || (j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate()));
 
             if (jornadaActiva) {
                 const type = jornadaActiva.estado === 'Pre-apertura' ? 'pre-apertura' : 'activa';
@@ -584,9 +540,6 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla, userProfiles }) => {
                     </div>
                 </div>
             )}
-             {jornadaInfo?.type === 'pre-apertura' && (
-                <HistoricalStatsDisplay userProfiles={userProfiles} />
-            )}
             <button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>
             {isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}
         </div>
@@ -621,9 +574,7 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
             .map(key => ({ key, ...BADGE_DEFINITIONS[key] }))
             .filter(b => b.name)
             .sort((a, b) => a.priority - b.priority)[0];
-        if (highestPriorityBadge?.key) {
-            return { animation: `badge-${highestPriorityBadge.key}-animation-KF 2s infinite alternate` };
-        }
+        if (highestPriorityBadge?.style) return { animation: `${highestPriorityBadge.style}-animation 2s infinite alternate` };
         return {};
     };
 
@@ -862,9 +813,10 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 
         const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
         const unsubscribe = onSnapshot(qJornadas, (snap) => {
+            const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             
-            let jornadaActiva = todasLasJornadas.find(j => ['Abierta', 'Pre-apertura', 'Cerrada'].includes(j.estado));
+            let jornadaActiva = todasLasJornadas.find(j => ['Abierta', 'Pre-apertura', 'Cerrada'].includes(j.estado) || (j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate()));
             
             if (!jornadaActiva) {
                 const finalizadas = todasLasJornadas
@@ -942,11 +894,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             apiTimerRef.current = null;
         }
 
-        const isApiReady = currentJornada && ['Abierta', 'Pre-apertura'].includes(currentJornada.estado) && currentJornada.apiLeagueId;
-        if (!isApiReady) {
-             setPreMatchStats(null);
-             setFullPreMatchStats(null);
-             return;
+        if (!currentJornada || !currentJornada.fechaPartido || !currentJornada.apiLeagueId || !currentJornada.apiLocalTeamId || !currentJornada.apiVisitorTeamId) {
+            return;
         }
 
         const fetchHeaders = {
@@ -1032,11 +981,11 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 apiTimerRef.current = setInterval(fetchData, 5 * 60 * 1000);
             } else {
                 const todayStr = now.toISOString().split('T')[0];
-                if (now.getHours() >= 9 && lastApiCallDay.current !== todayStr) {
+                if (now.getHours() >= 22 && lastApiCallDay.current !== todayStr) {
                     fetchData();
                     lastApiCallDay.current = todayStr;
                 }
-                apiTimerRef.current = setInterval(manageUpdates, 60 * 60 * 1000);
+                apiTimerRef.current = setInterval(manageUpdates, 60 * 1000);
             }
         };
         
@@ -1220,7 +1169,10 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     };
 
     const renderContent = () => {
-        const isBettingOpen = currentJornada && ['Abierta'].includes(currentJornada.estado);
+        const ahora = new Date();
+        const apertura = currentJornada?.fechaApertura?.toDate();
+        const cierre = currentJornada?.fechaCierre?.toDate();
+        const isBettingOpen = currentJornada && (currentJornada.estado === 'Abierta' || currentJornada.estado === 'Pre-apertura' || (currentJornada.estado === 'Próximamente' && apertura && cierre && ahora >= apertura && ahora < cierre));
         
         if (isBettingOpen) {
             const isVip = currentJornada.esVip;
@@ -1282,18 +1234,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                             <button type="submit" disabled={isSaving} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR Y BLOQUEAR'}</button>
                         </fieldset>
                     )}
-                    {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : styles.colors.danger}}>{message.text}</p>}
+                    {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : colors.colors.danger}}>{message.text}</p>}
                 </form>
-            );
-        }
-        
-        if (currentJornada?.estado === 'Pre-apertura') {
-            return (
-                 <div style={styles.placeholder}>
-                     <h3>Jornada {currentJornada.numeroJornada} en Pre-apertura</h3>
-                     <p>La jornada se abrirá pronto. ¡Prepárate!</p>
-                     <HistoricalStatsDisplay userProfiles={userProfiles} />
-                 </div>
             );
         }
 
@@ -1306,9 +1248,9 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                         {currentJornada.estado === 'Cerrada' ? 'Las apuestas para este partido han finalizado.' : 'Esta jornada ha concluido.'}
                     </p>
                     
-                    {hasSubmitted ? <RenderedPronostico pronosticoData={pronostico} jornadaData={currentJornada} teamLogos={teamLogos} /> : <p style={{margin: '20px 0'}}>No participaste en esta jornada.</p>}
+                    <RenderedPronostico pronosticoData={pronostico} jornadaData={currentJornada} teamLogos={teamLogos} />
                     
-                    {hasSubmitted && <div style={{marginTop: '20px'}}>
+                    <div style={{marginTop: '20px'}}>
                         {showLiquidarButton && (
                             <button onClick={() => setShowLiquidarPagoModal(true)} style={styles.mainButton}>
                                 Liquidar Pagos
@@ -1323,7 +1265,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                         <button onClick={() => setActiveTab('laJornada')} style={{...styles.mainButton, marginLeft: '10px', backgroundColor: styles.colors.blue}}>
                             Ver Resumen
                         </button>
-                    </div>}
+                    </div>
                     {message.text && <p style={{...styles.message, marginTop: '15px'}}>{message.text}</p>}
                 </div>
             );
@@ -1344,7 +1286,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
         <h2 style={styles.title}>MI JORNADA</h2>
         <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>
         
-        {currentJornada && (currentJornada.estado === 'Abierta' || currentJornada.estado === 'Pre-apertura') && (
+        {currentJornada && (currentJornada.estado === 'Abierta' || currentJornada.estado === 'Cerrada') && (
             <>
                 {loadingPreMatch && !preMatchStats && <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div>}
                 {preMatchStats && <PreMatchStats stats={preMatchStats} lastUpdated={lastApiUpdate} onOpenModal={() => setShowStatsModal(true)} />}
@@ -1828,15 +1770,10 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
     const isLive = liveData && liveData.isLive;
 
     const getRankStyle = (index, jugador) => {
-        let style = {...styles.tr};
-        
-        if (index === 0) {
-            style = {...style, ...styles.leaderRow, position: 'relative'};
-        } else if (index === 1) {
-            style = {...style, ...styles.secondPlaceRow};
-        } else if (index === 2) {
-            style = {...style, ...styles.thirdPlaceRow};
-        }
+        let style = styles.tr;
+        if (index === 0) style = styles.leaderRow;
+        else if (index === 1) style = styles.secondPlaceRow;
+        else if (index === 2) style = styles.thirdPlaceRow;
         
         if (jugador.id === currentUser) {
             style = {...style, ...styles.currentUserRow};
@@ -1873,13 +1810,10 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
 
                             return (
                                 <tr key={jugador.id} style={getRankStyle(index, jugador)}>
-                                    <td style={styles.tdRank}>
-                                        {index === 0 && <div className="leader-animation-particles" />}
-                                        {index + 1}º
-                                    </td>
+                                    <td style={styles.tdRank}>{index + 1}º</td>
                                     <td style={styles.td}>
                                         <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                                           <span className="position-change-animation" style={{...getCambioStyle(jugador.cambio), fontSize: '1.2rem', width: '15px'}}>{jugador.cambio}</span>
+                                           <span style={{...getCambioStyle(jugador.cambio), fontSize: '1.2rem', width: '15px'}}>{jugador.cambio}</span>
                                            <PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} />
                                         </div>
                                     </td>
@@ -3091,7 +3025,7 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
                 <button type="submit" disabled={isSaving} style={styles.mainButton}>
                     {isSaving ? 'GUARDANDO...' : 'GUARDAR PRONÓSTICO'}
                 </button>
-                {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : styles.colors.danger}}>{message.text}</p>}
+                {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : colors.colors.danger}}>{message.text}</p>}
             </form>
         </div>
     );
@@ -3197,19 +3131,9 @@ function App() {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html { font-size: 16px !important; -webkit-text-size-adjust: 100%; }
         body, #root { width: 100%; min-width: 100%; overflow-x: hidden; }
-        
-        .badge-animation-lider_general { display: inline-block; animation: badge-lider-glow 1.5s infinite alternate; }
-        .badge-animation-campeon_jornada { display: inline-block; animation: badge-trophy-bounce 1s ease-in-out infinite; }
-        .badge-animation-pleno_jornada { display: inline-block; animation: badge-target-pulse 2s infinite; }
-        .badge-animation-en_racha { display: inline-block; animation: badge-fire-flicker 0.5s infinite alternate; }
-        .badge-animation-mala_racha { display: inline-block; animation: badge-ice-shake 0.3s infinite; }
-        @keyframes badge-lider-glow { from { filter: drop-shadow(0 0 2px ${colors.gold}); } to { filter: drop-shadow(0 0 8px ${colors.gold}); } }
-        @keyframes badge-trophy-bounce { 0%, 100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-5px) rotate(5deg); } }
-        @keyframes badge-target-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.3); } }
-        @keyframes badge-fire-flicker { 0% { text-shadow: 0 0 2px #fca311, 0 0 5px #e63946; } 100% { text-shadow: 0 0 5px #fca311, 0 0 10px #e63946; } }
-        @keyframes badge-ice-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1px); } 75% { transform: translateX(1px); } }
-
         @keyframes gold-leader-animation { 0%, 100% { box-shadow: 0 0 8px ${colors.gold}, 0 0 15px ${colors.gold}, 0 0 25px ${colors.gold}80; } 50% { box-shadow: 0 0 15px ${colors.gold}, 0 0 30px ${colors.gold}, 0 0 45px ${colors.gold}80; } }
+        @keyframes fire-streak-animation { 0%, 100% { box-shadow: 0 0 8px #fca311, 0 0 15px #e63946, 0 0 25px #fca31180; } 50% { box-shadow: 0 0 15px #fca311, 0 0 30px #e63946, 0 0 45px #fca31180; } }
+        @keyframes cold-streak-animation { 0%, 100% { box-shadow: 0 0 8px #00aaff, 0 0 15px #00aaff, 0 0 20px #00aaff80; } }
         @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
         .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
         @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -3232,7 +3156,6 @@ function App() {
         .point-jump-up { animation: point-jump-up 0.7s ease-out; }
         .stat-fade-in { animation: fadeIn 0.5s ease-in-out; }
         @keyframes bounce-in { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
-        .position-change-animation { display: inline-block; animation: bounce-in 0.5s ease-out; }
         @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
         .pulsed { animation: pulse-once 0.4s ease-in-out; }
         @keyframes pie-draw { to { stroke-dashoffset: 0; } }
@@ -3253,8 +3176,6 @@ function App() {
         @keyframes bronze-glow { 0%, 100% { background-color: rgba(205, 127, 50, 0.15); box-shadow: inset 0 0 15px rgba(205, 127, 50, 0.5), 0 0 10px rgba(205, 127, 50, 0.3); } 50% { background-color: rgba(205, 127, 50, 0.25); box-shadow: inset 0 0 20px rgba(205, 127, 50, 0.7), 0 0 15px rgba(205, 127, 50, 0.5); } }
         @keyframes user-highlight-glow { 0%, 100% { background-color: rgba(0, 85, 164, 0.5); box-shadow: inset 0 0 15px rgba(0, 85, 164, 1), 0 0 10px rgba(0, 85, 164, 0.7); } 50% { background-color: rgba(0, 85, 164, 0.7); box-shadow: inset 0 0 20px rgba(0, 85, 164, 1), 0 0 15px rgba(0, 85, 164, 1); } }
         @keyframes last-chance-glow { 0%, 100% { box-shadow: 0 0 15px ${colors.danger}, 0 0 25px ${colors.danger}; background-color: ${colors.danger};} 50% { box-shadow: 0 0 25px ${colors.danger}80, 0 0 40px ${colors.danger}80; background-color: #a11d27;} }
-        @keyframes gold-sparkle { 0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.5); opacity: 1; } 100% { box-shadow: 0 0 20px 30px rgba(255, 215, 0, 0); opacity: 0; } }
-        .leader-animation-particles::before { content: ''; position: absolute; top: 50%; left: 50%; width: 100%; height: 100%; transform: translate(-50%, -50%); border-radius: 8px; animation: gold-sparkle 2s infinite ease-out; pointer-events: none; z-index: -1; }
     `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
@@ -3326,7 +3247,7 @@ function App() {
 
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} />;
-    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles}/>;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} plantilla={plantilla} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
     if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
     if (screen === 'app') {
@@ -3433,7 +3354,7 @@ const styles = {
     message: { marginTop: '20px', padding: '12px', borderRadius: '8px', backgroundColor: colors.darkUIAlt, color: colors.lightText, textAlign: 'center', fontWeight: 'bold' },
     table: { width: '100%', marginTop: '20px', borderCollapse: 'separate', borderSpacing: '0 5px', color: colors.lightText },
     th: { backgroundColor: 'transparent', color: colors.yellow, padding: '12px', borderBottom: `2px solid ${colors.yellow}`, textAlign: 'left', textTransform: 'uppercase', fontFamily: "'Orbitron', sans-serif", fontSize: '0.8rem' },
-    tr: { backgroundColor: colors.darkUIAlt, transition: 'background-color 0.3s ease', position: 'relative' },
+    tr: { backgroundColor: colors.darkUIAlt, transition: 'background-color 0.3s ease' },
     td: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontSize: '0.9rem' },
     tdRank: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1rem', textAlign: 'center' },
     tdTotalPoints: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', color: colors.yellow },
@@ -3650,27 +3571,6 @@ const styles = {
         margin: '20px 0',
         textAlign: 'center',
         lineHeight: 1.6
-    },
-    historicalStatsContainer: {
-        width: '100%',
-        backgroundColor: 'rgba(0,0,0,0.2)',
-        padding: '20px',
-        borderRadius: '12px',
-        marginTop: '20px',
-        border: `1px solid ${colors.blue}50`,
-    },
-    historicalStatCard: {
-        marginBottom: '15px',
-    },
-    historicalStatList: {
-        listStyle: 'none',
-        padding: 0,
-        '& li': {
-            display: 'flex',
-            justifyContent: 'space-between',
-            padding: '5px 0',
-            borderBottom: `1px solid ${colors.blue}50`,
-        }
     }
 };
 
