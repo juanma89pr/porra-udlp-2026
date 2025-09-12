@@ -378,7 +378,9 @@ const styles = {
     }
 };
 // CORRECCIÓN: Se añade el punto y coma faltante aquí para corregir el error de sintaxis.
+;
 
+// ============================================================================
 // --- LÓGICA DE CÁLCULO Y FORMATO ---
 // ============================================================================
 
@@ -1652,7 +1654,13 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
                 getDocs(qProxima).then(snap => { if (!snap.empty) setProximaJornada({ id: snap.docs[0].id, ...snap.docs[0].data() }); });
             }
             setLoading(false);
-        });    useEffect(() => {
+        });
+        const configRef = doc(db, "configuracion", "porraAnual"); const unsubConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
+        const pronAnualesRef = collection(db, "porraAnualPronosticos"); const unsubPronAnuales = onSnapshot(pronAnualesRef, (snap) => { setPronosticosAnuales(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
+        return () => { unsubscribeJornada(); unsubConfig(); unsubPronAnuales(); };
+    }, []);
+
+    useEffect(() => {
         if (jornadaActual) {
             setUserReactions({});
             setReactions({});
@@ -2403,12 +2411,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 <select value={estado} onChange={(e) => setEstado(e.target.value)} style={styles.adminSelect}><option value="Próximamente">Próximamente</option><option value="Pre-apertura">Pre-apertura</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="Finalizada">Finalizada</option></select>
                 <div style={styles.resultInputContainer}><input type="number" min="0" value={resultadoLocal} onChange={(e) => setResultadoLocal(e.target.value)} style={styles.resultInput} placeholder="L" /><span style={styles.separator}>-</span><input type="number" min="0" value={resultadoVisitante} onChange={(e) => setResultadoVisitante(e.target.value)} style={styles.resultInput} placeholder="V"/></div>
                 <select value={goleador} onChange={(e) => setGoleador(e.target.value)} style={styles.adminSelect}><option value="">-- Goleador --</option><option value="SG">Sin Goleador (SG)</option>{plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}
-
-
-        const configRef = doc(db, "configuracion", "porraAnual"); const unsubConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
-        const pronAnualesRef = collection(db, "porraAnualPronosticos"); const unsubPronAnuales = onSnapshot(pronAnualesRef, (snap) => { setPronosticosAnuales(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
-        return () => { unsubscribeJornada(); unsubConfig(); unsubPronAnuales(); };
-    }, []);
 
 </select>
                 <select value={resultado1x2} onChange={(e) => setResultado1x2(e.target.value)} style={styles.adminSelect}><option value="">-- 1X2 --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select>
@@ -3606,4 +3608,5 @@ function App() {
 }
 
 export default App;
+
 
