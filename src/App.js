@@ -3519,30 +3519,57 @@ function App() {
       } catch (error) { console.error('Error al obtener token de notificación.', error); }
   };
 
+  // CORRECCIÓN: Se añade 'try...catch' a handleLogin para evitar que la app se congele si hay un error de red.
   const handleLogin = async (user) => {
-      setCurrentUser(user);
-      const userStatusRef = ref(rtdb, 'status/' + user);
-      await set(userStatusRef, true);
-      onDisconnect(userStatusRef).set(false);
-      const userProfileRef = doc(db, "clasificacion", user);
-      await setDoc(userProfileRef, { ultimaConexion: new Date() }, { merge: true });
-
-      const docSnap = await getDoc(userProfileRef);
-      if (docSnap.exists() && docSnap.data().icon && docSnap.data().color) setScreen('app');
-      else setScreen('customizeProfile');
-      
-      if ('Notification' in window && Notification.permission !== 'granted' && !localStorage.getItem('notificationPrompt_v3_seen')) setShowNotificationModal(true);
-      
-      const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
-      const jornadaSnap = await getDocs(q);
-      if (!jornadaSnap.empty) {
-          const jornadaDoc = jornadaSnap.docs[0]; const jornada = { id: jornadaDoc.id, ...jornadaDoc.data() };
-          if (jornada.id !== sessionStorage.getItem('lastSeenWinnerJornada') && jornada.ganadores?.includes(user)) {
-              const pronosticoSnap = await getDoc(doc(db, "pronosticos", jornada.id, "jugadores", user));
-              const allPronosticosSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
-              const prize = (allPronosticosSnap.size * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL)) + (jornada.bote || 0);
-              if (pronosticoSnap.exists()) { setWinnerData({ pronostico: { id: user, ...pronosticoSnap.data() }, prize: prize / jornada.ganadores.length }); sessionStorage.setItem('lastSeenWinnerJornada', jornada.id); }
-          }
+      try {
+        console.log(`[LOGIN] Iniciando login para: ${user}`);
+        setCurrentUser(user);
+    
+        console.log(`[LOGIN] Estableciendo estado online en Realtime Database...`);
+        const userStatusRef = ref(rtdb, 'status/' + user);
+        await set(userStatusRef, true);
+        onDisconnect(userStatusRef).set(false);
+    
+        console.log(`[LOGIN] Actualizando última conexión en Firestore...`);
+        const userProfileRef = doc(db, "clasificacion", user);
+        await setDoc(userProfileRef, { ultimaConexion: new Date() }, { merge: true });
+    
+        console.log(`[LOGIN] Comprobando si el perfil está personalizado...`);
+        const docSnap = await getDoc(userProfileRef);
+        if (docSnap.exists() && docSnap.data().icon && docSnap.data().color) {
+            console.log(`[LOGIN] Perfil completo. Navegando a la app.`);
+            setScreen('app');
+        } else {
+            console.log(`[LOGIN] Perfil incompleto. Navegando a personalización.`);
+            setScreen('customizeProfile');
+        }
+        
+        if ('Notification' in window && Notification.permission !== 'granted' && !localStorage.getItem('notificationPrompt_v3_seen')) {
+            setShowNotificationModal(true);
+        }
+        
+        console.log(`[LOGIN] Comprobando si el usuario es ganador de la última jornada...`);
+        const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
+        const jornadaSnap = await getDocs(q);
+        if (!jornadaSnap.empty) {
+            const jornadaDoc = jornadaSnap.docs[0]; const jornada = { id: jornadaDoc.id, ...jornadaDoc.data() };
+            if (jornada.id !== sessionStorage.getItem('lastSeenWinnerJornada') && jornada.ganadores?.includes(user)) {
+                const pronosticoSnap = await getDoc(doc(db, "pronosticos", jornada.id, "jugadores", user));
+                const allPronosticosSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
+                const prize = (allPronosticosSnap.size * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL)) + (jornada.bote || 0);
+                if (pronosticoSnap.exists()) { 
+                    setWinnerData({ pronostico: { id: user, ...pronosticoSnap.data() }, prize: prize / jornada.ganadores.length }); 
+                    sessionStorage.setItem('lastSeenWinnerJornada', jornada.id);
+                }
+            }
+        }
+        console.log(`[LOGIN] Proceso de login completado para: ${user}`);
+      } catch (error) {
+          console.error("----------- ¡¡¡ERROR CRÍTICO DURANTE EL LOGIN!!! -----------");
+          console.error("No se ha podido completar el proceso de login para el usuario:", user);
+          console.error("El error ha sido:", error);
+          alert("Ha ocurrido un error al intentar entrar. Por favor, revisa tu conexión a internet y vuelve a intentarlo. Si el problema persiste, contacta al administrador.");
+          setCurrentUser(null); // Reseteamos el usuario para evitar un estado inconsistente.
       }
   };
 
