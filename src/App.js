@@ -174,12 +174,10 @@ const styles = {
     td: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontSize: '0.9rem' },
     tdRank: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1rem', textAlign: 'center' },
     tdTotalPoints: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', color: colors.yellow },
-    // --- MODIFICACIÓN: Estilos de animación para clasificación ---
     leaderRow: { animation: 'gold-leader-animation 2s infinite alternate' },
     currentUserRow: { animation: 'user-highlight-glow 2s infinite alternate' },
     fireStreakRow: { animation: 'fire-streak-animation 2s infinite alternate' },
     coldStreakRow: { animation: 'cold-streak-animation 2s infinite alternate' },
-    
     laJornadaContainer: { textAlign: 'center', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px', backgroundSize: 'cover', backgroundPosition: 'center' },
     matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 'clamp(5px, 2vw, 10px)', fontSize: '1.5rem', fontWeight: 'bold', margin: '20px 0', fontFamily: "'Orbitron', sans-serif", flexWrap: 'nowrap' },
     matchDetails: { display: 'flex', justifyContent: 'center', gap: '20px', color: colors.silver, marginBottom: '20px', flexWrap: 'wrap' },
@@ -554,7 +552,6 @@ const Confetti = () => {
     return (<div style={styles.confettiOverlay}>{particles.map((_, i) => (<div key={i} className="confetti-particle" style={{ '--x': `${Math.random() * 100}vw`, '--angle': `${Math.random() * 360}deg`, '--delay': `${Math.random() * 5}s`, '--color': i % 3 === 0 ? styles.colors.yellow : (i % 3 === 1 ? styles.colors.blue : styles.colors.lightText), '--size': `${5 + Math.random() * 10}px` }} />))}</div>);
 };
 
-// --- MODIFICACIÓN: Se añade el tesorero al mensaje del ganador ---
 const WinnerAnimation = ({ winnerData, onClose }) => {
     const { pronostico, prize } = winnerData;
     const tesorero = getTesorero(pronostico.id);
@@ -992,7 +989,6 @@ const ProximaJornadaInfo = ({ jornada }) => {
         </div>
     );
 };
-
 const AnimatedStat = ({ value, duration = 800 }) => {
     const [displayValue, setDisplayValue] = useState(0);
     const valueRef = useRef(0);
@@ -1159,13 +1155,13 @@ const ConfirmacionPronosticoModal = ({ pronostico, onConfirm, onCancel }) => {
 };
 
 // --- NUEVO: Modal para ver el Historial de Cambios ---
-const HistorialCambiosModal = ({ historial, onClose }) => {
+const HistorialCambiosModal = ({ historial, onClose, loading }) => {
     return (
         <div style={styles.modalOverlay} onClick={onClose}>
             <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
                 <h3 style={styles.title}>HISTORIAL DE CAMBIOS</h3>
                 <div style={styles.historyContainer}>
-                    {historial.length > 0 ? (
+                    {loading ? <p>Cargando historial...</p> : historial.length > 0 ? (
                         historial.map((entrada, index) => (
                             <div key={index} style={styles.historyEntry}>
                                 <p style={styles.historyTimestamp}><strong>Fecha:</strong> {formatFullDateTime(entrada.timestamp)}</p>
@@ -1205,23 +1201,17 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
     const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
     const [tieneDeuda, setTieneDeuda] = useState(false);
     const [interJornadaStatus, setInterJornadaStatus] = useState(null);
-    
-    // --- MODIFICACIÓN: Estados para la nueva lógica de API ---
     const [preMatchStats, setPreMatchStats] = useState(null);
-    const [fullPreMatchStats, setFullPreMatchStats] = useState(null); // Para el modal
+    const [fullPreMatchStats, setFullPreMatchStats] = useState(null); 
     const [showStatsModal, setShowStatsModal] = useState(false);
     const [loadingPreMatch, setLoadingPreMatch] = useState(false);
     const [lastApiUpdate, setLastApiUpdate] = useState(null);
     const apiTimerRef = useRef(null);
-    const lastApiCallDay = useRef(null); // Formato YYYY-MM-DD
-    
-    // --- NUEVO: Estados para confirmación e historial ---
+    const lastApiCallDay = useRef(null); 
     const [showConfirmacionModal, setShowConfirmacionModal] = useState(false);
     const [pronosticoParaConfirmar, setPronosticoParaConfirmar] = useState(null);
     const [showLiquidarPagoModal, setShowLiquidarPagoModal] = useState(false);
-    
     const initialJokerStatus = useRef(false);
-    
     const userProfile = userProfiles[user] || {};
 
     useEffect(() => {
@@ -1420,7 +1410,8 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                 apiTimerRef.current = null;
             }
         };
-    }, [currentJornada]);
+    // --- CORRECCIÓN DE ERROR 1: Se añade la dependencia que faltaba ---
+    }, [currentJornada, preMatchStats]);
     
     useEffect(() => {
         if (currentJornada?.estado === 'Cerrada' && liveData?.isLive && allPronosticos.length > 0) {
@@ -1729,520 +1720,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
-const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers }) => {
-    const [jornadaActual, setJornadaActual] = useState(null);
-    const [participantes, setParticipantes] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [countdown, setCountdown] = useState('');
-    const [porraAnualConfig, setPorraAnualConfig] = useState(null);
-    const [pronosticosAnuales, setPronosticosAnuales] = useState([]);
-    const [provisionalRanking, setProvisionalRanking] = useState([]);
-    const [jornadaStats, setJornadaStats] = useState(null);
-    const [ultimaJornada, setUltimaJornada] = useState(null);
-    const [proximaJornada, setProximaJornada] = useState(null);
-    const [reactions, setReactions] = useState({}); 
-    const [userReactions, setUserReactions] = useState({}); 
-    const [animatingReaction, setAnimatingReaction] = useState(null); 
-    const [isSubmittingReaction, setIsSubmittingReaction] = useState({});
-
-    // --- NUEVO: Estados para el historial ---
-    const [showHistorialModal, setShowHistorialModal] = useState(false);
-    const [historialSeleccionado, setHistorialSeleccionado] = useState([]);
-    const [loadingHistorial, setLoadingHistorial] = useState(false);
-
-
-    useEffect(() => {
-        const q = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada", "Finalizada", "Pre-apertura"]), orderBy("numeroJornada", "desc"), limit(1));
-        const unsubscribeJornada = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-                setJornadaActual(jornada);
-                setUltimaJornada(null); 
-                setProximaJornada(null);
-                const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
-                onSnapshot(pronosticosRef, (pronosticosSnap) => {
-                    const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setParticipantes(pronosticosData);
-                    if (pronosticosData.length > 0 && jornada.estado !== 'Finalizada') {
-                        const total = pronosticosData.length;
-                        const ganaLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Gana UD Las Palmas').length;
-                        const empateCount = pronosticosData.filter(p => p.resultado1x2 === 'Empate').length;
-                        const pierdeLocalCount = pronosticosData.filter(p => p.resultado1x2 === 'Pierde UD Las Palmas').length;
-                        setJornadaStats({
-                            porcentajeGana: ((ganaLocalCount / total) * 100).toFixed(0),
-                            porcentajeEmpate: ((empateCount / total) * 100).toFixed(0),
-                            porcentajePierde: ((pierdeLocalCount / total) * 100).toFixed(0),
-                        });
-                    } else { setJornadaStats(null); }
-                });
-            } else {
-                setJornadaActual(null);
-                setParticipantes([]);
-                const qUltima = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
-                getDocs(qUltima).then(snap => { if (!snap.empty) setUltimaJornada({ id: snap.docs[0].id, ...snap.docs[0].data() }); });
-                const qProxima = query(collection(db, "jornadas"), where("estado", "==", "Próximamente"), orderBy("numeroJornada", "asc"), limit(1));
-                getDocs(qProxima).then(snap => { if (!snap.empty) setProximaJornada({ id: snap.docs[0].id, ...snap.docs[0].data() }); });
-            }
-            setLoading(false);
-        });
-        const configRef = doc(db, "configuracion", "porraAnual"); const unsubConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
-        const pronAnualesRef = collection(db, "porraAnualPronosticos"); const unsubPronAnuales = onSnapshot(pronAnualesRef, (snap) => { setPronosticosAnuales(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
-        return () => { unsubscribeJornada(); unsubConfig(); unsubPronAnuales(); };
-    }, []);
-    
-    useEffect(() => {
-        if (jornadaActual) {
-            setUserReactions({});
-            setReactions({});
-            const reactionsRef = doc(db, "reactions", jornadaActual.id);
-            const unsubscribeReactions = onSnapshot(reactionsRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    setReactions(data.stats || {});
-                    if (data.users && data.users[user]) {
-                        setUserReactions(data.users[user]);
-                    } else {
-                        setUserReactions({});
-                    }
-                } else {
-                    setReactions({});
-                    setUserReactions({});
-                }
-            });
-            return () => unsubscribeReactions();
-        }
-    }, [jornadaActual, user]);
-
-    useEffect(() => {
-        if (jornadaActual?.estado === 'Cerrada' && liveData?.isLive && participantes.length > 0) {
-            const ranking = participantes.map(p => {
-                const puntos = calculateProvisionalPoints(p, liveData, jornadaActual);
-                const aciertoExacto = p.golesLocal !== '' && p.golesVisitante !== '' && parseInt(p.golesLocal) === liveData.golesLocal && parseInt(p.golesVisitante) === liveData.golesVisitante;
-                return { id: p.id, puntos, aciertoExacto };
-            }).sort((a, b) => {
-                if (a.puntos !== b.puntos) {
-                    return b.puntos - a.puntos;
-                }
-                return (b.aciertoExacto ? 1 : 0) - (a.aciertoExacto ? 1 : 0);
-            });
-            setProvisionalRanking(ranking);
-        } else { setProvisionalRanking([]); }
-    }, [liveData, jornadaActual, participantes]);
-
-    useEffect(() => {
-        if ((jornadaActual?.estado === 'Abierta' || jornadaActual?.estado === 'Pre-apertura') && jornadaActual.fechaCierre) {
-            const targetDate = jornadaActual.estado === 'Abierta' ? jornadaActual.fechaCierre.toDate() : jornadaActual.fechaApertura.toDate();
-            const interval = setInterval(() => {
-                const diff = targetDate - new Date();
-                if (diff <= 0) { setCountdown("¡PLAZO FINALIZADO!"); clearInterval(interval); return; }
-                const d = Math.floor(diff / 86400000); const h = Math.floor((diff % 86400000) / 3600000);
-                const m = Math.floor((diff % 3600000) / 60000); const s = Math.floor((diff % 60000) / 1000);
-                setCountdown(`${d}d ${h}h ${m}m ${s}s`);
-            }, 1000); return () => clearInterval(interval);
-        } else { setCountdown(''); }
-    }, [jornadaActual]);
-    
-    // --- NUEVO: Función para cargar y mostrar el historial de un jugador ---
-    const handleVerHistorial = async (jugadorId) => {
-        if (!jornadaActual) return;
-        setLoadingHistorial(true);
-        setShowHistorialModal(true);
-        const historialRef = collection(db, "pronosticos", jornadaActual.id, "jugadores", jugadorId, "historial");
-        const q = query(historialRef, orderBy("timestamp", "desc"));
-        const historialSnap = await getDocs(q);
-        const historialData = historialSnap.docs.map(d => d.data());
-        setHistorialSeleccionado(historialData);
-        setLoadingHistorial(false);
-    };
-
-    const handleReaction = async (cardId, emoji) => {
-        if (!jornadaActual || !user || isSubmittingReaction[cardId]) return;
-        setIsSubmittingReaction(prev => ({ ...prev, [cardId]: true }));
-        setAnimatingReaction({ cardId, emoji });
-        setTimeout(() => setAnimatingReaction(null), 1500);
-        const reactionRef = doc(db, "reactions", jornadaActual.id);
-        try {
-            await runTransaction(db, async (transaction) => {
-                const reactionDoc = await transaction.get(reactionRef);
-                const currentData = reactionDoc.exists() ? reactionDoc.data() : { users: {}, stats: {} };
-                const userPreviousReaction = currentData.users?.[user]?.[cardId];
-                const isSameEmoji = userPreviousReaction === emoji;
-                const newUserReactionsForCard = isSameEmoji ? null : emoji;
-                const cardStats = { ...(currentData.stats?.[cardId] || {}) };
-                if (userPreviousReaction && !isSameEmoji) {
-                    cardStats[userPreviousReaction] = Math.max(0, (cardStats[userPreviousReaction] || 1) - 1);
-                }
-                if (isSameEmoji) {
-                    cardStats[emoji] = Math.max(0, (cardStats[emoji] || 1) - 1);
-                } else {
-                    cardStats[emoji] = (cardStats[emoji] || 0) + 1;
-                }
-                const newUsersData = { ...currentData.users, [user]: { ...currentData.users?.[user], [cardId]: newUserReactionsForCard } };
-                const newStatsData = { ...currentData.stats, [cardId]: cardStats };
-                transaction.set(reactionRef, { users: newUsersData, stats: newStatsData }, { merge: true });
-            });
-        } catch (error) {
-            console.error("Error al registrar la reacción:", error);
-        } finally {
-            setIsSubmittingReaction(prev => ({ ...prev, [cardId]: false }));
-        }
-    };
-
-    const liveWinnerPanelData = useMemo(() => {
-        if (!liveData || !liveData.isLive || !jornadaActual || participantes.length === 0) {
-            return { currentWinner: null, simulationLocal: null, simulationVisitor: null };
-        }
-        const findWinner = (simulatedLiveData) => {
-            const ranking = participantes.map(p => ({
-                id: p.id,
-                puntos: calculateProvisionalPoints(p, simulatedLiveData, jornadaActual)
-            })).sort((a, b) => b.puntos - a.puntos);
-            if (ranking.length > 0 && ranking[0].puntos > 0) {
-                const topScore = ranking[0].puntos;
-                const winners = ranking.filter(p => p.puntos === topScore);
-                return winners.length > 1 ? "Empate" : winners[0].id;
-            }
-            return "Nadie";
-        };
-        const currentWinner = findWinner(liveData);
-        const localGoalLiveData = { ...liveData, golesLocal: liveData.golesLocal + 1 };
-        const simulationLocal = findWinner(localGoalLiveData);
-        const visitorGoalLiveData = { ...liveData, golesVisitante: liveData.golesVisitante + 1 };
-        const simulationVisitor = findWinner(visitorGoalLiveData);
-        return { currentWinner, simulationLocal, simulationVisitor };
-    }, [liveData, jornadaActual, participantes]);
-
-
-    if (loading) return <LoadingSkeleton />;
-    const isLiveView = jornadaActual?.estado === 'Cerrada' && liveData?.isLive;
-
-    const renderContent = () => {
-        if (jornadaActual) {
-            const fechaMostrada = jornadaActual.fechaPartido || jornadaActual.fechaCierre;
-            const finalScore = jornadaActual.estado === 'Finalizada' 
-                ? `${jornadaActual.resultadoLocal} - ${jornadaActual.resultadoVisitante}`
-                : (isLiveView ? `${liveData.golesLocal} - ${liveData.golesVisitante}` : 'VS');
-
-            return (
-                <div style={{...styles.laJornadaContainer, backgroundImage: `linear-gradient(rgba(10, 25, 47, 0.85), rgba(10, 25, 47, 0.85)), url(${jornadaActual.estadioImageUrl})`}}>
-                    <h3>{jornadaActual.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornadaActual.numeroJornada}`}</h3>
-                    <div style={styles.matchInfo}>
-                        <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoLocal} shortName={true} imgStyle={styles.matchInfoLogo} />
-                        <span style={styles.liveScoreInPage}>{finalScore}</span>
-                        <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoVisitante} imgStyle={styles.matchInfoLogo} />
-                    </div>
-                    <div style={styles.matchDetails}><span>📍 {jornadaActual.estadio || 'Estadio por confirmar'}</span><span>🗓️ {formatFullDateTime(fechaMostrada)}</span></div>
-                    
-                    {isLiveView && (
-                        <>
-                            <div style={styles.liveWinnerPanel}>
-                                <div style={styles.liveWinnerCurrent}>
-                                    <span style={styles.liveWinnerLabel}>Ganador Actual</span>
-                                    <div style={styles.liveWinnerName}>
-                                        {liveWinnerPanelData.currentWinner ? (
-                                            <PlayerProfileDisplay name={liveWinnerPanelData.currentWinner} profile={userProfiles[liveWinnerPanelData.currentWinner]} />
-                                        ) : 'Nadie'}
-                                    </div>
-                                </div>
-                                <div style={styles.liveWinnerSimulations}>
-                                    <div style={styles.liveWinnerSimulationItem}>
-                                        <span style={styles.liveWinnerLabel}>Si marca {jornadaActual.equipoLocal}...</span>
-                                        <div style={styles.liveWinnerName}>
-                                            {liveWinnerPanelData.simulationLocal ? (
-                                                <PlayerProfileDisplay name={liveWinnerPanelData.simulationLocal} profile={userProfiles[liveWinnerPanelData.simulationLocal]} />
-                                            ) : 'Nadie'}
-                                        </div>
-                                    </div>
-                                    <div style={styles.liveWinnerSimulationItem}>
-                                        <span style={styles.liveWinnerLabel}>Si marca {jornadaActual.equipoVisitante}...</span>
-                                        <div style={styles.liveWinnerName}>
-                                            {liveWinnerPanelData.simulationVisitor ? (
-                                                <PlayerProfileDisplay name={liveWinnerPanelData.simulationVisitor} profile={userProfiles[liveWinnerPanelData.simulationVisitor]} />
-                                            ) : 'Nadie'}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={styles.liveReactionsPanel}>
-                                 <div style={styles.reactionEmojis}>
-                                    {GOAL_REACTION_EMOJIS.map(emoji => (
-                                        <button key={emoji} onClick={() => handleReaction('liveEvents', emoji)} disabled={isSubmittingReaction['liveEvents']} className={animatingReaction?.cardId === 'liveEvents' && animatingReaction.emoji !== emoji ? 'fade-out' : ''} style={{...styles.reactionButton, ...(userReactions['liveEvents'] === emoji ? styles.reactionButtonSelected : {})}}>
-                                            {animatingReaction?.cardId === 'liveEvents' && animatingReaction.emoji === emoji ? <span className="fly-away">{emoji}</span> : emoji}
-                                        </button>
-                                    ))}
-                                </div>
-                                <div style={styles.reactionCountCorner}>{GOAL_REACTION_EMOJIS.map(emoji => reactions?.liveEvents?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.liveEvents[emoji]}</span>)}</div>
-                            </div>
-                        </>
-                    )}
-
-                    {jornadaStats && !isLiveView && jornadaActual.estado !== 'Finalizada' && (
-                        <div style={styles.statsGrid}>
-                            <div style={{...styles.statCard, position: 'relative', overflow: 'hidden'}}>
-                                <div style={styles.statValue}>{participantes.length >= 5 ? `📊 ${Object.entries(participantes.reduce((acc, p) => { const res = `${p.golesLocal}-${p.golesVisitante}`; acc[res] = (acc[res] || 0) + 1; return acc; }, {})).sort((a,b) => b[1] - a[1])[0][0]}` : '🤫'}</div>
-                                <div style={styles.statLabel}>{participantes.length >= 5 ? 'Resultado más apostado' : 'Secreto hasta 5 apuestas'}</div>
-                                <div style={styles.reactionContainer}><div style={styles.reactionEmojis}>{STAT_REACTION_EMOJIS.map(emoji => (<button key={emoji} onClick={() => handleReaction('resultadoComun', emoji)} disabled={isSubmittingReaction['resultadoComun']} className={animatingReaction?.cardId === 'resultadoComun' && animatingReaction.emoji !== emoji ? 'fade-out' : ''} style={{...styles.reactionButton, ...(userReactions['resultadoComun'] === emoji ? styles.reactionButtonSelected : {})}}>{animatingReaction?.cardId === 'resultadoComun' && animatingReaction.emoji === emoji ? <span className="fly-away">{emoji}</span> : emoji}</button>))}</div></div>
-                                <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions?.resultadoComun?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.resultadoComun[emoji]}</span>)}</div>
-                            </div>
-                            <div style={{...styles.statCard, position: 'relative', overflow: 'hidden'}}>
-                                <PieChart data={[{label: 'Victoria', percentage: jornadaStats.porcentajeGana, color: styles.colors.success}, {label: 'Empate', percentage: jornadaStats.porcentajeEmpate, color: styles.colors.warning}, {label: 'Derrota', percentage: jornadaStats.porcentajePierde, color: styles.colors.danger}]} />
-                                <div style={styles.statLabel}>La Fe de la Afición</div>
-                                <div style={styles.reactionContainer}><div style={styles.reactionEmojis}>{STAT_REACTION_EMOJIS.map(emoji => (<button key={emoji} onClick={() => handleReaction('feAficion', emoji)} disabled={isSubmittingReaction['feAficion']} className={animatingReaction?.cardId === 'feAficion' && animatingReaction.emoji !== emoji ? 'fade-out' : ''} style={{...styles.reactionButton, ...(userReactions['feAficion'] === emoji ? styles.reactionButtonSelected : {})}}>{animatingReaction?.cardId === 'feAficion' && animatingReaction.emoji === emoji ? <span className="fly-away">{emoji}</span> : emoji}</button>))}</div></div>
-                                <div style={styles.reactionCountCorner}>{STAT_REACTION_EMOJIS.map(emoji => reactions?.feAficion?.[emoji] > 0 && <span key={emoji}>{emoji} {reactions.feAficion[emoji]}</span>)}</div>
-                            </div>
-                        </div>
-                    )}
-
-                    {(jornadaActual.estado === 'Abierta' || jornadaActual.estado === 'Pre-apertura') && (<><div style={styles.countdownContainer}><p>{jornadaActual.estado === 'Abierta' ? 'CIERRE DE APUESTAS EN:' : 'APERTURA DE APUESTAS EN:'}</p><div style={styles.countdown}>{countdown}</div></div><h3 style={styles.callToAction}>¡Hagan sus porras!</h3><div style={styles.apostadoresContainer}><h4>APUESTAS REALIZADAS ({participantes.length}/{JUGADORES.length})</h4><div style={styles.apostadoresGrid}>{JUGADORES.map(jugador => {const participante = participantes.find(p => p.id === jugador); const haApostado = !!participante; const usoJoker = haApostado && participante.jokerActivo; const profile = userProfiles[jugador] || {}; const isOnline = onlineUsers[jugador]; return (<span key={jugador} style={haApostado ? styles.apostadorHecho : styles.apostadorPendiente}>{isOnline && <div style={styles.onlineIndicatorDot} />}<PlayerProfileDisplay name={jugador} profile={profile} /> {usoJoker ? '🃏' : (haApostado ? '✓' : '')}</span>);})}</div></div></>)}
-                    
-                    {jornadaActual.estado === 'Cerrada' && !isLiveView && (<div><p style={{textAlign: 'center', marginTop: '20px'}}>Las apuestas están cerradas. ¡Estos son los pronósticos!</p><div style={styles.resumenContainer}>{participantes.sort((a, b) => a.id.localeCompare(b.id)).map(p => { const profile = userProfiles[p.id] || {}; return (<div key={p.id} style={styles.resumenJugador}><h4 style={styles.resumenJugadorTitle}><PlayerProfileDisplay name={p.id} profile={profile} defaultColor={styles.colors.yellow} /> <div>{p.jokerActivo && '🃏'} <button onClick={() => handleVerHistorial(p.id)} style={styles.historyButton}>Ver Historial</button></div></h4><div style={styles.resumenJugadorBets}><p><strong>Principal:</strong> {p.golesLocal}-{p.golesVisitante} &nbsp;|&nbsp; <strong>1X2:</strong> {p.resultado1x2} &nbsp;|&nbsp; <strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<div style={{marginTop: '10px'}}><strong>Apuestas Joker:</strong><div style={styles.jokerChipsContainer}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div>)}</div></div>)})}</div></div>)}
-                    
-                    {isLiveView && (<div><h3 style={styles.provisionalTitle}>Clasificación Provisional</h3><table style={{...styles.table, backgroundColor: 'rgba(0,0,0,0.3)'}}><thead><tr><th style={styles.th}>POS</th><th style={styles.th}>Jugador</th><th style={styles.th}>Puntos</th></tr></thead><tbody>{provisionalRanking.map((jugador, index) => { const profile = userProfiles[jugador.id] || {}; return (<tr key={jugador.id} style={jugador.puntos > 0 && provisionalRanking[0].puntos === jugador.puntos ? styles.provisionalWinnerRow : styles.tr}><td style={styles.tdRank}>{index + 1}º</td><td style={styles.td}><PlayerProfileDisplay name={jugador.id} profile={profile} /> {jugador.aciertoExacto && '🎯'}</td><td style={styles.td}><AnimatedPoints value={jugador.puntos} /></td></tr>)})}</tbody></table></div>)}
-                    
-                    {jornadaActual.estado === 'Finalizada' && (
-                        <div>
-                            <h3 style={styles.provisionalTitle}>Resumen de la Jornada</h3>
-                            <p style={{textAlign: 'center', marginBottom: '20px'}}>Así quedaron las apuestas y los puntos repartidos.</p>
-                            <div style={styles.resumenContainer}>
-                                {participantes.sort((a,b) => (b.puntosObtenidos || 0) - (a.puntosObtenidos || 0)).map(p => {
-                                    const profile = userProfiles[p.id] || {};
-                                    return (
-                                        <div key={p.id} style={styles.resumenJugador}>
-                                            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                                                <h4 style={{...styles.resumenJugadorTitle, borderBottom: 'none', paddingBottom: 0, marginBottom: 0}}>
-                                                    <PlayerProfileDisplay name={p.id} profile={profile} defaultColor={styles.colors.yellow} /> 
-                                                    <div>{p.jokerActivo && '🃏'} <button onClick={() => handleVerHistorial(p.id)} style={styles.historyButton}>Ver Historial</button></div>
-                                                </h4>
-                                                <span style={{fontFamily: "'Orbitron', sans-serif", fontSize: '1.5rem', color: styles.colors.gold, fontWeight: 'bold'}}>
-                                                    {p.puntosObtenidos || 0} pts
-                                                </span>
-                                            </div>
-                                            <div style={{...styles.resumenJugadorBets, marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${styles.colors.blue}50`}}>
-                                                <p><strong>Pronóstico:</strong> {p.golesLocal}-{p.golesVisitante} ({p.resultado1x2}) | {p.sinGoleador ? 'SG' : (p.goleador || 'N/A')}</p>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
-        }
-
-        return (
-            <div style={styles.interJornadaContainer}>
-                {ultimaJornada ? (<div style={styles.interJornadaBox}><h3 style={styles.interJornadaTitle}>Última Jornada Finalizada</h3><p style={styles.interJornadaTeams}>{ultimaJornada.equipoLocal} vs {ultimaJornada.equipoVisitante}</p><p style={styles.finalResult}>{ultimaJornada.resultadoLocal} - {ultimaJornada.resultadoVisitante}</p>{ultimaJornada.ganadores?.length > 0 ? (<p style={styles.interJornadaWinner}>🏆 Ganador(es): {ultimaJornada.ganadores.join(', ')}</p>) : (<p style={styles.interJornadaBote}>💰 ¡BOTE!</p>)}</div>) : <div style={styles.interJornadaBox}><p>Aún no ha finalizado ninguna jornada.</p></div>}
-                {proximaJornada ? (<div style={styles.interJornadaBox}><h3 style={styles.interJornadaTitle}>Próxima Jornada</h3><p style={styles.interJornadaTeams}>{proximaJornada.equipoLocal} vs {proximaJornada.equipoVisitante}</p><p>{formatFullDateTime(proximaJornada.fechaPartido || proximaJornada.fechaCierre)}</p>{proximaJornada.bote > 0 && <p style={styles.interJornadaBote}>¡Bote de {proximaJornada.bote}€ en juego!</p>}</div>) : <div style={styles.interJornadaBox}><p>El administrador no ha configurado la próxima jornada.</p></div>}
-            </div>
-        );
-    };
-
-    return (
-        <div>
-            <h2 style={styles.title}>LA JORNADA</h2>
-            {showHistorialModal && <HistorialCambiosModal historial={historialSeleccionado} onClose={() => setShowHistorialModal(false)} />}
-            {renderContent()}
-            <div style={styles.porraAnualContainer}>
-                <h3 style={styles.formSectionTitle}>⭐ PORRA ANUAL ⭐</h3>
-                {porraAnualConfig?.estado === 'Abierta' && <p style={{textAlign: 'center'}}>Las apuestas de los demás serán secretas hasta que el admin las cierre. ¡Haz la tuya desde el banner superior!</p>}
-                {(porraAnualConfig?.estado === 'Cerrada' || porraAnualConfig?.estado === 'Finalizada') && (
-                    <div>
-                        <p style={{textAlign: 'center'}}>Apuestas cerradas. Estos son los pronósticos para final de temporada:</p>
-                        <div style={styles.resumenContainer}>
-                            {pronosticosAnuales.sort((a, b) => a.id.localeCompare(b.id)).map(p => { 
-                                const profile = userProfiles[p.id] || {}; 
-                                const puntosStyle = {
-                                    fontWeight: 'bold',
-                                    color: p.puntosObtenidos === 20 ? colors.gold : (p.puntosObtenidos > 0 ? colors.success : colors.lightText)
-                                };
-                                return (
-                                    <div key={p.id} style={styles.resumenJugador}>
-                                        <h4 style={styles.resumenJugadorTitle}><PlayerProfileDisplay name={p.id} profile={profile} defaultColor={styles.colors.yellow} /></h4>
-                                        <div style={styles.resumenJugadorBets}>
-                                            <p><strong>¿Asciende?:</strong> <span style={{color: p.ascenso === 'SI' ? styles.colors.success : styles.colors.danger, fontWeight: 'bold'}}>{p.ascenso}</span></p>
-                                            <p><strong>Posición Final:</strong> <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{p.posicion}º</span></p>
-                                            {porraAnualConfig.estado === 'Finalizada' && <p><strong>Puntos Obtenidos:</strong> <span style={puntosStyle}>{p.puntosObtenidos || 0}</span></p>}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-                {porraAnualConfig?.estado !== 'Abierta' && porraAnualConfig?.estado !== 'Cerrada' && porraAnualConfig?.estado !== 'Finalizada' && <p style={{textAlign: 'center'}}>El administrador no ha abierto la porra anual todavía.</p>}
-            </div>
-        </div>
-    );
-};
-
-const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
-    const [jornadas, setJornadas] = useState([]); const [loading, setLoading] = useState(true);
-    useEffect(() => { const q = query(collection(db, "jornadas"), orderBy("numeroJornada")); const unsubscribe = onSnapshot(q, (querySnapshot) => { setJornadas(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); setLoading(false); }, (error) => { console.error("Error cargando calendario: ", error); setLoading(false); }); return () => unsubscribe(); }, []);
-    if (loading) return <LoadingSkeleton />;
-    return (<div><h2 style={styles.title}>CALENDARIO</h2><div style={styles.jornadaList}>{jornadas.map(jornada => {
-        const fechaMostrada = jornada.fechaPartido || jornada.fechaCierre;
-        return (<div key={jornada.id} style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`} : {...styles.jornadaItem, backgroundImage: `linear-gradient(to right, rgba(23, 42, 69, 0.95), rgba(23, 42, 69, 0.7)), url(${jornada.estadioImageUrl})`}} onClick={() => onViewJornada(jornada.id)}><div style={styles.jornadaInfo}><div style={styles.jornadaTeams}><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 25, height: 25}} /><span style={{color: styles.colors.yellow, margin: '0 10px'}}>vs</span><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 25, height: 25}} /></div><strong>{jornada.esVip && '⭐ '}{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}</strong>
-    <small>{formatFullDateTime(fechaMostrada)} - {jornada.estadio || 'Estadio por confirmar'}</small>
-    </div><div style={{...styles.statusBadge, backgroundColor: styles.colors.status[jornada.estado]}}>{jornada.estado}</div></div>)
-    })}</div></div>);
-};
-
-const AnimatedPointsClasificacion = ({ value }) => {
-    const [currentValue, setCurrentValue] = useState(0); const [flash, setFlash] = useState(null); const prevValueRef = useRef(0);
-    useEffect(() => { const startValue = prevValueRef.current; const endValue = value || 0; let startTime = null; if (endValue > startValue) { setFlash('up'); } else if (endValue < startValue) { setFlash('down'); }
-        const animation = (currentTime) => { if (!startTime) startTime = currentTime; const progress = Math.min((currentTime - startTime) / 1000, 1); const newDisplayValue = Math.floor(progress * (endValue - startValue) + startValue); setCurrentValue(newDisplayValue); if (progress < 1) { requestAnimationFrame(animation); } else { prevValueRef.current = endValue; setTimeout(() => setFlash(null), 700); } };
-        requestAnimationFrame(animation); return () => { prevValueRef.current = value || 0; };
-    }, [value]);
-    const getFlashClass = () => { if (flash === 'up') return 'point-jump-up'; if (flash === 'down') return 'point-jump-down'; return ''; };
-    return <span className={getFlashClass()}>{currentValue}</span>;
-};
-
-const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles }) => {
-    const [clasificacion, setClasificacion] = useState([]); 
-    const [loading, setLoading] = useState(true); 
-    const [livePronosticos, setLivePronosticos] = useState([]);
-
-    useEffect(() => { 
-        const qClasificacion = query(collection(db, "clasificacion")); 
-        const unsubscribe = onSnapshot(qClasificacion, (querySnapshot) => { 
-            const clasificacionData = {}; 
-            querySnapshot.forEach((doc) => { 
-                clasificacionData[doc.id] = { id: doc.id, ...doc.data() }; 
-            }); 
-            const processedData = JUGADORES.map(jugadorId => { 
-                return clasificacionData[jugadorId] || { 
-                    id: jugadorId, 
-                    jugador: jugadorId, 
-                    puntosTotales: 0,
-                    puntosResultadoExacto: 0,
-                    puntosGoleador: 0,
-                    puntos1x2: 0,
-                    plenos: 0,
-                    jokersRestantes: 2, 
-                    badges: [] 
-                }; 
-            }); 
-            setClasificacion(processedData); 
-            setLoading(false); 
-        }, (error) => { 
-            console.error("Error al cargar la clasificación: ", error); 
-            setLoading(false); 
-        }); 
-        return () => unsubscribe();
-    }, []);
-
-    useEffect(() => { 
-        if (liveJornada) { 
-            const pronosticosRef = collection(db, "pronosticos", liveJornada.id, "jugadores"); 
-            const unsubscribe = onSnapshot(pronosticosRef, (snapshot) => { 
-                setLivePronosticos(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))); 
-            }); 
-            return () => unsubscribe(); 
-        } else { 
-            setLivePronosticos([]); 
-        } 
-    }, [liveJornada]);
-    
-    // --- MODIFICACIÓN: Lógica de ordenación con desempate ---
-    const sortedClasificacion = useMemo(() => {
-        const isLive = liveData && liveData.isLive && liveJornada;
-        const liveScores = new Map();
-
-        if (isLive) {
-            livePronosticos.forEach(p => {
-                const puntosProvisionales = calculateProvisionalPoints(p, liveData, liveJornada);
-                liveScores.set(p.id, puntosProvisionales);
-            });
-        }
-
-        const dataToSort = clasificacion.map(jugador => ({
-            ...jugador,
-            puntosEnVivo: (jugador.puntosTotales || 0) + (liveScores.get(jugador.id) || 0)
-        }));
-
-        dataToSort.sort((a, b) => {
-            const pointsA = isLive ? a.puntosEnVivo : (a.puntosTotales || 0);
-            const pointsB = isLive ? b.puntosEnVivo : (b.puntosTotales || 0);
-            if (pointsB !== pointsA) return pointsB - pointsA;
-            if (b.puntosResultadoExacto !== a.puntosResultadoExacto) return (b.puntosResultadoExacto || 0) - (a.puntosResultadoExacto || 0);
-            if (b.puntosGoleador !== a.puntosGoleador) return (b.puntosGoleador || 0) - (a.puntosGoleador || 0);
-            if (b.puntos1x2 !== a.puntos1x2) return (b.puntos1x2 || 0) - (a.puntos1x2 || 0);
-            if (b.plenos !== a.plenos) return (b.plenos || 0) - (a.plenos || 0);
-            return (a.jugador || a.id).localeCompare(b.jugador || b.id);
-        });
-
-        return dataToSort;
-    }, [clasificacion, liveData, liveJornada, livePronosticos]);
-
-
-    if (loading) return <LoadingSkeleton type="table" />; 
-    
-    const isLive = liveData && liveData.isLive;
-    
-    // --- MODIFICACIÓN: Lógica para asignar estilos de animación ---
-    const getRankStyle = (index, jugador) => {
-        let style = {};
-        if (index === 0) {
-            return styles.leaderRow;
-        }
-        if (jugador.id === currentUser) {
-            style = { ...style, ...styles.currentUserRow };
-        }
-        const profile = userProfiles[jugador.id] || {};
-        if (profile.badges?.includes('en_racha')) {
-            style = { ...style, ...styles.fireStreakRow };
-        }
-        if (profile.badges?.includes('mala_racha')) {
-            style = { ...style, ...styles.coldStreakRow };
-        }
-        return style;
-    };
-
-
-    return (
-        <div>
-            <h2 style={styles.title}>CLASIFICACIÓN</h2>
-            <div style={{overflowX: 'auto'}}>
-                <table style={styles.table}>
-                    <thead>
-                        <tr>
-                            <th style={{...styles.th, width: '5%'}}>POS</th>
-                            <th style={{...styles.th, width: '30%'}}>JUGADOR</th>
-                            <th style={{...styles.th, width: '15%', textAlign: 'center'}}>TOTAL {isLive && '(VIVO)'}</th>
-                            <th style={{...styles.th, width: '12.5%', textAlign: 'center'}}>P. EXACTO</th>
-                            <th style={{...styles.th, width: '12.5%', textAlign: 'center'}}>P. GOLEADOR</th>
-                            <th style={{...styles.th, width: '12.5%', textAlign: 'center'}}>P. 1X2</th>
-                            <th style={{...styles.th, width: '12.5%', textAlign: 'center'}}>PLENOS 🎯</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {sortedClasificacion.map((jugador, index) => { 
-                            const profile = userProfiles[jugador.id] || {}; 
-                            const puntosAMostrar = isLive ? jugador.puntosEnVivo : jugador.puntosTotales;
-
-                            return (
-                                <tr key={jugador.id} style={{...styles.tr, ...getRankStyle(index, jugador)}}>
-                                    <td style={styles.tdRank}>{index + 1}º</td>
-                                    <td style={styles.td}>
-                                        <PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} />
-                                    </td>
-                                    <td style={styles.tdTotalPoints}>
-                                        <AnimatedPointsClasificacion value={puntosAMostrar} />
-                                    </td>
-                                    <td style={{...styles.td, textAlign: 'center'}}>{jugador.puntosResultadoExacto || 0}</td>
-                                    <td style={{...styles.td, textAlign: 'center'}}>{jugador.puntosGoleador || 0}</td>
-                                    <td style={{...styles.td, textAlign: 'center'}}>{jugador.puntos1x2 || 0}</td>
-                                    <td style={{...styles.td, textAlign: 'center'}}>{jugador.plenos || 0}</td>
-                                </tr>
-                            )
-                        })}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
 const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
@@ -2530,7 +2007,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         <div style={jornada.id === 'jornada_test' ? {...styles.adminJornadaItem, ...styles.testJornadaAdminItem} : (jornada.esVip ? {...styles.adminJornadaItem, ...styles.jornadaVip} : styles.adminJornadaItem)}>
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap'}}><p><strong>{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}:</strong> {jornada.equipoLocal} vs {jornada.equipoVisitante}</p><div style={styles.vipToggleContainer}><label htmlFor={`vip-toggle-${jornada.id}`}>⭐ VIP</label><input id={`vip-toggle-${jornada.id}`} type="checkbox" checked={esVip} onChange={(e) => setEsVip(e.target.checked)} style={styles.checkbox}/></div></div>
             <div style={styles.adminControls}>
-                {/* --- MODIFICACIÓN: Se añade el nuevo estado "Pre-apertura" al select --- */}
                 <div><label style={styles.label}>Estado:</label><select value={estado} onChange={(e) => setEstado(e.target.value)} style={styles.adminSelect}><option value="Próximamente">Próximamente</option><option value="Pre-apertura">Pre-apertura</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="Finalizada">Finalizada</option></select></div>
                 <div><label style={styles.label}>Resultado Final:</label><div style={styles.resultInputContainer}><input type="number" min="0" value={resultadoLocal} onChange={(e) => setResultadoLocal(e.target.value)} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="number" min="0" value={resultadoVisitante} onChange={(e) => setResultadoVisitante(e.target.value)} style={styles.resultInput} /></div></div>
                 
