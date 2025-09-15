@@ -3184,7 +3184,7 @@ const AdminStatsRecalculator = ({ onBack }) => {
                     Esta herramienta recalcula todos los puntos (totales y desglosados) y plenos para todos los jugadores basándose en las jornadas ya finalizadas. Úsala si has hecho cambios en la lógica de puntos y necesitas actualizar los datos históricos.
                 </p>
                 <button onClick={handleRecalculateAllStats} disabled={isRecalculating} style={{...styles.saveButton
-                    {isRecalculating ? 'Recalculando...' : 'Iniciar Re-cálculo Total'}
+                                        {isRecalculating ? 'Recalculando...' : 'Iniciar Re-cálculo Total'}
                 </button>
                 {message && <p style={{...styles.message, marginTop: '15px'}}>{message}</p>}
             </div>
@@ -3777,3 +3777,5 @@ function App() {
 }
 
 export default App;
+
+
