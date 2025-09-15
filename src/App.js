@@ -39,6 +39,14 @@ const API_FOOTBALL_KEY = "8984843ec9df5109e0bc0ddb700f3848";
 const JUGADORES = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
 const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
+
+// --- NUEVO: Objeto para gestionar los tesoreros ---
+const TESOREROS = {
+    'Juanma': ['Juanma', 'Antonio', 'Lucy'],
+    'Mari': ['Sarito', 'Claudio', 'Pedrito', 'Pedro', 'Himar', 'Mari'],
+    'Laura': ['Carlos', 'Carmelo', 'José', 'Javi', 'Vicky', 'Laura']
+};
+
 const SECRET_MESSAGES = [
     "Pronóstico Secreto 🤫", "Aquí huele a BOTE...", "Voy a ganar yo 😎", "Top Secret",
     "Clasificado ⭐", "Me lo guardo para mí", "Jugada Maestra en proceso...", "Ni el VAR lo sabe",
@@ -166,10 +174,12 @@ const styles = {
     td: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontSize: '0.9rem' },
     tdRank: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1rem', textAlign: 'center' },
     tdTotalPoints: { padding: '12px', border: 'none', borderBottom: `1px solid ${colors.deepBlue}`, fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', color: colors.yellow },
-    leaderRow: { animation: 'leader-glow 2s infinite alternate' },
-    secondPlaceRow: { animation: 'silver-glow 2s infinite alternate' },
-    thirdPlaceRow: { animation: 'bronze-glow 2s infinite alternate' },
+    // --- MODIFICACIÓN: Estilos de animación para clasificación ---
+    leaderRow: { animation: 'gold-leader-animation 2s infinite alternate' },
     currentUserRow: { animation: 'user-highlight-glow 2s infinite alternate' },
+    fireStreakRow: { animation: 'fire-streak-animation 2s infinite alternate' },
+    coldStreakRow: { animation: 'cold-streak-animation 2s infinite alternate' },
+    
     laJornadaContainer: { textAlign: 'center', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px', backgroundSize: 'cover', backgroundPosition: 'center' },
     matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 'clamp(5px, 2vw, 10px)', fontSize: '1.5rem', fontWeight: 'bold', margin: '20px 0', fontFamily: "'Orbitron', sans-serif", flexWrap: 'nowrap' },
     matchDetails: { display: 'flex', justifyContent: 'center', gap: '20px', color: colors.silver, marginBottom: '20px', flexWrap: 'wrap' },
@@ -380,6 +390,16 @@ const styles = {
 // --- LÓGICA DE CÁLCULO Y FORMATO ---
 // ============================================================================
 
+// --- NUEVO: Función para encontrar el tesorero de un jugador ---
+const getTesorero = (jugador) => {
+    for (const [tesorero, jugadores] of Object.entries(TESOREROS)) {
+        if (jugadores.includes(jugador)) {
+            return tesorero;
+        }
+    }
+    return 'Juanma'; // Valor por defecto
+};
+
 const formatFullDateTime = (firebaseDate) => {
     if (!firebaseDate || typeof firebaseDate.seconds !== 'number') return 'Fecha por confirmar';
     try {
@@ -534,9 +554,11 @@ const Confetti = () => {
     return (<div style={styles.confettiOverlay}>{particles.map((_, i) => (<div key={i} className="confetti-particle" style={{ '--x': `${Math.random() * 100}vw`, '--angle': `${Math.random() * 360}deg`, '--delay': `${Math.random() * 5}s`, '--color': i % 3 === 0 ? styles.colors.yellow : (i % 3 === 1 ? styles.colors.blue : styles.colors.lightText), '--size': `${5 + Math.random() * 10}px` }} />))}</div>);
 };
 
+// --- MODIFICACIÓN: Se añade el tesorero al mensaje del ganador ---
 const WinnerAnimation = ({ winnerData, onClose }) => {
     const { pronostico, prize } = winnerData;
-    return (<div style={styles.winnerAnimationOverlay}><Confetti /><div style={styles.winnerModal}><div style={styles.trophy}>🏆</div><h2 style={styles.winnerTitle}>¡FELICIDADES, {pronostico.id}!</h2><p style={styles.winnerText}>¡Has ganado la porra de la jornada!</p><div style={styles.winnerStats}><span>Puntos Obtenidos: <strong><AnimatedCount endValue={pronostico.puntosObtenidos} duration={1500} /></strong></span><span>Premio: <strong><AnimatedCount endValue={prize} duration={1500} decimals={2} />€</strong></span></div><button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>CERRAR</button></div></div>);
+    const tesorero = getTesorero(pronostico.id);
+    return (<div style={styles.winnerAnimationOverlay}><Confetti /><div style={styles.winnerModal}><div style={styles.trophy}>🏆</div><h2 style={styles.winnerTitle}>¡FELICIDADES, {pronostico.id}!</h2><p style={styles.winnerText}>¡Has ganado la porra de la jornada! Contacta con <strong>{tesorero}</strong> para gestionar el premio.</p><div style={styles.winnerStats}><span>Puntos Obtenidos: <strong><AnimatedCount endValue={pronostico.puntosObtenidos} duration={1500} /></strong></span><span>Premio: <strong><AnimatedCount endValue={prize} duration={1500} decimals={2} />€</strong></span></div><button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>CERRAR</button></div></div>);
 };
 
 const InstallGuideModal = ({ onClose }) => {
@@ -1707,7 +1729,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
-
 const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornadaActual, setJornadaActual] = useState(null);
     const [participantes, setParticipantes] = useState([]);
@@ -2024,7 +2045,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers 
             {renderContent()}
             <div style={styles.porraAnualContainer}>
                 <h3 style={styles.formSectionTitle}>⭐ PORRA ANUAL ⭐</h3>
-                {porraAnualConfig?.estado === 'Abierta' && <p style={{textAlign: 'center'}}>Las apuestas de los demás serán secretas hasta la Jornada 5. ¡Haz la tuya desde el banner superior!</p>}
+                {porraAnualConfig?.estado === 'Abierta' && <p style={{textAlign: 'center'}}>Las apuestas de los demás serán secretas hasta que el admin las cierre. ¡Haz la tuya desde el banner superior!</p>}
                 {(porraAnualConfig?.estado === 'Cerrada' || porraAnualConfig?.estado === 'Finalizada') && (
                     <div>
                         <p style={{textAlign: 'center'}}>Apuestas cerradas. Estos son los pronósticos para final de temporada:</p>
@@ -2122,42 +2143,62 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
             setLivePronosticos([]); 
         } 
     }, [liveJornada]);
+    
+    // --- MODIFICACIÓN: Lógica de ordenación con desempate ---
+    const sortedClasificacion = useMemo(() => {
+        const isLive = liveData && liveData.isLive && liveJornada;
+        const liveScores = new Map();
 
-    const liveClasificacion = useMemo(() => { 
-        const isLive = liveData && liveData.isLive && liveJornada; 
-        const liveScores = new Map(); 
-        if (isLive) { 
-            livePronosticos.forEach(p => { 
-                const puntosProvisionales = calculateProvisionalPoints(p, liveData, liveJornada); 
-                liveScores.set(p.id, puntosProvisionales); 
-            }); 
-        } 
-        const sorted = [...clasificacion].map(jugador => ({ 
-            ...jugador, 
-            puntosEnVivo: (jugador.puntosTotales || 0) + (liveScores.get(jugador.id) || 0) 
-        })).sort((a, b) => { 
-            const pointsA = isLive ? a.puntosEnVivo : (a.puntosTotales || 0); 
-            const pointsB = isLive ? b.puntosEnVivo : (b.puntosTotales || 0); 
-            return pointsB - pointsA; 
-        }); 
-        return sorted; 
+        if (isLive) {
+            livePronosticos.forEach(p => {
+                const puntosProvisionales = calculateProvisionalPoints(p, liveData, liveJornada);
+                liveScores.set(p.id, puntosProvisionales);
+            });
+        }
+
+        const dataToSort = clasificacion.map(jugador => ({
+            ...jugador,
+            puntosEnVivo: (jugador.puntosTotales || 0) + (liveScores.get(jugador.id) || 0)
+        }));
+
+        dataToSort.sort((a, b) => {
+            const pointsA = isLive ? a.puntosEnVivo : (a.puntosTotales || 0);
+            const pointsB = isLive ? b.puntosEnVivo : (b.puntosTotales || 0);
+            if (pointsB !== pointsA) return pointsB - pointsA;
+            if (b.puntosResultadoExacto !== a.puntosResultadoExacto) return (b.puntosResultadoExacto || 0) - (a.puntosResultadoExacto || 0);
+            if (b.puntosGoleador !== a.puntosGoleador) return (b.puntosGoleador || 0) - (a.puntosGoleador || 0);
+            if (b.puntos1x2 !== a.puntos1x2) return (b.puntos1x2 || 0) - (a.puntos1x2 || 0);
+            if (b.plenos !== a.plenos) return (b.plenos || 0) - (a.plenos || 0);
+            return (a.jugador || a.id).localeCompare(b.jugador || b.id);
+        });
+
+        return dataToSort;
     }, [clasificacion, liveData, liveJornada, livePronosticos]);
+
 
     if (loading) return <LoadingSkeleton type="table" />; 
     
     const isLive = liveData && liveData.isLive;
-
-    const getRankStyle = (index, jugador) => { 
-        let style = styles.tr; 
-        if (index === 0) style = styles.leaderRow;
-        else if (index === 1) style = styles.secondPlaceRow;
-        else if (index === 2) style = styles.thirdPlaceRow;
-        
-        if (jugador.id === currentUser) {
-            style = {...style, ...styles.currentUserRow}; 
+    
+    // --- MODIFICACIÓN: Lógica para asignar estilos de animación ---
+    const getRankStyle = (index, jugador) => {
+        let style = {};
+        if (index === 0) {
+            return styles.leaderRow;
         }
-        return style; 
+        if (jugador.id === currentUser) {
+            style = { ...style, ...styles.currentUserRow };
+        }
+        const profile = userProfiles[jugador.id] || {};
+        if (profile.badges?.includes('en_racha')) {
+            style = { ...style, ...styles.fireStreakRow };
+        }
+        if (profile.badges?.includes('mala_racha')) {
+            style = { ...style, ...styles.coldStreakRow };
+        }
+        return style;
     };
+
 
     return (
         <div>
@@ -2176,12 +2217,12 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
                         </tr>
                     </thead>
                     <tbody>
-                        {liveClasificacion.map((jugador, index) => { 
+                        {sortedClasificacion.map((jugador, index) => { 
                             const profile = userProfiles[jugador.id] || {}; 
                             const puntosAMostrar = isLive ? jugador.puntosEnVivo : jugador.puntosTotales;
 
                             return (
-                                <tr key={jugador.id} style={getRankStyle(index, jugador)}>
+                                <tr key={jugador.id} style={{...styles.tr, ...getRankStyle(index, jugador)}}>
                                     <td style={styles.tdRank}>{index + 1}º</td>
                                     <td style={styles.td}>
                                         <PlayerProfileDisplay name={jugador.jugador || jugador.id} profile={profile} />
@@ -2202,7 +2243,6 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
         </div>
     );
 };
-
 const JornadaAdminItem = ({ jornada, plantilla }) => {
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
@@ -2270,6 +2310,7 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         setIsSaving(false);
     };
     
+    // --- MODIFICACIÓN: Lógica de rachas y badges mejorada ---
     const runPointsAndBadgesLogic = async (isRecalculation = false) => {
         const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
         const pronosticosSnap = await getDocs(pronosticosRef);
@@ -2288,14 +2329,12 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
 
             const esVipJornada = jornada.esVip || false;
             
-            // 1. Acierto Resultado Exacto
             const aciertoExacto = p.golesLocal !== '' && p.golesVisitante !== '' && parseInt(p.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(p.golesVisitante) === parseInt(jornada.resultadoVisitante);
             if (aciertoExacto) {
                 puntosExacto = esVipJornada ? 6 : 3;
                 if (!ganadores.includes(p.id)) ganadores.push(p.id);
             }
 
-            // 2. Acierto 1X2
             let resultado1x2Real = '';
             if (jornada.equipoLocal === "UD Las Palmas") {
                 if (parseInt(jornada.resultadoLocal) > parseInt(jornada.resultadoVisitante)) resultado1x2Real = 'Gana UD Las Palmas';
@@ -2311,7 +2350,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 puntos1X2 = esVipJornada ? 2 : 1;
             }
 
-            // 3. Acierto Goleador
             const goleadorReal = (jornada.goleador || '').trim().toLowerCase();
             const goleadorApostado = p.goleador ? p.goleador.trim().toLowerCase() : '';
             let aciertoGoleador = false;
@@ -2323,11 +2361,10 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 aciertoGoleador = true;
             }
             
-            // 4. Acierto Joker (cuenta como acierto de resultado exacto para el bote)
             if (p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0) {
                 for (const jokerP of p.jokerPronosticos) {
                     if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(jokerP.golesVisitante) === parseInt(jornada.resultadoVisitante)) {
-                        puntosExacto += esVipJornada ? 6 : 3; // Suma a los puntos de resultado exacto
+                        puntosExacto += esVipJornada ? 6 : 3;
                         if (!ganadores.includes(p.id)) ganadores.push(p.id);
                         break; 
                     }
@@ -2335,13 +2372,9 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
             }
 
             puntosJornada = puntosExacto + puntos1X2 + puntosGoleadorCat;
+            if (aciertoExacto && acierto1x2 && aciertoGoleador) { esPleno = true; }
             
-            // Comprobar si es Pleno (acertar las 3 categorías)
-            if (aciertoExacto && acierto1x2 && aciertoGoleador) {
-                esPleno = true;
-            }
-            
-            puntosPorJugador[p.id] = { puntosJornada, puntosExacto, puntos1X2, puntosGoleadorCat, esPleno };
+            puntosPorJugador[p.id] = { puntosJornada, esPleno };
 
             if (!isRecalculation) {
                 const pronosticoDocRef = doc(db, "pronosticos", jornada.id, "jugadores", p.id);
@@ -2361,75 +2394,49 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
 
         const allJornadasSnap = await getDocs(query(collection(db, "jornadas"), orderBy("numeroJornada")));
         const allJornadas = allJornadasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const clasificacionHistorica = {};
-        JUGADORES.forEach(j => clasificacionHistorica[j] = { puntosTotales: 0 });
-
-        for (const j of allJornadas) {
-            if (j.numeroJornada < jornada.numeroJornada && j.estado === 'Finalizada') {
-                const pronosticosPasadosSnap = await getDocs(collection(db, "pronosticos", j.id, "jugadores"));
-                pronosticosPasadosSnap.forEach(pSnap => {
-                    const pData = pSnap.data();
-                    if (clasificacionHistorica[pSnap.id] && pData.puntosObtenidos) {
-                        clasificacionHistorica[pSnap.id].puntosTotales += pData.puntosObtenidos;
-                    }
-                });
-            }
-        }
-
-        for (const jugadorId in puntosPorJugador) {
-            if (clasificacionHistorica[jugadorId]) {
-                clasificacionHistorica[jugadorId].puntosTotales += puntosPorJugador[jugadorId].puntosJornada;
-            }
-        }
-
-        const sortedClasificacion = Object.entries(clasificacionHistorica).sort(([,a],[,b]) => b.puntosTotales - a.puntosTotales);
-        const lider = sortedClasificacion[0] ? sortedClasificacion[0][0] : null;
 
         const finalizadasAnteriores = allJornadas.filter(j => j.estado === 'Finalizada' && j.numeroJornada < jornada.numeroJornada).slice(-2);
         const jornadasParaRacha = [...finalizadasAnteriores, jornada];
-
+        
         const pronosticosParaRacha = {};
         if (jornadasParaRacha.length >= 3) {
             for(const j of jornadasParaRacha) {
                 const pronosSnap = await getDocs(collection(db, "pronosticos", j.id, "jugadores"));
                 pronosticosParaRacha[j.id] = {};
-                pronosSnap.forEach(doc => {
-                    pronosticosParaRacha[j.id][doc.id] = doc.data();
-                });
+                pronosSnap.forEach(doc => { pronosticosParaRacha[j.id][doc.id] = doc.data(); });
             }
         }
-
+        
         for (const jugadorId of JUGADORES) {
             const jugadorRef = doc(db, "clasificacion", jugadorId);
             const jugadorSnap = await getDoc(jugadorRef);
             const jugadorData = jugadorSnap.exists() ? jugadorSnap.data() : { badges: [] };
-            let newBadges = new Set(jugadorData.badges || []);
+            let newBadges = new Set((jugadorData.badges || []).filter(b => b !== 'en_racha' && b !== 'mala_racha'));
 
             newBadges.delete('campeon_jornada');
-            newBadges.delete('lider_general');
             newBadges.delete('pleno_jornada');
-            newBadges.delete('mala_racha');
-
+            
             if (ganadores.includes(jugadorId)) newBadges.add('campeon_jornada');
-            if (lider && jugadorId === lider) newBadges.add('lider_general');
             if (puntosPorJugador[jugadorId]?.esPleno) newBadges.add('pleno_jornada');
-
+            
             if (jornadasParaRacha.length >= 3) {
-                let fallosSeguidos = 0;
+                let puntuadasSeguidas = 0;
+                let sinPuntuarSeguidas = 0;
                 for (const j of jornadasParaRacha) {
-                    const p = pronosticosParaRacha[j.id]?.[jugadorId];
-                    const aciertoExacto = p && p.golesLocal !== '' && p.golesVisitante !== '' && parseInt(p.golesLocal) === parseInt(j.resultadoLocal) && parseInt(p.golesVisitante) === parseInt(j.resultadoVisitante);
-                    if (!aciertoExacto) {
-                        fallosSeguidos++;
+                    const pJornada = pronosticosParaRacha[j.id]?.[jugadorId];
+                    const puntosJornadaActual = j.id === jornada.id ? (puntosPorJugador[jugadorId]?.puntosJornada || 0) : (pJornada?.puntosObtenidos || 0);
+
+                    if (puntosJornadaActual > 0) {
+                        puntuadasSeguidas++;
+                        sinPuntuarSeguidas = 0;
                     } else {
-                        fallosSeguidos = 0;
+                        sinPuntuarSeguidas++;
+                        puntuadasSeguidas = 0;
                     }
                 }
-                if (fallosSeguidos >= 3) {
-                    newBadges.add('mala_racha');
-                }
+                if (puntuadasSeguidas >= 3) newBadges.add('en_racha');
+                if (sinPuntuarSeguidas >= 3) newBadges.add('mala_racha');
             }
-
             batch.set(jugadorRef, { badges: Array.from(newBadges) }, { merge: true });
         }
 
@@ -2449,6 +2456,28 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
         }
         
         await batch.commit();
+        
+        // --- Actualizar insignia de líder al final ---
+        const finalClasificacionSnap = await getDocs(query(collection(db, "clasificacion")));
+        const finalClasificacionData = finalClasificacionSnap.docs.map(d => ({id: d.id, ...d.data()}));
+        finalClasificacionData.sort((a,b) => (b.puntosTotales || 0) - (a.puntosTotales || 0));
+        
+        const leaderBatch = writeBatch(db);
+        const currentLeaders = finalClasificacionData.filter(j => j.puntosTotales === finalClasificacionData[0].puntosTotales).map(j => j.id);
+
+        for(const jugadorDoc of finalClasificacionSnap.docs) {
+            const jugadorData = jugadorDoc.data();
+            const currentBadges = new Set(jugadorData.badges || []);
+            const isLeader = currentLeaders.includes(jugadorDoc.id);
+
+            if(isLeader) {
+                currentBadges.add('lider_general');
+            } else {
+                currentBadges.delete('lider_general');
+            }
+            leaderBatch.set(jugadorDoc.ref, { badges: Array.from(currentBadges) }, { merge: true });
+        }
+        await leaderBatch.commit();
     };
 
     const handleCalcularPuntos = async () => {
@@ -2810,16 +2839,17 @@ const AdminPorraAnual = ({ onBack }) => {
 
     useEffect(() => {
         setLoading(true);
-        getDoc(configRef).then((docSnap) => {
+        const unsubscribe = onSnapshot(configRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 setConfig({ ...data, fechaCierre: toInputFormat(data.fechaCierre) });
             }
             setLoading(false);
-        }).catch(error => {
+        }, error => {
             console.error("Error al cargar config anual: ", error);
             setLoading(false);
         });
+        return () => unsubscribe();
     }, [configRef]);
 
     const handleSaveConfig = async () => {
@@ -2834,6 +2864,22 @@ const AdminPorraAnual = ({ onBack }) => {
         }
         catch (error) { console.error("Error guardando config anual", error); setMessage('Error al guardar.'); }
         finally { setSaving(false); setTimeout(() => setMessage(''), 3000); }
+    };
+
+    // --- NUEVO: Botón para forzar el cierre de la porra anual ---
+    const handleCerrarApuestas = async () => {
+        if (window.confirm("¿Estás seguro de que quieres cerrar la Porra Anual? Nadie más podrá modificar su apuesta.")) {
+            setSaving(true);
+            try {
+                await updateDoc(configRef, { estado: "Cerrada" });
+                setMessage('¡Porra Anual cerrada para todos los jugadores!');
+            } catch (error) {
+                console.error("Error cerrando la porra anual:", error);
+                setMessage('Error al cerrar la porra.');
+            } finally {
+                setSaving(false);
+            }
+        }
     };
     
     // --- NUEVO: Lógica para calcular puntos de la Porra Anual ---
@@ -2893,11 +2939,16 @@ const AdminPorraAnual = ({ onBack }) => {
                 <div><label style={styles.label}>Resultado Ascenso</label><select value={config.ascensoFinal || ''} onChange={(e) => setConfig(c => ({ ...c, ascensoFinal: e.target.value }))} style={styles.adminSelect}><option value="">-- Pendiente --</option><option value="SI">SI</option><option value="NO">NO</option></select></div>
                 <div><label style={styles.label}>Posición Final</label><input type="number" min="1" max="22" value={config.posicionFinal || ''} onChange={(e) => setConfig(c => ({ ...c, posicionFinal: e.target.value }))} style={styles.adminInput}/></div>
             </div>
-            <div style={{marginTop: '20px'}}>
+            <div style={{marginTop: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center'}}>
                 <button onClick={handleSaveConfig} disabled={saving} style={styles.saveButton}>{saving ? 'Guardando...' : 'Guardar Configuración'}</button>
+                {config.estado === 'Abierta' && (
+                    <button onClick={handleCerrarApuestas} disabled={saving} style={{...styles.saveButton, backgroundColor: colors.danger}}>
+                        {saving ? 'Cerrando...' : 'Cerrar Apuestas Anuales'}
+                    </button>
+                )}
                 <button onClick={handleCalcularPuntosAnual} disabled={calculating || config.estado !== 'Cerrada'} style={{...styles.saveButton, backgroundColor: styles.colors.gold, color: styles.colors.deepBlue}}>{calculating ? 'Calculando...' : 'Calcular Puntos Finales'}</button>
+                {message && <p style={{...styles.message, marginTop: 0, marginLeft: '10px'}}>{message}</p>}
             </div>
-             {message && <p style={{...styles.message, marginTop: '15px'}}>{message}</p>}
         </div>
     );
 };
@@ -2958,7 +3009,6 @@ const AdminUserManager = ({ onBack }) => {
         </div>
     );
 };
-
 const AdminNotifications = ({ onBack }) => {
     const [message, setMessage] = useState('');
     const [customMessage, setCustomMessage] = useState('');
@@ -3211,7 +3261,17 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) =>
         <h2 style={styles.title}>DETALLE {jornada.id === 'jornada_test' ? 'JORNADA DE PRUEBA' : `JORNADA ${jornada.numeroJornada}`}</h2>
         <div style={styles.matchHeader}><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} imgStyle={{width: 40, height: 40}} /><h3 style={styles.formSectionTitle}>{jornada.equipoLocal} vs {jornada.equipoVisitante}</h3><TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} imgStyle={{width: 40, height: 40}} /></div>
         {isFinalizada && (<p style={styles.finalResult}>Resultado Final: {jornada.resultadoLocal} - {jornada.resultadoVisitante}</p>)}
-        {showPronosticos && jornada.ganadores && jornada.ganadores.length > 0 && (<div style={styles.winnerBanner}>🏆 Ganador(es): {jornada.ganadores.join(', ')}</div>)}
+        {showPronosticos && jornada.ganadores && jornada.ganadores.length > 0 && (
+            <div style={styles.winnerBanner}>
+                🏆 Ganador(es): {jornada.ganadores.join(', ')}. 
+                <p style={{fontSize: '0.9rem', marginTop: '5px'}}>
+                    {jornada.ganadores.length === 1 
+                        ? `Contactar con ${getTesorero(jornada.ganadores[0])} para el premio.` 
+                        : `Contactar con los respectivos tesoreros: ${jornada.ganadores.map(g => `${g} (${getTesorero(g)})`).join(', ')}.`
+                    }
+                </p>
+            </div>
+        )}
         {showPronosticos && jornada.ganadores?.length === 0 && (<div style={styles.boteBanner}>💰 ¡BOTE! Nadie acertó el resultado.</div>)}
         <table style={styles.table}><thead><tr><th style={styles.th}>Jugador</th><th style={styles.th}>Pronóstico</th>{isFinalizada && <th style={styles.th}>Puntos</th>}{isFinalizada && <th style={styles.th}>Pagado</th>}</tr></thead><tbody>{JUGADORES.map((jugadorId, index) => { const p = pronosticosMap[jugadorId]; const profile = userProfiles[jugadorId] || {}; if (!p) { return (<tr key={jugadorId} style={styles.tr}><td style={styles.td}><PlayerProfileDisplay name={jugadorId} profile={profile} /></td><td colSpan={isFinalizada ? 3 : 1} style={{...styles.td, fontStyle: 'italic', opacity: 0.6, textAlign: 'center' }}>SP</td></tr>); } if (showPronosticos) { const esGanador = jornada.ganadores?.includes(p.id); return (<React.Fragment key={p.id}><tr style={esGanador ? styles.winnerRow : styles.tr}><td style={styles.td}><PlayerProfileDisplay name={p.id} profile={profile} /> {p.jokerActivo && '🃏'}</td><td style={styles.td}>{p.golesLocal}-{p.golesVisitante} ({p.resultado1x2 || 'N/A'}) {p.goleador && `- ${p.goleador}`} {!p.goleador && p.sinGoleador && '- SG'}</td>{isFinalizada && <td style={styles.td}>{p.puntosObtenidos === undefined ? '-' : p.puntosObtenidos}</td>}{isFinalizada && <td style={styles.td}>{p.pagado ? '✅' : '❌'}</td>}</tr>{p.jokerActivo && p.jokerPronosticos?.length > 0 && (<tr style={styles.jokerDetailRow}><td style={styles.td} colSpan={isFinalizada ? 4 : 2}><div style={{paddingLeft: '20px'}}><strong>Apuestas JOKER:</strong><div style={{display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '5px'}}>{p.jokerPronosticos.map((jp, index) => (<span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>))}</div></div></td></tr>)}</React.Fragment>); } else { const secretMessage = SECRET_MESSAGES[index % SECRET_MESSAGES.length]; return (<tr key={p.id} style={styles.tr}><td style={styles.td}><PlayerProfileDisplay name={p.id} profile={profile} /> {p.jokerActivo && '🃏'}</td><td style={styles.td}>{secretMessage}</td></tr>); } })}</tbody></table>
         <div style={styles.legendContainer}><span style={styles.legendItem}>SP: Sin Pronóstico</span><span style={styles.legendItem}>🃏: Joker Activado</span>{isFinalizada && <span style={styles.legendItem}>✅: Pagado</span>}{isFinalizada && <span style={styles.legendItem}>❌: Pendiente</span>}</div>
@@ -3345,6 +3405,15 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
         });
     }, [user]);
 
+    const isLastDay = useMemo(() => {
+        if (!config || !config.fechaCierre) return false;
+        const cierre = config.fechaCierre.toDate();
+        const hoy = new Date();
+        return hoy.getFullYear() === cierre.getFullYear() &&
+               hoy.getMonth() === cierre.getMonth() &&
+               hoy.getDate() === cierre.getDate();
+    }, [config]);
+
     useEffect(() => {
         if (!config || !config.fechaCierre) return;
         const targetDate = config.fechaCierre.toDate();
@@ -3433,12 +3502,20 @@ const PorraAnualScreen = ({ user, onBack, config }) => {
             <button onClick={onBack} style={styles.backButton}>&larr; Volver</button>
             <h2 style={styles.title}>⭐ PORRA ANUAL ⭐</h2>
             <form onSubmit={handleGuardar} style={styles.form}>
+                 {isLastDay && <div style={{...styles.vipBanner, backgroundColor: colors.danger, color: 'white'}}>🚨 ¡ÚLTIMO DÍA! 🚨 La porra anual se cierra hoy. ¡Asegura tu pronóstico!</div>}
                 <div style={styles.porraAnualInfoBox}>
                     <p>
                         {miPronostico ? `Te quedan ${miPronostico.cambiosRestantes || 0} cambios.` : 'Tienes 2 cambios disponibles.'}
                     </p>
                     {countdown && <p style={styles.porraAnualCountdown}>{countdown}</p>}
                 </div>
+                 {miPronostico && (
+                    <div style={styles.confirmacionResumen}>
+                        <p style={{textAlign: 'center', fontWeight: 'bold'}}>Tu apuesta actual:</p>
+                        <p><strong>¿Asciende?:</strong> {miPronostico.ascenso}</p>
+                        <p><strong>Posición Final:</strong> {miPronostico.posicion}º</p>
+                    </div>
+                )}
                 <p style={{ textAlign: 'center', marginBottom: '30px', fontSize: '1.1rem' }}>
                     {miPronostico ? 'Puedes modificar tu pronóstico si te quedan cambios.' : 'Haz tu pronóstico para el final de la temporada.'}
                 </p>
@@ -3565,11 +3642,12 @@ function App() {
         /* --- Definiciones de animaciones --- */
         @keyframes champion-glow { 0%, 100% { text-shadow: 0 0 8px ${colors.gold}, 0 0 15px ${colors.gold}; } 50% { text-shadow: 0 0 12px ${colors.gold}, 0 0 25px ${colors.gold}; } }
         @keyframes pleno-flash { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
-        @keyframes leader-glow { 0%, 100% { background-color: rgba(255, 215, 0, 0.15); box-shadow: inset 0 0 15px rgba(255, 215, 0, 0.5), 0 0 10px rgba(255, 215, 0, 0.3); } 50% { background-color: rgba(255, 215, 0, 0.25); box-shadow: inset 0 0 20px rgba(255, 215, 0, 0.7), 0 0 15px rgba(255, 215, 0, 0.5); } }
         
-        @keyframes gold-leader-animation { 0%, 100% { box-shadow: 0 0 8px ${colors.gold}, 0 0 15px ${colors.gold}, 0 0 25px ${colors.gold}80; } 50% { box-shadow: 0 0 15px ${colors.gold}, 0 0 30px ${colors.gold}, 0 0 45px ${colors.gold}80; } }
-        @keyframes fire-streak-animation { 0%, 100% { box-shadow: 0 0 8px #fca311, 0 0 15px #e63946, 0 0 25px #fca31180; } 50% { box-shadow: 0 0 15px #fca311, 0 0 30px #e63946, 0 0 45px #fca31180; } }
-        @keyframes cold-streak-animation { 0%, 100% { box-shadow: 0 0 8px #00aaff, 0 0 15px #00aaff, 0 0 20px #00aaff80; } }
+        @keyframes gold-leader-animation { 0%, 100% { background-color: rgba(255, 215, 0, 0.15); box-shadow: inset 0 0 15px rgba(255, 215, 0, 0.5), 0 0 10px rgba(255, 215, 0, 0.3); } 50% { background-color: rgba(255, 215, 0, 0.25); box-shadow: inset 0 0 20px rgba(255, 215, 0, 0.7), 0 0 15px rgba(255, 215, 0, 0.5); } }
+        @keyframes fire-streak-animation { 0%, 100% { background-color: rgba(230, 57, 70, 0.1); box-shadow: inset 0 0 15px rgba(252, 163, 23, 0.5), 0 0 10px rgba(230, 57, 70, 0.3); } 50% { background-color: rgba(230, 57, 70, 0.2); box-shadow: inset 0 0 20px rgba(252, 163, 23, 0.7), 0 0 15px rgba(230, 57, 70, 0.5); } }
+        @keyframes cold-streak-animation { 0%, 100% { background-color: rgba(0, 170, 255, 0.1); box-shadow: inset 0 0 15px rgba(0, 170, 255, 0.5), 0 0 10px rgba(0, 170, 255, 0.3); } 50% { background-color: rgba(0, 170, 255, 0.2); box-shadow: inset 0 0 20px rgba(0, 170, 255, 0.7), 0 0 15px rgba(0, 170, 255, 0.5); } }
+        @keyframes user-highlight-glow { 0%, 100% { background-color: rgba(0, 85, 164, 0.5); box-shadow: inset 0 0 15px rgba(0, 85, 164, 1), 0 0 10px rgba(0, 85, 164, 0.7); } 50% { background-color: rgba(0, 85, 164, 0.7); box-shadow: inset 0 0 20px rgba(0, 85, 164, 1), 0 0 15px rgba(0, 85, 164, 1); } }
+        
         @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
         .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
         @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -3607,9 +3685,6 @@ function App() {
         .pulse-animation { border-color: ${colors.yellow}; animation: pulse-animation-kf 1s ease-out; }
         @keyframes live-dot-kf { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .live-dot-animation { animation: live-dot-kf 1.5s infinite; }
-        @keyframes silver-glow { 0%, 100% { background-color: rgba(192, 192, 192, 0.15); box-shadow: inset 0 0 15px rgba(192, 192, 192, 0.5), 0 0 10px rgba(192, 192, 192, 0.3); } 50% { background-color: rgba(192, 192, 192, 0.25); box-shadow: inset 0 0 20px rgba(192, 192, 192, 0.7), 0 0 15px rgba(192, 192, 192, 0.5); } }
-        @keyframes bronze-glow { 0%, 100% { background-color: rgba(205, 127, 50, 0.15); box-shadow: inset 0 0 15px rgba(205, 127, 50, 0.5), 0 0 10px rgba(205, 127, 50, 0.3); } 50% { background-color: rgba(205, 127, 50, 0.25); box-shadow: inset 0 0 20px rgba(205, 127, 50, 0.7), 0 0 15px rgba(205, 127, 50, 0.5); } }
-        @keyframes user-highlight-glow { 0%, 100% { background-color: rgba(0, 85, 164, 0.5); box-shadow: inset 0 0 15px rgba(0, 85, 164, 1), 0 0 10px rgba(0, 85, 164, 0.7); } 50% { background-color: rgba(0, 85, 164, 0.7); box-shadow: inset 0 0 20px rgba(0, 85, 164, 1), 0 0 15px rgba(0, 85, 164, 1); } }
     `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
@@ -3727,4 +3802,3 @@ function App() {
 }
 
 export default App;
-
