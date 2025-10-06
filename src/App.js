@@ -396,7 +396,6 @@ const styles = {
     newsTickerContent: { display: 'inline-block', padding: '10px 0', color: colors.lightText, animation: 'ticker-scroll 45s linear infinite' },
     newsTickerItem: { display: 'inline-block', padding: '0 25px', fontSize: '0.9rem', color: colors.silver, '& strong': { color: colors.yellow } },
 };
-
 // ============================================================================
 // --- LÓGICA DE CÁLCULO Y FORMATO ---
 // ============================================================================
@@ -1095,6 +1094,17 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     );
 };
 
+const initialPronosticoState = { 
+    golesLocal: '', 
+    golesVisitante: '', 
+    resultado1x2: '', 
+    goleador: '', 
+    sinGoleador: false, 
+    pin: '', 
+    pinConfirm: '', 
+    jokerActivo: false, 
+    jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) 
+};
 const ProximaJornadaInfo = ({ jornada }) => {
     if (!jornada) return null;
     const fechaMostrada = jornada.fechaPartido || jornada.fechaCierre;
@@ -1896,7 +1906,6 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
       </div>
     );
 };
-
 const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers }) => {
     const [jornada, setJornada] = useState(null);
     const [pronosticos, setPronosticos] = useState([]);
