@@ -612,10 +612,12 @@ const useRecalculateBadges = () => {
             const jornadasParticipadas = historialJornadas.filter(j => todosLosPronosticos[j.id]?.[jugadorId]).slice(0, 3);
             if (jornadasParticipadas.length === 3) {
                  const puntosEnRacha = jornadasParticipadas.map(j => {
-                    return j.id === jornada.id ? (puntosPorJugador[jugadorId]?.puntosJornada || 0) : (todosLosPronosticos[j.id][jugadorId].puntosObtenidos || 0);
+                     return j.id === jornada.id ? (puntosPorJugador[jugadorId]?.puntosJornada || 0) : (todosLosPronosticos[j.id][jugadorId].puntosObtenidos || 0);
                 });
-                if (puntosEnRacha.every(p => === 0)) newBadges.add('mala_racha');
-                if (puntosEnRacha.every(p => > 0)) newBadges.add('en_racha');
+                // --- AQUÍ ESTABA EL ERROR ---
+                if (puntosEnRacha.every(p => p === 0)) newBadges.add('mala_racha');
+                if (puntosEnRacha.every(p => p > 0)) newBadges.add('en_racha');
+                // --- FIN DE LA CORRECCIÓN ---
             }
             batch.set(jugadorRef, { badges: Array.from(newBadges) }, { merge: true });
         }
