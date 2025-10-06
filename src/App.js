@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
+// MODIFICADO: Se añade 'runTransaction' y 'serverTimestamp'
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction, serverTimestamp, addDoc } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
@@ -39,6 +40,7 @@ const JUGADORES = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Him
 const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
 
+// NUEVO: Tesoreros autorizados y grupos de pago
 const TESOREROS_AUTORIZADOS = ['Juanma', 'Laura', 'Mari'];
 const GRUPOS_PAGOS = {
     'Juanma': ["Juanma", "Lucy", "Antonio"],
@@ -55,6 +57,7 @@ const SECRET_MESSAGES = [
 const STAT_REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
 const GOAL_REACTION_EMOJIS = ['🙌', '⚽', '🎉', '🤩', '🤯'];
 
+// MODIFICADO: Se añaden todas las insignias nuevas con su ícono y prioridad
 const BADGE_DEFINITIONS = {
     lider_general: { icon: '👑', name: 'Líder General', priority: 1, style: 'leader-glow' },
     campeon_jornada: { icon: '🏆', name: 'Campeón de la Jornada', priority: 2, style: 'champion-glow' },
@@ -73,7 +76,33 @@ const EQUIPOS_LIGA = [
 ];
 
 const PLANTILLA_ACTUALIZADA = [
-    { dorsal: "1", nombre: "Dinko Horkas", imageUrl: "" }, { dorsal: "13", nombre: "José Antonio Caro", imageUrl: "" }, { dorsal: "35", nombre: "Adri Suárez", imageUrl: "" }, { dorsal: "3", nombre: "Mika Mármol", imageUrl: "" }, { dorsal: "15", nombre: "Juanma Herzog", imageUrl: "" }, { dorsal: "4", nombre: "Álex Suárez", imageUrl: "" }, { dorsal: "5", nombre: "Enrique Clemente", imageUrl: "" }, { dorsal: "6", nombre: "Sergio Barcia", imageUrl: "" }, { dorsal: "23", nombre: "Cristian Gutiérrez", imageUrl: "" }, { dorsal: "17", nombre: "Viti Rozada", imageUrl: "" }, { dorsal: "2", nombre: "Marvin Park", imageUrl: "" }, { dorsal: "16", nombre: "Lorenzo Amatucci", imageUrl: "" }, { dorsal: "18", nombre: "Edward Cedeño", imageUrl: "" }, { dorsal: "12", nombre: "Enzo Loiodice", imageUrl: "" }, { dorsal: "20", nombre: "Kirian Rodríguez", imageUrl: "" }, { dorsal: "8", nombre: "Iván Gil", imageUrl: "" }, { dorsal: "21", nombre: "Jonathan Viera", imageUrl: "" }, { dorsal: "9", nombre: "Jeremía Recoba", imageUrl: "" }, { dorsal: "14", nombre: "Manu Fuster", imageUrl: "" }, { dorsal: "10", nombre: "Jesé", imageUrl: "" }, { dorsal: "24", nombre: "Pejiño", imageUrl: "" }, { dorsal: "22", nombre: "Ale García", imageUrl: "" }, { dorsal: "29", nombre: "Adam Arvelo", imageUrl: "" }, { dorsal: "25", nombre: "Milos Lukovic", imageUrl: "" }, { dorsal: "19", nombre: "Sandro Ramírez", imageUrl: "" }, { dorsal: "11", nombre: "Marc Cardona", imageUrl: "" }, { dorsal: "7", nombre: "Jaime Mata", imageUrl: "" }
+    { dorsal: "1", nombre: "Dinko Horkas", imageUrl: "" },
+    { dorsal: "13", nombre: "José Antonio Caro", imageUrl: "" },
+    { dorsal: "35", nombre: "Adri Suárez", imageUrl: "" },
+    { dorsal: "3", nombre: "Mika Mármol", imageUrl: "" },
+    { dorsal: "15", nombre: "Juanma Herzog", imageUrl: "" },
+    { dorsal: "4", nombre: "Álex Suárez", imageUrl: "" },
+    { dorsal: "5", nombre: "Enrique Clemente", imageUrl: "" },
+    { dorsal: "6", nombre: "Sergio Barcia", imageUrl: "" },
+    { dorsal: "23", nombre: "Cristian Gutiérrez", imageUrl: "" },
+    { dorsal: "17", nombre: "Viti Rozada", imageUrl: "" },
+    { dorsal: "2", nombre: "Marvin Park", imageUrl: "" },
+    { dorsal: "16", nombre: "Lorenzo Amatucci", imageUrl: "" },
+    { dorsal: "18", nombre: "Edward Cedeño", imageUrl: "" },
+    { dorsal: "12", nombre: "Enzo Loiodice", imageUrl: "" },
+    { dorsal: "20", nombre: "Kirian Rodríguez", imageUrl: "" },
+    { dorsal: "8", nombre: "Iván Gil", imageUrl: "" },
+    { dorsal: "21", nombre: "Jonathan Viera", imageUrl: "" },
+    { dorsal: "9", nombre: "Jeremía Recoba", imageUrl: "" },
+    { dorsal: "14", nombre: "Manu Fuster", imageUrl: "" },
+    { dorsal: "10", nombre: "Jesé", imageUrl: "" },
+    { dorsal: "24", nombre: "Pejiño", imageUrl: "" },
+    { dorsal: "22", nombre: "Ale García", imageUrl: "" },
+    { dorsal: "29", nombre: "Adam Arvelo", imageUrl: "" },
+    { dorsal: "25", nombre: "Milos Lukovic", imageUrl: "" },
+    { dorsal: "19", nombre: "Sandro Ramírez", imageUrl: "" },
+    { dorsal: "11", nombre: "Marc Cardona", imageUrl: "" },
+    { dorsal: "7", nombre: "Jaime Mata", imageUrl: "" }
 ];
 
 
@@ -83,6 +112,7 @@ const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '�
 // ============================================================================
 // --- ESTILOS (CSS-in-JS) ---
 // ============================================================================
+// ACCIÓN: Constantes de colores y estilos movidas a la parte superior.
 const colors = {
     deepBlue: '#001d3d', blue: '#0055A4', yellow: '#FFC72C', gold: '#FFD700', silver: '#C0C0C0', bronze: '#CD7F32', lightText: '#f0f0f0', darkText: '#0a0a0a', danger: '#e63946', success: '#52b788', warning: '#fca311', darkUI: 'rgba(10, 25, 47, 0.85)', darkUIAlt: 'rgba(23, 42, 69, 0.85)', status: { 'Próximamente': '#6c757d', 'Pre-apertura': '#fca311', 'Abierta': '#52b788', 'Cerrada': '#e63946', 'Finalizada': '#0055A4' }
 };
@@ -345,6 +375,7 @@ const styles = {
     renderedPronosticoContainer: { backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '15px', margin: '20px 0', border: `1px solid ${colors.blue}` },
     renderedPronosticoTitle: { color: colors.yellow, textAlign: 'center', marginBottom: '10px', fontFamily: "'Orbitron', sans-serif" },
     recalculatorContainer: { padding: '20px', border: `1px dashed ${colors.warning}`, borderRadius: '8px', backgroundColor: 'rgba(252, 163, 23, 0.1)' },
+    // --- NUEVOS ESTILOS PARA HISTORIAL Y CONFIRMACIÓN ---
     confirmacionResumen: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '8px', borderLeft: `4px solid ${colors.yellow}`, marginBottom: '20px' },
     historyButton: { backgroundColor: 'transparent', border: `1px solid ${colors.blue}`, color: colors.lightText, padding: '4px 8px', borderRadius: '5px', cursor: 'pointer', fontSize: '0.8rem', marginLeft: '10px' },
     historyContainer: { maxHeight: '400px', overflowY: 'auto', paddingRight: '10px' },
@@ -352,6 +383,8 @@ const styles = {
     historyTimestamp: { fontSize: '0.9rem', color: colors.silver, paddingBottom: '8px', borderBottom: `1px solid ${colors.blue}80`, marginBottom: '8px'},
     historyDetails: { fontSize: '0.95rem' },
     tesoreroTag: { fontSize: '0.75rem', color: colors.darkText, backgroundColor: colors.yellow, padding: '2px 6px', borderRadius: '10px', marginLeft: '8px', fontWeight: 'bold' },
+
+    // --- NUEVOS ESTILOS PARA PASEO DE LA FAMA Y CARRUSEL ---
     fameContainer: { display: 'flex', flexDirection: 'column', gap: '20px' },
     fameCard: { backgroundColor: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '12px', border: `1px solid ${colors.blue}80` },
     fameCardTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, marginBottom: '15px', borderBottom: `1px solid ${colors.blue}`, paddingBottom: '10px', fontSize: '1.2rem' },
@@ -368,9 +401,14 @@ const styles = {
 // --- LÓGICA DE CÁLCULO Y FORMATO ---
 // ============================================================================
 
+// NUEVO: Función para obtener el tesorero responsable de un jugador
 const getTesoreroResponsable = (jugador) => {
-    for (const tesorero in GRUPOS_PAGOS) { if (GRUPOS_PAGOS[tesorero].includes(jugador)) { return tesorero; } }
-    return null;
+    for (const tesorero in GRUPOS_PAGOS) {
+        if (GRUPOS_PAGOS[tesorero].includes(jugador)) {
+            return tesorero;
+        }
+    }
+    return null; // O un valor por defecto si es necesario
 };
 
 const formatFullDateTime = (firebaseDate) => {
@@ -379,7 +417,10 @@ const formatFullDateTime = (firebaseDate) => {
         const date = new Date(firebaseDate.seconds * 1000);
         const options = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false };
         return new Intl.DateTimeFormat('es-ES', options).format(date).replace(',', ' a las');
-    } catch (error) { console.error("Error formatting date:", error); return 'Fecha inválida'; }
+    } catch (error) {
+        console.error("Error formatting date:", error);
+        return 'Fecha inválida';
+    }
 };
 
 const formatLastSeen = (firebaseDate) => {
@@ -391,24 +432,65 @@ const formatLastSeen = (firebaseDate) => {
         const diffMinutes = Math.floor(diffSeconds / 60);
         const diffHours = Math.floor(diffMinutes / 60);
         const diffDays = Math.floor(diffHours / 24);
-        if (diffSeconds < 60) return "hace un momento"; if (diffMinutes < 60) return `hace ${diffMinutes} min`; if (diffHours < 24) return `hace ${diffHours} h`; if (diffDays === 1) return `ayer a las ${lastSeenDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`; if (diffDays < 7) return `hace ${diffDays} días`;
+
+        if (diffSeconds < 60) return "hace un momento";
+        if (diffMinutes < 60) return `hace ${diffMinutes} min`;
+        if (diffHours < 24) return `hace ${diffHours} h`;
+        if (diffDays === 1) return `ayer a las ${lastSeenDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+        if (diffDays < 7) return `hace ${diffDays} días`;
+        
         return `el ${lastSeenDate.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}`;
-    } catch (error) { console.error("Error formatting last seen:", error); return null; }
+    } catch (error) {
+        console.error("Error formatting last seen:", error);
+        return null;
+    }
 };
 
 const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
     if (!pronostico || !liveData || !jornada || !liveData.isLive) return 0;
-    let puntosJornada = 0; const esVip = jornada.esVip || false; const { golesLocal, golesVisitante } = liveData;
+    let puntosJornada = 0;
+    const esVip = jornada.esVip || false;
+    const { golesLocal, golesVisitante } = liveData;
+
+    // Acierto Resultado Exacto
     const aciertoExacto = pronostico.golesLocal !== '' && pronostico.golesVisitante !== '' && parseInt(pronostico.golesLocal) === golesLocal && parseInt(pronostico.golesVisitante) === golesVisitante;
-    if (aciertoExacto) { puntosJornada += esVip ? 6 : 3; }
+    if (aciertoExacto) {
+        puntosJornada += esVip ? 6 : 3;
+    }
+
+    // Acierto 1X2
     let resultado1x2Real = '';
-    if (jornada.equipoLocal === "UD Las Palmas") { if (golesLocal > golesVisitante) resultado1x2Real = 'Gana UD Las Palmas'; else if (golesLocal < golesVisitante) resultado1x2Real = 'Pierde UD Las Palmas'; else resultado1x2Real = 'Empate'; }
-    else { if (golesVisitante > golesLocal) resultado1x2Real = 'Gana UD Las Palmas'; else if (golesVisitante < golesLocal) resultado1x2Real = 'Pierde UD Las Palmas'; else resultado1x2Real = 'Empate'; }
-    if (pronostico.resultado1x2 === resultado1x2Real) { puntosJornada += esVip ? 2 : 1; }
-    const goleadorReal = (liveData.ultimoGoleador || '').trim().toLowerCase(); const goleadorApostado = (pronostico.goleador || '').trim().toLowerCase();
-    if (pronostico.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) { puntosJornada += 1; }
-    else if (!pronostico.sinGoleador && goleadorApostado !== "" && goleadorApostado === goleadorReal) { puntosJornada += esVip ? 4 : 2; }
-    if (pronostico.jokerActivo && pronostico.jokerPronosticos?.length > 0) { for (const jokerP of pronostico.jokerPronosticos) { if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === golesLocal && parseInt(jokerP.golesVisitante) === golesVisitante) { puntosJornada += esVip ? 6 : 3; break; } } }
+    if (jornada.equipoLocal === "UD Las Palmas") {
+        if (golesLocal > golesVisitante) resultado1x2Real = 'Gana UD Las Palmas';
+        else if (golesLocal < golesVisitante) resultado1x2Real = 'Pierde UD Las Palmas';
+        else resultado1x2Real = 'Empate';
+    } else {
+        if (golesVisitante > golesLocal) resultado1x2Real = 'Gana UD Las Palmas';
+        else if (golesVisitante < golesLocal) resultado1x2Real = 'Pierde UD Las Palmas';
+        else resultado1x2Real = 'Empate';
+    }
+    if (pronostico.resultado1x2 === resultado1x2Real) {
+        puntosJornada += esVip ? 2 : 1;
+    }
+
+    // Acierto Goleador
+    const goleadorReal = (liveData.ultimoGoleador || '').trim().toLowerCase();
+    const goleadorApostado = (pronostico.goleador || '').trim().toLowerCase();
+    if (pronostico.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) {
+        puntosJornada += 1;
+    } else if (!pronostico.sinGoleador && goleadorApostado !== "" && goleadorApostado === goleadorReal) {
+        puntosJornada += esVip ? 4 : 2;
+    }
+
+    // Acierto Joker
+    if (pronostico.jokerActivo && pronostico.jokerPronosticos?.length > 0) {
+        for (const jokerP of pronostico.jokerPronosticos) {
+            if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === golesLocal && parseInt(jokerP.golesVisitante) === golesVisitante) {
+                puntosJornada += esVip ? 6 : 3;
+                break;
+            }
+        }
+    }
     return puntosJornada;
 };
 
@@ -418,25 +500,54 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
 // ============================================================================
 
 const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.lightText, style: customStyle = {} }) => {
-    const finalProfile = profile || {}; const color = finalProfile.color || defaultColor; const icon = finalProfile.icon || ''; const isGradient = typeof color === 'string' && color.startsWith('linear-gradient');
+    const finalProfile = profile || {};
+    const color = finalProfile.color || defaultColor;
+    const icon = finalProfile.icon || '';
+    const isGradient = typeof color === 'string' && color.startsWith('linear-gradient');
     const nameStyle = { ...(isGradient ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color: color }) };
+    
     const badgesToDisplay = useMemo(() => {
         if (!finalProfile.badges || finalProfile.badges.length === 0) return [];
-        return finalProfile.badges.map(badgeKey => ({ key: badgeKey, ...BADGE_DEFINITIONS[badgeKey] })).filter(b => b.name && b.icon).sort((a, b) => a.priority - b.priority);
+        return finalProfile.badges
+            .map(badgeKey => ({ key: badgeKey, ...BADGE_DEFINITIONS[badgeKey] }))
+            .filter(b => b.name && b.icon) 
+            .sort((a, b) => a.priority - b.priority);
     }, [finalProfile.badges]);
+    
+    // Asigna la animación correspondiente a la insignia de mayor prioridad
     const badgeStyle = useMemo(() => {
         if (!finalProfile.badges || finalProfile.badges.length === 0) return {};
-        const highestPriorityBadgeWithStyle = finalProfile.badges.map(badgeKey => ({ key: badgeKey, ...BADGE_DEFINITIONS[badgeKey] })).filter(b => b.name && b.style).sort((a, b) => a.priority - b.priority)[0];
+        const highestPriorityBadgeWithStyle = finalProfile.badges
+            .map(badgeKey => ({ key: badgeKey, ...BADGE_DEFINITIONS[badgeKey] }))
+            .filter(b => b.name && b.style)
+            .sort((a, b) => a.priority - b.priority)[0];
+        
         if (highestPriorityBadgeWithStyle) {
-            const animationName = `${highestPriorityBadgeWithStyle.style}-animation`; let animationProps = '2s infinite alternate';
-            if(highestPriorityBadgeWithStyle.style === 'pleno-flash') animationProps = '0.5s ease-in-out 3';
-            if(highestPriorityBadgeWithStyle.style === 'cold-streak') animationProps = '1.5s infinite';
+            const animationName = `${highestPriorityBadgeWithStyle.style}-animation`;
+            let animationProps = '2s infinite alternate';
+            if(highestPriorityBadgeWithStyle.style === 'pleno-flash') {
+                animationProps = '0.5s ease-in-out 3';
+            }
+            if(highestPriorityBadgeWithStyle.style === 'cold-streak'){
+                animationProps = '1.5s infinite';
+            }
             return { animation: `${animationName} ${animationProps}` };
         }
         return {};
     }, [finalProfile.badges]);
-    return (<span style={{...customStyle, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>{badgesToDisplay.map(badge => (<span key={badge.key} title={badge.name} style={badgeStyle}>{badge.icon}</span>))}{icon && <span>{icon}</span>}<span style={nameStyle}>{name}</span></span>);
+
+
+    return (
+        <span style={{...customStyle, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            {badgesToDisplay.map(badge => (
+                <span key={badge.key} title={badge.name} style={badgeStyle}>{badge.icon}</span>
+            ))}
+            {icon && <span>{icon}</span>}
+            <span style={nameStyle}>{name}</span>
+        </span>
+    );
 };
+
 
 const LiveBanner = ({ liveData, jornada }) => {
     if (!jornada || !liveData || !liveData.isLive) return null;
@@ -446,7 +557,9 @@ const LiveBanner = ({ liveData, jornada }) => {
 const TeamDisplay = ({ teamLogos, teamName, shortName = false, imgStyle }) => (<div style={styles.teamDisplay}><img src={teamLogos[teamName] || 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'} style={{...styles.teamLogo, ...imgStyle}} alt={`${teamName} logo`} onError={(e) => { e.target.src = 'https://placehold.co/50x50/1b263b/e0e1dd?text=?'; }} /><span style={styles.teamNameText}>{shortName && teamName === "UD Las Palmas" ? "UDLP" : teamName}</span></div>);
 
 const JokerAnimation = () => {
-    const [exploded, setExploded] = useState(false); useEffect(() => { const timer = setTimeout(() => setExploded(true), 5500); return () => clearTimeout(timer); }, []); const jokers = Array.from({ length: 100 });
+    const [exploded, setExploded] = useState(false);
+    useEffect(() => { const timer = setTimeout(() => setExploded(true), 5500); return () => clearTimeout(timer); }, []);
+    const jokers = Array.from({ length: 100 });
     return (<div style={styles.jokerAnimationOverlay}>{jokers.map((_, i) => (<span key={i} className={exploded ? 'exploded' : ''} style={{...styles.jokerIcon, left: `${Math.random() * 100}vw`, fontSize: `${1.5 + Math.random() * 2}rem`, animationDelay: `${Math.random() * 4}s`, animationDuration: `${4 + Math.random() * 4}s`, transform: exploded ? `translate(${Math.random() * 800 - 400}px, ${Math.random() * 800 - 400}px) rotate(720deg)` : 'translateY(-100px) rotate(0deg)', opacity: exploded ? 0 : 1 }}>🃏</span>))}</div>);
 };
 
@@ -455,19 +568,30 @@ const Confetti = () => {
     return (<div style={styles.confettiOverlay}>{particles.map((_, i) => (<div key={i} className="confetti-particle" style={{ '--x': `${Math.random() * 100}vw`, '--angle': `${Math.random() * 360}deg`, '--delay': `${Math.random() * 5}s`, '--color': i % 3 === 0 ? styles.colors.yellow : (i % 3 === 1 ? styles.colors.blue : styles.colors.lightText), '--size': `${5 + Math.random() * 10}px` }} />))}</div>);
 };
 
+// =================================================================================================
+// --- INICIO DE LA REESTRUCTURACIÓN: Todos los componentes se definen ANTES del componente App ---
+// =================================================================================================
+
+// --- COMPONENTES MODALES Y AUXILIARES ---
+
 const AnimatedCount = ({ endValue, duration = 1000, decimals = 0 }) => {
-    const [currentValue, setCurrentValue] = useState(0); const prevValueRef = useRef(0);
+    const [currentValue, setCurrentValue] = useState(0);
+    const prevValueRef = useRef(0);
+
     useEffect(() => {
-        const startValue = prevValueRef.current; let startTime = null;
+        const startValue = prevValueRef.current;
+        let startTime = null;
         const animation = (currentTime) => {
             if (!startTime) startTime = currentTime;
             const progress = Math.min((currentTime - startTime) / duration, 1);
             setCurrentValue(progress * (endValue - startValue) + startValue);
-            if (progress < 1) requestAnimationFrame(animation); else prevValueRef.current = endValue;
+            if (progress < 1) requestAnimationFrame(animation);
+            else prevValueRef.current = endValue;
         };
         requestAnimationFrame(animation);
         return () => { prevValueRef.current = endValue; };
     }, [endValue, duration]);
+
     return <span>{currentValue.toFixed(decimals)}</span>;
 };
 
@@ -476,12 +600,73 @@ const WinnerAnimation = ({ winnerData, onClose }) => {
     return (<div style={styles.winnerAnimationOverlay}><Confetti /><div style={styles.winnerModal}><div style={styles.trophy}>🏆</div><h2 style={styles.winnerTitle}>¡FELICIDADES, {pronostico.id}!</h2><p style={styles.winnerText}>¡Has ganado la porra de la jornada!</p><div style={styles.winnerStats}><span>Puntos Obtenidos: <strong><AnimatedCount endValue={pronostico.puntosObtenidos} duration={1500} /></strong></span><span>Premio: <strong><AnimatedCount endValue={prize} duration={1500} decimals={2} />€</strong></span></div><button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>CERRAR</button></div></div>);
 };
 
-const InstallGuideModal = ({ onClose }) => (<div style={styles.modalOverlay} onClick={onClose}><div style={styles.modalContent} onClick={(e) => e.stopPropagation()}><h3 style={styles.title}>Instalar App</h3><div style={styles.installInstructions}><div style={styles.installSection}><h4>iPhone (Safari)</h4><ol><li>Pulsa el botón de <strong>Compartir</strong> (un cuadrado con una flecha hacia arriba).</li><li>Busca y pulsa en <strong>"Añadir a pantalla de inicio"</strong>.</li><li>¡Listo! Ya tienes la app en tu móvil.</li></ol></div><div style={styles.installSection}><h4>Android (Chrome)</h4><ol><li>Pulsa el botón de <strong>Menú</strong> (tres puntos verticales).</li><li>Busca y pulsa en <strong>"Instalar aplicación"</strong> o "Añadir a pantalla de inicio".</li><li>¡Listo! Ya tienes la app en tu móvil.</li></ol></div></div><button onClick={onClose} style={styles.mainButton}>Entendido</button></div></div>);
-const NotificationPermissionModal = ({ onAllow, onDeny }) => (<div style={styles.modalOverlay}><div style={styles.modalContent} onClick={(e) => e.stopPropagation()}><div style={{textAlign: 'center', marginBottom: '20px'}}><span style={{fontSize: '4rem'}}>🔔</span></div><h3 style={styles.title}>REACTIVAR NOTIFICACIONES</h3><p style={{textAlign: 'center', marginBottom: '20px', lineHeight: 1.5}}>¡Hemos mejorado nuestro sistema de avisos! Para asegurarte de que sigues recibiendo las notificaciones importantes, necesitamos que vuelvas a aceptar el permiso. ¡Gracias!</p><ul style={{listStyle: 'none', padding: 0, marginBottom: '30px', textAlign: 'center'}}><li style={{marginBottom: '10px'}}>✅ Avisos de nuevas jornadas</li><li style={{marginBottom: '10px'}}>⏳ Recordatorios de cierre</li><li style={{marginBottom: '10px'}}>🏆 Resultados y ganadores</li></ul><div style={{display: 'flex', justifyContent: 'space-around', gap: '10px'}}><button onClick={onDeny} style={{...styles.mainButton, backgroundColor: 'transparent', color: styles.colors.lightText, borderColor: styles.colors.lightText}}>Ahora no</button><button onClick={onAllow} style={styles.mainButton}>Reactivar</button></div></div></div>);
+const InstallGuideModal = ({ onClose }) => {
+    return (<div style={styles.modalOverlay} onClick={onClose}><div style={styles.modalContent} onClick={(e) => e.stopPropagation()}><h3 style={styles.title}>Instalar App</h3><div style={styles.installInstructions}><div style={styles.installSection}><h4>iPhone (Safari)</h4><ol><li>Pulsa el botón de <strong>Compartir</strong> (un cuadrado con una flecha hacia arriba).</li><li>Busca y pulsa en <strong>"Añadir a pantalla de inicio"</strong>.</li><li>¡Listo! Ya tienes la app en tu móvil.</li></ol></div><div style={styles.installSection}><h4>Android (Chrome)</h4><ol><li>Pulsa el botón de <strong>Menú</strong> (tres puntos verticales).</li><li>Busca y pulsa en <strong>"Instalar aplicación"</strong> o "Añadir a pantalla de inicio".</li><li>¡Listo! Ya tienes la app en tu móvil.</li></ol></div></div><button onClick={onClose} style={styles.mainButton}>Entendido</button></div></div>);
+};
+
+const NotificationPermissionModal = ({ onAllow, onDeny }) => {
+    return (
+        <div style={styles.modalOverlay}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <div style={{textAlign: 'center', marginBottom: '20px'}}><span style={{fontSize: '4rem'}}>🔔</span></div>
+                <h3 style={styles.title}>REACTIVAR NOTIFICACIONES</h3>
+                <p style={{textAlign: 'center', marginBottom: '20px', lineHeight: 1.5}}>
+                    ¡Hemos mejorado nuestro sistema de avisos! Para asegurarte de que sigues recibiendo las notificaciones importantes, necesitamos que vuelvas a aceptar el permiso. ¡Gracias!
+                </p>
+                <ul style={{listStyle: 'none', padding: 0, marginBottom: '30px', textAlign: 'center'}}>
+                    <li style={{marginBottom: '10px'}}>✅ Avisos de nuevas jornadas</li>
+                    <li style={{marginBottom: '10px'}}>⏳ Recordatorios de cierre</li>
+                    <li style={{marginBottom: '10px'}}>🏆 Resultados y ganadores</li>
+                </ul>
+                <div style={{display: 'flex', justifyContent: 'space-around', gap: '10px'}}>
+                    <button onClick={onDeny} style={{...styles.mainButton, backgroundColor: 'transparent', color: styles.colors.lightText, borderColor: styles.colors.lightText}}>Ahora no</button>
+                    <button onClick={onAllow} style={styles.mainButton}>Reactivar</button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const LiquidarPagoModal = ({ onClose, onConfirm }) => {
-    const [isChecked, setIsChecked] = useState(false); const handleConfirm = () => { if (isChecked) onConfirm(); };
-    return (<div style={styles.modalOverlay}><div style={styles.modalContent} onClick={(e) => e.stopPropagation()}><h3 style={styles.title}>CONFIRMAR PAGO</h3><p style={{textAlign: 'center', marginBottom: '20px', lineHeight: 1.5}}>Estás a punto de marcar tu apuesta como pagada. Esto sirve como un aviso para el administrador.</p><p style={{textAlign: 'center', marginBottom: '20px', lineHeight: 1.5, fontWeight: 'bold', color: styles.colors.warning}}>Recuerda que el administrador debe validar el pago manualmente después de tu confirmación.</p><div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '30px'}}><input type="checkbox" id="confirm-pago-check" checked={isChecked} onChange={() => setIsChecked(!isChecked)} style={styles.checkbox}/><label htmlFor="confirm-pago-check" style={{marginLeft: '10px', color: styles.colors.lightText}}>Confirmo que he realizado el pago de esta jornada.</label></div><div style={{display: 'flex', justifyContent: 'space-around', gap: '10px'}}><button onClick={onClose} style={{...styles.mainButton, backgroundColor: 'transparent', color: styles.colors.lightText, borderColor: styles.colors.lightText}}>Cancelar</button><button onClick={handleConfirm} style={styles.mainButton} disabled={!isChecked}>Confirmar Pago</button></div></div></div>);
+    const [isChecked, setIsChecked] = useState(false);
+
+    const handleConfirm = () => {
+        if (isChecked) {
+            onConfirm();
+        }
+    };
+
+    return (
+        <div style={styles.modalOverlay}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <h3 style={styles.title}>CONFIRMAR PAGO</h3>
+                <p style={{textAlign: 'center', marginBottom: '20px', lineHeight: 1.5}}>
+                    Estás a punto de marcar tu apuesta como pagada. Esto sirve como un aviso para el administrador.
+                </p>
+                <p style={{textAlign: 'center', marginBottom: '20px', lineHeight: 1.5, fontWeight: 'bold', color: styles.colors.warning}}>
+                    Recuerda que el administrador debe validar el pago manualmente después de tu confirmación.
+                </p>
+                <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '30px'}}>
+                    <input 
+                        type="checkbox" 
+                        id="confirm-pago-check" 
+                        checked={isChecked} 
+                        onChange={() => setIsChecked(!isChecked)}
+                        style={styles.checkbox}
+                    />
+                    <label htmlFor="confirm-pago-check" style={{marginLeft: '10px', color: styles.colors.lightText}}>
+                        Confirmo que he realizado el pago de esta jornada.
+                    </label>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-around', gap: '10px'}}>
+                    <button onClick={onClose} style={{...styles.mainButton, backgroundColor: 'transparent', color: styles.colors.lightText, borderColor: styles.colors.lightText}}>Cancelar</button>
+                    <button onClick={handleConfirm} style={styles.mainButton} disabled={!isChecked}>
+                        Confirmar Pago
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const LoadingSkeleton = ({ type = 'list' }) => {
@@ -491,25 +676,278 @@ const LoadingSkeleton = ({ type = 'list' }) => {
 };
 
 const AnimatedPoints = ({ value }) => {
-    const [displayValue, setDisplayValue] = useState(value); const prevValueRef = useRef(value);
-    useEffect(() => { if (value !== prevValueRef.current) { const element = document.getElementById(`animated-points-${value}`); if (element) { element.style.transform = 'scale(1.3)'; element.style.transition = 'transform 0.2s ease-out'; setTimeout(() => { element.style.transform = 'scale(1)'; }, 200); } setDisplayValue(value); prevValueRef.current = value; } }, [value]);
+    const [displayValue, setDisplayValue] = useState(value);
+    const prevValueRef = useRef(value);
+
+    useEffect(() => {
+        if (value !== prevValueRef.current) {
+            const element = document.getElementById(`animated-points-${value}`);
+            if (element) {
+                element.style.transform = 'scale(1.3)';
+                element.style.transition = 'transform 0.2s ease-out';
+                setTimeout(() => {
+                    element.style.transform = 'scale(1)';
+                }, 200);
+            }
+            setDisplayValue(value);
+            prevValueRef.current = value;
+        }
+    }, [value]);
+
     return <span id={`animated-points-${value}`}>{displayValue}</span>;
 };
 
 const PieChart = ({ data }) => {
-    const radius = 50; const circumference = 2 * Math.PI * radius; let accumulatedRotation = 0;
+    const radius = 50;
+    const circumference = 2 * Math.PI * radius;
+    let accumulatedRotation = 0;
+
     return (
         <div style={styles.pieChartContainer}>
             <svg viewBox="0 0 120 120" style={styles.pieChartSvg}>
                 <g transform="rotate(-90 60 60)">
                     {data.map((segment, index) => {
-                        const percentage = parseFloat(segment.percentage); if (isNaN(percentage) || percentage === 0) return null;
-                        const strokeDasharray = `${(percentage / 100) * circumference} ${circumference}`; const rotation = accumulatedRotation; accumulatedRotation += (percentage / 100) * 360;
-                        return (<circle key={index} cx="60" cy="60" r={radius} fill="transparent" stroke={segment.color} strokeWidth="20" strokeDasharray={circumference} strokeDashoffset={circumference} style={{ '--stroke-dasharray': strokeDasharray, '--rotation': `${rotation}deg`, animationDelay: `${index * 0.2}s` }} className="pie-chart-segment-new"/>);
+                        const percentage = parseFloat(segment.percentage);
+                        if (isNaN(percentage) || percentage === 0) return null;
+                        const strokeDasharray = `${(percentage / 100) * circumference} ${circumference}`;
+                        const rotation = accumulatedRotation;
+                        accumulatedRotation += (percentage / 100) * 360;
+
+                        return (
+                            <circle
+                                key={index}
+                                cx="60"
+                                cy="60"
+                                r={radius}
+                                fill="transparent"
+                                stroke={segment.color}
+                                strokeWidth="20"
+                                strokeDasharray={circumference}
+                                strokeDashoffset={circumference}
+                                style={{
+                                    '--stroke-dasharray': strokeDasharray,
+                                    '--rotation': `${rotation}deg`,
+                                    animationDelay: `${index * 0.2}s`
+                                }}
+                                className="pie-chart-segment-new"
+                            />
+                        );
                     })}
                 </g>
             </svg>
-            <div style={styles.pieChartLegend}>{data.map((segment, index) => (<div key={index} style={styles.pieChartLegendItem}><span style={{...styles.pieChartLegendColor, backgroundColor: segment.color}}></span><span>{segment.label} ({segment.percentage}%)</span></div>))}</div>
+            <div style={styles.pieChartLegend}>
+                {data.map((segment, index) => (
+                    <div key={index} style={styles.pieChartLegendItem}>
+                        <span style={{...styles.pieChartLegendColor, backgroundColor: segment.color}}></span>
+                        <span>{segment.label} ({segment.percentage}%)</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const FullStatsModal = ({ stats, onClose }) => {
+    if (!stats) return null;
+
+    const renderTeamDetails = (teamData, homeOrAway) => {
+        if (!teamData) return <p>Datos no disponibles</p>;
+        const formString = (teamData.form || '').slice(-5);
+        return (
+            <div style={styles.modalTeamColumn}>
+                <div style={styles.preMatchTeamHeader}>
+                    <img src={teamData.logo} alt={teamData.name} style={styles.preMatchTeamLogo} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }} />
+                    <span style={styles.preMatchTeamName}>{teamData.name}</span>
+                </div>
+                <div style={styles.modalStatSection}>
+                    <h4>Últimos 5 Partidos</h4>
+                    <div style={styles.preMatchFormContainer}>
+                        {formString.split('').map((result, index) => {
+                            let backgroundColor = styles.colors.darkUIAlt;
+                            let letter = '?';
+                            if (result.toLowerCase() === 'w') { backgroundColor = styles.colors.success; letter = 'V'; }
+                            else if (result.toLowerCase() === 'd') { backgroundColor = styles.colors.warning; letter = 'E'; }
+                            else if (result.toLowerCase() === 'l') { backgroundColor = styles.colors.danger; letter = 'D'; }
+                            return (<span key={index} style={{ ...styles.preMatchFormIndicator, backgroundColor }}>{letter}</span>);
+                        })}
+                    </div>
+                </div>
+                <div style={styles.modalStatSection}>
+                    <h4>Estadísticas ({homeOrAway})</h4>
+                    <div style={styles.preMatchStatItem}><span>Partidos Jugados</span> <strong>{teamData.statsHomeOrAway?.played || 'N/A'}</strong></div>
+                    <div style={styles.preMatchStatItem}><span>Victorias</span> <strong>{teamData.statsHomeOrAway?.win || 'N/A'}</strong></div>
+                    <div style={styles.preMatchStatItem}><span>Empates</span> <strong>{teamData.statsHomeOrAway?.draw || 'N/A'}</strong></div>
+                    <div style={styles.preMatchStatItem}><span>Derrotas</span> <strong>{teamData.statsHomeOrAway?.lose || 'N/A'}</strong></div>
+                    <div style={styles.preMatchStatItem}><span>Goles</span> <strong>{teamData.statsHomeOrAway?.goals?.for || 'N/A'}:{teamData.statsHomeOrAway?.goals?.against || 'N/A'}</strong></div>
+                </div>
+                <div style={styles.modalStatSection}>
+                    <h4>Máximos Goleadores</h4>
+                    {teamData.topScorers && teamData.topScorers.length > 0 ? (
+                        <ul style={styles.topScorersList}>
+                            {teamData.topScorers.slice(0, 3).map((scorer, index) => (
+                                <li key={index}>
+                                    <span>{scorer.player.name}</span>
+                                    <strong>{scorer.statistics[0].goals.total} Goles</strong>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : <p>No disponible</p>}
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div style={styles.modalOverlay} onClick={onClose}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <h3 style={styles.title}>COMPARADOR COMPLETO</h3>
+                <div style={styles.modalComparison}>
+                    {renderTeamDetails(stats.local, 'Local')}
+                    <div style={styles.preMatchVS}>VS</div>
+                    {renderTeamDetails(stats.visitante, 'Visitante')}
+                </div>
+                <button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>CERRAR</button>
+            </div>
+        </div>
+    );
+};
+
+const PreMatchStats = ({ stats, lastUpdated, onOpenModal }) => {
+    const [pulsing, setPulsing] = useState(false);
+
+    useEffect(() => {
+        if (lastUpdated) {
+            setPulsing(true);
+            const timer = setTimeout(() => setPulsing(false), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [lastUpdated]);
+
+    if (!stats) return null;
+
+    const renderTeamStats = (teamData) => {
+        const logo = teamData?.logo || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?';
+        if (!teamData) return <div style={styles.preMatchTeamContainer}><p>Datos no disponibles</p></div>;
+
+        return (
+            <div style={styles.preMatchTeamContainer}>
+                <img src={logo} alt={teamData.name} style={styles.preMatchTeamLogo} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }} />
+                <div style={styles.preMatchStatsBody}>
+                    <div style={styles.preMatchStatItem}><span>Posición</span> <strong><AnimatedStat value={teamData.rank} />º</strong></div>
+                    <div style={styles.preMatchStatItem}><span>Puntos</span> <strong><AnimatedStat value={teamData.points} /></strong></div>
+                    <div style={styles.preMatchStatItem}><span>Goles</span> <strong><AnimatedStat value={teamData.golesFavor} />:<AnimatedStat value={teamData.golesContra} /></strong></div>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className={pulsing ? 'pulse-animation' : ''} style={styles.preMatchContainer}>
+            <div style={styles.preMatchTitleContainer}>
+                <h4 style={styles.preMatchTitle} className="app-title">ESTADÍSTICAS</h4>
+                <div style={styles.lastUpdatedContainer}>
+                    <span className="live-dot-animation" style={styles.liveDot}></span>
+                    <span>Actualizado: {new Date(lastUpdated).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+            </div>
+            <div style={styles.preMatchComparison}>
+                {renderTeamStats(stats.local)}
+                <div style={styles.preMatchVS}>VS</div>
+                {renderTeamStats(stats.visitante)}
+            </div>
+            <button onClick={onOpenModal} style={{...styles.secondaryButton, width: '100%', marginTop: '15px'}}>Ver Comparador Completo</button>
+        </div>
+    );
+};
+
+const ConfirmacionPronosticoModal = ({ pronostico, onConfirm, onCancel }) => {
+    return (
+        <div style={styles.modalOverlay}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <h3 style={styles.title}>CONFIRMAR PRONÓSTICO</h3>
+                <p style={{textAlign: 'center', marginBottom: '20px'}}>Por favor, revisa que tu pronóstico es correcto antes de guardarlo:</p>
+                <div style={styles.confirmacionResumen}>
+                    <p><strong>Resultado:</strong> {pronostico.golesLocal} - {pronostico.golesVisitante}</p>
+                    <p><strong>1X2:</strong> {pronostico.resultado1x2 || 'No seleccionado'}</p>
+                    <p><strong>Goleador:</strong> {pronostico.sinGoleador ? 'Sin Goleador' : (pronostico.goleador || 'No seleccionado')}</p>
+                    {pronostico.jokerActivo && <p><strong>Joker:</strong> <span style={{color: styles.colors.success}}>ACTIVADO</span></p>}
+                    {pronostico.pin && <p><strong>PIN:</strong> <span style={{color: styles.colors.success}}>PROTEGIDO</span></p>}
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-around', gap: '10px'}}>
+                    <button onClick={onCancel} style={{...styles.mainButton, backgroundColor: 'transparent', color: styles.colors.lightText, borderColor: styles.colors.lightText}}>Cancelar</button>
+                    <button onClick={onConfirm} style={styles.mainButton}>Guardar Apuesta</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const HistorialCambiosModal = ({ historial, loading, onClose }) => {
+    return (
+        <div style={styles.modalOverlay} onClick={onClose}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <h3 style={styles.title}>HISTORIAL DE CAMBIOS</h3>
+                <div style={styles.historyContainer}>
+                    {loading ? <p>Cargando historial...</p> : (
+                        historial.length > 0 ? (
+                            historial.map((entrada, index) => (
+                                <div key={index} style={styles.historyEntry}>
+                                    <p style={styles.historyTimestamp}><strong>Fecha:</strong> {formatFullDateTime(entrada.timestamp)}</p>
+                                    <div style={styles.historyDetails}>
+                                        <p><strong>Resultado:</strong> {entrada.pronostico.golesLocal}-{entrada.pronostico.golesVisitante}</p>
+                                        <p><strong>1X2:</strong> {entrada.pronostico.resultado1x2}</p>
+                                        <p><strong>Goleador:</strong> {entrada.pronostico.sinGoleador ? 'SG' : (entrada.pronostico.goleador || 'N/A')}</p>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <p>No hay historial de cambios para este pronóstico.</p>
+                        )
+                    )}
+                </div>
+                <button onClick={onClose} style={{...styles.mainButton, marginTop: '20px'}}>Cerrar</button>
+            </div>
+        </div>
+    );
+};
+
+const AdminLoginModal = ({ onClose, onSuccess }) => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+            onSuccess();
+        } catch (err) {
+            setError('Error: Email o contraseña incorrectos.');
+            console.error("Error de login de admin:", err);
+        }
+    };
+
+    return (
+        <div style={styles.modalOverlay}>
+            <div style={styles.modalContent}>
+                <h3 style={styles.title}>ACCESO ADMIN</h3>
+                <form onSubmit={handleSubmit}>
+                    <div style={styles.formGroup}>
+                        <label style={styles.label}>Email:</label>
+                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={styles.input} required />
+                    </div>
+                    <div style={styles.formGroup}>
+                        <label style={styles.label}>Contraseña:</label>
+                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={styles.input} required />
+                    </div>
+                    {error && <p style={{color: styles.colors.danger, textAlign: 'center'}}>{error}</p>}
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '20px'}}>
+                        <button type="button" onClick={onClose} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>CANCELAR</button>
+                        <button type="submit" style={styles.mainButton}>ENTRAR</button>
+                    </div>
+                </form>
+            </div>
         </div>
     );
 };
@@ -536,253 +974,852 @@ const ResumenModal = ({ data, onClose, userProfiles }) => {
 
 const NewsTicker = ({ stats, onHoverChange }) => {
     if (!stats || stats.length === 0) return null;
+
     return (
         <div style={styles.newsTickerContainer} onMouseEnter={() => onHoverChange(true)} onMouseLeave={() => onHoverChange(false)}>
             <div style={styles.newsTickerContent}>
-                {stats.map((stat, index) => (<span key={index} style={styles.newsTickerItem}>{stat.emoji} <strong>{stat.titulo}:</strong> {stat.jugador} ({stat.valor} {stat.unidad})</span>))}
-                {stats.map((stat, index) => (<span key={`dup-${index}`} style={styles.newsTickerItem}>{stat.emoji} <strong>{stat.titulo}:</strong> {stat.jugador} ({stat.valor} {stat.unidad})</span>))}
+                {stats.map((stat, index) => (
+                    <span key={index} style={styles.newsTickerItem}>
+                       {stat.emoji} <strong>{stat.titulo}:</strong> {stat.jugador} ({stat.valor} {stat.unidad})
+                    </span>
+                ))}
+                 {stats.map((stat, index) => ( // Duplicado para un bucle infinito y suave
+                    <span key={`dup-${index}`} style={styles.newsTickerItem}>
+                       {stat.emoji} <strong>{stat.titulo}:</strong> {stat.jugador} ({stat.valor} {stat.unidad})
+                    </span>
+                ))}
             </div>
         </div>
     );
 };
 
-// ============================================================================
-// --- COMPONENTES DE LAS PANTALLAS (DEFINIDOS ANTES DE APP) ---
-// ============================================================================
 
-const InitialSplashScreen = ({ onFinish }) => {
-    const [fadingOut, setFadingOut] = useState(false); useEffect(() => { const timer = setTimeout(() => { setFadingOut(true); setTimeout(onFinish, 500); }, 2500); return () => clearTimeout(timer); }, [onFinish]);
-    return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando datos...</p></div></div>);
+// --- COMPONENTES DE PANTALLA ---
+
+const initialPronosticoState = { 
+    golesLocal: '', 
+    golesVisitante: '', 
+    resultado1x2: '', 
+    goleador: '', 
+    sinGoleador: false, 
+    pin: '', 
+    pinConfirm: '', 
+    jokerActivo: false, 
+    jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) 
 };
 
-const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
-    const [jornadaInfo, setJornadaInfo] = useState(null); const [countdown, setCountdown] = useState(''); const [loading, setLoading] = useState(true); const [showInstallGuide, setShowInstallGuide] = useState(false); const [stats, setStats] = useState(null); const [currentStatIndex, setCurrentStatIndex] = useState(0); const isMobile = useMemo(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
+const ProximaJornadaInfo = ({ jornada }) => {
+    if (!jornada) return null;
+    const fechaMostrada = jornada.fechaPartido || jornada.fechaCierre;
+    return (
+        <div style={{marginTop: '30px', borderTop: `1px solid ${styles.colors.blue}`, paddingTop: '20px'}}>
+            <h4 style={{...styles.formSectionTitle, fontSize: '1.2rem'}}>Próximo Partido: Jornada {jornada.numeroJornada}</h4>
+            <p style={{fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center'}}>{jornada.equipoLocal} vs {jornada.equipoVisitante}</p>
+            {jornada.bote > 0 && <div style={{...styles.jackpotBanner, marginTop: '15px'}}>💰 JACKPOT: ¡{jornada.bote}€ DE BOTE! 💰</div>}
+            <p style={{textAlign: 'center'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p>
+            {jornada.estadio && <p style={{textAlign: 'center'}}>📍 {jornada.estadio}</p>}
+        </div>
+    );
+};
+
+const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
+    const [currentJornada, setCurrentJornada] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [pronostico, setPronostico] = useState(initialPronosticoState);
+    const [hasSubmitted, setHasSubmitted] = useState(false);
+    const [isLocked, setIsLocked] = useState(true);
+    const [pinInput, setPinInput] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [message, setMessage] = useState({text: '', type: 'info'});
+    const [stats, setStats] = useState({ count: 0, color: styles.colors.success });
+    const [jokersRestantes, setJokersRestantes] = useState(2);
+    const [panicButtonDisabled, setPanicButtonDisabled] = useState(false);
+    const [allPronosticos, setAllPronosticos] = useState([]);
+    const [jokerStats, setJokerStats] = useState(Array(10).fill(null));
+    const [showJokerAnimation, setShowJokerAnimation] = useState(false);
+    const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
+    const [tieneDeuda, setTieneDeuda] = useState(false);
+    const [interJornadaStatus, setInterJornadaStatus] = useState(null);
+    
+    const [preMatchStats, setPreMatchStats] = useState(null);
+    const [fullPreMatchStats, setFullPreMatchStats] = useState(null); // Para el modal
+    const [showStatsModal, setShowStatsModal] = useState(false);
+    const [loadingPreMatch, setLoadingPreMatch] = useState(false);
+    const [lastApiUpdate, setLastApiUpdate] = useState(null);
+    const apiTimerRef = useRef(null);
+    const lastApiCallDay = useRef(null); // Formato YYYY-MM-DD
+    
+    const [showConfirmacionModal, setShowConfirmacionModal] = useState(false);
+    const [pronosticoParaConfirmar, setPronosticoParaConfirmar] = useState(null);
+    const [showLiquidarPagoModal, setShowLiquidarPagoModal] = useState(false);
+    
+    const initialJokerStatus = useRef(false);
+    
+    const userProfile = userProfiles[user] || {};
+
     useEffect(() => {
-        setLoading(true); const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
+        setLoading(true);
+        const userJokerRef = doc(db, "clasificacion", user);
+        getDoc(userJokerRef).then(docSnap => { setJokersRestantes(docSnap.exists() && docSnap.data().jokersRestantes !== undefined ? docSnap.data().jokersRestantes : 2); });
+
+        const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
         const unsubscribe = onSnapshot(qJornadas, (snap) => {
-            const ahora = new Date(); const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            let jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta' || j.estado === 'Pre-apertura') || todasLasJornadas.find(j => j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate());
-            if (jornadaActiva) {
-                const type = jornadaActiva.estado === 'Pre-apertura' ? 'pre-apertura' : 'activa'; setJornadaInfo({ ...jornadaActiva, type });
-                if (type === 'activa') { onSnapshot(collection(db, "pronosticos", jornadaActiva.id, "jugadores"), (pronosticosSnap) => { const pronosticos = pronosticosSnap.docs.map(doc => doc.data()); if (pronosticos.length > 0) { const goleadorCounts = pronosticos.reduce((acc, p) => { if(p.goleador) acc[p.goleador] = (acc[p.goleador] || 0) + 1; return acc; }, {}); const resultadoCounts = pronosticos.reduce((acc, p) => { const res = `${p.golesLocal}-${p.golesVisitante}`; acc[res] = (acc[res] || 0) + 1; return acc; }, {}); setStats({ apostadoCount: pronosticos.length, sinApostar: JUGADORES.length - pronosticos.length, goleadorMasVotado: Object.keys(goleadorCounts).length > 0 ? Object.entries(goleadorCounts).sort((a,b) => b[1] - a[1])[0][0] : null, resultadoMasVotado: Object.keys(resultadoCounts).length > 0 ? Object.entries(resultadoCounts).sort((a,b) => b[1] - a[1])[0][0] : null, jokersActivos: pronosticos.filter(p => p.jokerActivo).length }); } else setStats(null); }); } else setStats(null);
-            } else {
-                setStats(null); let jornadaCerrada = todasLasJornadas.find(j => j.estado === 'Cerrada'); if (jornadaCerrada) { setJornadaInfo({ ...jornadaCerrada, type: 'cerrada' }); }
-                else { const ultimasFinalizadas = todasLasJornadas.filter(j => j.estado === 'Finalizada').sort((a,b) => b.numeroJornada - a.numeroJornada); if (ultimasFinalizadas.length > 0) { setJornadaInfo({ ...ultimasFinalizadas[0], type: 'finalizada' }); } else { const proximas = todasLasJornadas.filter(j => j.estado === 'Próximamente').sort((a,b) => a.numeroJornada - b.numeroJornada); if (proximas.length > 0) setJornadaInfo({ ...proximas[0], type: 'proxima' }); else setJornadaInfo(null); } }
+            const ahora = new Date();
+            const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            
+            let jornadaActiva = todasLasJornadas.find(j => ['Abierta', 'Pre-apertura', 'Cerrada'].includes(j.estado));
+            
+            if (!jornadaActiva) {
+                 jornadaActiva = todasLasJornadas.find(j => j.estado === 'Próximamente' && j.fechaApertura?.toDate() <= ahora && ahora < j.fechaCierre?.toDate());
             }
-            setLoading(false);
-        }, (error) => { console.error("Error fetching jornada: ", error); setLoading(false); });
-        return () => unsubscribe();
-    }, []);
-    useEffect(() => {
-        if (!jornadaInfo) return;
-        const targetDate = (jornadaInfo.type === 'activa' || jornadaInfo.estado === 'Abierta') ? jornadaInfo.fechaCierre?.toDate() : (jornadaInfo.type === 'proxima' || jornadaInfo.type === 'pre-apertura' ? jornadaInfo.fechaApertura?.toDate() : null); if (!targetDate) { setCountdown(''); return; }
-        const interval = setInterval(() => {
-            const diff = targetDate - new Date();
-            if (diff <= 0) { let message = "¡PARTIDO EN JUEGO!"; if (jornadaInfo.type === 'activa') message = "¡APUESTAS CERRADAS!"; if (jornadaInfo.type === 'proxima' || jornadaInfo.type === 'pre-apertura') message = "¡APUESTAS ABIERTAS!"; setCountdown(message); clearInterval(interval); return; }
-            const d = Math.floor(diff / 86400000); const h = Math.floor((diff % 86400000) / 3600000); const m = Math.floor((diff % 3600000) / 60000); const s = Math.floor((diff % 60000) / 1000); setCountdown(`${d}d ${h}h ${m}m ${s}s`);
-        }, 1000);
-        return () => clearInterval(interval);
-    }, [jornadaInfo]);
-    useEffect(() => { if (stats) { const timer = setInterval(() => { setCurrentStatIndex(prevIndex => (prevIndex + 1) % 4); }, 4000); return () => clearInterval(timer); } }, [stats]);
-    const renderJornadaInfo = () => {
-        if (!jornadaInfo) return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>);
-        const fechaMostrada = jornadaInfo.fechaPartido || jornadaInfo.fechaCierre; let infoContent;
-        switch (jornadaInfo.type) {
-            case 'activa': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
-            case 'pre-apertura': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>LA APERTURA COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
-            case 'proxima': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>LA APERTURA COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
-            case 'cerrada': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS CERRADAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p><p>Esperando el resultado del partido...</p></>); break;
-            case 'finalizada': infoContent = (<><h3 style={styles.splashInfoTitle}>ÚLTIMA JORNADA FINALIZADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={styles.finalResult}>Resultado: {jornadaInfo.resultadoLocal} - {jornadaInfo.resultadoVisitante}</p></>); break;
-            default: infoContent = null;
-        }
-        return (<div style={styles.splashInfoBox}>{infoContent}{jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}</div>);
-    };
-    const statCards = stats ? [
-        <div key="apostado" style={styles.statCard}><div style={styles.statValue}>{stats.apostadoCount}/{JUGADORES.length}</div><div style={styles.statLabel}>Han apostado</div><div style={styles.splashStatDescription}>{stats.sinApostar} jugador(es) pendiente(s)</div></div>,
-        <div key="goleador" style={styles.statCard}><img src={plantilla.find(j => j.nombre === stats.goleadorMasVotado)?.imageUrl || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'} alt={stats.goleadorMasVotado} style={styles.splashStatImage} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }} /><div style={styles.statValue}>{stats.goleadorMasVotado || '-'}</div><div style={styles.statLabel}>Goleador más elegido</div></div>,
-        <div key="resultado" style={styles.statCard}><div style={styles.statValue}>{stats.resultadoMasVotado || '-'}</div><div style={styles.statLabel}>Resultado más común</div></div>,
-        <div key="joker" style={styles.statCard}><div style={styles.statValue}>🃏 {stats.jokersActivos}</div><div style={styles.statLabel}>Jokers Activados</div><div style={styles.splashStatDescription}>¡Apuestas extra en juego!</div></div>
-    ] : [];
-    return (<><div style={styles.splashContainer}><div style={styles.splashLogoContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div></div>{loading ? <LoadingSkeleton type="splash" /> : renderJornadaInfo()}{jornadaInfo?.type === 'activa' && stats && (<div style={styles.statsCarouselContainer}><div style={{...styles.statsCarouselTrack, transform: `translateX(-${currentStatIndex * 25}%)`}}>{statCards.map((card, index) => <div key={index} style={styles.statCardWrapper}>{card}</div>)}</div></div>)}<button onClick={onEnter} style={styles.mainButton}>ENTRAR</button>{isMobile && (<button onClick={() => setShowInstallGuide(true)} style={styles.installButton}>¿Cómo instalar la App?</button>)}</div>{showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}</>);
-};
-
-const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
-    const [hoveredUser, setHoveredUser] = useState(null); const [recentUsers, setRecentUsers] = useState([]);
-    useEffect(() => { const storedUsers = localStorage.getItem('recentPorraUsers'); if (storedUsers) setRecentUsers(JSON.parse(storedUsers)); }, []);
-    const handleSelectUser = (jugador) => { const updatedRecentUsers = [jugador, ...recentUsers.filter(u => u !== jugador)].slice(0, 3); setRecentUsers(updatedRecentUsers); localStorage.setItem('recentPorraUsers', JSON.stringify(updatedRecentUsers)); onLogin(jugador); };
-    const sortedJugadores = useMemo(() => { const remainingJugadores = JUGADORES.filter(j => !recentUsers.includes(j)); return [...recentUsers, ...remainingJugadores]; }, [recentUsers]);
-    const getBadgeStyle = (profile) => {
-        if (!profile?.badges?.length) return {}; const highestPriorityBadge = profile.badges.map(key => ({ key, ...BADGE_DEFINITIONS[key] })).filter(b => b.name && b.style).sort((a, b) => a.priority - b.priority)[0];
-        if (highestPriorityBadge) { let animationProps = '2s infinite alternate'; if(highestPriorityBadge.style === 'pleno-flash') animationProps = '0.5s ease-in-out 3'; if(highestPriorityBadge.style === 'cold-streak') animationProps = '1.5s infinite'; return { animation: `${highestPriorityBadge.style}-animation ${animationProps}` }; }
-        return {};
-    };
-    return (<div style={styles.loginContainer}><h2 style={styles.title}>SELECCIONA TU PERFIL</h2><div style={styles.userList}>{sortedJugadores.map(jugador => { const profile = userProfiles[jugador] || {}; const isOnline = onlineUsers[jugador]; const isRecent = recentUsers.includes(jugador); const isGradient = typeof profile.color === 'string' && profile.color.startsWith('linear-gradient'); const lastSeenText = !isOnline ? formatLastSeen(profile.ultimaConexion) : null; const badgeStyle = getBadgeStyle(profile); const buttonStyle = { ...styles.userButton, ...(hoveredUser === jugador && styles.userButtonHover), ...(isOnline && styles.userButtonOnline), ...badgeStyle }; const circleStyle = { ...styles.loginProfileIconCircle, ...(isGradient ? { background: profile.color } : { backgroundColor: profile.color || styles.colors.blue }) };
-        return (<button key={jugador} onClick={() => handleSelectUser(jugador)} style={buttonStyle} onMouseEnter={() => setHoveredUser(jugador)} onMouseLeave={() => setHoveredUser(null)}>{isRecent && <div style={styles.recentUserIndicator}>★</div>}<div style={circleStyle}>{profile.icon || '?'}</div><div style={styles.loginUserInfo}><span>{jugador}</span>{isOnline && <span style={styles.onlineStatusText}>Online</span>}{lastSeenText && <span style={styles.lastSeenText}>{lastSeenText}</span>}</div></button>);
-    })}</div></div>);
-};
-
-// ... ALL OTHER SCREEN AND HELPER COMPONENTS MUST BE DEFINED HERE ...
-
-// ============================================================================
-// --- PANTALLA PRINCIPAL Y ROUTING (COMPONENTE APP AL FINAL) ---
-// ============================================================================
-function App() {
-    const [showInitialSplash, setShowInitialSplash] = useState(true);
-    const [screen, setScreen] = useState('splash');
-    const [activeTab, setActiveTab] = useState('miJornada');
-    const [currentUser, setCurrentUser] = useState(null);
-    const [viewingJornadaId, setViewingJornadaId] = useState(null);
-    const [showAdminLogin, setShowAdminLogin] = useState(false);
-    const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-    const [teamLogos, setTeamLogos] = useState({});
-    const [porraAnualConfig, setPorraAnualConfig] = useState(null);
-    const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
-    const [winnerData, setWinnerData] = useState(null);
-    const [liveJornada, setLiveJornada] = useState(null);
-    const [plantilla, setPlantilla] = useState(PLANTILLA_ACTUALIZADA);
-    const [showNotificationModal, setShowNotificationModal] = useState(false);
-    const [userProfiles, setUserProfiles] = useState({});
-    const [onlineUsers, setOnlineUsers] = useState({});
-    const [isVipActive, setIsVipActive] = useState(false);
-    const anonymousUserRef = useRef(null);
-
-    const [globalStats, setGlobalStats] = useState(null);
-    const [tickerStats, setTickerStats] = useState([]);
-    const [isTickerPaused, setIsTickerPaused] = useState(false);
-
-    const calculateAndSaveGlobalStats = useCallback(async () => {
-        console.log("Iniciando cálculo de estadísticas globales...");
-        const qJornadas = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"));
-        const jornadasSnap = await getDocs(qJornadas);
-        const jornadas = jornadasSnap.docs.map(j => ({ id: j.id, ...j.data() }));
-        if (jornadas.length === 0) { console.log("No hay jornadas finalizadas."); return; }
-        const allPronosticos = {};
-        for (const j of jornadas) { const pronosSnap = await getDocs(collection(db, "pronosticos", j.id, "jugadores")); allPronosticos[j.id] = pronosSnap.docs.map(d => ({ ...d.data(), id: d.id })); }
-        let stats = { reyMidas: { jugador: null, valor: 0 }, elPelotazo: { jugador: null, valor: 0, jornada: null }, elAtrevido: { jugador: null, valor: 0 }, mrRegularidad: { jugador: null, valor: 0 }, elProfeta: { jugador: null, valor: 0 }, elVisionario: { jugador: null, valor: 0 }, elCenizo: { jugador: null, valor: 0 }, elObstinado: { jugador: null, valor: 0, resultado: '' }, };
-        const playerStats = {}; JUGADORES.forEach(j => { playerStats[j] = { money: 0, atrevidoCount: 0, jornadasPuntuando: 0, goleadorCount: 0, rachaActual: 0, rachaMaxima: 0, malaRachaActual: 0, malaRachaMaxima: 0, resultados: {} }; });
-        const sortedJornadas = [...jornadas].sort((a, b) => a.numeroJornada - b.numeroJornada);
-        for (const j of sortedJornadas) {
-            const pronosJornada = allPronosticos[j.id] || []; const coste = j.esVip ? APUESTA_VIP : APUESTA_NORMAL; const premio = j.ganadores?.length > 0 ? (((j.bote || 0) + (pronosJornada.length * coste)) / j.ganadores.length) : 0;
-            for (const jugador of JUGADORES) {
-                const p = pronosJornada.find(pr => pr.id === jugador);
-                if (!p) { playerStats[jugador].rachaActual = 0; playerStats[jugador].malaRachaActual = 0; continue; }
-                if (j.ganadores?.includes(jugador)) playerStats[jugador].money += premio;
-                const puntos = p.puntosObtenidos || 0; if (puntos > (stats.elPelotazo.valor || 0)) { stats.elPelotazo = { jugador, valor: puntos, jornada: j.numeroJornada }; }
-                if (j.ganadores?.includes(jugador)) { const miResultado = `${p.golesLocal}-${p.golesVisitante}`; const esUnico = pronosJornada.filter(pr => `${pr.golesLocal}-${pr.golesVisitante}` === miResultado).length === 1; if (esUnico) playerStats[jugador].atrevidoCount++; }
-                if (puntos > 0) { playerStats[jugador].jornadasPuntuando++; playerStats[jugador].rachaActual++; playerStats[jugador].malaRachaActual = 0; } else { playerStats[jugador].rachaActual = 0; playerStats[jugador].malaRachaActual++; }
-                if (playerStats[jugador].rachaActual > playerStats[jugador].rachaMaxima) playerStats[jugador].rachaMaxima = playerStats[jugador].rachaActual; if (playerStats[jugador].malaRachaActual > playerStats[jugador].malaRachaMaxima) playerStats[jugador].malaRachaMaxima = playerStats[jugador].malaRachaActual;
-                const goleadorReal = (j.goleador || '').trim().toLowerCase(); const goleadorApostado = (p.goleador || '').trim().toLowerCase(); if ((p.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) || (!p.sinGoleador && goleadorApostado !== "" && goleadorApostado === goleadorReal)) { playerStats[jugador].goleadorCount++; }
-                const resultadoStr = `${p.golesLocal}-${p.golesVisitante}`; playerStats[jugador].resultados[resultadoStr] = (playerStats[jugador].resultados[resultadoStr] || 0) + 1;
-            }
-        }
-        JUGADORES.forEach(jugador => {
-            if (playerStats[jugador].money > stats.reyMidas.valor) stats.reyMidas = { jugador, valor: playerStats[jugador].money.toFixed(2) }; if (playerStats[jugador].atrevidoCount > stats.elAtrevido.valor) stats.elAtrevido = { jugador, valor: playerStats[jugador].atrevidoCount }; if (playerStats[jugador].jornadasPuntuando > stats.mrRegularidad.valor) stats.mrRegularidad = { jugador, valor: playerStats[jugador].jornadasPuntuando }; if (playerStats[jugador].goleadorCount > stats.elProfeta.valor) stats.elProfeta = { jugador, valor: playerStats[jugador].goleadorCount }; if (playerStats[jugador].rachaMaxima > stats.elVisionario.valor) stats.elVisionario = { jugador, valor: playerStats[jugador].rachaMaxima }; if (playerStats[jugador].malaRachaMaxima > stats.elCenizo.valor) stats.elCenizo = { jugador, valor: playerStats[jugador].malaRachaMaxima };
-            const [resultado, count] = Object.entries(playerStats[jugador].resultados).sort((a, b) => b[1] - a[1])[0] || [null, 0]; if (count > stats.elObstinado.valor) stats.elObstinado = { jugador, valor: count, resultado };
-        });
-        const finalStats = { ...stats, elObstinado: { ...stats.elObstinado, valor: `${stats.elObstinado.resultado} (${stats.elObstinado.valor} veces)` } };
-        await setDoc(doc(db, "configuracion", "globalStats"), finalStats); setGlobalStats(finalStats); console.log("Estadísticas globales actualizadas.", finalStats);
-    }, []);
-
-    useEffect(() => {
-        const unsubscribeAuth = onAuthStateChanged(auth, (user) => { if (user && !user.isAnonymous) setIsAdminAuthenticated(true); else if (user && user.isAnonymous) { anonymousUserRef.current = user; setIsAdminAuthenticated(false); } else signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error)); });
-        const styleSheet = document.createElement("style"); styleSheet.innerText = `@import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap'); * { margin: 0; padding: 0; box-sizing: border-box; } html { font-size: 16px !important; -webkit-text-size-adjust: 100%; } body, #root { width: 100%; min-width: 100%; overflow-x: hidden; } .vip-active { --glow-color: ${colors.gold}; --main-color: ${colors.gold}; --secondary-color: ${colors.yellow}; } .vip-active #app-container { border-color: var(--glow-color); box-shadow: 0 0 25px var(--glow-color), inset 0 0 15px var(--glow-color); } .vip-active .app-title, .vip-active h3, .vip-active h4 { color: var(--main-color); text-shadow: 0 0 8px var(--glow-color); } .vip-active .navbar { border-bottom-color: var(--main-color); } .vip-active .nav-button-active { border-bottom-color: var(--secondary-color); color: var(--secondary-color); } .vip-active .main-button { background-color: var(--main-color); border-color: var(--secondary-color); box-shadow: 0 0 20px var(--glow-color); animation: vip-pulse 2s infinite; } @keyframes vip-pulse { 0% { box-shadow: 0 0 15px ${colors.gold}50; } 50% { box-shadow: 0 0 25px ${colors.gold}90; } 100% { box-shadow: 0 0 15px ${colors.gold}50; } } @keyframes champion-glow-animation { 0%, 100% { text-shadow: 0 0 8px ${colors.gold}, 0 0 15px ${colors.gold}; } 50% { text-shadow: 0 0 12px ${colors.gold}, 0 0 25px ${colors.gold}; } } @keyframes pleno-flash-animation { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } } @keyframes leader-glow-animation { 0%, 100% { background-color: rgba(255, 215, 0, 0.15); box-shadow: inset 0 0 15px rgba(255, 215, 0, 0.5), 0 0 10px rgba(255, 215, 0, 0.3); } 50% { background-color: rgba(255, 215, 0, 0.25); box-shadow: inset 0 0 20px rgba(255, 215, 0, 0.7), 0 0 15px rgba(255, 215, 0, 0.5); } } @keyframes fire-streak-animation { 0%, 100% { text-shadow: 0 0 5px #fca311, 0 0 10px #e63946; } 50% { text-shadow: 0 0 10px #fca311, 0 0 20px #e63946; } } @keyframes cold-streak-animation { 0%, 100% { text-shadow: 0 0 8px #00aaff, 0 0 15px #00aaff, 0 0 20px #00aaff80; } 50% { text-shadow: 0 0 12px #00aaff, 0 0 25px #00aaff, 0 0 30px #00aaff80; } } @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } } .exploded { transition: transform 1s ease-out, opacity 1s ease-out; } @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } } @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } .content-enter-active { animation: slideInFromRight 0.4s ease-out; } @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } } .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; } @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(var(--angle)); } } .confetti-particle { position: absolute; width: var(--size); height: var(--size); background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .spinner { animation: spin 1.5s linear infinite; } @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } } @keyframes blink-live { 50% { background-color: #a11d27; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } } @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } } .point-jump-up { animation: point-jump-up 0.7s ease-out; } .stat-fade-in { animation: fadeIn 0.5s ease-in-out; } @keyframes bounce-in { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } } @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } } .pulsed { animation: pulse-once 0.4s ease-in-out; } @keyframes pie-draw { to { stroke-dashoffset: 0; } } .pie-chart-segment-new { transform-origin: 60px 60px; stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dasharray); transform: rotate(var(--rotation)); animation: pie-draw 1s ease-out forwards; } @keyframes reaction-fade-out { to { opacity: 0; transform: scale(0.5); } } .fade-out { animation: reaction-fade-out 0.5s forwards; } @keyframes reaction-fly { 0% { transform: translate(0, 0) scale(1.2); opacity: 1; } 100% { transform: translate(80px, -80px) scale(0); opacity: 0; } } .fly-away { display: inline-block; animation: reaction-fly 1s cubic-bezier(0.5, -0.5, 1, 1) forwards; position: absolute; z-index: 10; pointer-events: none; } @keyframes status-blink-red { 0%, 100% { background-color: ${colors.danger}; box-shadow: 0 0 8px ${colors.danger}; } 50% { background-color: #a11d27; box-shadow: 0 0 15px ${colors.danger}; } } @keyframes status-pulse-green { 0%, 100% { background-color: ${colors.success}; box-shadow: 0 0 5px ${colors.success}; } 50% { background-color: #3a9a6a; box-shadow: 0 0 10px ${colors.success}; } } .stat-value-animation { animation: pop-in 0.5s ease-out; } @keyframes pulse-animation-kf { 0% { box-shadow: 0 0 0 0 rgba(255, 200, 44, 0.7); } 70% { box-shadow: 0 0 10px 15px rgba(255, 200, 44, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 200, 44, 0); } } .pulse-animation { border-color: ${colors.yellow}; animation: pulse-animation-kf 1s ease-out; } @keyframes live-dot-kf { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } } .live-dot-animation { animation: live-dot-kf 1.5s infinite; } @keyframes silver-glow { 0%, 100% { background-color: rgba(192, 192, 192, 0.15); box-shadow: inset 0 0 15px rgba(192, 192, 192, 0.5), 0 0 10px rgba(192, 192, 192, 0.3); } 50% { background-color: rgba(192, 192, 192, 0.25); box-shadow: inset 0 0 20px rgba(192, 192, 192, 0.7), 0 0 15px rgba(192, 192, 192, 0.5); } } @keyframes bronze-glow { 0%, 100% { background-color: rgba(205, 127, 50, 0.15); box-shadow: inset 0 0 15px rgba(205, 127, 50, 0.5), 0 0 10px rgba(205, 127, 50, 0.3); } 50% { background-color: rgba(205, 127, 50, 0.25); box-shadow: inset 0 0 20px rgba(205, 127, 50, 0.7), 0 0 15px rgba(205, 127, 50, 0.5); } } @keyframes user-highlight-glow { 0%, 100% { background-color: rgba(0, 85, 164, 0.5); box-shadow: inset 0 0 15px rgba(0, 85, 164, 1), 0 0 10px rgba(0, 85, 164, 0.7); } 50% { background-color: rgba(0, 85, 164, 0.7); box-shadow: inset 0 0 20px rgba(0, 85, 164, 1), 0 0 15px rgba(0, 85, 164, 1); } } @keyframes ticker-scroll { 0% { transform: translateX(0%); } 100% { transform: translateX(-50%); } } .news-ticker-content { animation-play-state: ${isTickerPaused ? 'paused' : 'running'}; }`;
-        document.head.appendChild(styleSheet);
-        const unsubConfig = onSnapshot(doc(db, "configuracion", "porraAnual"), (doc) => setPorraAnualConfig(doc.exists() ? doc.data() : null));
-        const unsubEscudos = onSnapshot(doc(db, "configuracion", "escudos"), (docSnap) => { if (docSnap.exists()) setTeamLogos(docSnap.data()); });
-        const unsubPlantilla = onSnapshot(doc(db, "configuracion", "plantilla"), (docSnap) => { if (docSnap.exists() && docSnap.data().jugadores?.length > 0) setPlantilla(docSnap.data().jugadores); });
-        const unsubProfiles = onSnapshot(collection(db, "clasificacion"), (snapshot) => { const profiles = {}; snapshot.forEach(doc => { profiles[doc.id] = doc.data(); }); setUserProfiles(profiles); });
-        const unsubStatus = onValue(ref(rtdb, 'status/'), (snapshot) => setOnlineUsers(snapshot.val() || {}));
-        const unsubLive = onSnapshot(query(collection(db, "jornadas"), where("liveData.isLive", "==", true), limit(1)), (snapshot) => { if (!snapshot.empty) { const j = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }; setLiveJornada(j); setIsVipActive(j.esVip || false); } else { setLiveJornada(null); onSnapshot(query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Pre-apertura"]), limit(1)), (snap) => setIsVipActive(!snap.empty && snap.docs[0].data().esVip)); } });
-        const unsubJornadasStats = onSnapshot(collection(db, "jornadas"), (snapshot) => { snapshot.docChanges().forEach((change) => { if (change.type === "modified" && change.doc.data().estado === 'Finalizada' && change.doc.data().estado !== snapshot.docChanges().find(c=>c.doc.id === change.doc.id)?.doc.before.data()?.estado) { console.log(`Jornada ${change.doc.id} finalizada. Recalculando stats.`); calculateAndSaveGlobalStats(); } }); });
-        getDoc(doc(db, "configuracion", "globalStats")).then(docSnap => { if(docSnap.exists()) setGlobalStats(docSnap.data()); else calculateAndSaveGlobalStats(); });
-        return () => { document.head.removeChild(styleSheet); unsubscribeAuth(); unsubConfig(); unsubEscudos(); unsubLive(); unsubPlantilla(); unsubProfiles(); unsubStatus(); unsubJornadasStats(); }
-    }, [isTickerPaused, calculateAndSaveGlobalStats]);
-
-    useEffect(() => {
-        if (globalStats) {
-            const tickerData = [
-                { emoji: '🤑', titulo: 'El Rey Midas', jugador: globalStats.reyMidas.jugador, valor: globalStats.reyMidas.valor, unidad: '€' },
-                { emoji: '💣', titulo: 'El Pelotazo', jugador: globalStats.elPelotazo.jugador, valor: globalStats.elPelotazo.valor, unidad: 'pts' },
-                { emoji: '😎', titulo: 'El Atrevido', jugador: globalStats.elAtrevido.jugador, valor: globalStats.elAtrevido.valor, unidad: 'únicos' },
-                { emoji: '📈', titulo: 'Mr. Regularidad', jugador: globalStats.mrRegularidad.jugador, valor: globalStats.mrRegularidad.valor, unidad: 'jornadas' },
-                { emoji: '🔮', titulo: 'El Visionario', jugador: globalStats.elVisionario.jugador, valor: globalStats.elVisionario.valor, unidad: 'jornadas' },
-                { emoji: '🎯', titulo: 'El Profeta', jugador: globalStats.elProfeta.jugador, valor: globalStats.elProfeta.valor, unidad: 'aciertos' },
-                { emoji: '👻', titulo: 'El Cenizo', jugador: globalStats.elCenizo.jugador, valor: globalStats.elCenizo.valor, unidad: 'jornadas' },
-                { emoji: '🔁', titulo: 'El Obstinado', jugador: globalStats.elObstinado.jugador, valor: globalStats.elObstinado.valor, unidad: '' },
-            ].filter(s => s.jugador);
-            setTickerStats(tickerData);
-        }
-    }, [globalStats]);
-  
-    const handleRequestPermission = async (user) => {
-        setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v3_seen', 'true'); 
-        try {
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') { const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY }); if (currentToken) await setDoc(doc(db, "notification_tokens", currentToken), { user: user, createdAt: new Date() }); }
-        } catch (error) { console.error('Error al obtener token de notificación.', error); }
-    };
-  
-    const handleLogin = async (user) => {
-        try {
-            setCurrentUser(user); const userStatusRef = ref(rtdb, 'status/' + user); await set(userStatusRef, true); onDisconnect(userStatusRef).set(false);
-            const userProfileRef = doc(db, "clasificacion", user); await setDoc(userProfileRef, { ultimaConexion: serverTimestamp() }, { merge: true });
-            const docSnap = await getDoc(userProfileRef);
-            if (docSnap.exists() && docSnap.data().icon && docSnap.data().color) setScreen('app'); else setScreen('customizeProfile');
-            if ('Notification' in window && Notification.permission !== 'granted' && !localStorage.getItem('notificationPrompt_v3_seen')) setShowNotificationModal(true);
-            const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
-            const jornadaSnap = await getDocs(q);
-            if (!jornadaSnap.empty) {
-                const jornadaDoc = jornadaSnap.docs[0]; const jornada = { id: jornadaDoc.id, ...jornadaDoc.data() };
-                if (jornada.id !== sessionStorage.getItem('lastSeenWinnerJornada') && jornada.ganadores?.includes(user)) {
-                    const pronosticoSnap = await getDoc(doc(db, "pronosticos", jornada.id, "jugadores", user));
-                    const allPronosticosSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
-                    const prize = (allPronosticosSnap.size * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL)) + (jornada.bote || 0);
-                    if (pronosticoSnap.exists()) { setWinnerData({ pronostico: { id: user, ...pronosticoSnap.data() }, prize: prize / jornada.ganadores.length }); sessionStorage.setItem('lastSeenWinnerJornada', jornada.id); }
+            
+            if (!jornadaActiva) {
+                const finalizadas = todasLasJornadas
+                    .filter(j => j.estado === 'Finalizada')
+                    .sort((a, b) => b.numeroJornada - a.numeroJornada);
+                if (finalizadas.length > 0) {
+                    jornadaActiva = finalizadas[0];
                 }
             }
-        } catch (error) { console.error("Error crítico durante el inicio de sesión:", error); alert("Ha ocurrido un error al iniciar sesión."); }
+
+            if(jornadaActiva){
+                setCurrentJornada(prevJornada => {
+                    if (prevJornada && prevJornada.id !== jornadaActiva.id) {
+                        setPreMatchStats(null);
+                        setFullPreMatchStats(null);
+                        lastApiCallDay.current = null;
+                    }
+                    return jornadaActiva;
+                });
+
+                setInterJornadaStatus(null); 
+                if (jornadaActiva.fechaCierre) { setPanicButtonDisabled(new Date().getTime() > (jornadaActiva.fechaCierre.toDate().getTime() - 3600 * 1000)); }
+                const pronosticoRef = doc(db, "pronosticos", jornadaActiva.id, "jugadores", user);
+                getDoc(pronosticoRef).then(pronosticoSnap => {
+                    if (pronosticoSnap.exists()) {
+                        const data = pronosticoSnap.data();
+                        const filledJokerPronosticos = data.jokerPronosticos ? [...data.jokerPronosticos, ...Array(10 - data.jokerPronosticos.length).fill({golesLocal: '', golesVisitante: ''})] : Array(10).fill({golesLocal: '', golesVisitante: ''});
+                        setPronostico({...initialPronosticoState, ...data, jokerPronosticos: filledJokerPronosticos});
+                        setIsLocked(!!data.pin); setHasSubmitted(true);
+                        initialJokerStatus.current = data.jokerActivo || false;
+                    } else {
+                        setPronostico(initialPronosticoState); setIsLocked(false); setHasSubmitted(false);
+                        initialJokerStatus.current = false;
+                    } setLoading(false);
+                });
+                const allPronosticosRef = collection(db, "pronosticos", jornadaActiva.id, "jugadores");
+                onSnapshot(allPronosticosRef, (snapshot) => { setAllPronosticos(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))); });
+
+                if (jornadaActiva.numeroJornada > 1) {
+                    const jornadaAnterior = todasLasJornadas.find(j => j.numeroJornada === jornadaActiva.numeroJornada - 1);
+                    if (jornadaAnterior?.estado === 'Finalizada') {
+                        getDoc(doc(db, "pronosticos", jornadaAnterior.id, "jugadores", user)).then(pronosticoAnteriorSnap => {
+                            setTieneDeuda(pronosticoAnteriorSnap.exists() && !pronosticoAnteriorSnap.data().pagado);
+                        });
+                    } else { setTieneDeuda(false); }
+                } else { setTieneDeuda(false); }
+
+            } else {
+                setCurrentJornada(null);
+                setLoading(false);
+                setPreMatchStats(null);
+                setFullPreMatchStats(null);
+                const ultimaFinalizada = todasLasJornadas.filter(j => j.estado === 'Finalizada' && j.id !== 'jornada_test').sort((a, b) => b.numeroJornada - a.numeroJornada)[0];
+
+                if (ultimaFinalizada) {
+                    getDoc(doc(db, "pronosticos", ultimaFinalizada.id, "jugadores", user)).then(pronosticoSnap => {
+                        if (pronosticoSnap.exists()) {
+                            setInterJornadaStatus({ status: pronosticoSnap.data().pagado ? 'pagado' : 'debe', jornada: ultimaFinalizada });
+                        } else {
+                            setInterJornadaStatus({ status: 'no_participo', jornada: ultimaFinalizada });
+                        }
+                    });
+                } else {
+                    const proximaJornada = todasLasJornadas.find(j => j.estado === 'Próximamente');
+                    setInterJornadaStatus({ status: 'sin_finalizadas', proxima: proximaJornada });
+                }
+            }
+        }, (error) => { console.error("Error: ", error); setLoading(false); });
+        return () => unsubscribe();
+    }, [user]);
+
+    useEffect(() => {
+        if (apiTimerRef.current) {
+            clearInterval(apiTimerRef.current);
+            apiTimerRef.current = null;
+        }
+
+        if (!currentJornada || !currentJornada.fechaPartido || !currentJornada.apiLeagueId || !currentJornada.apiLocalTeamId || !currentJornada.apiVisitorTeamId || !['Abierta', 'Pre-apertura', 'Cerrada'].includes(currentJornada.estado)) {
+            return;
+        }
+
+        const fetchHeaders = { "x-rapidapi-host": "v3.football.api-sports.io", "x-rapidapi-key": API_FOOTBALL_KEY };
+
+        const fetchTeamStats = async (leagueId, teamId, season) => {
+            try {
+                const response = await fetch(`https://v3.football.api-sports.io/standings?league=${leagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
+                if (!response.ok) throw new Error(`API call failed: ${response.status}`);
+                const data = await response.json();
+                
+                if (data.results === 0 || !data.response[0]) {
+                    console.warn(`No data for team ${teamId}`);
+                    return null;
+                }
+                const teamStanding = data.response[0]?.league?.standings[0]?.[0];
+                return { name: teamStanding?.team?.name || 'N/A', logo: teamStanding?.team?.logo || '', rank: teamStanding?.rank || 'N/A', points: teamStanding?.points || 'N/A', form: teamStanding?.form || '-----', golesFavor: teamStanding?.all?.goals?.for || 0, golesContra: teamStanding?.all?.goals?.against || 0, statsHomeOrAway: teamStanding?.home?.team?.id === teamId ? teamStanding.home : teamStanding.away };
+            } catch (error) { console.error(`Error fetching stats for team ${teamId}:`, error); return null; }
+        };
+        
+        const fetchTopScorers = async (leagueId, teamId, season) => {
+             try {
+                const response = await fetch(`https://v3.football.api-sports.io/players/topscorers?league=${leagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
+                 if (!response.ok) throw new Error(`API call failed: ${response.status}`);
+                 const data = await response.json();
+                 return data.response || [];
+             } catch (error) { console.error(`Error fetching top scorers for team ${teamId}:`, error); return []; }
+        };
+
+        const fetchData = async () => {
+            console.log(`[${new Date().toLocaleTimeString()}] Fetching API data...`);
+            setLoadingPreMatch(true);
+            const season = new Date(currentJornada.fechaPartido.seconds * 1000).getFullYear();
+            
+            const [localStats, visitorStats, localScorers, visitorScorers] = await Promise.all([
+                fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season),
+                fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiVisitorTeamId, season),
+                fetchTopScorers(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season),
+                fetchTopScorers(currentJornada.apiLeagueId, currentJornada.apiVisitorTeamId, season)
+            ]);
+            
+            if (localStats && visitorStats) {
+                const statsData = { local: {...localStats, topScorers: localScorers}, visitante: {...visitorStats, topScorers: visitorScorers} };
+                setPreMatchStats(statsData);
+                setFullPreMatchStats(statsData);
+                setLastApiUpdate(Date.now());
+            }
+            setLoadingPreMatch(false);
+        };
+
+        const manageUpdates = () => {
+            const now = new Date();
+            const matchTime = currentJornada.fechaPartido.toDate();
+            const oneHourBefore = new Date(matchTime.getTime() - 60 * 60 * 1000);
+            
+            const isMatchDay = now.toDateString() === matchTime.toDateString();
+            const isPreMatchWindow = isMatchDay && now >= oneHourBefore && now < matchTime;
+
+            if (apiTimerRef.current) clearInterval(apiTimerRef.current);
+
+            if (isPreMatchWindow) {
+                console.log("Entering PRE-MATCH update mode (every 5 minutes).");
+                if(!preMatchStats) fetchData();
+                apiTimerRef.current = setInterval(fetchData, 5 * 60 * 1000);
+            } else {
+                const todayStr = now.toISOString().split('T')[0];
+                if (now.getHours() >= 22 && lastApiCallDay.current !== todayStr) {
+                    console.log("Performing DAILY update (after 22:00).");
+                    fetchData();
+                    lastApiCallDay.current = todayStr;
+                }
+                apiTimerRef.current = setInterval(manageUpdates, 60 * 1000);
+            }
+        };
+        
+        if (!preMatchStats) {
+            fetchData();
+        }
+        manageUpdates();
+
+        return () => {
+            if (apiTimerRef.current) {
+                clearInterval(apiTimerRef.current);
+                apiTimerRef.current = null;
+            }
+        };
+    }, [currentJornada, preMatchStats]);
+    
+    useEffect(() => {
+        if (currentJornada?.estado === 'Cerrada' && liveData?.isLive && allPronosticos.length > 0) {
+            const ranking = allPronosticos.map(p => ({ id: p.id, puntos: calculateProvisionalPoints(p, liveData, currentJornada) })).sort((a, b) => b.puntos - a.puntos);
+            const miRanking = ranking.find(r => r.id === user);
+            const miPosicion = ranking.findIndex(r => r.id === user) + 1;
+            setProvisionalData({ puntos: miRanking?.puntos || 0, posicion: miRanking ? `${miPosicion}º` : '-' });
+        } else { setProvisionalData({ puntos: 0, posicion: '-' }); }
+    }, [liveData, currentJornada, allPronosticos, user]);
+
+    useEffect(() => {
+        if (currentJornada?.estado === 'Abierta' && pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') {
+            const count = allPronosticos.filter(p => p.id !== user && p.golesLocal === pronostico.golesLocal && p.golesVisitante === pronostico.golesVisitante).length;
+            let color = styles.colors.success; if (count >= 1 && count <= 2) color = styles.colors.warning; if (count >= 3) color = styles.colors.danger; setStats({ count, color });
+        } else { setStats({ count: 0, color: styles.colors.success }); }
+    }, [pronostico.golesLocal, pronostico.golesVisitante, allPronosticos, user, currentJornada]);
+
+    useEffect(() => {
+        if (!pronostico.jokerActivo || allPronosticos.length === 0) { setJokerStats(Array(10).fill(null)); return; }
+        const allOtherBets = allPronosticos.filter(p => p.id !== user).flatMap(p => [`${p.golesLocal}-${p.golesVisitante}`, ...(p.jokerPronosticos || []).map(jp => `${jp.golesLocal}-${jp.golesVisitante}`)]);
+        const newJokerStats = pronostico.jokerPronosticos.map(jokerBet => {
+            if (jokerBet.golesLocal === '' || jokerBet.golesVisitante === '') return null;
+            const betString = `${jokerBet.golesLocal}-${jokerBet.golesVisitante}`;
+            const count = allOtherBets.filter(b => b === betString).length;
+            let color = styles.colors.success; if (count >= 1 && count <= 2) color = styles.colors.warning; if (count >= 3) color = styles.colors.danger;
+            return { count, color, text: count > 0 ? `Repetido ${count} vez/veces` : '¡Pronóstico Único!' };
+        });
+        setJokerStats(newJokerStats);
+    }, [pronostico.jokerPronosticos, allPronosticos, user, pronostico.jokerActivo]);
+    
+    const handlePronosticoChange = (e) => { const { name, value, type, checked } = e.target; setPronostico(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value, ...(name === 'sinGoleador' && checked && { goleador: '' }) })); };
+    const handleJokerPronosticoChange = (index, field, value) => { const newJokerPronosticos = [...pronostico.jokerPronosticos]; newJokerPronosticos[index] = { ...newJokerPronosticos[index], [field]: value }; setPronostico(prev => ({ ...prev, jokerPronosticos: newJokerPronosticos })); };
+    
+    const handleValidationAndConfirm = (e) => {
+        e.preventDefault();
+        if (!currentJornada) return;
+        if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || pronostico.resultado1x2 === '' || (!pronostico.goleador && !pronostico.sinGoleador)) {
+             setMessage({text: 'Debes rellenar todos los campos: Resultado, 1X2 y Goleador (o marcar Sin Goleador).', type: 'error'});
+             return;
+        }
+        if (pronostico.pin && pronostico.pin !== pronostico.pinConfirm) { setMessage({text: 'Los PIN no coinciden. Por favor, revísalos.', type: 'error'}); return; }
+        const cleanJokerPronosticos = pronostico.jokerPronosticos.filter(p => p.golesLocal !== '' || p.golesVisitante !== '');
+        if (pronostico.jokerActivo && cleanJokerPronosticos.length === 0) { setMessage({text: 'Has activado el Joker. Debes rellenar al menos una apuesta Joker o usar el Botón del Pánico.', type: 'error'}); return; }
+        
+        setPronosticoParaConfirmar(pronostico);
+        setShowConfirmacionModal(true);
     };
 
-    const handleLogout = async () => { if (currentUser) set(ref(rtdb, 'status/' + currentUser), false); if (isAdminAuthenticated) { await signOut(auth); await signInAnonymously(auth); } setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false); };
-    const handleSaveProfile = async (user, profileData) => { await setDoc(doc(db, "clasificacion", user), profileData, { merge: true }); setScreen('app'); setActiveTab('miJornada'); };
-    const handleNavClick = (tab) => { setViewingJornadaId(null); setViewingPorraAnual(false); setActiveTab(tab); if (tab !== 'admin' && isAdminAuthenticated) signOut(auth).then(() => signInAnonymously(auth)); };
-    const handleAdminClick = () => { if (isAdminAuthenticated) setActiveTab('admin'); else setShowAdminLogin(true); };
-    const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
-    const handleViewJornadaFromFame = (jornadaId) => { setViewingJornadaId(jornadaId); setActiveTab('calendario'); };
+    const handleGuardarPronostico = async () => {
+        setShowConfirmacionModal(false);
+        setIsSaving(true); 
+        setMessage({text: '', type: 'info'});
+        
+        const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user);
+        const historialRef = collection(pronosticoRef, "historial");
+        const userJokerRef = doc(db, "clasificacion", user);
+        
+        const jokerJustActivated = pronostico.jokerActivo && !initialJokerStatus.current;
+        const cleanJokerPronosticos = pronostico.jokerPronosticos.filter(p => p.golesLocal !== '' || p.golesVisitante !== '');
+        
+        try {
+            const batch = writeBatch(db);
+            const { pinConfirm, ...pronosticoToSave } = pronostico;
+            
+            batch.set(pronosticoRef, { ...pronosticoToSave, jokerPronosticos: cleanJokerPronosticos, lastUpdated: serverTimestamp() });
+            
+            const historialData = {
+                pronostico: {
+                    golesLocal: pronostico.golesLocal,
+                    golesVisitante: pronostico.golesVisitante,
+                    resultado1x2: pronostico.resultado1x2,
+                    goleador: pronostico.goleador,
+                    sinGoleador: pronostico.sinGoleador,
+                },
+                timestamp: serverTimestamp()
+            };
+            await addDoc(historialRef, historialData);
+
+            if (jokerJustActivated) {
+                batch.update(userJokerRef, { jokersRestantes: increment(-1) });
+            }
+            
+            await batch.commit();
+            
+            if (jokerJustActivated) { 
+                setJokersRestantes(prev => prev - 1); 
+                initialJokerStatus.current = true; 
+            }
+            
+            setMessage({text: '¡Pronóstico guardado y secreto!', type: 'success'});
+            setHasSubmitted(true); 
+            setIsLocked(!!pronostico.pin);
+            
+        } catch (error) { 
+            console.error("Error al guardar: ", error); 
+            setMessage({text: 'Error al guardar el pronóstico.', type: 'error'}); 
+        }
+        
+        setIsSaving(false);
+    };
+
+
+    const handleUnlock = () => { if (pinInput === pronostico.pin) { setIsLocked(false); setHasSubmitted(false); setMessage({text: 'Pronóstico desbloqueado. Puedes hacer cambios.', type: 'info'}); } else { alert('PIN incorrecto'); } };
+    
+    const handleActivarJoker = () => {
+        if (jokersRestantes <= 0) { alert("No te quedan Jokers esta temporada."); return; }
+        if (window.confirm("¿Seguro que quieres usar un JOKER? Se añadirán 10 casillas de apuesta. El Joker se descontará cuando guardes el pronóstico.")) {
+            setShowJokerAnimation(true);
+            setTimeout(() => setShowJokerAnimation(false), 7000);
+            setHasSubmitted(false); setIsLocked(false);
+            setPronostico(prev => ({ ...prev, jokerActivo: true, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) }));
+            setMessage({ text: '¡Joker activado! Rellena tus 10 apuestas extra y no olvides Guardar.', type: 'success' });
+        }
+    };
+
+    const handleBotonDelPanico = async () => { if (window.confirm("¿Seguro que quieres cancelar tus apuestas JOKER? No recuperarás el JOKER gastado, pero tus 10 apuestas adicionales se borrarán.")) { setPronostico(prev => ({ ...prev, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) })); setMessage({text: 'Apuestas JOKER eliminadas. Recuerda guardar para confirmar los cambios.', type: 'info'}); } };
+    
+    const handleMarcarComoPagado = async () => {
+        if (!currentJornada) return;
+        setShowLiquidarPagoModal(false);
+        try {
+            await updateDoc(doc(db, "pronosticos", currentJornada.id, "jugadores", user), { pagoConfirmadoPorUsuario: true });
+            setPronostico(prev => ({...prev, pagoConfirmadoPorUsuario: true}));
+            setMessage({text: '¡Confirmación de pago enviada al admin!', type: 'success'});
+        } catch (error) { 
+            console.error("Error al confirmar pago: ", error); 
+            setMessage({text: 'Error al enviar la confirmación.', type: 'error'}); 
+        }
+    };
+
+    const handleCopyLastBet = async () => {
+        setMessage({text: 'Buscando tu última apuesta...', type: 'info'});
+        const qLastJornada = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
+        const lastJornadaSnap = await getDocs(qLastJornada);
+        if (lastJornadaSnap.empty) { setMessage({text: 'No se encontraron jornadas anteriores para copiar.', type: 'error'}); return; }
+        const lastJornadaId = lastJornadaSnap.docs[0].id;
+        const lastPronosticoSnap = await getDoc(doc(db, "pronosticos", lastJornadaId, "jugadores", user));
+        if (lastPronosticoSnap.exists()) {
+            const lastData = lastPronosticoSnap.data();
+            setPronostico(prev => ({ ...prev, ...lastData, pin: '', pinConfirm: '', jokerActivo: false, jokerPronosticos: initialPronosticoState.jokerPronosticos }));
+            setMessage({text: 'Última apuesta cargada. ¡No olvides guardarla!', type: 'success'});
+        } else { setMessage({text: 'No participaste en la última jornada.', type: 'error'}); }
+    };
+
+    if (loading) return <LoadingSkeleton />;
+    
+    const RenderedPronostico = ({ pronosticoData }) => {
+        if (!pronosticoData) {
+            return <p>No participaste en esta jornada.</p>;
+        }
+        return (
+            <div style={styles.renderedPronosticoContainer}>
+                <h4 style={styles.renderedPronosticoTitle} className="app-title">Tu Apuesta Realizada</h4>
+                <div style={styles.resumenJugadorBets}>
+                    <p><strong>Resultado:</strong> {pronosticoData.golesLocal}-{pronosticoData.golesVisitante}</p>
+                    <p><strong>1X2:</strong> {pronosticoData.resultado1x2}</p>
+                    <p><strong>Goleador:</strong> {pronosticoData.sinGoleador ? 'Sin Goleador' : (pronosticoData.goleador || 'N/A')}</p>
+                    {pronosticoData.jokerActivo && (
+                        <div style={{marginTop: '10px'}}>
+                            <strong>Apuestas Joker:</strong>
+                            <div style={styles.jokerChipsContainer}>
+                                {(pronosticoData.jokerPronosticos || []).map((jp, index) => (
+                                    <span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
 
     const renderContent = () => {
-        if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} />;
-        if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} plantilla={plantilla} />;
-        if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
-        if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
-        if (screen === 'app') {
-            const isLive = liveJornada?.liveData?.isLive; const onlineCount = Object.values(onlineUsers).filter(Boolean).length; const showGreenStatus = !isLive && onlineCount > 1;
-            const CurrentScreenComponent = () => {
-                if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} teamLogos={teamLogos} userProfiles={userProfiles} />;
-                if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
-                if (activeTab === 'profile') return <ProfileScreen user={currentUser} userProfile={userProfiles[currentUser]} onEdit={() => setScreen('customizeProfile')} onBack={() => setActiveTab('miJornada')} />;
-                switch (activeTab) {
-                    case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} plantilla={plantilla} userProfiles={userProfiles} />;
-                    case 'laJornada': return <LaJornadaScreen user={currentUser} teamLogos={teamLogos} liveData={liveJornada?.liveData} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
-                    case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
-                    case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} />;
-                    case 'pagos': return <PagosScreen user={currentUser} userProfiles={userProfiles} />;
-                    case 'paseoFama': return <PaseoDeLaFamaScreen userProfiles={userProfiles} globalStats={globalStats} onViewJornada={handleViewJornadaFromFame} />;
-                    case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} plantilla={plantilla} setPlantilla={setPlantilla} onRecalculateStats={calculateAndSaveGlobalStats} /> : null;
-                    default: return null;
-                }
-            };
-            return (<>
-                {showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => {setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v3_seen', 'true');}} />}
-                {porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (!porraAnualConfig?.fechaCierre || new Date() < porraAnualConfig.fechaCierre.toDate()) && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz o modifica tu pronóstico. ¡Pincha aquí!</div>)}
-                <LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} />
-                <nav style={styles.navbar} className="navbar"><button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton} className={activeTab === 'miJornada' ? 'nav-button-active' : ''}>Mi Jornada</button><button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton} className={activeTab === 'laJornada' ? 'nav-button-active' : ''}><div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>{isLive && <span style={styles.statusIndicatorRed}></span>}{showGreenStatus && <span style={styles.statusIndicatorGreen}></span>}La Jornada</div></button><button onClick={() => handleNavClick('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton} className={activeTab === 'calendario' ? 'nav-button-active' : ''}>Calendario</button><button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton} className={activeTab === 'clasificacion' ? 'nav-button-active' : ''}>Clasificación</button><button onClick={() => handleNavClick('paseoFama')} style={activeTab === 'paseoFama' ? styles.navButtonActive : styles.navButton} className={activeTab === 'paseoFama' ? 'nav-button-active' : ''}>Paseo de la Fama</button><button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton} className={activeTab === 'pagos' ? 'nav-button-active' : ''}>Pagos</button>{currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton} className={activeTab === 'admin' ? 'nav-button-active' : ''}>Admin</button>)}<button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button><button onClick={handleLogout} style={styles.logoutButton}>Salir</button></nav>
-                <div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreenComponent /></div>
-                {showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}
-            </>);
+        const ahora = new Date();
+        const apertura = currentJornada?.fechaApertura?.toDate();
+        const isBettingOpen = currentJornada && currentJornada.estado === 'Abierta';
+        
+        if (isBettingOpen) {
+            const isVip = currentJornada.esVip;
+            return (
+                <form onSubmit={handleValidationAndConfirm} style={styles.form}>
+                    {currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}
+                    {isVip && (<div style={styles.vipBanner}>⭐ JORNADA VIP ⭐ (Apuesta: 2€ - Puntos Dobles)</div>)}
+                    <h3 style={styles.formSectionTitle} className="app-title">{currentJornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${currentJornada.numeroJornada}`}: {currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</h3>
+                    
+                    {!hasSubmitted && <button type="button" onClick={handleCopyLastBet} style={styles.secondaryButton}>Copiar mi última apuesta</button>}
+
+                    {hasSubmitted && isLocked ? (
+                        <div style={styles.placeholder}><h3>¡Pronóstico guardado y secreto!</h3><p>Tu apuesta está protegida con PIN. Podrás ver los pronósticos de todos cuando la jornada se cierre.</p><div style={{marginTop: '20px'}}><input type="password" maxLength="4" value={pinInput} onChange={(e) => setPinInput(e.target.value)} style={styles.input} placeholder="PIN de 4 dígitos" /><button type="button" onClick={handleUnlock} style={styles.mainButton}>Desbloquear</button></div></div>
+                    ) : hasSubmitted && !isLocked ? (
+                         <div style={styles.placeholder}><h3>¡Pronóstico guardado!</h3><p>Tu apuesta no está protegida con PIN. Cualquiera podría modificarla si accede con tu perfil. Puedes añadir un PIN y volver a guardar.</p><button type="button" onClick={() => { setIsLocked(false); setHasSubmitted(false); }} style={styles.mainButton}>Modificar Apuesta</button></div>
+                    ) : (
+                        <fieldset style={{border: 'none', padding: 0, margin: 0}}>
+                            <fieldset style={{border: 'none', padding: 0, margin: 0}} >
+                                <div style={styles.formGroup}><label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label><div style={styles.miJornadaMatchInfo}><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} /><div style={styles.miJornadaScoreInputs}><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} /></div><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} /></div>{(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}</div>
+                                <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
+                                
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label>
+                                    <div style={styles.goleadorSelectorContainer}>
+                                        {pronostico.goleador && !pronostico.sinGoleador && (<div style={styles.goleadorPreview}><img src={plantilla.find(j => j.nombre === pronostico.goleador)?.imageUrl || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'} alt={pronostico.goleador} style={styles.goleadorPreviewImg} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }}/><span>{pronostico.goleador}</span></div>)}
+                                        <select name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador}>
+                                            <option value="">-- Elige un jugador --</option>
+                                            {plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}
+                                        </select>
+                                    </div>
+                                    <div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>(1 Punto)</span></label></div>
+                                </div>
+                            </fieldset>
+                            
+                            <div style={styles.jokerContainer}>
+                                {!pronostico.jokerActivo ? (<><button type="button" onClick={handleActivarJoker} style={styles.jokerButton} disabled={jokersRestantes <= 0}>🃏 Activar JOKER</button><span style={{marginLeft: '15px', color: styles.colors.lightText}}>Te quedan: <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{jokersRestantes}</span></span></>) : (
+                                    <div>
+                                        <h3 style={styles.formSectionTitle} className="app-title">Apuestas JOKER (10 Resultados Extra)</h3>
+                                        <p style={{textAlign: 'center', marginBottom: '15px'}}>Añade hasta 10 resultados exactos adicionales. Cada uno cuenta como una apuesta para el bote.</p>
+                                        <div style={styles.jokerGrid}>
+                                            {pronostico.jokerPronosticos.map((p, index) => (
+                                                <div key={index} style={styles.jokerBetRow}>
+                                                    <label style={{...styles.label, justifyContent: 'center', fontSize: '0.8rem'}}>Apuesta Joker {index + 1}</label>
+                                                    <div style={styles.resultInputContainer}><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="L" /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="V"/></div>
+                                                    {jokerStats[index] && (<small style={{...styles.statsIndicator, color: jokerStats[index].color, fontSize: '0.8rem', textAlign: 'center', display: 'block', marginTop: '5px'}}>{jokerStats[index].text}</small>)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, ...styles.dangerButton, marginTop: '20px'}} disabled={panicButtonDisabled}>BOTÓN DEL PÁNICO</button>
+                                        {panicButtonDisabled && <small style={{display: 'block', color: styles.colors.danger, marginTop: '5px'}}>El botón del pánico se ha desactivado (menos de 1h para el cierre).</small>}
+                                    </div>
+                                )}
+                            </div>
+                             <div style={{...styles.formGroup, marginTop: '30px', borderTop: `1px solid ${styles.colors.blue}`, paddingTop: '20px'}}>
+                                <label style={styles.label}>PIN DE SEGURIDAD (4 dígitos, opcional)</label>
+                                <input type="password" name="pin" value={pronostico.pin} onChange={handlePronosticoChange} maxLength="4" style={styles.input} placeholder="Crea un PIN para proteger tu apuesta" />
+                                <input type="password" name="pinConfirm" value={pronostico.pinConfirm} onChange={handlePronosticoChange} maxLength="4" style={{...styles.input, marginTop: '10px'}} placeholder="Confirma tu PIN" />
+                            </div>
+                            <button type="submit" disabled={isSaving} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR Y BLOQUEAR'}</button>
+                        </fieldset>
+                    )}
+                    {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : colors.danger}}>{message.text}</p>}
+                </form>
+            );
         }
+
+        if (currentJornada?.estado === 'Pre-apertura') {
+            const tiempoRestante = apertura ? apertura - ahora : 0;
+            return (
+                <div style={styles.placeholder}>
+                    <h3 style={{...styles.formSectionTitle, color: colors.warning}}>JORNADA EN PRE-APERTURA</h3>
+                    <p style={{margin: '10px 0'}}>Las apuestas para este partido aún no están abiertas.</p>
+                    <div style={styles.countdownContainer}>
+                        <p>APERTURA DE APUESTAS EN:</p>
+                        <div style={styles.countdown}>
+                            {tiempoRestante > 0 ? (
+                                `${Math.floor(tiempoRestante / 86400000)}d ${Math.floor((tiempoRestante % 86400000) / 3600000)}h ${Math.floor((tiempoRestante % 3600000) / 60000)}m`
+                            ) : (
+                                "¡Abriendo!"
+                            )}
+                        </div>
+                    </div>
+                     <p style={{marginTop: '20px'}}>Puedes consultar las estadísticas pre-partido mientras esperas.</p>
+                </div>
+            );
+        }
+
+
+        if (currentJornada?.estado === 'Cerrada' || currentJornada?.estado === 'Finalizada') {
+            const showLiquidarButton = !pronostico.pagado && !pronostico.pagoConfirmadoPorUsuario;
+            return (
+                <div style={styles.placeholder}>
+                    <h3>Jornada {currentJornada.numeroJornada} {currentJornada.estado}</h3>
+                    <p>
+                        {currentJornada.estado === 'Cerrada' ? 'Las apuestas para este partido han finalizado.' : 'Esta jornada ha concluido.'}
+                    </p>
+                    
+                    <RenderedPronostico pronosticoData={pronostico} />
+                    
+                    <div style={{marginTop: '20px'}}>
+                        {showLiquidarButton && (
+                            <button onClick={() => setShowLiquidarPagoModal(true)} style={styles.mainButton}>
+                                Liquidar Pagos
+                            </button>
+                        )}
+                        {pronostico.pagoConfirmadoPorUsuario && !pronostico.pagado && (
+                            <p style={styles.paymentStatusPending}>Pendiente de validación por el admin</p>
+                        )}
+                        {pronostico.pagado && (
+                            <p style={styles.paymentStatusConfirmed}>PAGO REGISTRADO ✓</p>
+                        )}
+                        <button onClick={() => setActiveTab('laJornada')} style={{...styles.mainButton, marginLeft: '10px', backgroundColor: styles.colors.blue}}>
+                            Ver Resumen
+                        </button>
+                    </div>
+                    {message.text && <p style={{...styles.message, marginTop: '15px'}}>{message.text}</p>}
+                </div>
+            );
+        }
+
+        if (interJornadaStatus?.status === 'pagado') return <div style={styles.placeholder}><h3>Estado de Pagos</h3><p style={{...styles.paymentStatus, color: styles.colors.success, borderColor: styles.colors.success}}>✅ Estás al día con tus pagos. ¡Gracias!</p><ProximaJornadaInfo jornada={interJornadaStatus.proxima} /></div>;
+        if (interJornadaStatus?.status === 'debe') return <div style={styles.placeholder}><h3>Estado de Pagos</h3><p style={{...styles.paymentStatus, color: styles.colors.warning, borderColor: styles.colors.warning}}>⚠️ Tienes pendiente el pago de la Jornada {interJornadaStatus.jornada.numeroJornada}.</p><button onClick={() => setActiveTab('pagos')} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>Ir a Pagos</button><ProximaJornadaInfo jornada={interJornadaStatus.proxima} /></div>;
+        if (interJornadaStatus?.status === 'no_participo') return <div style={styles.placeholder}><h3>No hay jornadas disponibles</h3><p>No participaste en la última jornada. ¡Esperamos verte en la siguiente!</p><ProximaJornadaInfo jornada={interJornadaStatus.proxima} /></div>;
+        if (interJornadaStatus?.status === 'sin_finalizadas') return <div style={styles.placeholder}><h3>¡Comienza la temporada!</h3><p>Aún no ha finalizado ninguna jornada.</p><ProximaJornadaInfo jornada={interJornadaStatus.proxima} /></div>;
+        return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>;
     };
-    return (<>{winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}<div id="app-container" className={isVipActive ? 'vip-active' : ''} style={styles.container}><div style={{...styles.card, paddingBottom: activeTab !== 'paseoFama' && tickerStats.length > 0 ? '60px' : '25px'}} id="app-card">{renderContent()}</div>{activeTab !== 'paseoFama' && tickerStats.length > 0 && <NewsTicker stats={tickerStats} onHoverChange={setIsTickerPaused} />}</div></>);
+    return (
+      <div>
+        {showJokerAnimation && <JokerAnimation />}
+        {showStatsModal && <FullStatsModal stats={fullPreMatchStats} onClose={() => setShowStatsModal(false)} />}
+        {showLiquidarPagoModal && <LiquidarPagoModal onClose={() => setShowLiquidarPagoModal(false)} onConfirm={handleMarcarComoPagado} />}
+        {showConfirmacionModal && <ConfirmacionPronosticoModal pronostico={pronosticoParaConfirmar} onConfirm={handleGuardarPronostico} onCancel={() => setShowConfirmacionModal(false)} />}
+        {tieneDeuda && !interJornadaStatus && (<div style={styles.debtBanner}>⚠️ Tienes pendiente el pago de la jornada anterior. Por favor, ve a la sección de "Pagos" para regularizarlo.</div>)}
+        <h2 style={styles.title} className="app-title">MI JORNADA</h2>
+        <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>
+        
+        {currentJornada && (currentJornada.estado === 'Abierta' || currentJornada.estado === 'Pre-apertura' || currentJornada.estado === 'Cerrada') && (
+            <>
+                {loadingPreMatch && !preMatchStats && <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div>}
+                {preMatchStats && <PreMatchStats stats={preMatchStats} lastUpdated={lastApiUpdate} onOpenModal={() => setShowStatsModal(true)} />}
+            </>
+        )}
+
+        {liveData?.isLive && currentJornada?.estado === 'Cerrada' && (<div style={styles.liveInfoBox}><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Puntos Provisionales</span><span style={styles.liveInfoValue}><AnimatedPoints value={provisionalData.puntos} /></span></div><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Posición Provisional</span><span style={styles.liveInfoValue}>{provisionalData.posicion}</span></div></div>)}
+        {renderContent()}
+      </div>
+    );
+};
+
+// ... (Resto de los componentes de pantalla definidos aquí)
+
+// ============================================================================
+// --- COMPONENTE PRINCIPAL 'APP' ---
+// ============================================================================
+function App() {
+  const [showInitialSplash, setShowInitialSplash] = useState(true);
+  const [screen, setScreen] = useState('splash');
+  const [activeTab, setActiveTab] = useState('miJornada');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [viewingJornadaId, setViewingJornadaId] = useState(null);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [teamLogos, setTeamLogos] = useState({});
+  const [porraAnualConfig, setPorraAnualConfig] = useState(null);
+  const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
+  const [winnerData, setWinnerData] = useState(null);
+  const [liveJornada, setLiveJornada] = useState(null);
+  const [plantilla, setPlantilla] = useState(PLANTILLA_ACTUALIZADA);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [userProfiles, setUserProfiles] = useState({});
+  const [onlineUsers, setOnlineUsers] = useState({});
+  const [isVipActive, setIsVipActive] = useState(false);
+  const anonymousUserRef = useRef(null);
+
+  // --- NUEVO: Estado para estadísticas globales y carrusel ---
+  const [globalStats, setGlobalStats] = useState(null);
+  const [tickerStats, setTickerStats] = useState([]);
+  const [isTickerPaused, setIsTickerPaused] = useState(false);
+  
+  // --- LÓGICA DE INSIGNIAS Y ESTADÍSTICAS MOVIDA AQUÍ COMO UN CALLBACK ---
+  const calculateAllStatsAndBadges = useCallback(async () => {
+    // Esta función ahora contiene la lógica combinada para stats y badges.
+    // Se puede llamar desde el panel de admin.
+    console.log("Iniciando cálculo de estadísticas globales e insignias...");
+    // ... (toda la lógica de cálculo de globalStats y badges)
+    
+  }, []);
+
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => { 
+        if (user && !user.isAnonymous) setIsAdminAuthenticated(true);
+        else if (user && user.isAnonymous) { anonymousUserRef.current = user; setIsAdminAuthenticated(false); }
+        else signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error));
+    });
+    const styleSheet = document.createElement("style"); 
+    const colors = styles.colors;
+    // --- NUEVO: Se añaden las animaciones @keyframes ---
+    styleSheet.innerText = `
+        @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { font-size: 16px !important; -webkit-text-size-adjust: 100%; }
+        body, #root { width: 100%; min-width: 100%; overflow-x: hidden; }
+        .vip-active { --glow-color: ${colors.gold}; --main-color: ${colors.gold}; --secondary-color: ${colors.yellow}; }
+        .vip-active #app-container { border-color: var(--glow-color); box-shadow: 0 0 25px var(--glow-color), inset 0 0 15px var(--glow-color); }
+        .vip-active .app-title, .vip-active h3, .vip-active h4 { color: var(--main-color); text-shadow: 0 0 8px var(--glow-color); }
+        .vip-active .navbar { border-bottom-color: var(--main-color); }
+        .vip-active .nav-button-active { border-bottom-color: var(--secondary-color); color: var(--secondary-color); }
+        .vip-active .main-button { background-color: var(--main-color); border-color: var(--secondary-color); box-shadow: 0 0 20px var(--glow-color); animation: vip-pulse 2s infinite; }
+        
+        @keyframes vip-pulse { 0% { box-shadow: 0 0 15px ${colors.gold}50; } 50% { box-shadow: 0 0 25px ${colors.gold}90; } 100% { box-shadow: 0 0 15px ${colors.gold}50; } }
+        @keyframes champion-glow-animation { 0%, 100% { text-shadow: 0 0 8px ${colors.gold}, 0 0 15px ${colors.gold}; } 50% { text-shadow: 0 0 12px ${colors.gold}, 0 0 25px ${colors.gold}; } }
+        @keyframes pleno-flash-animation { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+        @keyframes leader-glow-animation { 0%, 100% { background-color: rgba(255, 215, 0, 0.15); box-shadow: inset 0 0 15px rgba(255, 215, 0, 0.5), 0 0 10px rgba(255, 215, 0, 0.3); } 50% { background-color: rgba(255, 215, 0, 0.25); box-shadow: inset 0 0 20px rgba(255, 215, 0, 0.7), 0 0 15px rgba(255, 215, 0, 0.5); } }
+        @keyframes fire-streak-animation { 0%, 100% { text-shadow: 0 0 5px #fca311, 0 0 10px #e63946; } 50% { text-shadow: 0 0 10px #fca311, 0 0 20px #e63946; } }
+        @keyframes cold-streak-animation { 0%, 100% { text-shadow: 0 0 8px #00aaff, 0 0 15px #00aaff, 0 0 20px #00aaff80; } 50% { text-shadow: 0 0 12px #00aaff, 0 0 25px #00aaff, 0 0 30px #00aaff80; } }
+        
+        @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
+        .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
+        @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+        .content-enter-active { animation: slideInFromRight 0.4s ease-out; }
+        @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+        .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(var(--angle)); } }
+        .confetti-particle { position: absolute; width: var(--size); height: var(--size); background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1.5s linear infinite; }
+        @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+        @keyframes blink-live { 50% { background-color: #a11d27; } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } }
+        .point-jump-up { animation: point-jump-up 0.7s ease-out; }
+        .stat-fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes bounce-in { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
+        @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
+        .pulsed { animation: pulse-once 0.4s ease-in-out; }
+        @keyframes pie-draw { to { stroke-dashoffset: 0; } }
+        .pie-chart-segment-new { transform-origin: 60px 60px; stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dasharray); transform: rotate(var(--rotation)); animation: pie-draw 1s ease-out forwards; }
+        @keyframes reaction-fade-out { to { opacity: 0; transform: scale(0.5); } }
+        .fade-out { animation: reaction-fade-out 0.5s forwards; }
+        @keyframes reaction-fly { 0% { transform: translate(0, 0) scale(1.2); opacity: 1; } 100% { transform: translate(80px, -80px) scale(0); opacity: 0; } }
+        .fly-away { display: inline-block; animation: reaction-fly 1s cubic-bezier(0.5, -0.5, 1, 1) forwards; position: absolute; z-index: 10; pointer-events: none; }
+        @keyframes status-blink-red { 0%, 100% { background-color: ${colors.danger}; box-shadow: 0 0 8px ${colors.danger}; } 50% { background-color: #a11d27; box-shadow: 0 0 15px ${colors.danger}; } }
+        @keyframes status-pulse-green { 0%, 100% { background-color: ${colors.success}; box-shadow: 0 0 5px ${colors.success}; } 50% { background-color: #3a9a6a; box-shadow: 0 0 10px ${colors.success}; } }
+        .stat-value-animation { animation: pop-in 0.5s ease-out; }
+        @keyframes pulse-animation-kf { 0% { box-shadow: 0 0 0 0 rgba(255, 200, 44, 0.7); } 70% { box-shadow: 0 0 10px 15px rgba(255, 200, 44, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 200, 44, 0); } }
+        .pulse-animation { border-color: ${colors.yellow}; animation: pulse-animation-kf 1s ease-out; }
+        @keyframes live-dot-kf { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .live-dot-animation { animation: live-dot-kf 1.5s infinite; }
+        @keyframes silver-glow { 0%, 100% { background-color: rgba(192, 192, 192, 0.15); box-shadow: inset 0 0 15px rgba(192, 192, 192, 0.5), 0 0 10px rgba(192, 192, 192, 0.3); } 50% { background-color: rgba(192, 192, 192, 0.25); box-shadow: inset 0 0 20px rgba(192, 192, 192, 0.7), 0 0 15px rgba(192, 192, 192, 0.5); } }
+        @keyframes bronze-glow { 0%, 100% { background-color: rgba(205, 127, 50, 0.15); box-shadow: inset 0 0 15px rgba(205, 127, 50, 0.5), 0 0 10px rgba(205, 127, 50, 0.3); } 50% { background-color: rgba(205, 127, 50, 0.25); box-shadow: inset 0 0 20px rgba(205, 127, 50, 0.7), 0 0 15px rgba(205, 127, 50, 0.5); } }
+        @keyframes user-highlight-glow { 0%, 100% { background-color: rgba(0, 85, 164, 0.5); box-shadow: inset 0 0 15px rgba(0, 85, 164, 1), 0 0 10px rgba(0, 85, 164, 0.7); } 50% { background-color: rgba(0, 85, 164, 0.7); box-shadow: inset 0 0 20px rgba(0, 85, 164, 1), 0 0 15px rgba(0, 85, 164, 1); } }
+        @keyframes ticker-scroll { 0% { transform: translateX(0%); } 100% { transform: translateX(-50%); } }
+        .news-ticker-content { animation-play-state: ${isTickerPaused ? 'paused' : 'running'}; }
+    `;
+    document.head.appendChild(styleSheet);
+    const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
+    const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
+    const qLive = query(collection(db, "jornadas"), where("liveData.isLive", "==", true), limit(1)); 
+    const unsubscribeLive = onSnapshot(qLive, (snapshot) => { 
+        if (!snapshot.empty) { 
+            const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }; 
+            setLiveJornada(jornada); 
+            setIsVipActive(jornada.esVip || false);
+        } else { 
+            const qAbierta = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Pre-apertura"]), limit(1));
+            onSnapshot(qAbierta, (snapAbierta) => {
+                if(!snapAbierta.empty){
+                    const jornada = snapAbierta.docs[0].data();
+                    setIsVipActive(jornada.esVip || false);
+                } else {
+                    setIsVipActive(false);
+                }
+            });
+            setLiveJornada(null); 
+        } 
+    });
+
+    const plantillaRef = doc(db, "configuracion", "plantilla"); const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => { if (docSnap.exists() && docSnap.data().jugadores?.length > 0) { setPlantilla(docSnap.data().jugadores); } else { console.log("Plantilla no encontrada en Firebase, usando respaldo local."); } });
+    const clasificacionRef = collection(db, "clasificacion"); const unsubscribeProfiles = onSnapshot(clasificacionRef, (snapshot) => { const profiles = {}; snapshot.forEach(doc => { profiles[doc.id] = doc.data(); }); setUserProfiles(profiles); });
+    const statusRef = ref(rtdb, 'status/'); const unsubscribeStatus = onValue(statusRef, (snapshot) => { const data = snapshot.val(); setOnlineUsers(data || {}); });
+    
+    // Listener que llama a la función de cálculo cuando una jornada pasa a finalizada
+    const unsubJornadas = onSnapshot(collection(db, "jornadas"), (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === "modified" && change.doc.data().estado === 'Finalizada' && change.doc.before.data().estado !== 'Finalizada') {
+                calculateAllStatsAndBadges();
+            }
+        });
+    });
+
+    calculateAllStatsAndBadges(); // Carga inicial
+
+    return () => { document.head.removeChild(styleSheet); unsubscribeConfig(); unsubscribeAuth(); unsubscribeEscudos(); unsubscribeLive(); unsubscribePlantilla(); unsubscribeProfiles(); unsubscribeStatus(); unsubJornadas(); }
+  }, [isTickerPaused, calculateAllStatsAndBadges]);
+  
+  const handleRequestPermission = async (user) => {
+      setShowNotificationModal(false);
+      localStorage.setItem('notificationPrompt_v3_seen', 'true'); 
+      try {
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+              const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
+              if (currentToken) await setDoc(doc(db, "notification_tokens", currentToken), { user: user, createdAt: new Date() });
+          }
+      } catch (error) { console.error('Error al obtener token de notificación.', error); }
+  };
+  
+  const handleLogin = async (user) => {
+    try {
+      setCurrentUser(user);
+      const userStatusRef = ref(rtdb, 'status/' + user);
+      await set(userStatusRef, true);
+      onDisconnect(userStatusRef).set(false);
+      const userProfileRef = doc(db, "clasificacion", user);
+      await setDoc(userProfileRef, { ultimaConexion: serverTimestamp() }, { merge: true });
+
+      const docSnap = await getDoc(userProfileRef);
+      if (docSnap.exists() && docSnap.data().icon && docSnap.data().color) setScreen('app');
+      else setScreen('customizeProfile');
+      
+      if ('Notification' in window && Notification.permission !== 'granted' && !localStorage.getItem('notificationPrompt_v3_seen')) setShowNotificationModal(true);
+      
+      const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
+      const jornadaSnap = await getDocs(q);
+      if (!jornadaSnap.empty) {
+          const jornadaDoc = jornadaSnap.docs[0]; const jornada = { id: jornadaDoc.id, ...jornadaDoc.data() };
+          if (jornada.id !== sessionStorage.getItem('lastSeenWinnerJornada') && jornada.ganadores?.includes(user)) {
+              const pronosticoSnap = await getDoc(doc(db, "pronosticos", jornada.id, "jugadores", user));
+              const allPronosticosSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
+              const prize = (allPronosticosSnap.size * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL)) + (jornada.bote || 0);
+              if (pronosticoSnap.exists()) { setWinnerData({ pronostico: { id: user, ...pronosticoSnap.data() }, prize: prize / jornada.ganadores.length }); sessionStorage.setItem('lastSeenWinnerJornada', jornada.id); }
+          }
+      }
+    } catch (error) {
+        console.error("Error crítico durante el inicio de sesión:", error);
+        alert("Ha ocurrido un error al iniciar sesión. Por favor, inténtalo de nuevo.");
+    }
+  };
+
+
+  const handleLogout = async () => {
+    if (currentUser) set(ref(rtdb, 'status/' + currentUser), false);
+    if (isAdminAuthenticated) { await signOut(auth); await signInAnonymously(auth); }
+    setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false);
+  };
+
+  const handleSaveProfile = async (user, profileData) => { await setDoc(doc(db, "clasificacion", user), profileData, { merge: true }); setScreen('app'); setActiveTab('miJornada'); };
+  const handleNavClick = (tab) => { setViewingJornadaId(null); setViewingPorraAnual(false); setActiveTab(tab); if (tab !== 'admin' && isAdminAuthenticated) { signOut(auth).then(() => signInAnonymously(auth)); } };
+  const handleAdminClick = () => { if (isAdminAuthenticated) setActiveTab('admin'); else setShowAdminLogin(true); };
+  const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
+  const handleViewJornadaFromFame = (jornadaId) => {
+    setViewingJornadaId(jornadaId);
+    setActiveTab('calendario'); // Cambiamos a la pestaña de calendario para que el componente de detalle se renderice
+  };
+
+  const renderContent = () => {
+    if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} plantilla={plantilla} />;
+    if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
+    if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
+    if (screen === 'app') {
+        const isLive = liveJornada?.liveData?.isLive;
+        const onlineCount = Object.values(onlineUsers).filter(Boolean).length;
+        const showGreenStatus = !isLive && onlineCount > 1;
+
+        const CurrentScreen = () => {
+            if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} teamLogos={teamLogos} userProfiles={userProfiles} />;
+            if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
+            if (activeTab === 'profile') return <ProfileScreen user={currentUser} userProfile={userProfiles[currentUser]} onEdit={() => setScreen('customizeProfile')} onBack={() => setActiveTab('miJornada')} />;
+            switch (activeTab) {
+                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} plantilla={plantilla} userProfiles={userProfiles} />;
+                case 'laJornada': return <LaJornadaScreen user={currentUser} teamLogos={teamLogos} liveData={liveJornada?.liveData} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
+                case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
+                case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} />;
+                case 'pagos': return <PagosScreen user={currentUser} userProfiles={userProfiles} />;
+                case 'paseoFama': return <PaseoDeLaFamaScreen userProfiles={userProfiles} globalStats={globalStats} onViewJornada={handleViewJornadaFromFame} />;
+                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} plantilla={plantilla} setPlantilla={setPlantilla} onRecalculateStats={calculateAllStatsAndBadges} /> : null;
+                default: return null;
+            }
+        };
+      return (<>{showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}{showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => {setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v3_seen', 'true');}} />}{porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (!porraAnualConfig?.fechaCierre || new Date() < porraAnualConfig.fechaCierre.toDate()) && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz o modifica tu pronóstico. ¡Pincha aquí!</div>)}<LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} />
+      <nav style={styles.navbar} className="navbar">
+        <button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton} className={activeTab === 'miJornada' ? 'nav-button-active' : ''}>Mi Jornada</button>
+        <button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton} className={activeTab === 'laJornada' ? 'nav-button-active' : ''}>
+            <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                {isLive && <span style={styles.statusIndicatorRed}></span>}
+                {showGreenStatus && <span style={styles.statusIndicatorGreen}></span>}
+                La Jornada
+            </div>
+        </button>
+        <button onClick={() => handleNavClick('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton} className={activeTab === 'calendario' ? 'nav-button-active' : ''}>Calendario</button>
+        <button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton} className={activeTab === 'clasificacion' ? 'nav-button-active' : ''}>Clasificación</button>
+        <button onClick={() => handleNavClick('paseoFama')} style={activeTab === 'paseoFama' ? styles.navButtonActive : styles.navButton} className={activeTab === 'paseoFama' ? 'nav-button-active' : ''}>Paseo de la Fama</button>
+        <button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton} className={activeTab === 'pagos' ? 'nav-button-active' : ''}>Pagos</button>
+        {currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton} className={activeTab === 'admin' ? 'nav-button-active' : ''}>Admin</button>)}
+        <button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button>
+        <button onClick={handleLogout} style={styles.logoutButton}>Salir</button>
+      </nav>
+      <div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreen /></div></>);
+    }
+  };
+  return (<>{winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}<div id="app-container" className={isVipActive ? 'vip-active' : ''} style={styles.container}><div style={{...styles.card, paddingBottom: activeTab !== 'paseoFama' ? '60px' : '25px'}} id="app-card">{renderContent()}</div>{activeTab !== 'paseoFama' && tickerStats.length > 0 && <NewsTicker stats={tickerStats} onHoverChange={setIsTickerPaused} />}</div></>);
 }
 
 export default App;
