@@ -1197,6 +1197,8 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
     );
 };
 
+
+
 const FullStatsModal = ({ stats, onClose }) => {
     if (!stats) return null;
 
