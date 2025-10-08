@@ -2047,6 +2047,7 @@ const JornadaAdminItem = ({ jornada, plantilla, onPuntuar }) => {
         setIsCalculating(false);
     };
     
+    // NUEVA LÓGICA DE CONTROL DE ESTADO MANUAL
     const handleSetEstado = async () => {
         if (!window.confirm(`¿Seguro que quieres cambiar el estado de la jornada a "${estado}"?`)) return;
         setIsSaving(true);
