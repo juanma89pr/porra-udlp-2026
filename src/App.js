@@ -3012,126 +3012,102 @@ const AdminStatsRecalculator = ({ onBack }) => {
     const [isRecalculating, setIsRecalculating] = useState(false);
     const [message, setMessage] = useState('');
 
-    const handleRecalculateAllStats = async () => {
-        if (!window.confirm("ADVERTENCIA: Esta acción borrará y recalculará TODAS las estadísticas de la clasificación (Puntos Totales, Desglose, Plenos) basándose en las jornadas finalizadas. Es un proceso intensivo y solo debe usarse para corregir datos históricos. ¿Continuar?")) {
+    // CORRECCIÓN: Botón de recalcular insignias añadido aquí
+    const handleRecalculateBadges = async () => {
+        if (!window.confirm("Esta acción recalculará las insignias de LÍDER, RACHAS y MALAS RACHAS para todos los jugadores basándose en los datos actuales. Las insignias de campeón de jornada y pleno no se verán afectadas. ¿Continuar?")) return;
+        
+        setIsRecalculating(true);
+        setMessage("Recalculando insignias...");
+        
+        try {
+            const batch = writeBatch(db);
+            const clasificacionSnap = await getDocs(query(collection(db, "clasificacion"), orderBy("puntosTotales", "desc")));
+            const clasificacionData = clasificacionSnap.docs.map(d => ({id: d.id, ...d.data()}));
+            
+            const qJornadas = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(3));
+            const jornadasSnap = await getDocs(qJornadas);
+            const ultimasJornadasIds = jornadasSnap.docs.map(d => d.id);
+
+            for (let i = 0; i < clasificacionData.length; i++) {
+                const jugador = clasificacionData[i];
+                const jugadorRef = doc(db, "clasificacion", jugador.id);
+                const currentBadges = new Set(jugador.badges || []);
+
+                // Limpiar insignias relevantes
+                ['lider_general', 'en_racha', 'mala_racha'].forEach(b => currentBadges.delete(b));
+                
+                // Asignar líder
+                if (i === 0) currentBadges.add('lider_general');
+
+                // Calcular rachas
+                if (ultimasJornadasIds.length === 3) {
+                    const pronosticosPromises = ultimasJornadasIds.map(jId => getDoc(doc(db, "pronosticos", jId, "jugadores", jugador.id)));
+                    const pronosticosSnaps = await Promise.all(pronosticosPromises);
+                    if (pronosticosSnaps.every(snap => snap.exists())) {
+                         const puntosRacha = pronosticosSnaps.map(snap => snap.data().puntosObtenidos || 0);
+                         if (puntosRacha.every(p => p > 0)) currentBadges.add('en_racha');
+                         if (puntosRacha.every(p => p === 0)) currentBadges.add('mala_racha');
+                    }
+                }
+                batch.update(jugadorRef, { badges: Array.from(currentBadges) });
+            }
+            
+            await batch.commit();
+            setMessage("¡Insignias de clasificación y rachas recalculadas con éxito!");
+        } catch (error) {
+            console.error("Error recalculando insignias:", error);
+            setMessage("Error al recalcular insignias.");
+        }
+        
+        setIsRecalculating(false);
+    };
+
+    const handleCalculateFameStats = async () => {
+        if (!window.confirm("Esta acción calculará todas las estadísticas del Paseo de la Fama desde cero. Es un proceso que consume muchas lecturas de la base de datos. Úsalo solo cuando sea necesario. ¿Continuar?")) {
             return;
         }
         setIsRecalculating(true);
-        setMessage('Iniciando re-cálculo... Este proceso puede tardar unos segundos.');
+        setMessage('Iniciando cálculo del Paseo de la Fama...');
 
         try {
-            // 1. Resetear la clasificación
-            setMessage('Paso 1/4: Reseteando clasificación actual...');
-            const clasificacionRef = collection(db, "clasificacion");
-            const clasificacionSnap = await getDocs(clasificacionRef);
-            const resetBatch = writeBatch(db);
-            clasificacionSnap.forEach(doc => {
-                resetBatch.set(doc.ref, {
-                    puntosTotales: 0,
-                    puntosResultadoExacto: 0,
-                    puntos1x2: 0,
-                    puntosGoleador: 0,
-                    plenos: 0,
-                }, { merge: true });
-            });
-            await resetBatch.commit();
-
-            // 2. Obtener todas las jornadas finalizadas
-            setMessage('Paso 2/4: Obteniendo jornadas finalizadas...');
-            const qJornadas = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada"));
-            const jornadasSnap = await getDocs(qJornadas);
-            const jornadasFinalizadas = jornadasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-            // 3. Iterar y recalcular puntos para cada jornada
-            const statsAccumulator = {};
-            JUGADORES.forEach(j => {
-                statsAccumulator[j] = { puntosTotales: 0, puntosResultadoExacto: 0, puntos1x2: 0, puntosGoleador: 0, plenos: 0 };
-            });
-
-            for (const jornada of jornadasFinalizadas) {
-                setMessage(`Paso 3/4: Procesando Jornada ${jornada.numeroJornada}...`);
-                const pronosticosSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
-                
-                pronosticosSnap.forEach(pronosticoDoc => {
-                    const p = { id: pronosticoDoc.id, ...pronosticoDoc.data() };
-                    const esVipJornada = jornada.esVip || false;
-                    let puntosExacto = 0, puntos1X2 = 0, puntosGoleadorCat = 0;
-                    
-                    const aciertoExacto = p.golesLocal !== '' && p.golesVisitante !== '' && parseInt(p.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(p.golesVisitante) === parseInt(jornada.resultadoVisitante);
-                    if (aciertoExacto) puntosExacto = esVipJornada ? 6 : 3;
-
-                    let resultado1x2Real = '';
-                    if (jornada.equipoLocal === "UD Las Palmas") {
-                        if (parseInt(jornada.resultadoLocal) > parseInt(jornada.resultadoVisitante)) resultado1x2Real = 'Gana UD Las Palmas';
-                        else if (parseInt(jornada.resultadoLocal) < parseInt(jornada.resultadoVisitante)) resultado1x2Real = 'Pierde UD Las Palmas';
-                        else resultado1x2Real = 'Empate';
-                    } else {
-                        if (parseInt(jornada.resultadoVisitante) > parseInt(jornada.resultadoLocal)) resultado1x2Real = 'Gana UD Las Palmas';
-                        else if (parseInt(jornada.resultadoVisitante) < parseInt(jornada.resultadoLocal)) resultado1x2Real = 'Pierde UD Las Palmas';
-                        else resultado1x2Real = 'Empate';
-                    }
-                    const acierto1x2 = p.resultado1x2 === resultado1x2Real;
-                    if (acierto1x2) puntos1X2 = esVipJornada ? 2 : 1;
-                    
-                    const goleadorReal = (jornada.goleador || '').trim().toLowerCase();
-                    const goleadorApostado = p.goleador ? p.goleador.trim().toLowerCase() : '';
-                    let aciertoGoleador = false;
-                    if (p.sinGoleador && (goleadorReal === "sg" || goleadorReal === "")) { puntosGoleadorCat = 1; aciertoGoleador = true; }
-                    else if (!p.sinGoleador && goleadorApostado === goleadorReal && goleadorReal !== "") { puntosGoleadorCat = esVipJornada ? 4 : 2; aciertoGoleador = true; }
-
-                    if (p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.length > 0) {
-                        for (const jokerP of p.jokerPronosticos) {
-                            if (jokerP.golesLocal !== '' && jokerP.golesVisitante !== '' && parseInt(jokerP.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(jokerP.golesVisitante) === parseInt(jornada.resultadoVisitante)) {
-                                puntosExacto += esVipJornada ? 6 : 3;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (statsAccumulator[p.id]) {
-                        statsAccumulator[p.id].puntosTotales += (puntosExacto + puntos1X2 + puntosGoleadorCat);
-                        statsAccumulator[p.id].puntosResultadoExacto += puntosExacto;
-                        statsAccumulator[p.id].puntos1x2 += puntos1X2;
-                        statsAccumulator[p.id].puntosGoleador += puntosGoleadorCat;
-                        if (aciertoExacto && acierto1x2 && aciertoGoleador) {
-                            statsAccumulator[p.id].plenos += 1;
-                        }
-                    }
-                });
-            }
-
-            // 4. Guardar los nuevos totales en la clasificación
-            setMessage('Paso 4/4: Guardando nuevos totales...');
-            const finalBatch = writeBatch(db);
-            for (const jugadorId in statsAccumulator) {
-                const userRef = doc(db, "clasificacion", jugadorId);
-                finalBatch.update(userRef, statsAccumulator[jugadorId]);
-            }
-            await finalBatch.commit();
-            setMessage('¡Re-cálculo completado con éxito! Los datos de la clasificación han sido actualizados.');
-
+            // Se asume que existe una cloud function para esto.
+            const calculateFameStats = httpsCallable(functions, 'calculateFameStats');
+            const result = await calculateFameStats();
+            setMessage(result.data.message);
         } catch (error) {
-            console.error("Error durante el re-cálculo:", error);
+            console.error("Error al ejecutar la función de cálculo de estadísticas:", error);
             setMessage(`Error: ${error.message}`);
-        } finally {
-            setIsRecalculating(false);
         }
+        
+        setIsRecalculating(false);
     };
 
     return (
         <div style={styles.adminJornadaItem}>
             <button onClick={onBack} style={styles.backButton}>&larr; Volver al Panel</button>
             <h3 style={styles.formSectionTitle}>⚙️ Herramientas de Datos</h3>
-            <div style={{...styles.recalculatorContainer, textAlign: 'center'}}>
-                <h4>Recalcular Estadísticas Globales</h4>
+            
+            {/* CORRECCIÓN: Contenedor para el nuevo botón */}
+            <div style={{...styles.recalculatorContainer, textAlign: 'center', marginBottom: '20px'}}>
+                <h4>Recalcular Insignias de Clasificación</h4>
                 <p style={{margin: '10px 0', lineHeight: 1.5}}>
-                    Esta herramienta recalcula todos los puntos (totales y desglosados) y plenos para todos los jugadores basándose en las jornadas ya finalizadas. Úsala si has hecho cambios en la lógica de puntos y necesitas actualizar los datos históricos.
+                    Usa este botón para actualizar las insignias de <strong>Líder</strong>, <strong>En Racha</strong> y <strong>Mala Racha</strong> para todos los jugadores. Útil si los datos han cambiado o para corregir estados pasados.
                 </p>
-                <button onClick={handleRecalculateAllStats} disabled={isRecalculating} style={{...styles.saveButton, backgroundColor: styles.colors.danger}}>
-                    {isRecalculating ? 'Recalculando...' : 'Iniciar Re-cálculo Total'}
+                <button onClick={handleRecalculateBadges} disabled={isRecalculating} style={{...styles.saveButton, backgroundColor: styles.colors.blue}}>
+                    {isRecalculating ? 'Calculando...' : 'Recalcular Insignias'}
                 </button>
-                {message && <p style={{...styles.message, marginTop: '15px'}}>{message}</p>}
             </div>
+            
+            <div style={{...styles.recalculatorContainer, textAlign: 'center'}}>
+                <h4>Calcular "Paseo de la Fama"</h4>
+                <p style={{margin: '10px 0', lineHeight: 1.5}}>
+                   Esta herramienta analiza todas las jornadas y pronósticos para generar las estadísticas del Paseo de la Fama. Se ejecuta a través de una Cloud Function para evitar sobrecargar el navegador.
+                </p>
+                <button onClick={handleCalculateFameStats} disabled={isRecalculating} style={{...styles.saveButton, backgroundColor: styles.colors.danger}}>
+                    {isRecalculating ? 'Calculando...' : 'Actualizar Paseo de la Fama'}
+                </button>
+            </div>
+            {message && <p style={{...styles.message, marginTop: '15px'}}>{message}</p>}
         </div>
     );
 };
