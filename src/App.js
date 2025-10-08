@@ -790,7 +790,6 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
         // MODIFICADO: Se añade "Pre-apertura" y "En vivo" a la lógica
         const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
         const unsubscribe = onSnapshot(qJornadas, (snap) => {
-            const ahora = new Date();
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             
             // Prioridad 1: Jornada En vivo
