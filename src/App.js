@@ -776,12 +776,12 @@ const InitialSplashScreen = ({ onFinish }) => {
     return (<div style={fadingOut ? {...styles.initialSplashContainer, ...styles.fadeOut} : styles.initialSplashContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div><div style={styles.loadingMessage}><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><p>Cargando apuestas...</p></div></div>);
 };
 
-const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
+const SplashScreen = ({ onEnter, teamLogos, plantilla, fameStats }) => {
     const [jornadaInfo, setJornadaInfo] = useState(null);
     const [countdown, setCountdown] = useState('');
     const [loading, setLoading] = useState(true);
     const [showInstallGuide, setShowInstallGuide] = useState(false);
-    const [stats, setStats] = useState(null);
+    const [jornadaStats, setJornadaStats] = useState(null);
     const [currentStatIndex, setCurrentStatIndex] = useState(0);
     const isMobile = useMemo(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
     
@@ -816,14 +816,14 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
                             const resultadoMasVotado = Object.keys(resultadoCounts).length > 0 ? Object.entries(resultadoCounts).sort((a,b) => b[1] - a[1])[0][0] : null;
                             const jokersActivos = pronosticos.filter(p => p.jokerActivo).length;
                             
-                            setStats({ apostadoCount, sinApostar, goleadorMasVotado, goleadorMasVotadoCount: goleadorMasVotado ? goleadorCounts[goleadorMasVotado] : 0, resultadoMasVotado, resultadoMasVotadoCount: resultadoMasVotado ? resultadoCounts[resultadoMasVotado] : 0, jokersActivos });
-                        } else { setStats(null); }
+                            setJornadaStats({ apostadoCount, sinApostar, goleadorMasVotado, goleadorMasVotadoCount: goleadorMasVotado ? goleadorCounts[goleadorMasVotado] : 0, resultadoMasVotado, resultadoMasVotadoCount: resultadoMasVotado ? resultadoCounts[resultadoMasVotado] : 0, jokersActivos });
+                        } else { setJornadaStats(null); }
                     });
                 } else {
-                    setStats(null);
+                    setJornadaStats(null);
                 }
             } else {
-                setStats(null);
+                setJornadaStats(null);
                 let jornadaCerrada = todasLasJornadas.find(j => j.estado === 'Cerrada');
                 if (jornadaCerrada) { setJornadaInfo(jornadaCerrada); }
                 else {
@@ -866,15 +866,44 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
         return () => clearInterval(interval);
     }, [jornadaInfo]);
 
+    const statCards = useMemo(() => {
+        if (jornadaInfo?.estado === 'Abierta' && jornadaStats) {
+            return [
+                <div key="apostado" style={styles.statCard}><div style={styles.statValue}>{jornadaStats.apostadoCount}/{JUGADORES.length}</div><div style={styles.statLabel}>Han apostado</div><div style={styles.splashStatDescription}>{jornadaStats.sinApostar} jugador(es) pendiente(s)</div></div>,
+                <div key="goleador" style={styles.statCard}><img src={plantilla.find(j => j.nombre === jornadaStats.goleadorMasVotado)?.imageUrl || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'} alt={jornadaStats.goleadorMasVotado} style={styles.splashStatImage} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }} /><div style={styles.statValue}>{jornadaStats.goleadorMasVotado || '-'}</div><div style={styles.statLabel}>Goleador más elegido</div><div style={styles.splashStatDescription}>{jornadaStats.goleadorMasVotadoCount} voto(s)</div></div>,
+                <div key="resultado" style={styles.statCard}><div style={styles.statValue}>{jornadaStats.resultadoMasVotado || '-'}</div><div style={styles.statLabel}>Resultado más común</div><div style={styles.splashStatDescription}>{jornadaStats.resultadoMasVotadoCount} vez/veces</div></div>,
+                <div key="joker" style={styles.statCard}><div style={styles.statValue}>🃏 {jornadaStats.jokersActivos}</div><div style={styles.statLabel}>Jokers Activados</div><div style={styles.splashStatDescription}>¡Apuestas extra en juego!</div></div>
+            ];
+        } 
+        if (fameStats) {
+            // NUEVO: Carrusel de noticias con stats globales
+            const fameKeys = ['rey_midas', 'pelotazo', 'mr_regularidad', 'profeta'];
+            return fameKeys.map(key => {
+                const stat = fameStats[key];
+                const def = FAME_STATS_DEFINITIONS[key];
+                if (!stat || !def) return null;
+                return (
+                    <div key={key} style={styles.statCard}>
+                        <div style={{...styles.fameIcon, fontSize: '2rem'}}>{def.icon}</div>
+                        <div style={{...styles.fameTitle, fontSize: '1rem'}}>{def.name}</div>
+                        <div style={{...styles.fameWinner, fontSize: '1.2rem'}}>{stat.jugador || '-'}</div>
+                        <div style={styles.splashStatDescription}>{stat.valor || '-'}</div>
+                    </div>
+                );
+            }).filter(Boolean);
+        }
+        return [];
+    }, [jornadaInfo, jornadaStats, fameStats, plantilla]);
+
     // Carrusel de estadísticas
     useEffect(() => {
-        if (stats) {
+        if (statCards.length > 0) {
             const timer = setInterval(() => {
-                setCurrentStatIndex(prevIndex => (prevIndex + 1) % 4);
+                setCurrentStatIndex(prevIndex => (prevIndex + 1) % statCards.length);
             }, 4000);
             return () => clearInterval(timer);
         }
-    }, [stats]);
+    }, [statCards]);
 
     const renderJornadaInfo = () => {
         if (!jornadaInfo) return (<div style={styles.splashInfoBox}><h3 style={styles.splashInfoTitle}>TEMPORADA EN PAUSA</h3><p>El administrador aún no ha configurado la próxima jornada.</p></div>);
@@ -895,22 +924,15 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla }) => {
         return (<div style={styles.splashInfoBox}>{infoContent}{jornadaInfo.splashMessage && <p style={styles.splashAdminMessage}>"{jornadaInfo.splashMessage}"</p>}</div>);
     };
 
-    const statCards = stats ? [
-        <div key="apostado" style={styles.statCard}><div style={styles.statValue}>{stats.apostadoCount}/{JUGADORES.length}</div><div style={styles.statLabel}>Han apostado</div><div style={styles.splashStatDescription}>{stats.sinApostar} jugador(es) pendiente(s)</div></div>,
-        <div key="goleador" style={styles.statCard}><img src={plantilla.find(j => j.nombre === stats.goleadorMasVotado)?.imageUrl || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'} alt={stats.goleadorMasVotado} style={styles.splashStatImage} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }} /><div style={styles.statValue}>{stats.goleadorMasVotado || '-'}</div><div style={styles.statLabel}>Goleador más elegido</div><div style={styles.splashStatDescription}>{stats.goleadorMasVotadoCount} voto(s)</div></div>,
-        <div key="resultado" style={styles.statCard}><div style={styles.statValue}>{stats.resultadoMasVotado || '-'}</div><div style={styles.statLabel}>Resultado más común</div><div style={styles.splashStatDescription}>{stats.resultadoMasVotadoCount} vez/veces</div></div>,
-        <div key="joker" style={styles.statCard}><div style={styles.statValue}>🃏 {stats.jokersActivos}</div><div style={styles.statLabel}>Jokers Activados</div><div style={styles.splashStatDescription}>¡Apuestas extra en juego!</div></div>
-    ] : [];
-
     return (<>
         {showInstallGuide && <InstallGuideModal onClose={() => setShowInstallGuide(false)} />}
         <div style={styles.splashContainer}>
             <div style={styles.splashLogoContainer}><img src="https://upload.wikimedia.org/wikipedia/en/thumb/2/20/UD_Las_Palmas_logo.svg/1200px-UD_Las_Palmas_logo.svg.png" alt="UD Las Palmas Logo" style={styles.splashLogo} /><div style={styles.splashTitleContainer}><span style={styles.splashTitle}>PORRA UDLP</span><span style={styles.splashYear}>2026</span></div></div>
             {loading ? <LoadingSkeleton type="splash" /> : renderJornadaInfo()}
-            {jornadaInfo?.estado === 'Abierta' && stats && (
+            {statCards.length > 0 && (
                 <div style={styles.statsCarouselContainer}>
-                    <div style={{...styles.statsCarouselTrack, transform: `translateX(-${currentStatIndex * 25}%)`}}>
-                        {statCards.map((card, index) => <div key={index} style={styles.statCardWrapper}>{card}</div>)}
+                    <div style={{...styles.statsCarouselTrack, transform: `translateX(-${currentStatIndex * (100 / statCards.length)}%)`, width: `${statCards.length * 100}%`}}>
+                        {statCards.map((card, index) => <div key={index} style={{...styles.statCardWrapper, width: `${100 / statCards.length}%`}}>{card}</div>)}
                     </div>
                 </div>
             )}
@@ -2144,6 +2166,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers,
         </div>
     );
 };
+
 const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
     const [jornadas, setJornadas] = useState([]); const [loading, setLoading] = useState(true);
     useEffect(() => { const q = query(collection(db, "jornadas"), orderBy("numeroJornada")); const unsubscribe = onSnapshot(q, (querySnapshot) => { setJornadas(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); setLoading(false); }, (error) => { console.error("Error cargando calendario: ", error); setLoading(false); }); return () => unsubscribe(); }, []);
@@ -2526,6 +2549,7 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
 
             <div style={{marginTop: '20px', display: 'flex', flexWrap: 'wrap', gap: '10px'}}>
                 <button onClick={handleSaveChanges} disabled={isSaving} style={styles.saveButton}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</button>
+                {/* CORRECCIÓN: Botón de Calcular Puntos solo visible si la jornada está Finalizada (como estado previo al cálculo) */}
                 {jornada.estado === 'Finalizada' && (<button onClick={handleCalcularPuntos} disabled={isCalculating} style={{...styles.saveButton, backgroundColor: styles.colors.gold, color: colors.deepBlue}}>{isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar'}</button>)}
                 {message && <span style={{marginLeft: '10px', color: styles.colors.success, alignSelf: 'center'}}>{message}</span>}
             </div>
@@ -3489,33 +3513,8 @@ const ProfileScreen = ({ user, userProfile, onEdit, onBack }) => {
 };
 
 // --- NUEVA PANTALLA: Paseo de la Fama ---
-const PaseoDeLaFamaScreen = ({ userProfiles }) => {
-    const [fameStats, setFameStats] = useState(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        // En un futuro, estos datos se leerían de una colección "estadisticasGlobales"
-        // Por ahora, los calculamos al vuelo (puede ser lento si hay muchas jornadas)
-        const calculateFameStats = async () => {
-            setLoading(true);
-            // Aquí iría la lógica compleja de cálculo. De momento, usamos datos de ejemplo.
-            const stats = {
-                rey_midas: { jugador: "Juanma", valor: "150.50€" },
-                pelotazo: { jugador: "Laura", valor: "12 Puntos" },
-                atrevido: { jugador: "Carlos", valor: "5 veces" },
-                mr_regularidad: { jugador: "Mari", valor: "22 Jornadas" },
-                profeta: { jugador: "Pedro", valor: "8 Goleadores" },
-                visionario: { jugador: "Lucy", valor: "7 Jornadas" },
-                cenizo: { jugador: "Antonio", valor: "5 Jornadas" },
-                obstinado: { jugador: "Himar", valor: "10 veces (2-1)" },
-            };
-            setFameStats(stats);
-            setLoading(false);
-        };
-        calculateFameStats();
-    }, []);
-
-    if (loading) return <LoadingSkeleton type="table" />;
+const PaseoDeLaFamaScreen = ({ userProfiles, fameStats }) => {
+    if (!fameStats) return <LoadingSkeleton type="table" />;
 
     return (
         <div>
@@ -3527,9 +3526,9 @@ const PaseoDeLaFamaScreen = ({ userProfiles }) => {
                         <div style={styles.fameIcon}>{def.icon}</div>
                         <h3 style={styles.fameTitle}>{def.name}</h3>
                         <div style={styles.fameWinner}>
-                            <PlayerProfileDisplay name={fameStats?.[key]?.jugador || '-'} profile={userProfiles[fameStats?.[key]?.jugador]} />
+                            <PlayerProfileDisplay name={fameStats[key]?.jugador || '-'} profile={userProfiles[fameStats[key]?.jugador]} />
                         </div>
-                        <div style={styles.fameValue}>{fameStats?.[key]?.valor || '-'}</div>
+                        <div style={styles.fameValue}>{fameStats[key]?.valor || '-'}</div>
                         <p style={{fontSize: '0.8rem', color: colors.silver, marginTop: 'auto', paddingTop: '10px'}}>{def.description}</p>
                     </div>
                 ))}
@@ -3561,6 +3560,7 @@ function App() {
   const [onlineUsers, setOnlineUsers] = useState({});
   const [isVipActive, setIsVipActive] = useState(false);
   const [clasificacionData, setClasificacionData] = useState([]); // NUEVO: Para pasar a componentes hijos
+  const [fameStats, setFameStats] = useState(null); // NUEVO: Para estadísticas globales
   const anonymousUserRef = useRef(null);
 
   useEffect(() => {
@@ -3666,7 +3666,16 @@ function App() {
         setClasificacionData(clasificacion.sort((a,b) => (b.puntosTotales || 0) - (a.puntosTotales || 0)));
     });
     const statusRef = ref(rtdb, 'status/'); const unsubscribeStatus = onValue(statusRef, (snapshot) => { const data = snapshot.val(); setOnlineUsers(data || {}); });
-    return () => { document.head.removeChild(styleSheet); unsubscribeConfig(); unsubscribeAuth(); unsubscribeEscudos(); unsubscribeLive(); unsubscribePlantilla(); unsubscribeClasificacion(); unsubscribeStatus(); }
+    
+    // NUEVO: Listener para estadísticas globales
+    const fameStatsRef = doc(db, "estadisticas", "globales");
+    const unsubscribeFameStats = onSnapshot(fameStatsRef, (docSnap) => {
+        if (docSnap.exists()) {
+            setFameStats(docSnap.data());
+        }
+    });
+
+    return () => { document.head.removeChild(styleSheet); unsubscribeConfig(); unsubscribeAuth(); unsubscribeEscudos(); unsubscribeLive(); unsubscribePlantilla(); unsubscribeClasificacion(); unsubscribeStatus(); unsubscribeFameStats(); }
   }, []);
   
   const handleRequestPermission = async (user) => {
@@ -3727,7 +3736,7 @@ function App() {
 
   const renderContent = () => {
     if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} />;
-    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} plantilla={plantilla} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} plantilla={plantilla} fameStats={fameStats} />;
     if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
     if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
     if (screen === 'app') {
@@ -3746,7 +3755,7 @@ function App() {
                 case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} userProfiles={userProfiles} />;
                 case 'pagos': return <PagosScreen user={currentUser} userProfiles={userProfiles} />;
                 // NUEVO: Se añade la pantalla "Paseo de la Fama"
-                case 'fama': return <PaseoDeLaFamaScreen userProfiles={userProfiles} />;
+                case 'fama': return <PaseoDeLaFamaScreen userProfiles={userProfiles} fameStats={fameStats} />;
                 case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} plantilla={plantilla} setPlantilla={setPlantilla} /> : null;
                 default: return null;
             }
