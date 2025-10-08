@@ -1,8 +1,12 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+// Importamos las funciones necesarias de Firebase
+import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 // MODIFICADO: Se añade 'runTransaction', 'serverTimestamp' y 'arrayUnion'
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction, serverTimestamp, addDoc, arrayUnion } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 
 
