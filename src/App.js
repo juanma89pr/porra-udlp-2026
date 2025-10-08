@@ -3151,16 +3151,26 @@ const AdminTools = ({ onBack }) => {
 
             // 1. Rey Midas (Más dinero ganado)
             setFameMessage('Calculando: Rey Midas...');
-            let midas = { jugador: null, valor: 0 };
+            const premiosPorJugador = JUGADORES.reduce((acc, j) => ({ ...acc, [j]: 0 }), {});
             for(const j of jornadas) {
-                if(j.ganadores && j.ganadores.length > 0) {
+                if(j.ganadores && j.ganadores.length > 0 && j.premioTotal) {
                     const premioPorGanador = j.premioTotal / j.ganadores.length;
                     j.ganadores.forEach(g => {
-                        // Aquí se debería sumar a un acumulador por jugador, pero la info no está.
-                        // Esta stat es difícil de calcular sin un registro de premios por jugador.
+                        if(premiosPorJugador[g] !== undefined) {
+                            premiosPorJugador[g] += premioPorGanador;
+                        }
                     });
                 }
             }
+            const midasEntry = Object.entries(premiosPorJugador).sort((a, b) => b[1] - a[1])[0];
+            const midas = { jugador: midasEntry[0], valor: `${midasEntry[1].toFixed(2)}€` };
+            newFameStats.rey_midas = midas;
+
+
+                    });
+                }
+            }
+
             // Simulación simple: Contar porras ganadas
             const porrasGanadas = jornadas.reduce((acc, j) => {
                 if (j.ganadores) j.ganadores.forEach(g => acc[g] = (acc[g] || 0) + 1);
