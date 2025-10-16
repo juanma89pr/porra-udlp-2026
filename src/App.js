@@ -1473,7 +1473,6 @@ const LiveAnalysisPanels = ({ jornada, liveData, participantes, userProfiles, cl
         </div>
     );
 };
-
 const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -3255,39 +3254,33 @@ const ProfileScreen = ({ user, userProfile, onEdit, onBack }) => {
 
 // --- NUEVO: Paseo de la Fama News Ticker ---
 const NewsTicker = ({ stats, userProfiles }) => {
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const tickerItems = useMemo(() => {
-        if (!stats) return [];
-        return Object.entries(FAME_STATS_DEFINITIONS)
-            .map(([key, def]) => ({
-                ...def,
-                jugador: stats[key]?.jugador,
-                valor: stats[key]?.valor,
-            }))
-            .filter(item => item.jugador && item.valor);
-    }, [stats]);
-
+    const [tickerItems, setTickerItems] = useState([]);
+    
     useEffect(() => {
-        if (tickerItems.length === 0) return;
-        const interval = setInterval(() => {
-            setCurrentIndex(prev => (prev + 1) % tickerItems.length);
-        }, 5000); // Cambia cada 5 segundos
-        return () => clearInterval(interval);
-    }, [tickerItems.length]);
+        if (stats) {
+            const items = Object.entries(FAME_STATS_DEFINITIONS)
+                .map(([key, def]) => {
+                    const stat = stats[key];
+                    if (!stat || !stat.jugador) return null;
+                    return (
+                        <span key={key} style={styles.newsTickerItem}>
+                            <strong>{def.icon} {def.name}: </strong> 
+                            <PlayerProfileDisplay name={stat.jugador} profile={userProfiles[stat.jugador]} /> ({stat.valor})
+                        </span>
+                    );
+                })
+                .filter(Boolean);
+            setTickerItems(items);
+        }
+    }, [stats, userProfiles]);
 
     if (tickerItems.length === 0) return null;
 
-    const currentItem = tickerItems[currentIndex];
-
     return (
         <div style={styles.newsTicker}>
-            <div key={currentIndex} style={styles.newsTickerItem}>
-                <span style={styles.newsTickerIcon}>{currentItem.icon}</span>
-                <span style={styles.newsTickerTitle}>{currentItem.name}:</span>
-                <span style={styles.newsTickerWinner}>
-                    <PlayerProfileDisplay name={currentItem.jugador} profile={userProfiles[currentItem.jugador]} />
-                </span>
-                <span style={styles.newsTickerValue}>({currentItem.valor})</span>
+            <div style={styles.newsTickerContent}>
+                {tickerItems}
+                {tickerItems} {/* Duplicamos para un bucle infinito y suave */}
             </div>
         </div>
     );
@@ -3415,8 +3408,7 @@ function App() {
         @keyframes silver-glow { 0%, 100% { background-color: rgba(192, 192, 192, 0.15); box-shadow: inset 0 0 15px rgba(192, 192, 192, 0.5), 0 0 10px rgba(192, 192, 192, 0.3); } 50% { background-color: rgba(192, 192, 192, 0.25); box-shadow: inset 0 0 20px rgba(192, 192, 192, 0.7), 0 0 15px rgba(192, 192, 192, 0.5); } }
         @keyframes bronze-glow { 0%, 100% { background-color: rgba(205, 127, 50, 0.15); box-shadow: inset 0 0 15px rgba(205, 127, 50, 0.5), 0 0 10px rgba(205, 127, 50, 0.3); } 50% { background-color: rgba(205, 127, 50, 0.25); box-shadow: inset 0 0 20px rgba(205, 127, 50, 0.7), 0 0 15px rgba(205, 127, 50, 0.5); } }
         @keyframes user-highlight-glow { 0%, 100% { background-color: rgba(0, 85, 164, 0.5); box-shadow: inset 0 0 15px rgba(0, 85, 164, 1), 0 0 10px rgba(0, 85, 164, 0.7); } 50% { background-color: rgba(0, 85, 164, 0.7); box-shadow: inset 0 0 20px rgba(0, 85, 164, 1), 0 0 15px rgba(0, 85, 164, 1); } }
-        @keyframes news-ticker-scroll { 0% { transform: translateY(100%); opacity: 0; } 10%, 90% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-100%); opacity: 0; } }
-        .news-ticker-item-animation { animation: news-ticker-scroll 5s ease-in-out forwards; }
+        @keyframes ticker-scroll { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
     `;
     document.head.appendChild(styleSheet);
     const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
@@ -3574,7 +3566,11 @@ function App() {
                 if (resultadoLocal > resultadoVisitante) resultado1x2Real = 'Gana UD Las Palmas';
                 else if (resultadoLocal < resultadoVisitante) resultado1x2Real = 'Pierde UD Las Palmas';
                 else resultado1x2Real = 'Empate';
-            } else { /* ... lógica para cuando UDLP es visitante ... */ }
+            } else { 
+                if (resultadoVisitante > resultadoLocal) resultado1x2Real = 'Gana UD Las Palmas';
+                else if (resultadoVisitante < resultadoLocal) resultado1x2Real = 'Pierde UD Las Palmas';
+                else resultado1x2Real = 'Empate';
+             }
             const acierto1x2 = p.resultado1x2 === resultado1x2Real;
             if (acierto1x2) puntosJornada += esVipJornada ? 2 : 1;
 
@@ -3641,8 +3637,7 @@ function App() {
         }
         batch.update(jornadaRef, { ganadores: ganadoresResultadoExacto, premioTotal: boteTotal });
         
-        // 4. Actualizar Líder General
-        // Esta parte es compleja y podría hacerse después o simplificarse. Por ahora, se omite para asegurar la transacción.
+        // 4. Actualizar Líder General (se hará en un listener de clasificación)
 
         await batch.commit();
     };
@@ -3702,4 +3697,3 @@ function App() {
 }
 
 export default App;
-
