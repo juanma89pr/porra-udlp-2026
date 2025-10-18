@@ -412,70 +412,68 @@ const styles = {
     fameTitle: { fontFamily: "'Orbitron', sans-serif", color: colors.yellow, fontSize: '1.2rem', marginBottom: '10px' },
     fameWinner: { fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '5px' },
     fameValue: { fontSize: '1.1rem', color: colors.silver },
-    newsTicker: {
+    // --- NUEVO: Estilos para Filtros de Admin ---
+    adminFilterContainer: { display: 'flex', gap: '15px', marginBottom: '20px', padding: '10px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', alignItems: 'center' },
+    adminSearchInput: { flex: 1, padding: '8px 12px', fontSize: '0.9rem', backgroundColor: colors.deepBlue, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '6px' },
+    // --- NUEVO: Estilos para el Ticker de Noticias ---
+    newsTickerContainer: {
         position: 'fixed',
         bottom: 0,
         left: 0,
         width: '100%',
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        backgroundColor: 'rgba(0, 29, 61, 0.9)',
         color: colors.lightText,
         padding: '10px 0',
         overflow: 'hidden',
-        whiteSpace: 'nowrap',
+        borderTop: `1px solid ${colors.blue}`,
         zIndex: 100,
-        borderTop: `1px solid ${colors.yellow}`,
+        display: 'flex',
+        alignItems: 'center',
     },
-    newsTickerContent: {
+    newsTickerLabel: {
+        backgroundColor: colors.yellow,
+        color: colors.deepBlue,
+        padding: '10px 15px',
+        fontWeight: 'bold',
+        fontFamily: "'Orbitron', sans-serif",
+        textTransform: 'uppercase',
+    },
+    newsTickerTrack: {
         display: 'inline-block',
+        whiteSpace: 'nowrap',
         paddingLeft: '100%',
-        animation: 'ticker-scroll 30s linear infinite',
+        animation: 'ticker-scroll 40s linear infinite',
     },
     newsTickerItem: {
         display: 'inline-block',
-        margin: '0 25px',
-        fontSize: '0.9rem',
+        padding: '0 25px',
+        fontSize: '0.95rem',
     },
-    // --- NUEVO: Estilos para Filtros de Admin ---
-    adminFilterContainer: { display: 'flex', gap: '15px', marginBottom: '20px', padding: '10px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', alignItems: 'center' },
-    adminSearchInput: { flex: 1, padding: '8px 12px', fontSize: '0.9rem', backgroundColor: colors.deepBlue, color: colors.lightText, border: `1px solid ${colors.blue}`, borderRadius: '6px' },
-    // NUEVO: Estilo para el botón de cálculo centralizado
-    calculateButton: {
-        backgroundColor: colors.gold,
-        color: colors.deepBlue,
-        fontWeight: 'bold',
-        padding: '12px 20px',
-        fontSize: '1rem',
-        border: 'none',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        width: '100%',
-        marginTop: '15px',
-        transition: 'all 0.3s ease',
-        boxShadow: `0 0 15px ${colors.gold}50`
-    },
-    // NUEVO: Modal de Anuncio de Resultados
+    // --- NUEVO: Estilos para el Modal de Resultados ---
     resultModalContent: {
         textAlign: 'center',
-        padding: '40px',
-        border: `2px solid ${colors.gold}`,
-        boxShadow: `0 0 40px ${colors.gold}80`,
+        animation: 'fadeIn 0.5s ease',
     },
     resultModalTitle: {
         fontFamily: "'Orbitron', sans-serif",
-        color: colors.gold,
         fontSize: '2.5rem',
-        margin: '10px 0',
+        color: colors.yellow,
+        textShadow: `0 0 15px ${colors.yellow}`,
+        marginBottom: '15px',
     },
-    resultModalText: {
+    resultModalBody: {
         fontSize: '1.2rem',
-        color: colors.lightText,
         lineHeight: 1.6,
     },
-    resultModalBote: {
-        fontSize: '3rem',
+    resultModalWinner: {
+        color: colors.gold,
+        fontWeight: 'bold',
+        fontSize: '1.5rem',
+    },
+    resultModalBoteAmount: {
         color: colors.success,
         fontWeight: 'bold',
-        animation: 'vip-pulse 1.5s infinite',
+        fontSize: '1.8rem',
     },
 };
 
@@ -582,6 +580,7 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
 // --- COMPONENTES REUTILIZABLES Y DE ANIMACIÓN (ORDENADOS POR DEPENDENCIA) ---
 // ============================================================================
 
+// CORRECCIÓN: Componente AnimatedCount movido aquí para ser accesible globalmente.
 const AnimatedCount = ({ endValue, duration = 1000, decimals = 0 }) => {
     const [currentValue, setCurrentValue] = useState(0);
     const prevValueRef = useRef(0);
@@ -603,6 +602,7 @@ const AnimatedCount = ({ endValue, duration = 1000, decimals = 0 }) => {
     return <span>{currentValue.toFixed(decimals)}</span>;
 };
 
+// CORRECCIÓN: Componente AnimatedPoints movido aquí y renombrado para evitar conflictos.
 const AnimatedPoints = ({ value }) => {
     const [displayValue, setDisplayValue] = useState(value);
     const prevValueRef = useRef(value);
@@ -624,6 +624,7 @@ const AnimatedPoints = ({ value }) => {
 
     return <span id={`animated-points-${value}`}>{displayValue}</span>;
 };
+
 const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.lightText, style: customStyle = {} }) => {
     const finalProfile = profile || {};
     const color = finalProfile.color || defaultColor;
@@ -631,6 +632,7 @@ const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.ligh
     const isGradient = typeof color === 'string' && color.startsWith('linear-gradient');
     const nameStyle = { ...(isGradient ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color: color }) };
     
+    // MODIFICADO: La lógica de insignias ahora siempre ordena por prioridad
     const badgesToDisplay = useMemo(() => {
         if (!finalProfile.badges || finalProfile.badges.length === 0) return [];
         return finalProfile.badges
@@ -639,6 +641,7 @@ const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.ligh
             .sort((a, b) => (a.priority || 99) - (b.priority || 99));
     }, [finalProfile.badges]);
     
+    // Asigna la animación correspondiente a la insignia de mayor prioridad
     const badgeStyle = useMemo(() => {
         if (!finalProfile.badges || finalProfile.badges.length === 0) return {};
         const highestPriorityBadgeWithStyle = finalProfile.badges
@@ -674,6 +677,7 @@ const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.ligh
 
 
 const LiveBanner = ({ liveData, jornada }) => {
+    // MODIFICADO: Ahora comprueba el estado "En vivo"
     if (!jornada || !liveData || jornada.estado !== 'En vivo') return null;
     return (<div style={styles.liveBanner}><span style={styles.liveIndicator}>🔴 EN VIVO</span><span style={styles.liveMatchInfo}>{jornada.equipoLocal} <strong>{liveData.golesLocal} - {liveData.golesVisitante}</strong> {jornada.equipoVisitante}</span>{liveData.ultimoGoleador && <span style={styles.liveGoalScorer}>Último Gol: {liveData.ultimoGoleador}</span>}</div>);
 };
@@ -696,49 +700,6 @@ const WinnerAnimation = ({ winnerData, onClose }) => {
     const { pronostico, prize } = winnerData;
     return (<div style={styles.winnerAnimationOverlay}><Confetti /><div style={styles.winnerModal}><div style={styles.trophy}>🏆</div><h2 style={styles.winnerTitle}>¡FELICIDADES, {pronostico.id}!</h2><p style={styles.winnerText}>¡Has ganado la porra de la jornada!</p><div style={styles.winnerStats}><span>Puntos Obtenidos: <strong><AnimatedCount endValue={pronostico.puntosObtenidos} duration={1500} /></strong></span><span>Premio: <strong><AnimatedCount endValue={prize} duration={1500} decimals={2} />€</strong></span></div><button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>CERRAR</button></div></div>);
 };
-
-const ResultAnnouncementModal = ({ announcement, onClose }) => {
-    if (!announcement) return null;
-    const { winners, prize, bote, jornada } = announcement;
-    const hasWinners = winners && winners.length > 0;
-
-    return (
-        <div style={styles.modalOverlay} onClick={onClose}>
-            <div style={{...styles.modalContent, ...styles.resultModalContent}} onClick={e => e.stopPropagation()}>
-                <h3 style={styles.resultModalTitle}>
-                    Resultados Jornada {jornada.numeroJornada}
-                </h3>
-                {hasWinners ? (
-                    <>
-                        <p style={styles.resultModalText}>
-                            ¡Enhorabuena a los campeones!
-                        </p>
-                        <h2 style={{...styles.winnerTitle, animation: 'none', opacity: 1, fontSize: '2rem'}}>
-                            {winners.join(', ')}
-                        </h2>
-                        <p style={styles.resultModalText}>
-                            Premio por ganador: <strong>{prize.toFixed(2)}€</strong>
-                        </p>
-                    </>
-                ) : (
-                    <>
-                        <p style={styles.resultModalText}>
-                            Nadie acertó el resultado... ¡el dinero se acumula!
-                        </p>
-                        <h2 style={styles.resultModalTitle}>¡BOTE!</h2>
-                        <p style={{...styles.resultModalText, fontSize: '1.5rem'}}>
-                            Se acumulan <strong style={styles.resultModalBote}>{bote.toFixed(2)}€</strong> para la próxima jornada.
-                        </p>
-                    </>
-                )}
-                <button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>
-                    Entendido
-                </button>
-            </div>
-        </div>
-    );
-};
-
 
 const InstallGuideModal = ({ onClose }) => {
     return (<div style={styles.modalOverlay} onClick={onClose}><div style={styles.modalContent} onClick={(e) => e.stopPropagation()}><h3 style={styles.title}>Instalar App</h3><div style={styles.installInstructions}><div style={styles.installSection}><h4>iPhone (Safari)</h4><ol><li>Pulsa el botón de <strong>Compartir</strong> (un cuadrado con una flecha hacia arriba).</li><li>Busca y pulsa en <strong>"Añadir a pantalla de inicio"</strong>.</li><li>¡Listo! Ya tienes la app en tu móvil.</li></ol></div><div style={styles.installSection}><h4>Android (Chrome)</h4><ol><li>Pulsa el botón de <strong>Menú</strong> (tres puntos verticales).</li><li>Busca y pulsa en <strong>"Instalar aplicación"</strong> o "Añadir a pantalla de inicio".</li><li>¡Listo! Ya tienes la app en tu móvil.</li></ol></div></div><button onClick={onClose} style={styles.mainButton}>Entendido</button></div></div>);
@@ -767,6 +728,7 @@ const NotificationPermissionModal = ({ onAllow, onDeny }) => {
     );
 };
 
+// --- NUEVO COMPONENTE: Modal para confirmar el pago ---
 const LiquidarPagoModal = ({ onClose, onConfirm }) => {
     const [isChecked, setIsChecked] = useState(false);
 
@@ -867,8 +829,85 @@ const PieChart = ({ data }) => {
     );
 };
 
+// --- NUEVO: Modal de anuncio de resultados ---
+const ResultAnnouncementModal = ({ result, onClose }) => {
+    if (!result) return null;
+
+    const { winners, prizePerWinner, boteAmount } = result;
+
+    return (
+        <div style={styles.modalOverlay} onClick={onClose}>
+            <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <div style={styles.resultModalContent}>
+                    {winners && winners.length > 0 ? (
+                        <>
+                            <Confetti />
+                            <h3 style={styles.resultModalTitle}>¡TENEMOS GANADORES!</h3>
+                            <div style={styles.resultModalBody}>
+                                <p>¡Felicidades a los campeones de la jornada!</p>
+                                <div style={{margin: '20px 0'}}>
+                                    {winners.map(winner => (
+                                        <p key={winner} style={styles.resultModalWinner}>🏆 {winner} 🏆</p>
+                                    ))}
+                                </div>
+                                <p>Se han llevado un premio de <strong>{prizePerWinner.toFixed(2)}€</strong> cada uno.</p>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <h3 style={styles.resultModalTitle}>¡BOTE!</h3>
+                            <div style={styles.resultModalBody}>
+                                <p>Nadie ha acertado el resultado exacto en esta jornada.</p>
+                                <p style={{marginTop: '15px'}}>¡El bote se acumula para la siguiente jornada y asciende a:</p>
+                                <p style={styles.resultModalBoteAmount}>{boteAmount.toFixed(2)}€</p>
+                            </div>
+                        </>
+                    )}
+                    <button onClick={onClose} style={{...styles.mainButton, marginTop: '30px'}}>Entendido</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- NUEVO: Componente Ticker de Noticias ---
+const NewsTicker = ({ stats, userProfiles }) => {
+    const tickerItems = useMemo(() => {
+        if (!stats) return [];
+        const items = [];
+        
+        Object.entries(FAME_STATS_DEFINITIONS).forEach(([key, def]) => {
+            const statData = stats[key];
+            if (statData && statData.jugador) {
+                items.push(
+                    <span key={key} style={styles.newsTickerItem}>
+                        <strong>{def.icon} {def.name}: </strong>
+                        <PlayerProfileDisplay name={statData.jugador} profile={userProfiles[statData.jugador]} />
+                        <span style={{color: colors.yellow, marginLeft: '8px'}}>({statData.valor})</span>
+                    </span>
+                );
+            }
+        });
+
+        return items;
+    }, [stats, userProfiles]);
+    
+    if (tickerItems.length === 0) return null;
+
+    return (
+        <div style={styles.newsTickerContainer}>
+            <span style={styles.newsTickerLabel}>Paseo de la Fama</span>
+            <div style={styles.newsTickerTrack}>
+                {tickerItems}
+                {tickerItems} 
+            </div>
+        </div>
+    );
+};
+
+
 // ============================================================================
-// --- COMPONENTES DE LAS PANTALLAS (DEFINIDOS ANTES DE APP) ---
+// --- COMPONENTES DE LAS PANTALLAS (ORDENADOS POR DEPENDENCIA) ---
 // ============================================================================
 
 const InitialSplashScreen = ({ onFinish }) => {
@@ -888,12 +927,15 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla, fameStats }) => {
     
     useEffect(() => {
         setLoading(true);
+        // MODIFICADO: Se añade "Pre-apertura" y "En vivo" a la lógica
         const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
         const unsubscribe = onSnapshot(qJornadas, (snap) => {
             const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             
+            // Prioridad 1: Jornada En vivo
             let jornadaActiva = todasLasJornadas.find(j => j.estado === 'En vivo');
             
+            // Prioridad 2: Jornada Abierta o en Pre-apertura
             if (!jornadaActiva) {
                 jornadaActiva = todasLasJornadas.find(j => j.estado === 'Abierta' || j.estado === 'Pre-apertura');
             }
@@ -941,6 +983,7 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla, fameStats }) => {
 
     useEffect(() => {
         if (!jornadaInfo) return;
+        // MODIFICADO: La cuenta atrás apunta a fechaApertura si el estado es 'Pre-apertura'
         const targetDate = (jornadaInfo.estado === 'Abierta') ? jornadaInfo.fechaCierre?.toDate() : (jornadaInfo.estado === 'Próximamente' || jornadaInfo.estado === 'Pre-apertura' ? jornadaInfo.fechaApertura?.toDate() : null);
         if (!targetDate) { setCountdown(''); return; }
 
@@ -973,6 +1016,7 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla, fameStats }) => {
             ];
         } 
         if (fameStats) {
+            // NUEVO: Carrusel de noticias con stats globales
             const fameKeys = ['rey_midas', 'pelotazo', 'mr_regularidad', 'profeta'];
             return fameKeys.map(key => {
                 const stat = fameStats[key];
@@ -991,6 +1035,7 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla, fameStats }) => {
         return [];
     }, [jornadaInfo, jornadaStats, fameStats, plantilla]);
 
+    // Carrusel de estadísticas
     useEffect(() => {
         if (statCards.length > 0) {
             const timer = setInterval(() => {
@@ -1005,6 +1050,7 @@ const SplashScreen = ({ onEnter, teamLogos, plantilla, fameStats }) => {
         
         const fechaMostrada = jornadaInfo.fechaPartido || jornadaInfo.fechaCierre;
         let infoContent;
+        // MODIFICADO: Añadidos los nuevos estados
         switch (jornadaInfo.estado) {
             case 'Abierta': infoContent = (<><h3 style={styles.splashInfoTitle}>¡APUESTAS ABIERTAS!</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p><div style={styles.countdownContainer}><p>CIERRE DE APUESTAS</p><div style={styles.countdown}>{countdown}</div></div></>); break;
             case 'Pre-apertura': infoContent = (<><h3 style={styles.splashInfoTitle}>PRÓXIMA JORNADA</h3><p style={styles.splashMatch}>{jornadaInfo.equipoLocal} <span style={{color: styles.colors.yellow}}>vs</span> {jornadaInfo.equipoVisitante}</p><p style={{margin: '10px 0'}}>🗓️ {formatFullDateTime(fechaMostrada)}</p>{jornadaInfo.bote > 0 && <p style={styles.splashBote}>¡BOTE DE {jornadaInfo.bote}€ EN JUEGO!</p>}{countdown && <div style={styles.countdownContainer}><p>LA APERTURA COMIENZA EN</p><div style={styles.countdown}>{countdown}</div></div>}</>); break;
@@ -1104,6 +1150,7 @@ const LoginScreen = ({ onLogin, userProfiles, onlineUsers }) => {
         </div>
     );
 };
+
 
 const initialPronosticoState = { 
     golesLocal: '', 
@@ -1273,6 +1320,7 @@ const PreMatchStats = ({ stats, lastUpdated, onOpenModal }) => {
 };
 
 
+// --- NUEVO: Modal de Confirmación de Pronóstico ---
 const ConfirmacionPronosticoModal = ({ pronostico, onConfirm, onCancel }) => {
     return (
         <div style={styles.modalOverlay}>
@@ -1295,6 +1343,7 @@ const ConfirmacionPronosticoModal = ({ pronostico, onConfirm, onCancel }) => {
     );
 };
 
+// --- NUEVO: Modal para ver el Historial de Cambios ---
 const HistorialCambiosModal = ({ historial, loading, onClose }) => {
     return (
         <div style={styles.modalOverlay} onClick={onClose}>
@@ -1324,8 +1373,10 @@ const HistorialCambiosModal = ({ historial, loading, onClose }) => {
     );
 };
 
+// --- NUEVO: Componente para los paneles de análisis en vivo ---
 const LiveAnalysisPanels = ({ jornada, liveData, participantes, userProfiles, clasificacionData }) => {
     
+    // Panel 1: Ganador Provisional y Simulaciones
     const liveWinnerPanelData = useMemo(() => {
         if (!liveData || !jornada || participantes.length === 0) {
             return { currentWinner: "Nadie", simulationLocal: "Nadie", simulationVisitor: "Nadie", impacto: "" };
@@ -1351,6 +1402,7 @@ const LiveAnalysisPanels = ({ jornada, liveData, participantes, userProfiles, cl
 
         const { name: currentWinner, winnerData: currentWinnerData } = findWinner(liveData);
         
+        // Cálculo del impacto en la clasificación (simplificado)
         let impacto = "";
         if (currentWinnerData && clasificacionData.length > 0) {
             const currentPointsInGeneral = clasificacionData.find(j => j.id === currentWinnerData.id)?.puntosTotales || 0;
@@ -1358,6 +1410,7 @@ const LiveAnalysisPanels = ({ jornada, liveData, participantes, userProfiles, cl
             
             const currentRank = clasificacionData.findIndex(j => j.id === currentWinnerData.id) + 1;
             
+            // Simular nueva clasificación
             const simulatedClasificacion = clasificacionData.map(j => {
                 if (j.id === currentWinnerData.id) {
                     return { ...j, puntosTotales: newTotalPoints };
@@ -1382,11 +1435,13 @@ const LiveAnalysisPanels = ({ jornada, liveData, participantes, userProfiles, cl
 
     }, [liveData, jornada, participantes, clasificacionData]);
 
+    // Panel 2: Acierto de Goleador
     const acertantesGoleador = useMemo(() => {
         if (!liveData.ultimoGoleador || liveData.ultimoGoleador === 'SG') return [];
         return participantes.filter(p => p.goleador && p.goleador.trim().toLowerCase() === liveData.ultimoGoleador.trim().toLowerCase());
     }, [liveData.ultimoGoleador, participantes]);
 
+    // Panel 3: Descartados
     const descartados = useMemo(() => {
         return participantes.filter(p => {
             const pLocal = parseInt(p.golesLocal);
@@ -1398,6 +1453,7 @@ const LiveAnalysisPanels = ({ jornada, liveData, participantes, userProfiles, cl
 
     return (
         <div style={styles.liveAnalysisContainer}>
+            {/* Panel de Ganador Provisional */}
             <div style={{...styles.liveAnalysisCard, gridColumn: '1 / -1', border: `2px solid ${colors.yellow}`, boxShadow: `0 0 15px ${colors.yellow}50`}}>
                  <div style={styles.liveWinnerCurrent}>
                     <span style={styles.liveWinnerLabel}>Ganador(es) Provisional(es)</span>
@@ -1424,6 +1480,7 @@ const LiveAnalysisPanels = ({ jornada, liveData, participantes, userProfiles, cl
                 </div>
             </div>
 
+            {/* Panel Acierto Goleador */}
             <div style={styles.liveAnalysisCard}>
                 <h4 style={styles.liveAnalysisTitle}>🎯 Acierto Último Goleador</h4>
                 {acertantesGoleador.length > 0 ? (
@@ -1435,6 +1492,7 @@ const LiveAnalysisPanels = ({ jornada, liveData, participantes, userProfiles, cl
                 ) : <p style={{textAlign: 'center', color: colors.silver}}>Nadie ha acertado el último goleador.</p>}
             </div>
 
+            {/* Panel Descartados */}
             <div style={styles.liveAnalysisCard}>
                 <h4 style={styles.liveAnalysisTitle}>❌ Descartados</h4>
                  {descartados.length > 0 ? (
@@ -1448,498 +1506,14 @@ const LiveAnalysisPanels = ({ jornada, liveData, participantes, userProfiles, cl
         </div>
     );
 };
+// ============================================================================
+// --- FIN DE LA PRIMERA PARTE ---
+// POR FAVOR, COPIA TODO EL CÓDIGO HASTA ESTE PUNTO.
+// CUANDO ME CONFIRMES QUE LO HAS HECHO, TE ENTREGARÉ LA SEGUNDA PARTE.
+// NO INTENTES COMPILAR ESTE ARCHIVO SOLO, NECESITAS AMBAS PARTES.
+// ============================================================================
 
-const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, userProfiles }) => {
-    const [currentJornada, setCurrentJornada] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [pronostico, setPronostico] = useState(initialPronosticoState);
-    const [hasSubmitted, setHasSubmitted] = useState(false);
-    const [isLocked, setIsLocked] = useState(true);
-    const [pinInput, setPinInput] = useState('');
-    const [isSaving, setIsSaving] = useState(false);
-    const [message, setMessage] = useState({text: '', type: 'info'});
-    const [stats, setStats] = useState({ count: 0, color: styles.colors.success });
-    const [jokersRestantes, setJokersRestantes] = useState(2);
-    const [panicButtonDisabled, setPanicButtonDisabled] = useState(false);
-    const [allPronosticos, setAllPronosticos] = useState([]);
-    const [jokerStats, setJokerStats] = useState(Array(10).fill(null));
-    const [showJokerAnimation, setShowJokerAnimation] = useState(false);
-    const [provisionalData, setProvisionalData] = useState({ puntos: 0, posicion: '-' });
-    const [tieneDeuda, setTieneDeuda] = useState(false);
-    const [interJornadaStatus, setInterJornadaStatus] = useState(null);
-    
-    // --- MODIFICACIÓN: Estados para la nueva lógica de API ---
-    const [preMatchStats, setPreMatchStats] = useState(null);
-    const [fullPreMatchStats, setFullPreMatchStats] = useState(null); // Para el modal
-    const [showStatsModal, setShowStatsModal] = useState(false);
-    const [loadingPreMatch, setLoadingPreMatch] = useState(false);
-    const [lastApiUpdate, setLastApiUpdate] = useState(null);
-    const apiTimerRef = useRef(null);
-    const lastApiCallDay = useRef(null); // Formato YYYY-MM-DD
-    
-    // --- NUEVO: Estados para confirmación e historial ---
-    const [showConfirmacionModal, setShowConfirmacionModal] = useState(false);
-    const [pronosticoParaConfirmar, setPronosticoParaConfirmar] = useState(null);
-    const [showLiquidarPagoModal, setShowLiquidarPagoModal] = useState(false);
-    
-    const initialJokerStatus = useRef(false);
-    
-    const userProfile = userProfiles[user] || {};
-
-    useEffect(() => {
-        setLoading(true);
-        const userJokerRef = doc(db, "clasificacion", user);
-        getDoc(userJokerRef).then(docSnap => { setJokersRestantes(docSnap.exists() && docSnap.data().jokersRestantes !== undefined ? docSnap.data().jokersRestantes : 2); });
-
-        const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
-        const unsubscribe = onSnapshot(qJornadas, (snap) => {
-            // MODIFICADO: Nueva lógica para encontrar la jornada relevante
-            const todasLasJornadas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            
-            let jornadaActiva = todasLasJornadas.find(j => ['En vivo', 'Abierta', 'Pre-apertura', 'Cerrada'].includes(j.estado));
-            
-            if (!jornadaActiva) {
-                const finalizadas = todasLasJornadas.filter(j => j.estado === 'Finalizada').sort((a, b) => b.numeroJornada - a.numeroJornada);
-                if (finalizadas.length > 0) { jornadaActiva = finalizadas[0]; }
-            }
-
-            if(jornadaActiva){
-                setCurrentJornada(prevJornada => {
-                    if (prevJornada && prevJornada.id !== jornadaActiva.id) {
-                        setPreMatchStats(null); setFullPreMatchStats(null); lastApiCallDay.current = null;
-                    }
-                    return jornadaActiva;
-                });
-
-                setInterJornadaStatus(null); 
-                if (jornadaActiva.fechaCierre) { setPanicButtonDisabled(new Date().getTime() > (jornadaActiva.fechaCierre.toDate().getTime() - 3600 * 1000)); }
-                const pronosticoRef = doc(db, "pronosticos", jornadaActiva.id, "jugadores", user);
-                getDoc(pronosticoRef).then(pronosticoSnap => {
-                    if (pronosticoSnap.exists()) {
-                        const data = pronosticoSnap.data();
-                        const filledJokerPronosticos = data.jokerPronosticos ? [...data.jokerPronosticos, ...Array(10 - data.jokerPronosticos.length).fill({golesLocal: '', golesVisitante: ''})] : Array(10).fill({golesLocal: '', golesVisitante: ''});
-                        setPronostico({...initialPronosticoState, ...data, jokerPronosticos: filledJokerPronosticos});
-                        setIsLocked(!!data.pin); setHasSubmitted(true);
-                        initialJokerStatus.current = data.jokerActivo || false;
-                    } else {
-                        setPronostico(initialPronosticoState); setIsLocked(false); setHasSubmitted(false);
-                        initialJokerStatus.current = false;
-                    } setLoading(false);
-                });
-                const allPronosticosRef = collection(db, "pronosticos", jornadaActiva.id, "jugadores");
-                onSnapshot(allPronosticosRef, (snapshot) => { setAllPronosticos(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))); });
-
-                if (jornadaActiva.numeroJornada > 1) {
-                    const jornadaAnterior = todasLasJornadas.find(j => j.numeroJornada === jornadaActiva.numeroJornada - 1);
-                    if (jornadaAnterior?.estado === 'Finalizada') {
-                        getDoc(doc(db, "pronosticos", jornadaAnterior.id, "jugadores", user)).then(pronosticoAnteriorSnap => {
-                            setTieneDeuda(pronosticoAnteriorSnap.exists() && !pronosticoAnteriorSnap.data().pagado);
-                        });
-                    } else { setTieneDeuda(false); }
-                } else { setTieneDeuda(false); }
-
-            } else {
-                setCurrentJornada(null); setLoading(false); setPreMatchStats(null); setFullPreMatchStats(null);
-                const ultimaFinalizada = todasLasJornadas.filter(j => j.estado === 'Finalizada' && j.id !== 'jornada_test').sort((a, b) => b.numeroJornada - a.numeroJornada)[0];
-                if (ultimaFinalizada) {
-                    getDoc(doc(db, "pronosticos", ultimaFinalizada.id, "jugadores", user)).then(pronosticoSnap => {
-                        if (pronosticoSnap.exists()) {
-                            setInterJornadaStatus({ status: pronosticoSnap.data().pagado ? 'pagado' : 'debe', jornada: ultimaFinalizada });
-                        } else {
-                            setInterJornadaStatus({ status: 'no_participo', jornada: ultimaFinalizada });
-                        }
-                    });
-                } else {
-                    const proximaJornada = todasLasJornadas.find(j => j.estado === 'Próximamente');
-                    setInterJornadaStatus({ status: 'sin_finalizadas', proxima: proximaJornada });
-                }
-            }
-        }, (error) => { console.error("Error: ", error); setLoading(false); });
-        return () => unsubscribe();
-    }, [user]);
-
-    useEffect(() => {
-        if (apiTimerRef.current) { clearInterval(apiTimerRef.current); apiTimerRef.current = null; }
-        if (!currentJornada || !currentJornada.fechaPartido || !currentJornada.apiLeagueId || !currentJornada.apiLocalTeamId || !currentJornada.apiVisitorTeamId || !['Abierta', 'Pre-apertura', 'Cerrada', 'En vivo'].includes(currentJornada.estado)) { return; }
-        const fetchHeaders = { "x-rapidapi-host": "v3.football.api-sports.io", "x-rapidapi-key": API_FOOTBALL_KEY };
-        const fetchTeamStats = async (leagueId, teamId, season) => {
-            try {
-                const response = await fetch(`https://v3.football.api-sports.io/standings?league=${leagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
-                if (!response.ok) throw new Error(`API call failed: ${response.status}`);
-                const data = await response.json();
-                if (data.results === 0 || !data.response[0]) { console.warn(`No data for team ${teamId}`); return null; }
-                const teamStanding = data.response[0]?.league?.standings[0]?.[0];
-                return { name: teamStanding?.team?.name || 'N/A', logo: teamStanding?.team?.logo || '', rank: teamStanding?.rank || 'N/A', points: teamStanding?.points || 'N/A', form: teamStanding?.form || '-----', golesFavor: teamStanding?.all?.goals?.for || 0, golesContra: teamStanding?.all?.goals?.against || 0, statsHomeOrAway: teamStanding?.home?.team?.id === teamId ? teamStanding.home : teamStanding.away, };
-            } catch (error) { console.error(`Error fetching stats for team ${teamId}:`, error); return null; }
-        };
-        const fetchTopScorers = async (leagueId, teamId, season) => {
-             try {
-                const response = await fetch(`https://v3.football.api-sports.io/players/topscorers?league=${leagueId}&season=${season}&team=${teamId}`, { headers: fetchHeaders });
-                 if (!response.ok) throw new Error(`API call failed: ${response.status}`);
-                 const data = await response.json(); return data.response || [];
-             } catch (error) { console.error(`Error fetching top scorers for team ${teamId}:`, error); return []; }
-        };
-        const fetchData = async () => {
-            console.log(`[${new Date().toLocaleTimeString()}] Fetching API data...`);
-            setLoadingPreMatch(true);
-            const season = new Date(currentJornada.fechaPartido.seconds * 1000).getFullYear();
-            const [localStats, visitorStats, localScorers, visitorScorers] = await Promise.all([
-                fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season),
-                fetchTeamStats(currentJornada.apiLeagueId, currentJornada.apiVisitorTeamId, season),
-                fetchTopScorers(currentJornada.apiLeagueId, currentJornada.apiLocalTeamId, season),
-                fetchTopScorers(currentJornada.apiLeagueId, currentJornada.apiVisitorTeamId, season)
-            ]);
-            if (localStats && visitorStats) {
-                const statsData = { local: {...localStats, topScorers: localScorers}, visitante: {...visitorStats, topScorers: visitorScorers} };
-                setPreMatchStats(statsData); setFullPreMatchStats(statsData); setLastApiUpdate(Date.now());
-            }
-            setLoadingPreMatch(false);
-        };
-        const manageUpdates = () => {
-            const now = new Date();
-            const matchTime = currentJornada.fechaPartido.toDate();
-            const oneHourBefore = new Date(matchTime.getTime() - 60 * 60 * 1000);
-            const isMatchDay = now.toDateString() === matchTime.toDateString();
-            const isPreMatchWindow = isMatchDay && now >= oneHourBefore && now < matchTime;
-            if (apiTimerRef.current) clearInterval(apiTimerRef.current);
-            if (isPreMatchWindow) {
-                console.log("Entering PRE-MATCH update mode (every 5 minutes).");
-                if(!preMatchStats) fetchData();
-                apiTimerRef.current = setInterval(fetchData, 5 * 60 * 1000);
-            } else {
-                const todayStr = now.toISOString().split('T')[0];
-                if (now.getHours() >= 22 && lastApiCallDay.current !== todayStr) {
-                    console.log("Performing DAILY update (after 22:00).");
-                    fetchData(); lastApiCallDay.current = todayStr;
-                }
-                apiTimerRef.current = setInterval(manageUpdates, 60 * 1000);
-            }
-        };
-        if (!preMatchStats) { fetchData(); }
-        manageUpdates();
-        return () => { if (apiTimerRef.current) { clearInterval(apiTimerRef.current); apiTimerRef.current = null; } };
-    }, [currentJornada, preMatchStats]);
-    
-    useEffect(() => {
-        if (currentJornada?.estado === 'En vivo' && liveData && allPronosticos.length > 0) {
-            const ranking = allPronosticos.map(p => ({ id: p.id, puntos: calculateProvisionalPoints(p, liveData, currentJornada) })).sort((a, b) => b.puntos - a.puntos);
-            const miRanking = ranking.find(r => r.id === user);
-            const miPosicion = ranking.findIndex(r => r.id === user) + 1;
-            setProvisionalData({ puntos: miRanking?.puntos || 0, posicion: miRanking ? `${miPosicion}º` : '-' });
-        } else { setProvisionalData({ puntos: 0, posicion: '-' }); }
-    }, [liveData, currentJornada, allPronosticos, user]);
-
-    useEffect(() => {
-        if (currentJornada?.estado === 'Abierta' && pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') {
-            const count = allPronosticos.filter(p => p.id !== user && p.golesLocal === pronostico.golesLocal && p.golesVisitante === pronostico.golesVisitante).length;
-            let color = styles.colors.success; if (count >= 1 && count <= 2) color = styles.colors.warning; if (count >= 3) color = styles.colors.danger; setStats({ count, color });
-        } else { setStats({ count: 0, color: styles.colors.success }); }
-    }, [pronostico.golesLocal, pronostico.golesVisitante, allPronosticos, user, currentJornada]);
-
-    useEffect(() => {
-        if (!pronostico.jokerActivo || allPronosticos.length === 0) { setJokerStats(Array(10).fill(null)); return; }
-        const allOtherBets = allPronosticos.filter(p => p.id !== user).flatMap(p => [`${p.golesLocal}-${p.golesVisitante}`, ...(p.jokerPronosticos || []).map(jp => `${jp.golesLocal}-${jp.golesVisitante}`)]);
-        const newJokerStats = pronostico.jokerPronosticos.map(jokerBet => {
-            if (jokerBet.golesLocal === '' || jokerBet.golesVisitante === '') return null;
-            const betString = `${jokerBet.golesLocal}-${jokerBet.golesVisitante}`;
-            const count = allOtherBets.filter(b => b === betString).length;
-            let color = styles.colors.success; if (count >= 1 && count <= 2) color = styles.colors.warning; if (count >= 3) color = styles.colors.danger;
-            return { count, color, text: count > 0 ? `Repetido ${count} vez/veces` : '¡Pronóstico Único!' };
-        });
-        setJokerStats(newJokerStats);
-    }, [pronostico.jokerPronosticos, allPronosticos, user, pronostico.jokerActivo]);
-    
-    const handlePronosticoChange = (e) => { const { name, value, type, checked } = e.target; setPronostico(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value, ...(name === 'sinGoleador' && checked && { goleador: '' }) })); };
-    const handleJokerPronosticoChange = (index, field, value) => { const newJokerPronosticos = [...pronostico.jokerPronosticos]; newJokerPronosticos[index] = { ...newJokerPronosticos[index], [field]: value }; setPronostico(prev => ({ ...prev, jokerPronosticos: newJokerPronosticos })); };
-    
-    const handleValidationAndConfirm = (e) => {
-        e.preventDefault();
-        if (!currentJornada) return;
-        if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || pronostico.resultado1x2 === '' || (!pronostico.goleador && !pronostico.sinGoleador)) {
-             setMessage({text: 'Debes rellenar todos los campos: Resultado, 1X2 y Goleador (o marcar Sin Goleador).', type: 'error'});
-             return;
-        }
-        if (pronostico.pin && pronostico.pin !== pronostico.pinConfirm) { setMessage({text: 'Los PIN no coinciden. Por favor, revísalos.', type: 'error'}); return; }
-        const cleanJokerPronosticos = pronostico.jokerPronosticos.filter(p => p.golesLocal !== '' || p.golesVisitante !== '');
-        if (pronostico.jokerActivo && cleanJokerPronosticos.length === 0) { setMessage({text: 'Has activado el Joker. Debes rellenar al menos una apuesta Joker o usar el Botón del Pánico.', type: 'error'}); return; }
-        
-        setPronosticoParaConfirmar(pronostico);
-        setShowConfirmacionModal(true);
-    };
-
-    const handleGuardarPronostico = async () => {
-        setShowConfirmacionModal(false);
-        setIsSaving(true); 
-        setMessage({text: '', type: 'info'});
-        
-        const pronosticoRef = doc(db, "pronosticos", currentJornada.id, "jugadores", user);
-        const historialRef = collection(pronosticoRef, "historial");
-        const userJokerRef = doc(db, "clasificacion", user);
-        
-        const jokerJustActivated = pronostico.jokerActivo && !initialJokerStatus.current;
-        const cleanJokerPronosticos = pronostico.jokerPronosticos.filter(p => p.golesLocal !== '' || p.golesVisitante !== '');
-        
-        try {
-            const batch = writeBatch(db);
-            const { pinConfirm, ...pronosticoToSave } = pronostico;
-            
-            batch.set(pronosticoRef, { ...pronosticoToSave, jokerPronosticos: cleanJokerPronosticos, lastUpdated: serverTimestamp() });
-            
-            const historialData = {
-                pronostico: { golesLocal: pronostico.golesLocal, golesVisitante: pronostico.golesVisitante, resultado1x2: pronostico.resultado1x2, goleador: pronostico.goleador, sinGoleador: pronostico.sinGoleador, },
-                timestamp: serverTimestamp()
-            };
-            await addDoc(historialRef, historialData);
-
-            if (jokerJustActivated) {
-                batch.update(userJokerRef, { jokersRestantes: increment(-1) });
-            }
-            
-            await batch.commit();
-            
-            if (jokerJustActivated) { 
-                setJokersRestantes(prev => prev - 1); 
-                initialJokerStatus.current = true; 
-            }
-            
-            setMessage({text: '¡Pronóstico guardado y secreto!', type: 'success'});
-            setHasSubmitted(true); 
-            setIsLocked(!!pronostico.pin);
-            
-        } catch (error) { 
-            console.error("Error al guardar: ", error); 
-            setMessage({text: 'Error al guardar el pronóstico.', type: 'error'}); 
-        }
-        
-        setIsSaving(false);
-    };
-
-
-    const handleUnlock = () => { if (pinInput === pronostico.pin) { setIsLocked(false); setHasSubmitted(false); setMessage({text: 'Pronóstico desbloqueado. Puedes hacer cambios.', type: 'info'}); } else { alert('PIN incorrecto'); } };
-    
-    const handleActivarJoker = () => {
-        if (jokersRestantes <= 0) { alert("No te quedan Jokers esta temporada."); return; }
-        if (window.confirm("¿Seguro que quieres usar un JOKER? Se añadirán 10 casillas de apuesta. El Joker se descontará cuando guardes el pronóstico.")) {
-            setShowJokerAnimation(true);
-            setTimeout(() => setShowJokerAnimation(false), 7000);
-            setHasSubmitted(false); setIsLocked(false);
-            setPronostico(prev => ({ ...prev, jokerActivo: true, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) }));
-            setMessage({ text: '¡Joker activado! Rellena tus 10 apuestas extra y no olvides Guardar.', type: 'success' });
-        }
-    };
-
-    const handleBotonDelPanico = async () => { if (window.confirm("¿Seguro que quieres cancelar tus apuestas JOKER? No recuperarás el JOKER gastado, pero tus 10 apuestas adicionales se borrarán.")) { setPronostico(prev => ({ ...prev, jokerPronosticos: Array(10).fill({golesLocal: '', golesVisitante: ''}) })); setMessage({text: 'Apuestas JOKER eliminadas. Recuerda guardar para confirmar los cambios.', type: 'info'}); } };
-    
-    const handleMarcarComoPagado = async () => {
-        if (!currentJornada) return;
-        setShowLiquidarPagoModal(false);
-        try {
-            await updateDoc(doc(db, "pronosticos", currentJornada.id, "jugadores", user), { pagoConfirmadoPorUsuario: true });
-            setPronostico(prev => ({...prev, pagoConfirmadoPorUsuario: true}));
-            setMessage({text: '¡Confirmación de pago enviada al admin!', type: 'success'});
-        } catch (error) { 
-            console.error("Error al confirmar pago: ", error); 
-            setMessage({text: 'Error al enviar la confirmación.', type: 'error'}); 
-        }
-    };
-
-    const handleCopyLastBet = async () => {
-        setMessage({text: 'Buscando tu última apuesta...', type: 'info'});
-        const qLastJornada = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
-        const lastJornadaSnap = await getDocs(qLastJornada);
-        if (lastJornadaSnap.empty) { setMessage({text: 'No se encontraron jornadas anteriores para copiar.', type: 'error'}); return; }
-        const lastJornadaId = lastJornadaSnap.docs[0].id;
-        const lastPronosticoSnap = await getDoc(doc(db, "pronosticos", lastJornadaId, "jugadores", user));
-        if (lastPronosticoSnap.exists()) {
-            const lastData = lastPronosticoSnap.data();
-            setPronostico(prev => ({ ...prev, ...lastData, pin: '', pinConfirm: '', jokerActivo: false, jokerPronosticos: initialPronosticoState.jokerPronosticos }));
-            setMessage({text: 'Última apuesta cargada. ¡No olvides guardarla!', type: 'success'});
-        } else { setMessage({text: 'No participaste en la última jornada.', type: 'error'}); }
-    };
-
-    if (loading) return <LoadingSkeleton />;
-    
-    const RenderedPronostico = ({ pronosticoData }) => {
-        if (!pronosticoData) {
-            return <p>No participaste en esta jornada.</p>;
-        }
-        return (
-            <div style={styles.renderedPronosticoContainer}>
-                <h4 style={styles.renderedPronosticoTitle} className="app-title">Tu Apuesta Realizada</h4>
-                <div style={styles.resumenJugadorBets}>
-                    <p><strong>Resultado:</strong> {pronosticoData.golesLocal}-{pronosticoData.golesVisitante}</p>
-                    <p><strong>1X2:</strong> {pronosticoData.resultado1x2}</p>
-                    <p><strong>Goleador:</strong> {pronosticoData.sinGoleador ? 'Sin Goleador' : (pronosticoData.goleador || 'N/A')}</p>
-                    {pronosticoData.jokerActivo && (
-                        <div style={{marginTop: '10px'}}>
-                            <strong>Apuestas Joker:</strong>
-                            <div style={styles.jokerChipsContainer}>
-                                {(pronosticoData.jokerPronosticos || []).map((jp, index) => (
-                                    <span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    };
-
-    const renderContent = () => {
-        const ahora = new Date();
-        const apertura = currentJornada?.fechaApertura?.toDate();
-        const isBettingOpen = currentJornada && currentJornada.estado === 'Abierta';
-        
-        if (isBettingOpen) {
-            const isVip = currentJornada.esVip;
-            return (
-                <form onSubmit={handleValidationAndConfirm} style={styles.form}>
-                    {currentJornada.bote > 0 && <div style={styles.jackpotBanner}>💰 JACKPOT: ¡{currentJornada.bote}€ DE BOTE! 💰</div>}
-                    {isVip && (<div style={styles.vipBanner}>⭐ JORNADA VIP ⭐ (Apuesta: 2€ - Puntos Dobles)</div>)}
-                    <h3 style={styles.formSectionTitle} className="app-title">{currentJornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${currentJornada.numeroJornada}`}: {currentJornada.equipoLocal} vs {currentJornada.equipoVisitante}</h3>
-                    
-                    {!hasSubmitted && <button type="button" onClick={handleCopyLastBet} style={styles.secondaryButton}>Copiar mi última apuesta</button>}
-
-                    {hasSubmitted && isLocked ? (
-                        <div style={styles.placeholder}><h3>¡Pronóstico guardado y secreto!</h3><p>Tu apuesta está protegida con PIN. Podrás ver los pronósticos de todos cuando la jornada se cierre.</p><div style={{marginTop: '20px'}}><input type="password" maxLength="4" value={pinInput} onChange={(e) => setPinInput(e.target.value)} style={styles.input} placeholder="PIN de 4 dígitos" /><button type="button" onClick={handleUnlock} style={styles.mainButton}>Desbloquear</button></div></div>
-                    ) : hasSubmitted && !isLocked ? (
-                         <div style={styles.placeholder}><h3>¡Pronóstico guardado!</h3><p>Tu apuesta no está protegida con PIN. Cualquiera podría modificarla si accede con tu perfil. Puedes añadir un PIN y volver a guardar.</p><button type="button" onClick={() => { setIsLocked(false); setHasSubmitted(false); }} style={styles.mainButton}>Modificar Apuesta</button></div>
-                    ) : (
-                        <fieldset style={{border: 'none', padding: 0, margin: 0}}>
-                            <fieldset style={{border: 'none', padding: 0, margin: 0}} >
-                                <div style={styles.formGroup}><label style={styles.label}>RESULTADO EXACTO <span style={styles.pointsReminder}>( {isVip ? '6' : '3'} Puntos )</span></label><div style={styles.miJornadaMatchInfo}><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} /><div style={styles.miJornadaScoreInputs}><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesLocal" value={pronostico.golesLocal} onChange={handlePronosticoChange} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" name="golesVisitante" value={pronostico.golesVisitante} onChange={handlePronosticoChange} style={styles.resultInput} /></div><TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} /></div>{(pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') && <small key={stats.count} className="stats-indicator" style={{...styles.statsIndicator, color: stats.color}}>{stats.count > 0 ? `Otros ${stats.count} jugador(es) han pronosticado este resultado.` : '¡Eres el único con este resultado por ahora!'}</small>}</div>
-                                <div style={styles.formGroup}><label style={styles.label}>RESULTADO 1X2 <span style={styles.pointsReminder}>( {isVip ? '2' : '1'} Puntos )</span></label><select name="resultado1x2" value={pronostico.resultado1x2} onChange={handlePronosticoChange} style={styles.input}><option value="">-- Elige --</option><option value="Gana UD Las Palmas">Gana UDLP</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UDLP</option></select></div>
-                                
-                                <div style={styles.formGroup}>
-                                    <label style={styles.label}>PRIMER GOLEADOR <span style={styles.pointsReminder}>( {isVip ? '4' : '2'} Puntos )</span></label>
-                                    <div style={styles.goleadorSelectorContainer}>
-                                        {pronostico.goleador && !pronostico.sinGoleador && (<div style={styles.goleadorPreview}><img src={plantilla.find(j => j.nombre === pronostico.goleador)?.imageUrl || 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'} alt={pronostico.goleador} style={styles.goleadorPreviewImg} onError={(e) => { e.target.src = 'https://placehold.co/60x60/1b263b/e0e1dd?text=?'; }}/><span>{pronostico.goleador}</span></div>)}
-                                        <select name="goleador" value={pronostico.goleador} onChange={handlePronosticoChange} style={styles.input} disabled={pronostico.sinGoleador}>
-                                            <option value="">-- Elige un jugador --</option>
-                                            {plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}
-                                        </select>
-                                    </div>
-                                    <div style={{marginTop: '10px'}}><input type="checkbox" name="sinGoleador" id="sinGoleador" checked={pronostico.sinGoleador} onChange={handlePronosticoChange} style={styles.checkbox} /><label htmlFor="sinGoleador" style={{marginLeft: '8px', color: styles.colors.lightText}}>Sin Goleador (SG) <span style={styles.pointsReminder}>(1 Punto)</span></label></div>
-                                </div>
-                            </fieldset>
-                            
-                            <div style={styles.jokerContainer}>
-                                {!pronostico.jokerActivo ? (<><button type="button" onClick={handleActivarJoker} style={styles.jokerButton} disabled={jokersRestantes <= 0}>🃏 Activar JOKER</button><span style={{marginLeft: '15px', color: styles.colors.lightText}}>Te quedan: <span style={{color: styles.colors.yellow, fontWeight: 'bold'}}>{jokersRestantes}</span></span></>) : (
-                                    <div>
-                                        <h3 style={styles.formSectionTitle} className="app-title">Apuestas JOKER (10 Resultados Extra)</h3>
-                                        <p style={{textAlign: 'center', marginBottom: '15px'}}>Añade hasta 10 resultados exactos adicionales. Cada uno cuenta como una apuesta para el bote.</p>
-                                        <div style={styles.jokerGrid}>
-                                            {pronostico.jokerPronosticos.map((p, index) => (
-                                                <div key={index} style={styles.jokerBetRow}>
-                                                    <label style={{...styles.label, justifyContent: 'center', fontSize: '0.8rem'}}>Apuesta Joker {index + 1}</label>
-                                                    <div style={styles.resultInputContainer}><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="L" /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="V"/></div>
-                                                    {jokerStats[index] && (<small style={{...styles.statsIndicator, color: jokerStats[index].color, fontSize: '0.8rem', textAlign: 'center', display: 'block', marginTop: '5px'}}>{jokerStats[index].text}</small>)}
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <button type="button" onClick={handleBotonDelPanico} style={{...styles.jokerButton, ...styles.dangerButton, marginTop: '20px'}} disabled={panicButtonDisabled}>BOTÓN DEL PÁNICO</button>
-                                        {panicButtonDisabled && <small style={{display: 'block', color: styles.colors.danger, marginTop: '5px'}}>El botón del pánico se ha desactivado (menos de 1h para el cierre).</small>}
-                                    </div>
-                                )}
-                            </div>
-                             <div style={{...styles.formGroup, marginTop: '30px', borderTop: `1px solid ${styles.colors.blue}`, paddingTop: '20px'}}>
-                                <label style={styles.label}>PIN DE SEGURIDAD (4 dígitos, opcional)</label>
-                                <input type="password" name="pin" value={pronostico.pin} onChange={handlePronosticoChange} maxLength="4" style={styles.input} placeholder="Crea un PIN para proteger tu apuesta" />
-                                <input type="password" name="pinConfirm" value={pronostico.pinConfirm} onChange={handlePronosticoChange} maxLength="4" style={{...styles.input, marginTop: '10px'}} placeholder="Confirma tu PIN" />
-                            </div>
-                            <button type="submit" disabled={isSaving} style={styles.mainButton}>{isSaving ? 'GUARDANDO...' : 'GUARDAR Y BLOQUEAR'}</button>
-                        </fieldset>
-                    )}
-                    {message.text && <p style={{...styles.message, backgroundColor: message.type === 'success' ? styles.colors.success : colors.danger}}>{message.text}</p>}
-                </form>
-            );
-        }
-
-        if (currentJornada?.estado === 'Pre-apertura') {
-            const tiempoRestante = apertura ? apertura - ahora : 0;
-            return (
-                <div style={styles.placeholder}>
-                    <h3 style={{...styles.formSectionTitle, color: colors.warning}}>JORNADA EN PRE-APERTURA</h3>
-                    <p style={{margin: '10px 0'}}>Las apuestas para este partido aún no están abiertas.</p>
-                    <div style={styles.countdownContainer}>
-                        <p>APERTURA DE APUESTAS EN:</p>
-                        <div style={styles.countdown}>
-                            {tiempoRestante > 0 ? (
-                                `${Math.floor(tiempoRestante / 86400000)}d ${Math.floor((tiempoRestante % 86400000) / 3600000)}h ${Math.floor((tiempoRestante % 3600000) / 60000)}m`
-                            ) : (
-                                "¡Abriendo!"
-                            )}
-                        </div>
-                    </div>
-                     <p style={{marginTop: '20px'}}>Puedes consultar las estadísticas pre-partido mientras esperas.</p>
-                </div>
-            );
-        }
-
-        if (currentJornada?.estado === 'Cerrada' || currentJornada?.estado === 'Finalizada' || currentJornada?.estado === 'En vivo') {
-            const showLiquidarButton = !pronostico.pagado && !pronostico.pagoConfirmadoPorUsuario;
-            return (
-                <div style={styles.placeholder}>
-                    <h3>Jornada {currentJornada.numeroJornada} {currentJornada.estado}</h3>
-                    <p>
-                        {currentJornada.estado === 'Cerrada' && 'Las apuestas para este partido han finalizado.'}
-                        {currentJornada.estado === 'En vivo' && '¡El partido está en juego!'}
-                        {currentJornada.estado === 'Finalizada' && 'Esta jornada ha concluido.'}
-                    </p>
-                    
-                    <RenderedPronostico pronosticoData={pronostico} />
-                    
-                    <div style={{marginTop: '20px'}}>
-                        {showLiquidarButton && (
-                            <button onClick={() => setShowLiquidarPagoModal(true)} style={styles.mainButton}>
-                                Liquidar Pagos
-                            </button>
-                        )}
-                        {pronostico.pagoConfirmadoPorUsuario && !pronostico.pagado && (
-                            <p style={styles.paymentStatusPending}>Pendiente de validación por el admin</p>
-                        )}
-                        {pronostico.pagado && (
-                            <p style={styles.paymentStatusConfirmed}>PAGO REGISTRADO ✓</p>
-                        )}
-                        <button onClick={() => setActiveTab('laJornada')} style={{...styles.mainButton, marginLeft: '10px', backgroundColor: styles.colors.blue}}>
-                            Ver Resumen
-                        </button>
-                    </div>
-                    {message.text && <p style={{...styles.message, marginTop: '15px'}}>{message.text}</p>}
-                </div>
-            );
-        }
-
-        if (interJornadaStatus?.status === 'pagado') return <div style={styles.placeholder}><h3>Estado de Pagos</h3><p style={{...styles.paymentStatus, color: styles.colors.success, borderColor: styles.colors.success}}>✅ Estás al día con tus pagos. ¡Gracias!</p><ProximaJornadaInfo jornada={interJornadaStatus.proxima} /></div>;
-        if (interJornadaStatus?.status === 'debe') return <div style={styles.placeholder}><h3>Estado de Pagos</h3><p style={{...styles.paymentStatus, color: styles.colors.warning, borderColor: styles.colors.warning}}>⚠️ Tienes pendiente el pago de la Jornada {interJornadaStatus.jornada.numeroJornada}.</p><button onClick={() => setActiveTab('pagos')} style={{...styles.mainButton, backgroundColor: styles.colors.blue}}>Ir a Pagos</button><ProximaJornadaInfo jornada={interJornadaStatus.proxima} /></div>;
-        if (interJornadaStatus?.status === 'no_participo') return <div style={styles.placeholder}><h3>No hay jornadas disponibles</h3><p>No participaste en la última jornada. ¡Esperamos verte en la siguiente!</p><ProximaJornadaInfo jornada={interJornadaStatus.proxima} /></div>;
-        if (interJornadaStatus?.status === 'sin_finalizadas') return <div style={styles.placeholder}><h3>¡Comienza la temporada!</h3><p>Aún no ha finalizado ninguna jornada.</p><ProximaJornadaInfo jornada={interJornadaStatus.proxima} /></div>;
-        return <div style={styles.placeholder}><h3>No hay jornadas disponibles.</h3><p>El administrador añadirá nuevas jornadas próximamente.</p></div>;
-    };
-    return (
-      <div>
-        {showJokerAnimation && <JokerAnimation />}
-        {showStatsModal && <FullStatsModal stats={fullPreMatchStats} onClose={() => setShowStatsModal(false)} />}
-        {showLiquidarPagoModal && <LiquidarPagoModal onClose={() => setShowLiquidarPagoModal(false)} onConfirm={handleMarcarComoPagado} />}
-        {showConfirmacionModal && <ConfirmacionPronosticoModal pronostico={pronosticoParaConfirmar} onConfirm={handleGuardarPronostico} onCancel={() => setShowConfirmacionModal(false)} />}
-        {tieneDeuda && !interJornadaStatus && (<div style={styles.debtBanner}>⚠️ Tienes pendiente el pago de la jornada anterior. Por favor, ve a la sección de "Pagos" para regularizarlo.</div>)}
-        <h2 style={styles.title} className="app-title">MI JORNADA</h2>
-        <p style={{color: styles.colors.lightText, textAlign: 'center', fontSize: '1.1rem'}}>Bienvenido, <PlayerProfileDisplay name={user} profile={userProfile} defaultColor={styles.colors.yellow} style={{fontWeight: 'bold'}} /></p>
-        
-        {currentJornada && (['Abierta', 'Pre-apertura', 'Cerrada', 'En vivo'].includes(currentJornada.estado)) && (
-            <>
-                {loadingPreMatch && !preMatchStats && <div style={{textAlign: 'center', padding: '20px'}}><p>Cargando estadísticas pre-partido...</p></div>}
-                {preMatchStats && <PreMatchStats stats={preMatchStats} lastUpdated={lastApiUpdate} onOpenModal={() => setShowStatsModal(true)} />}
-            </>
-        )}
-
-        {liveData && currentJornada?.estado === 'En vivo' && (<div style={styles.liveInfoBox}><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Puntos Provisionales</span><span style={styles.liveInfoValue}><AnimatedPoints value={provisionalData.puntos} /></span></div><div style={styles.liveInfoItem}><span style={styles.liveInfoLabel}>Posición Provisional</span><span style={styles.liveInfoValue}>{provisionalData.posicion}</span></div></div>)}
-        {renderContent()}
-      </div>
-    );
-};
-
-const JornadaAdminItem = ({ jornada, plantilla, searchTerm, filterRange, onCalculate }) => {
+const JornadaAdminItem = ({ jornada, plantilla, searchTerm, filterRange, onForceRecalculate }) => {
     const [estado, setEstado] = useState(jornada.estado);
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
     const [resultadoVisitante, setResultadoVisitante] = useState(jornada.resultadoVisitante === undefined ? '' : jornada.resultadoVisitante);
@@ -1976,6 +1550,9 @@ const JornadaAdminItem = ({ jornada, plantilla, searchTerm, filterRange, onCalcu
         try {
             await updateDoc(jornadaRef, { 
                 estado, 
+                resultadoLocal, 
+                resultadoVisitante, 
+                goleador: goleador.trim(), 
                 esVip, 
                 splashMessage, 
                 fechaApertura: fechaApertura ? new Date(fechaApertura) : null, 
@@ -1986,72 +1563,82 @@ const JornadaAdminItem = ({ jornada, plantilla, searchTerm, filterRange, onCalcu
                 apiLocalTeamId,
                 apiVisitorTeamId
             });
-            setMessage('¡Cambios guardados!'); setTimeout(() => setMessage(''), 2000);
+            setMessage('¡Guardado!'); setTimeout(() => setMessage(''), 2000);
         } catch (error) { console.error("Error al actualizar: ", error); setMessage('Error al guardar.'); }
         setIsSaving(false);
     };
 
-    const handleUpdateLiveState = async (activate) => {
+    const handleUpdateLiveState = async (activate = true) => {
         setIsSaving(true);
         const jornadaRef = doc(db, "jornadas", jornada.id);
         try {
             if (activate) {
                 await updateDoc(jornadaRef, { 
                     estado: 'En vivo',
-                    liveData: { golesLocal: 0, golesVisitante: 0, ultimoGoleador: '', isLive: true } 
+                    liveData: { ...liveData, isLive: true } 
                 });
+                 setEstado('En vivo');
                 setMessage('¡Jornada EN VIVO!');
             } else {
-                 await updateDoc(jornadaRef, { "liveData.isLive": false });
-                 setMessage('Modo EN VIVO desactivado.');
+                 await updateDoc(jornadaRef, { 
+                    liveData: { ...liveData, isLive: false } 
+                });
+                setMessage('Datos en vivo actualizados.');
             }
             setTimeout(() => setMessage(''), 2000);
-        } catch (error) { console.error("Error cambiando estado en vivo:", error); setMessage('Error al cambiar estado.'); }
+        } catch (error) { console.error("Error actualizando modo en vivo:", error); setMessage('Error al actualizar.'); }
         setIsSaving(false);
     };
     
-    const handleUpdateLiveScore = async () => {
+    const handleSetFinalState = async () => {
+        if (!window.confirm("¿Estás seguro de que quieres marcar la jornada como 'Finalizada'? Esto sella el resultado, pero no calcula los puntos.")) {
+            return;
+        }
         setIsSaving(true);
         const jornadaRef = doc(db, "jornadas", jornada.id);
         try {
-            await updateDoc(jornadaRef, { liveData });
-            setMessage('Marcador EN VIVO actualizado.');
-        } catch(error) {
-            console.error("Error actualizando marcador en vivo:", error);
-            setMessage('Error al actualizar marcador.');
-        }
-        setIsSaving(false);
-    }
-    
-    // ACCIÓN DE PUNTUACIÓN (PROCESO CENTRALIZADO)
-    const handleCalculateAndClose = async () => {
-        if (resultadoLocal === '' || resultadoVisitante === '') {
-             alert("Debes introducir el resultado final (goles) para finalizar la jornada.");
-             return;
-        }
-        if (!window.confirm(`¿Estás seguro de que quieres calcular los puntos y cerrar la Jornada ${jornada.numeroJornada}? Esta acción es DEFINITIVA y ejecutará todos los cálculos (puntos, bote, insignias).`)) {
-            return;
-        }
-    
-        setIsCalculating(true);
-        setMessage('Iniciando proceso de cierre... Esto puede tardar unos segundos.');
-    
-        try {
-            await onCalculate(jornada.id, { resultadoLocal: parseInt(resultadoLocal), resultadoVisitante: parseInt(resultadoVisitante), goleador: goleador.trim() });
-            
-            await updateDoc(doc(db, "jornadas", jornada.id), {
+            await updateDoc(jornadaRef, { 
                 estado: 'Finalizada',
                 resultadoLocal: parseInt(resultadoLocal),
                 resultadoVisitante: parseInt(resultadoVisitante),
                 goleador: goleador.trim(),
-                "liveData.isLive": false
+                "liveData.isLive": false 
             });
-
-            setMessage('¡Proceso completado! Jornada cerrada, puntos calculados, bote gestionado e insignias asignadas.');
-    
+            setEstado('Finalizada');
+            setMessage('Jornada marcada como Finalizada.');
         } catch (error) {
-            console.error("Error masivo al calcular y cerrar: ", error);
-            setMessage(`Error crítico durante el cierre: ${error.message}`);
+            console.error("Error finalizando jornada:", error);
+            setMessage('Error al finalizar.');
+        }
+        setIsSaving(false);
+    };
+
+
+    const handleCalcularPuntosYCerrar = async () => {
+        if (resultadoLocal === '' || resultadoVisitante === '') {
+             alert("Debes introducir el resultado final (goles) para finalizar la jornada.");
+             return;
+        }
+        if (!window.confirm("ACCIÓN DEFINITIVA: ¿Calcular puntos, asignar insignias, gestionar bote y cerrar esta jornada?")) {
+            return;
+        }
+
+        setIsCalculating(true);
+        setMessage('Procesando jornada... Esto puede tardar unos segundos.');
+        
+        try {
+            const calcularPuntosFn = httpsCallable(functions, 'calcularPuntosYCerrarJornada');
+            const result = await calcularPuntosFn({ jornadaId: jornada.id });
+
+            if (result.data.success) {
+                setMessage(`¡Éxito! ${result.data.message}`);
+                onForceRecalculate(); // Forza la recarga de datos en el panel de admin
+            } else {
+                throw new Error(result.data.error || 'Error desconocido en la Cloud Function.');
+            }
+        } catch (error) {
+            console.error("Error masivo al calcular puntos: ", error);
+            setMessage(`Error crítico: ${error.message}`);
         }
         setIsCalculating(false);
     };
@@ -2069,8 +1656,12 @@ const JornadaAdminItem = ({ jornada, plantilla, searchTerm, filterRange, onCalcu
         <div style={jornada.id === 'jornada_test' ? {...styles.adminJornadaItem, ...styles.testJornadaAdminItem} : (jornada.esVip ? {...styles.adminJornadaItem, ...styles.jornadaVip} : styles.adminJornadaItem)}>
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap'}}><p><strong>{jornada.id === 'jornada_test' ? 'Jornada de Prueba' : `Jornada ${jornada.numeroJornada || 'Copa'}`}:</strong> {jornada.equipoLocal} vs {jornada.equipoVisitante}</p><div style={styles.vipToggleContainer}><label htmlFor={`vip-toggle-${jornada.id}`}>⭐ VIP</label><input id={`vip-toggle-${jornada.id}`} type="checkbox" checked={esVip} onChange={(e) => setEsVip(e.target.checked)} style={styles.checkbox}/></div></div>
             <div style={styles.adminControls}>
-                <select value={estado} onChange={(e) => setEstado(e.target.value)} style={styles.adminSelect}><option value="Próximamente">Próximamente</option><option value="Pre-apertura">Pre-apertura</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="En vivo">En vivo (Manual)</option><option value="Finalizada">Finalizada</option></select>
-                <div><label>Fechas (Apertura / Cierre / Partido)</label><input type="datetime-local" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} style={styles.adminInput} /><input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={{...styles.adminInput, marginTop: '5px'}} /><input type="datetime-local" value={fechaPartido} onChange={(e) => setFechaPartido(e.target.value)} style={{...styles.adminInput, marginTop: '5px'}} /></div>
+                <select value={estado} onChange={(e) => setEstado(e.target.value)} style={styles.adminSelect}><option value="Próximamente">Próximamente</option><option value="Pre-apertura">Pre-apertura</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="En vivo">En vivo</option><option value="Finalizada">Finalizada</option></select>
+                <div style={styles.resultInputContainer}><input type="number" min="0" value={resultadoLocal} onChange={(e) => setResultadoLocal(e.target.value)} style={styles.resultInput} placeholder="L" /><span style={styles.separator}>-</span><input type="number" min="0" value={resultadoVisitante} onChange={(e) => setResultadoVisitante(e.target.value)} style={styles.resultInput} placeholder="V"/></div>
+                <select value={goleador} onChange={(e) => setGoleador(e.target.value)} style={styles.adminSelect}><option value="">-- Goleador Final --</option><option value="SG">Sin Goleador (SG)</option>{plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}</select>
+                <input type="datetime-local" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} style={styles.adminInput} />
+                <input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={styles.adminInput} />
+                <input type="datetime-local" value={fechaPartido} onChange={(e) => setFechaPartido(e.target.value)} style={styles.adminInput} />
             </div>
             <div style={{marginTop: '10px'}}><textarea value={splashMessage} onChange={(e) => setSplashMessage(e.target.value)} style={{...styles.input, width: '95%', height: '50px'}} placeholder="Mensaje para la pantalla principal..." /></div>
             <div style={{marginTop: '10px'}}><input type="text" value={estadioImageUrl} onChange={(e) => setEstadioImageUrl(e.target.value)} style={{...styles.input, width: '95%'}} placeholder="URL Imagen del Estadio..." /></div>
@@ -2078,37 +1669,24 @@ const JornadaAdminItem = ({ jornada, plantilla, searchTerm, filterRange, onCalcu
 
             <div style={{marginTop: '20px', display: 'flex', flexWrap: 'wrap', gap: '10px'}}>
                 <button onClick={handleSaveChanges} disabled={isSaving} style={styles.saveButton}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</button>
+                {jornada.estado === 'Finalizada' && (<button onClick={handleCalcularPuntosYCerrar} disabled={isCalculating} style={{...styles.saveButton, backgroundColor: styles.colors.gold, color: colors.deepBlue}}>{isCalculating ? 'Procesando...' : 'Calcular Puntos y Cerrar Jornada'}</button>)}
                 {message && <span style={{marginLeft: '10px', color: styles.colors.success, alignSelf: 'center'}}>{message}</span>}
             </div>
             
             {(jornada.estado === 'Cerrada' || jornada.estado === 'En vivo') && (
                 <div style={styles.liveAdminContainer}>
                     <h4 style={styles.liveAdminTitle}>🔴 Control del Partido en Vivo</h4>
-                    {jornada.estado !== 'En vivo' && <button onClick={() => handleUpdateLiveState(true)} disabled={isSaving} style={{...styles.saveButton, backgroundColor: styles.colors.danger, marginTop: '15px'}}>Activar Modo EN VIVO</button>}
-                    {jornada.estado === 'En vivo' && (
-                        <>
-                            <div style={styles.adminControls}>
-                                <div style={styles.resultInputContainer}><input type="number" min="0" value={liveData.golesLocal} onChange={(e) => setLiveData(d => ({ ...d, golesLocal: parseInt(e.target.value) || 0 }))} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="number" min="0" value={liveData.golesVisitante} onChange={(e) => setLiveData(d => ({ ...d, golesVisitante: parseInt(e.target.value) || 0 }))} style={styles.resultInput} /></div>
-                                <select value={liveData.ultimoGoleador} onChange={(e) => setLiveData(d => ({...d, ultimoGoleador: e.target.value}))} style={styles.adminSelect}><option value="">-- Último Goleador --</option><option value="SG">Sin Goleador (SG)</option>{plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}</select>
-                            </div>
-                            <button onClick={handleUpdateLiveScore} disabled={isSaving} style={{...styles.saveButton, backgroundColor: styles.colors.danger, marginTop: '15px'}}>Actualizar Marcador EN VIVO</button>
-                        </>
-                    )}
-                </div>
-            )}
-            
-            {jornada.estado === 'En vivo' && (
-                 <div style={{...styles.adminJornadaItem, border: `2px solid ${colors.gold}`, marginTop: '20px'}}>
-                    <h4 style={{...styles.liveAdminTitle, color: colors.gold}}>🏁 Finalización de la Jornada</h4>
-                     <div style={styles.adminControls}>
-                        <div><label>Resultado Final Local</label><input type="number" min="0" value={resultadoLocal} onChange={(e) => setResultadoLocal(e.target.value)} style={styles.resultInput} placeholder="L" /></div>
-                        <div><label>Resultado Final Visitante</label><input type="number" min="0" value={resultadoVisitante} onChange={(e) => setResultadoVisitante(e.target.value)} style={styles.resultInput} placeholder="V"/></div>
-                        <div><label>Primer Goleador (Final)</label><select value={goleador} onChange={(e) => setGoleador(e.target.value)} style={styles.adminSelect}><option value="">-- Goleador Final --</option><option value="SG">Sin Goleador (SG)</option>{plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}</select></div>
+                    <div style={styles.adminControls}>
+                        <div style={styles.resultInputContainer}><input type="number" min="0" value={liveData.golesLocal} onChange={(e) => setLiveData(d => ({ ...d, golesLocal: parseInt(e.target.value) || 0 }))} style={styles.resultInput} /><span style={styles.separator}>-</span><input type="number" min="0" value={liveData.golesVisitante} onChange={(e) => setLiveData(d => ({ ...d, golesVisitante: parseInt(e.target.value) || 0 }))} style={styles.resultInput} /></div>
+                        <select value={liveData.ultimoGoleador} onChange={(e) => setLiveData(d => ({...d, ultimoGoleador: e.target.value}))} style={styles.adminSelect}><option value="">-- Último Goleador --</option><option value="SG">Sin Goleador (SG)</option>{plantilla.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(jugador => (<option key={jugador.nombre} value={jugador.nombre}>{jugador.dorsal ? `${jugador.dorsal} - ${jugador.nombre}` : jugador.nombre}</option>))}</select>
                     </div>
-                    <button onClick={handleCalculateAndClose} disabled={isCalculating} style={styles.calculateButton}>
-                        {isCalculating ? 'Calculando...' : 'Calcular Puntos y Cerrar Jornada'}
+                     <button onClick={() => handleUpdateLiveState(jornada.estado !== 'En vivo')} disabled={isSaving} style={{...styles.saveButton, backgroundColor: styles.colors.danger, marginTop: '15px'}}>
+                        {isSaving ? 'Actualizando...' : (jornada.estado === 'En vivo' ? 'Actualizar Marcador EN VIVO' : 'Activar Modo EN VIVO')}
                     </button>
-                 </div>
+                    <button onClick={handleSetFinalState} disabled={isSaving} style={{...styles.saveButton, backgroundColor: styles.colors.blue, marginTop: '15px', marginLeft: '10px'}}>
+                        Marcar como FINALIZADA
+                    </button>
+                </div>
             )}
         </div>
     );
@@ -2361,6 +1939,7 @@ const AdminPorraAnual = ({ onBack }) => {
         finally { setSaving(false); setTimeout(() => setMessage(''), 3000); }
     };
     
+    // --- NUEVO: Lógica para calcular puntos de la Porra Anual ---
     const handleCalcularPuntosAnual = async () => {
         if (!config.ascensoFinal || !config.posicionFinal) { alert("Debes establecer el resultado de Ascenso y la Posición Final antes de calcular."); return; }
         if (!window.confirm("¿Seguro que quieres calcular y repartir los puntos de la Porra Anual? Esta acción es irreversible.")) { return; }
@@ -2413,6 +1992,7 @@ const AdminPorraAnual = ({ onBack }) => {
             <div style={styles.adminControls}>
                 <div><label style={styles.label}>Estado de la Porra</label><select value={config.estado || ''} onChange={(e) => setConfig(c => ({ ...c, estado: e.target.value }))} style={styles.adminSelect}><option value="Inactiva">Inactiva</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="Finalizada">Finalizada</option></select></div>
                 <div><label style={styles.label}>Fecha Cierre Apuestas</label><input type="datetime-local" value={config.fechaCierre || ''} onChange={(e) => setConfig(c => ({ ...c, fechaCierre: e.target.value }))} style={styles.adminInput} /></div>
+                {/* --- NUEVO: Campos para resultado final --- */}
                 <div><label style={styles.label}>Resultado Ascenso</label><select value={config.ascensoFinal || ''} onChange={(e) => setConfig(c => ({ ...c, ascensoFinal: e.target.value }))} style={styles.adminSelect}><option value="">-- Pendiente --</option><option value="SI">SI</option><option value="NO">NO</option></select></div>
                 <div><label style={styles.label}>Posición Final</label><input type="number" min="1" max="22" value={config.posicionFinal || ''} onChange={(e) => setConfig(c => ({ ...c, posicionFinal: e.target.value }))} style={styles.adminInput}/></div>
             </div>
@@ -2658,6 +2238,7 @@ const AdminTools = ({ onBack }) => {
         }
     };
     
+    // PASEO DE LA FAMA: Lógica de cálculo completa
     const handleUpdateFameStats = async () => {
         if (!window.confirm("Esta acción recalculará todas las estadísticas del Paseo de la Fama. Puede tardar un momento. ¿Continuar?")) return;
         
@@ -2677,6 +2258,7 @@ const AdminTools = ({ onBack }) => {
             
             const newFameStats = {};
 
+            // 1. Rey Midas (Más dinero ganado) - CORREGIDO
             setFameMessage('Calculando: Rey Midas...');
             const premiosPorJugador = JUGADORES.reduce((acc, j) => ({ ...acc, [j]: 0 }), {});
             for(const j of jornadas) {
@@ -2692,6 +2274,7 @@ const AdminTools = ({ onBack }) => {
             const midasEntry = Object.entries(premiosPorJugador).sort((a, b) => b[1] - a[1])[0];
             newFameStats.rey_midas = { jugador: midasEntry[0], valor: `${midasEntry[1].toFixed(2)}€` };
 
+            // 2. Pelotazo (Más puntos en una jornada)
             setFameMessage('Calculando: El Pelotazo...');
             let pelotazo = { jugador: null, valor: 0 };
             for(const j of jornadas) {
@@ -2703,26 +2286,31 @@ const AdminTools = ({ onBack }) => {
             }
             newFameStats.pelotazo = { ...pelotazo, valor: `${pelotazo.valor} puntos` };
 
+            // Resto de estadísticas
             setFameMessage('Calculando más estadísticas...');
             const atrevidoCounts = JUGADORES.reduce((acc, j) => ({ ...acc, [j]: 0 }), {});
             const regularidadCounts = JUGADORES.reduce((acc, j) => ({ ...acc, [j]: 0 }), {});
             const profetaCounts = JUGADORES.reduce((acc, j) => ({ ...acc, [j]: 0 }), {});
             const rachasPuntuando = JUGADORES.reduce((acc, j) => ({ ...acc, [j]: { max: 0, actual: 0 } }), {});
             const rachasCenizo = JUGADORES.reduce((acc, j) => ({ ...acc, [j]: { max: 0, actual: 0 } }), {});
-            const obstinadoCounts = {};
+            const obstinadoCounts = {}; // { '1-0': { 'Juanma': 5, 'Laura': 2 } }
 
             for (const j of jornadas) {
                 const pronosJornada = pronosticosPorJornada[j.id];
                 const resultadoJornada = `${j.resultadoLocal}-${j.resultadoVisitante}`;
                 
                 pronosJornada.forEach(p => {
+                    // Atrevido
                     const miResultado = `${p.golesLocal}-${p.golesVisitante}`;
                     if(miResultado === resultadoJornada) {
                         const otrosConMismoResultado = pronosJornada.filter(otro => otro.id !== p.id && `${otro.golesLocal}-${otro.golesVisitante}` === miResultado).length;
                         if(otrosConMismoResultado === 0) atrevidoCounts[p.id]++;
                     }
+                    // Mr. Regularidad
                     if(p.puntosObtenidos > 0) regularidadCounts[p.id]++;
+                    // Profeta
                     if (p.goleador && p.goleador.trim().toLowerCase() === (j.goleador || '').trim().toLowerCase()) profetaCounts[p.id]++;
+                    // Rachas
                     if(p.puntosObtenidos > 0) {
                         rachasPuntuando[p.id].actual++;
                         rachasPuntuando[p.id].max = Math.max(rachasPuntuando[p.id].max, rachasPuntuando[p.id].actual);
@@ -2732,6 +2320,7 @@ const AdminTools = ({ onBack }) => {
                         rachasCenizo[p.id].actual++;
                         rachasCenizo[p.id].max = Math.max(rachasCenizo[p.id].max, rachasCenizo[p.id].actual);
                     }
+                    // Obstinado
                     if (!obstinadoCounts[miResultado]) obstinadoCounts[miResultado] = {};
                     obstinadoCounts[miResultado][p.id] = (obstinadoCounts[miResultado][p.id] || 0) + 1;
                 });
@@ -2805,18 +2394,24 @@ const AdminTools = ({ onBack }) => {
 };
 
 
-const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, onCalculateAndCloseJornada }) => {
+const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla }) => {
     const [jornadas, setJornadas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [adminView, setAdminView] = useState('jornadas');
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRange, setFilterRange] = useState(null);
 
-    useEffect(() => {
+    const fetchJornadas = () => {
+        setLoading(true);
         const q = query(collection(db, "jornadas"), orderBy("numeroJornada", "desc"));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             setJornadas(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); setLoading(false);
         }, (error) => { console.error("Error al cargar jornadas: ", error); setLoading(false); });
+        return unsubscribe;
+    };
+
+    useEffect(() => {
+        const unsubscribe = fetchJornadas();
         return () => unsubscribe();
     }, []);
 
@@ -2847,7 +2442,7 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, onCalculateAndCl
                         </div>
                         <button onClick={() => { setFilterRange(null); setSearchTerm(''); }} style={{...styles.secondaryButton, borderColor: colors.danger}}>Limpiar</button>
                     </div>
-                    <div style={styles.jornadaList}>{jornadas.map(jornada => (<JornadaAdminItem key={jornada.id} jornada={jornada} plantilla={plantilla} searchTerm={searchTerm} filterRange={filterRange} onCalculate={onCalculateAndCloseJornada} />))}</div>
+                    <div style={styles.jornadaList}>{jornadas.map(jornada => (<JornadaAdminItem key={jornada.id} jornada={jornada} plantilla={plantilla} searchTerm={searchTerm} filterRange={filterRange} onForceRecalculate={fetchJornadas} />))}</div>
                 </div>
             );
             case 'escudos': return <AdminEscudosManager onBack={() => setAdminView('jornadas')} teamLogos={teamLogos} />;
@@ -2988,6 +2583,7 @@ const PagosScreen = ({ user, userProfiles }) => {
     const handlePremioCobradoChange = async (jornadaId, jugadorId, haCobrado) => { const pronosticoRef = doc(db, "pronosticos", jornadaId, "jugadores", jugadorId); await updateDoc(pronosticoRef, { premioCobrado: haCobrado }); };
     if (loading) return <LoadingSkeleton type="table" />;
     
+    // NUEVO: Lógica para determinar si el usuario actual es un tesorero autorizado
     const isTesorero = TESOREROS_AUTORIZADOS.includes(user);
 
     return (<div><h2 style={styles.title} className="app-title">LIBRO DE CUENTAS</h2><div style={styles.statsGrid}><div style={styles.statCard}><div style={styles.statValue}>💰 {financialSummary.boteActual.toFixed(2)}€</div><div style={styles.statLabel}>Bote Actual</div></div><div style={styles.statCard}><div style={styles.statValue}>📥 {financialSummary.totalRecaudado.toFixed(2)}€</div><div style={styles.statLabel}>Total Recaudado</div></div><div style={styles.statCard}><div style={styles.statValue}>📤 {financialSummary.totalRepartido.toFixed(2)}€</div><div style={styles.statLabel}>Total Repartido</div></div></div>
@@ -3208,40 +2804,7 @@ const ProfileScreen = ({ user, userProfile, onEdit, onBack }) => {
     <button onClick={onEdit} style={{...styles.mainButton, width: '100%', marginTop: '40px'}}>Editar Perfil (Icono y Color)</button></div>);
 };
 
-const NewsTicker = ({ stats, userProfiles }) => {
-    const [tickerItems, setTickerItems] = useState([]);
-    
-    useEffect(() => {
-        if (stats) {
-            const items = Object.entries(FAME_STATS_DEFINITIONS)
-                .map(([key, def]) => {
-                    const stat = stats[key];
-                    if (!stat || !stat.jugador) return null;
-                    return (
-                        <span key={key} style={styles.newsTickerItem}>
-                            <strong>{def.icon} {def.name}: </strong> 
-                            <PlayerProfileDisplay name={stat.jugador} profile={userProfiles[stat.jugador]} /> ({stat.valor})
-                        </span>
-                    );
-                })
-                .filter(Boolean);
-            setTickerItems(items);
-        }
-    }, [stats, userProfiles]);
-
-    if (tickerItems.length === 0) return null;
-
-    return (
-        <div style={styles.newsTicker}>
-            <div style={styles.newsTickerContent}>
-                {tickerItems}
-                {tickerItems}
-            </div>
-        </div>
-    );
-};
-
-
+// --- NUEVA PANTALLA: Paseo de la Fama ---
 const PaseoDeLaFamaScreen = ({ userProfiles, fameStats }) => {
     if (!fameStats) return <LoadingSkeleton type="table" />;
 
@@ -3266,277 +2829,287 @@ const PaseoDeLaFamaScreen = ({ userProfiles, fameStats }) => {
     );
 };
 
-// --- CORRECCIÓN: COMPONENTES RECONSTRUIDOS ---
+// ============================================================================
+// --- COMPONENTE PRINCIPAL APP ---
+// ============================================================================
 
-const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers, clasificacionData }) => {
-    const [jornada, setJornada] = useState(null);
-    const [pronosticos, setPronosticos] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [countdown, setCountdown] = useState('');
-    const [showHistoryModal, setShowHistoryModal] = useState(false);
-    const [selectedPlayerForHistory, setSelectedPlayerForHistory] = useState(null);
-    const [historyLoading, setHistoryLoading] = useState(false);
-    const [playerHistory, setPlayerHistory] = useState([]);
+function App() {
+  const [showInitialSplash, setShowInitialSplash] = useState(true);
+  const [screen, setScreen] = useState('splash');
+  const [activeTab, setActiveTab] = useState('miJornada');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [viewingJornadaId, setViewingJornadaId] = useState(null);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [teamLogos, setTeamLogos] = useState({});
+  const [porraAnualConfig, setPorraAnualConfig] = useState(null);
+  const [viewingPorraAnual, setViewingPorraAnual] = useState(false);
+  const [winnerData, setWinnerData] = useState(null);
+  const [liveJornada, setLiveJornada] = useState(null);
+  const [plantilla, setPlantilla] = useState(PLANTILLA_ACTUALIZADA);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [userProfiles, setUserProfiles] = useState({});
+  const [onlineUsers, setOnlineUsers] = useState({});
+  const [isVipActive, setIsVipActive] = useState(false);
+  const [clasificacionData, setClasificacionData] = useState([]); // NUEVO: Para pasar a componentes hijos
+  const [fameStats, setFameStats] = useState(null); // NUEVO: Para estadísticas globales
+  const [resultAnnouncement, setResultAnnouncement] = useState(null); // NUEVO: Para el modal de resultados
+  const anonymousUserRef = useRef(null);
 
-    useEffect(() => {
-        setLoading(true);
-        const q = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada", "En vivo", "Finalizada", "Pre-apertura"]), orderBy("numeroJornada", "desc"), limit(1));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const jornadaData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-                setJornada(jornadaData);
-                const pronosticosRef = collection(db, "pronosticos", jornadaData.id, "jugadores");
-                const unsubPronosticos = onSnapshot(pronosticosRef, (pronosticosSnap) => {
-                    const pronosticosData = pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setPronosticos(pronosticosData);
-                    setLoading(false);
-                });
-                return () => unsubPronosticos();
-            } else {
-                setLoading(false);
-            }
-        });
-        return () => unsubscribe();
-    }, []);
-
-    useEffect(() => {
-        if (!jornada || jornada.estado !== 'Abierta' || !jornada.fechaCierre) {
-            setCountdown('');
-            return;
-        }
-        const interval = setInterval(() => {
-            const diff = jornada.fechaCierre.toDate() - new Date();
-            if (diff <= 0) {
-                setCountdown("APUESTAS CERRADAS");
-                clearInterval(interval);
-            } else {
-                const d = Math.floor(diff / 86400000);
-                const h = Math.floor((diff % 86400000) / 3600000);
-                const m = Math.floor((diff % 3600000) / 60000);
-                const s = Math.floor((diff % 60000) / 1000);
-                setCountdown(`${d}d ${h}h ${m}m ${s}s`);
-            }
-        }, 1000);
-        return () => clearInterval(interval);
-    }, [jornada]);
-    
-    const handleShowHistory = async (playerId) => {
-        setSelectedPlayerForHistory(playerId);
-        setShowHistoryModal(true);
-        setHistoryLoading(true);
-        const historialRef = collection(db, "pronosticos", jornada.id, "jugadores", playerId, "historial");
-        const q = query(historialRef, orderBy("timestamp", "desc"));
-        const historySnap = await getDocs(q);
-        setPlayerHistory(historySnap.docs.map(d => d.data()));
-        setHistoryLoading(false);
-    };
-
-    if (loading) return <LoadingSkeleton />;
-
-    if (!jornada) return <div style={styles.placeholder}><h2 style={styles.title}>LA JORNADA</h2><p>No hay ninguna jornada activa en este momento.</p></div>;
-
-    const pronosticosMap = pronosticos.reduce((acc, p) => ({ ...acc, [p.id]: p }), {});
-    const showPronosticos = ['Cerrada', 'En vivo', 'Finalizada'].includes(jornada.estado);
-
-    return (
-        <div>
-            {showHistoryModal && <HistorialCambiosModal historial={playerHistory} loading={historyLoading} onClose={() => setShowHistoryModal(false)} />}
-            <h2 style={styles.title}>LA JORNADA</h2>
-            <div style={{...styles.laJornadaContainer, backgroundImage: jornada.estadioImageUrl ? `linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url(${jornada.estadioImageUrl})` : 'none'}}>
-                <div style={styles.matchInfo}>
-                    <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} />
-                    {jornada.estado === 'En vivo' && liveData ?
-                        <span style={styles.liveScoreInPage}>{liveData.golesLocal} - {liveData.golesVisitante}</span> :
-                        <span style={styles.vs}>VS</span>
-                    }
-                    <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} />
-                </div>
-                <div style={styles.matchDetails}>
-                    <span>🗓️ {formatFullDateTime(jornada.fechaPartido || jornada.fechaCierre)}</span>
-                    {jornada.estadio && <span>📍 {jornada.estadio}</span>}
-                </div>
-                {jornada.estado === 'Abierta' && (
-                    <div style={styles.countdownContainer}>
-                        <div style={styles.countdown}>{countdown}</div>
-                        <p style={styles.callToAction}>¡Date prisa, haz tu apuesta!</p>
-                    </div>
-                )}
-                {jornada.estado === 'Finalizada' && (
-                    <>
-                        <p style={styles.finalResult}>{jornada.resultadoLocal} - {jornada.resultadoVisitante}</p>
-                        {jornada.ganadores && jornada.ganadores.length > 0 && <div style={styles.winnerBanner}>🏆 Ganador(es): {jornada.ganadores.join(', ')}</div>}
-                        {jornada.ganadores?.length === 0 && <div style={styles.boteBanner}>💰 ¡BOTE! Nadie acertó.</div>}
-                    </>
-                )}
-            </div>
-
-            {jornada.estado === 'En vivo' && liveData && (
-                 <LiveAnalysisPanels
-                    jornada={jornada}
-                    liveData={liveData}
-                    participantes={pronosticos}
-                    userProfiles={userProfiles}
-                    clasificacionData={clasificacionData}
-                 />
-            )}
-
-            <div style={styles.resumenContainer}>
-                {JUGADORES.map(jugador => {
-                    const p = pronosticosMap[jugador];
-                    if (!p) return null;
-                    return (
-                        <div key={jugador} style={styles.resumenJugador}>
-                            <h4 style={styles.resumenJugadorTitle}>
-                                <PlayerProfileDisplay name={jugador} profile={userProfiles[jugador]} />
-                                {showPronosticos && (user === "Juanma" || user === jugador) && <button onClick={() => handleShowHistory(jugador)} style={styles.historyButton}>Ver Historial</button>}
-                            </h4>
-                            <div style={styles.resumenJugadorBets}>
-                                {showPronosticos ? (
-                                    <>
-                                        <p><strong>Resultado:</strong> {p.golesLocal}-{p.golesVisitante}</p>
-                                        <p><strong>Goleador:</strong> {p.sinGoleador ? 'Sin Goleador' : (p.goleador || 'N/A')}</p>
-                                        {p.jokerActivo && p.jokerPronosticos?.length > 0 && (
-                                            <div style={styles.jokerChipsContainer}>
-                                                {p.jokerPronosticos.map((jp, i) => <span key={i} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>)}
-                                            </div>
-                                        )}
-                                    </>
-                                ) : (
-                                    <p style={{fontStyle: 'italic'}}>{p.pin ? '🤫 Pronóstico Protegido con PIN' : '🤔 Esperando al cierre...'}</p>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
-const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles }) => {
-    const [clasificacion, setClasificacion] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [provisionalRanking, setProvisionalRanking] = useState([]);
-
-    useEffect(() => {
-        const q = query(collection(db, "clasificacion"), orderBy("puntosTotales", "desc"));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setClasificacion(data);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    useEffect(() => {
-        if (liveJornada && liveJornada.estado === 'En vivo' && liveData && clasificacion.length > 0) {
-            const pronosticosRef = collection(db, "pronosticos", liveJornada.id, "jugadores");
-            getDocs(pronosticosRef).then(pronosticosSnap => {
-                const pronosticos = pronosticosSnap.docs.reduce((acc, doc) => {
-                    acc[doc.id] = doc.data();
-                    return acc;
-                }, {});
-
-                const newRanking = clasificacion.map(jugador => {
-                    const pronostico = pronosticos[jugador.id];
-                    const provisionalPoints = pronostico ? calculateProvisionalPoints(pronostico, liveData, liveJornada) : 0;
-                    return {
-                        ...jugador,
-                        puntosProvisionales: provisionalPoints,
-                        puntosTotalesProvisionales: (jugador.puntosTotales || 0) + provisionalPoints
-                    };
-                }).sort((a, b) => b.puntosTotalesProvisionales - a.puntosTotalesProvisionales);
-                setProvisionalRanking(newRanking);
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => { 
+        if (user && !user.isAnonymous) setIsAdminAuthenticated(true);
+        else if (user && user.isAnonymous) { anonymousUserRef.current = user; setIsAdminAuthenticated(false); }
+        else signInAnonymously(auth).catch((error) => console.error("Error de autenticación anónima:", error));
+    });
+    const styleSheet = document.createElement("style"); 
+    const colors = styles.colors;
+    // --- NUEVO: Se añaden las animaciones @keyframes ---
+    styleSheet.innerText = `
+        @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Orbitron&family=Exo+2&family=Russo+One&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { font-size: 16px !important; -webkit-text-size-adjust: 100%; }
+        body, #root { width: 100%; min-width: 100%; overflow-x: hidden; }
+        .vip-active { --glow-color: ${colors.gold}; --main-color: ${colors.gold}; --secondary-color: ${colors.yellow}; }
+        .vip-active #app-container { border-color: var(--glow-color); box-shadow: 0 0 25px var(--glow-color), inset 0 0 15px var(--glow-color); }
+        .vip-active .app-title, .vip-active h3, .vip-active h4 { color: var(--main-color); text-shadow: 0 0 8px var(--glow-color); }
+        .vip-active .navbar { border-bottom-color: var(--main-color); }
+        .vip-active .nav-button-active { border-bottom-color: var(--secondary-color); color: var(--secondary-color); }
+        .vip-active .main-button { background-color: var(--main-color); border-color: var(--secondary-color); box-shadow: 0 0 20px var(--glow-color); animation: vip-pulse 2s infinite; }
+        
+        @keyframes vip-pulse { 0% { box-shadow: 0 0 15px ${colors.gold}50; } 50% { box-shadow: 0 0 25px ${colors.gold}90; } 100% { box-shadow: 0 0 15px ${colors.gold}50; } }
+        @keyframes champion-glow { 0%, 100% { text-shadow: 0 0 8px ${colors.gold}, 0 0 15px ${colors.gold}; } 50% { text-shadow: 0 0 12px ${colors.gold}, 0 0 25px ${colors.gold}; } }
+        @keyframes pleno-flash { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+        @keyframes leader-glow { 0%, 100% { background-color: rgba(255, 215, 0, 0.15); box-shadow: inset 0 0 15px rgba(255, 215, 0, 0.5), 0 0 10px rgba(255, 215, 0, 0.3); } 50% { background-color: rgba(255, 215, 0, 0.25); box-shadow: inset 0 0 20px rgba(255, 215, 0, 0.7), 0 0 15px rgba(255, 215, 0, 0.5); } }
+        
+        @keyframes fire-streak-animation { 0%, 100% { text-shadow: 0 0 5px #fca311, 0 0 10px #e63946; } 50% { text-shadow: 0 0 10px #fca311, 0 0 20px #e63946; } }
+        @keyframes cold-streak-animation { 0%, 100% { text-shadow: 0 0 8px #00aaff, 0 0 15px #00aaff, 0 0 20px #00aaff80; } 50% { text-shadow: 0 0 12px #00aaff, 0 0 25px #00aaff, 0 0 30px #00aaff80; } }
+        
+        @keyframes fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
+        .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
+        @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+        .content-enter-active { animation: slideInFromRight 0.4s ease-out; }
+        @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+        .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(var(--angle)); } }
+        .confetti-particle { position: absolute; width: var(--size); height: var(--size); background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1.5s linear infinite; }
+        @keyframes title-shine { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+        @keyframes blink-live { 50% { background-color: #a11d27; } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } }
+        .point-jump-up { animation: point-jump-up 0.7s ease-out; }
+        .stat-fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes bounce-in { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
+        @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
+        .pulsed { animation: pulse-once 0.4s ease-in-out; }
+        @keyframes pie-draw { to { stroke-dashoffset: 0; } }
+        .pie-chart-segment-new { transform-origin: 60px 60px; stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dasharray); transform: rotate(var(--rotation)); animation: pie-draw 1s ease-out forwards; }
+        @keyframes reaction-fade-out { to { opacity: 0; transform: scale(0.5); } }
+        .fade-out { animation: reaction-fade-out 0.5s forwards; }
+        @keyframes reaction-fly { 0% { transform: translate(0, 0) scale(1.2); opacity: 1; } 100% { transform: translate(80px, -80px) scale(0); opacity: 0; } }
+        .fly-away { display: inline-block; animation: reaction-fly 1s cubic-bezier(0.5, -0.5, 1, 1) forwards; position: absolute; z-index: 10; pointer-events: none; }
+        @keyframes status-blink-red { 0%, 100% { background-color: ${colors.danger}; box-shadow: 0 0 8px ${colors.danger}; } 50% { background-color: #a11d27; box-shadow: 0 0 15px ${colors.danger}; } }
+        @keyframes status-pulse-green { 0%, 100% { background-color: ${colors.success}; box-shadow: 0 0 5px ${colors.success}; } 50% { background-color: #3a9a6a; box-shadow: 0 0 10px ${colors.success}; } }
+        .stat-value-animation { animation: pop-in 0.5s ease-out; }
+        @keyframes pulse-animation-kf { 0% { box-shadow: 0 0 0 0 rgba(255, 200, 44, 0.7); } 70% { box-shadow: 0 0 10px 15px rgba(255, 200, 44, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 200, 44, 0); } }
+        .pulse-animation { border-color: ${colors.yellow}; animation: pulse-animation-kf 1s ease-out; }
+        @keyframes live-dot-kf { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .live-dot-animation { animation: live-dot-kf 1.5s infinite; }
+        @keyframes silver-glow { 0%, 100% { background-color: rgba(192, 192, 192, 0.15); box-shadow: inset 0 0 15px rgba(192, 192, 192, 0.5), 0 0 10px rgba(192, 192, 192, 0.3); } 50% { background-color: rgba(192, 192, 192, 0.25); box-shadow: inset 0 0 20px rgba(192, 192, 192, 0.7), 0 0 15px rgba(192, 192, 192, 0.5); } }
+        @keyframes bronze-glow { 0%, 100% { background-color: rgba(205, 127, 50, 0.15); box-shadow: inset 0 0 15px rgba(205, 127, 50, 0.5), 0 0 10px rgba(205, 127, 50, 0.3); } 50% { background-color: rgba(205, 127, 50, 0.25); box-shadow: inset 0 0 20px rgba(205, 127, 50, 0.7), 0 0 15px rgba(205, 127, 50, 0.5); } }
+        @keyframes user-highlight-glow { 0%, 100% { background-color: rgba(0, 85, 164, 0.5); box-shadow: inset 0 0 15px rgba(0, 85, 164, 1), 0 0 10px rgba(0, 85, 164, 0.7); } 50% { background-color: rgba(0, 85, 164, 0.7); box-shadow: inset 0 0 20px rgba(0, 85, 164, 1), 0 0 15px rgba(0, 85, 164, 1); } }
+        @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+    `;
+    document.head.appendChild(styleSheet);
+    const configRef = doc(db, "configuracion", "porraAnual"); const unsubscribeConfig = onSnapshot(configRef, (doc) => { setPorraAnualConfig(doc.exists() ? doc.data() : null); });
+    const escudosRef = doc(db, "configuracion", "escudos"); const unsubscribeEscudos = onSnapshot(escudosRef, (docSnap) => { if (docSnap.exists()) { setTeamLogos(docSnap.data()); } });
+    const qLive = query(collection(db, "jornadas"), where("estado", "==", "En vivo"), limit(1)); 
+    const unsubscribeLive = onSnapshot(qLive, (snapshot) => { 
+        if (!snapshot.empty) { 
+            const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }; 
+            setLiveJornada(jornada); 
+            setIsVipActive(jornada.esVip || false);
+        } else { 
+            setLiveJornada(null); 
+            const qAbierta = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Pre-apertura"]), limit(1));
+            onSnapshot(qAbierta, (snapAbierta) => {
+                if(!snapAbierta.empty){ setIsVipActive(snapAbierta.docs[0].data().esVip || false); } 
+                else { setIsVipActive(false); }
             });
-        } else {
-            setProvisionalRanking([]);
+        } 
+    });
+
+    const plantillaRef = doc(db, "configuracion", "plantilla"); const unsubscribePlantilla = onSnapshot(plantillaRef, (docSnap) => { if (docSnap.exists() && docSnap.data().jugadores?.length > 0) { setPlantilla(docSnap.data().jugadores); } else { console.log("Plantilla no encontrada en Firebase, usando respaldo local."); } });
+    const clasificacionRef = collection(db, "clasificacion"); 
+    const unsubscribeClasificacion = onSnapshot(clasificacionRef, (snapshot) => { 
+        const profiles = {}; 
+        const clasificacion = [];
+        snapshot.forEach(doc => { 
+            const data = doc.data();
+            profiles[doc.id] = data; 
+            clasificacion.push({id: doc.id, ...data});
+        }); 
+        setUserProfiles(profiles); 
+        setClasificacionData(clasificacion.sort((a,b) => (b.puntosTotales || 0) - (a.puntosTotales || 0)));
+    });
+    const statusRef = ref(rtdb, 'status/'); const unsubscribeStatus = onValue(statusRef, (snapshot) => { const data = snapshot.val(); setOnlineUsers(data || {}); });
+    
+    // NUEVO: Listener para estadísticas globales
+    const fameStatsRef = doc(db, "estadisticas", "globales");
+    const unsubscribeFameStats = onSnapshot(fameStatsRef, (docSnap) => {
+        if (docSnap.exists()) {
+            setFameStats(docSnap.data());
         }
-    }, [liveData, liveJornada, clasificacion]);
+    });
 
-    if (loading) return <LoadingSkeleton type="table" />;
+    return () => { document.head.removeChild(styleSheet); unsubscribeConfig(); unsubscribeAuth(); unsubscribeEscudos(); unsubscribeLive(); unsubscribePlantilla(); unsubscribeClasificacion(); unsubscribeStatus(); unsubscribeFameStats(); }
+  }, []);
+  
+  const handleRequestPermission = async (user) => {
+      setShowNotificationModal(false);
+      localStorage.setItem('notificationPrompt_v3_seen', 'true'); 
+      try {
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+              const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
+              if (currentToken) await setDoc(doc(db, "notification_tokens", currentToken), { user: user, createdAt: new Date() });
+          }
+      } catch (error) { console.error('Error al obtener token de notificación.', error); }
+  };
+  
+ const handleLogin = async (user) => {
+    try {
+        setCurrentUser(user);
+        const userStatusRef = ref(rtdb, 'status/' + user);
+        await set(userStatusRef, true);
+        onDisconnect(userStatusRef).set(false);
+        const userProfileRef = doc(db, "clasificacion", user);
+        await setDoc(userProfileRef, { ultimaConexion: new Date() }, { merge: true });
 
-    const dataToRender = provisionalRanking.length > 0 ? provisionalRanking : clasificacion;
-    const isProvisional = provisionalRanking.length > 0;
+        const docSnap = await getDoc(userProfileRef);
+        if (docSnap.exists() && docSnap.data().icon && docSnap.data().color) setScreen('app');
+        else setScreen('customizeProfile');
 
-    return (
-        <div>
-            <h2 style={styles.title}>CLASIFICACIÓN GENERAL {isProvisional && <span style={{color: colors.danger}}> (PROVISIONAL)</span>}</h2>
-            <table style={styles.table}>
-                <thead>
-                    <tr>
-                        <th style={styles.th}>#</th>
-                        <th style={styles.th}>Jugador</th>
-                        <th style={{...styles.th, textAlign: 'center'}}>{isProvisional ? 'Jornada' : 'Total Puntos'}</th>
-                        {isProvisional && <th style={{...styles.th, textAlign: 'center'}}>Total Provisional</th>}
-                    </tr>
-                </thead>
-                <tbody>
-                    {dataToRender.map((jugador, index) => {
-                        const rank = index + 1;
-                        let rowStyle = styles.tr;
-                        if (rank === 1) rowStyle = {...rowStyle, ...styles.leaderRow};
-                        if (rank === 2) rowStyle = {...rowStyle, ...styles.secondPlaceRow};
-                        if (rank === 3) rowStyle = {...rowStyle, ...styles.thirdPlaceRow};
-                        if (jugador.id === currentUser) rowStyle = {...rowStyle, ...styles.currentUserRow};
+        if ('Notification' in window && Notification.permission !== 'granted' && !localStorage.getItem('notificationPrompt_v3_seen')) setShowNotificationModal(true);
 
-                        return (
-                            <tr key={jugador.id} style={rowStyle}>
-                                <td style={styles.tdRank}>{rank}</td>
-                                <td style={styles.td}><PlayerProfileDisplay name={jugador.id} profile={userProfiles[jugador.id]} /></td>
-                                <td style={{...styles.tdTotalPoints, color: isProvisional ? colors.lightText : colors.yellow, fontSize: isProvisional ? '1rem' : '1.2rem'}}>
-                                    {isProvisional ? jugador.puntosProvisionales : (jugador.puntosTotales || 0)}
-                                </td>
-                                {isProvisional && <td style={styles.tdTotalPoints}>{jugador.puntosTotalesProvisionales}</td>}
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
-        </div>
-    );
+        const q = query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc"), limit(1));
+        const jornadaSnap = await getDocs(q);
+        if (!jornadaSnap.empty) {
+            const jornadaDoc = jornadaSnap.docs[0];
+            const jornada = { id: jornadaDoc.id, ...jornadaDoc.data() };
+            const viewedResultsKey = `viewed_result_${jornada.id}`;
+
+            if (!sessionStorage.getItem(viewedResultsKey)) {
+                const pronosticosSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
+                const numParticipantes = pronosticosSnap.size;
+                const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+                const recaudado = numParticipantes * costeApuesta;
+                const boteAnterior = jornada.bote || 0;
+                
+                if (jornada.ganadores && jornada.ganadores.length > 0) {
+                    const premioTotal = boteAnterior + recaudado;
+                    setResultAnnouncement({
+                        winners: jornada.ganadores,
+                        prizePerWinner: premioTotal / jornada.ganadores.length,
+                    });
+                } else {
+                     const qProxima = query(collection(db, "jornadas"), where("numeroJornada", "==", jornada.numeroJornada + 1), limit(1));
+                     const proximaJornadaSnap = await getDocs(qProxima);
+                     let boteAcumulado = 0;
+                     if(!proximaJornadaSnap.empty){
+                        boteAcumulado = proximaJornadaSnap.docs[0].data().bote || (boteAnterior + recaudado);
+                     } else {
+                        boteAcumulado = boteAnterior + recaudado;
+                     }
+                    
+                    setResultAnnouncement({
+                        boteAmount: boteAcumulado,
+                    });
+                }
+                sessionStorage.setItem(viewedResultsKey, 'true');
+            }
+        }
+    } catch (error) {
+        console.error("Error crítico durante el inicio de sesión:", error);
+        alert("Ha ocurrido un error al iniciar sesión. Por favor, inténtalo de nuevo.");
+    }
 };
 
-const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
-    const [jornadas, setJornadas] = useState([]);
-    const [loading, setLoading] = useState(true);
+  const handleLogout = async () => {
+    if (currentUser) set(ref(rtdb, 'status/' + currentUser), false);
+    if (isAdminAuthenticated) { await signOut(auth); await signInAnonymously(auth); }
+    setCurrentUser(null); setScreen('login'); setIsAdminAuthenticated(false);
+  };
 
-    useEffect(() => {
-        const q = query(collection(db, "jornadas"), orderBy("numeroJornada"));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const jornadasData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setJornadas(jornadasData);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
+  const handleSaveProfile = async (user, profileData) => { await setDoc(doc(db, "clasificacion", user), profileData, { merge: true }); setScreen('app'); setActiveTab('miJornada'); };
+  const handleNavClick = (tab) => { setViewingJornadaId(null); setViewingPorraAnual(false); setActiveTab(tab); if (tab !== 'admin' && isAdminAuthenticated) { signOut(auth).then(() => signInAnonymously(auth)); } };
+  const handleAdminClick = () => { if (isAdminAuthenticated) setActiveTab('admin'); else setShowAdminLogin(true); };
+  const handleAdminLoginSuccess = () => { setIsAdminAuthenticated(true); setShowAdminLogin(false); setActiveTab('admin'); };
 
-    if (loading) return <LoadingSkeleton />;
+  const renderContent = () => {
+    if (showInitialSplash) return <InitialSplashScreen onFinish={() => setShowInitialSplash(false)} />;
+    if (screen === 'splash') return <SplashScreen onEnter={() => setScreen('login')} teamLogos={teamLogos} plantilla={plantilla} fameStats={fameStats} />;
+    if (screen === 'login') return <LoginScreen onLogin={handleLogin} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
+    if (screen === 'customizeProfile') return <ProfileCustomizationScreen user={currentUser} onSave={handleSaveProfile} userProfile={userProfiles[currentUser] || {}} />;
+    if (screen === 'app') {
+        const isLive = liveJornada?.liveData?.isLive;
+        const onlineCount = Object.values(onlineUsers).filter(Boolean).length;
+        const showGreenStatus = !isLive && onlineCount > 1;
 
-    return (
-        <div>
-            <h2 style={styles.title}>CALENDARIO DE JORNADAS</h2>
-            <div style={styles.jornadaList}>
-                {jornadas.map(jornada => (
-                    <div
-                        key={jornada.id}
-                        style={jornada.esVip ? {...styles.jornadaItem, ...styles.jornadaVip} : styles.jornadaItem}
-                        onClick={() => onViewJornada(jornada.id)}
-                    >
-                        <div style={styles.jornadaInfo}>
-                            <span>Jornada {jornada.numeroJornada}</span>
-                            <div style={styles.jornadaTeams}>
-                                <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoLocal} shortName={true} imgStyle={{width: 20, height: 20}} />
-                                <span style={{margin: '0 5px'}}>vs</span>
-                                <TeamDisplay teamLogos={teamLogos} teamName={jornada.equipoVisitante} shortName={true} imgStyle={{width: 20, height: 20}} />
-                            </div>
-                        </div>
-                        <span style={{...styles.statusBadge, backgroundColor: styles.colors.status[jornada.estado] || '#6c757d'}}>
-                            {jornada.estado}
-                        </span>
-                    </div>
-                ))}
+        const CurrentScreen = () => {
+            if (viewingJornadaId) return <JornadaDetalleScreen jornadaId={viewingJornadaId} onBack={() => setViewingJornadaId(null)} teamLogos={teamLogos} userProfiles={userProfiles} />;
+            if (viewingPorraAnual) return <PorraAnualScreen user={currentUser} onBack={() => setViewingPorraAnual(false)} config={porraAnualConfig} />;
+            if (activeTab === 'profile') return <ProfileScreen user={currentUser} userProfile={userProfiles[currentUser]} onEdit={() => setScreen('customizeProfile')} onBack={() => setActiveTab('miJornada')} />;
+            switch (activeTab) {
+                case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} plantilla={plantilla} userProfiles={userProfiles} />;
+                case 'laJornada': return <LaJornadaScreen user={currentUser} teamLogos={teamLogos} liveData={liveJornada?.liveData} userProfiles={userProfiles} onlineUsers={onlineUsers} clasificacionData={clasificacionData} />;
+                case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
+                case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} userProfiles={userProfiles} />;
+                case 'pagos': return <PagosScreen user={currentUser} userProfiles={userProfiles} />;
+                case 'fama': return <PaseoDeLaFamaScreen userProfiles={userProfiles} fameStats={fameStats} />;
+                case 'admin': return isAdminAuthenticated ? <AdminPanelScreen teamLogos={teamLogos} plantilla={plantilla} setPlantilla={setPlantilla} /> : null;
+                default: return null;
+            }
+        };
+      return (<>{showAdminLogin && <AdminLoginModal onClose={() => setShowAdminLogin(false)} onSuccess={handleAdminLoginSuccess} />}{showNotificationModal && <NotificationPermissionModal onAllow={() => handleRequestPermission(currentUser)} onDeny={() => {setShowNotificationModal(false); localStorage.setItem('notificationPrompt_v3_seen', 'true');}} />}{resultAnnouncement && <ResultAnnouncementModal result={resultAnnouncement} onClose={() => setResultAnnouncement(null)} />}{porraAnualConfig?.estado === 'Abierta' && !viewingPorraAnual && (!porraAnualConfig?.fechaCierre || new Date() < porraAnualConfig.fechaCierre.toDate()) && (<div style={styles.porraAnualBanner} onClick={() => setViewingPorraAnual(true)}>⭐ ¡PORRA ANUAL ABIERTA! ⭐ Haz o modifica tu pronóstico. ¡Pincha aquí!</div>)}<LiveBanner liveData={liveJornada?.liveData} jornada={liveJornada} />
+      <nav style={styles.navbar} className="navbar">
+        <button onClick={() => handleNavClick('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton} className={activeTab === 'miJornada' ? 'nav-button-active' : ''}>Mi Jornada</button>
+        <button onClick={() => handleNavClick('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton} className={activeTab === 'laJornada' ? 'nav-button-active' : ''}>
+            <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                {isLive && <span style={styles.statusIndicatorRed}></span>}
+                {showGreenStatus && <span style={styles.statusIndicatorGreen}></span>}
+                La Jornada
             </div>
+        </button>
+        <button onClick={() => handleNavClick('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton} className={activeTab === 'clasificacion' ? 'nav-button-active' : ''}>Clasificación</button>
+        <button onClick={() => handleNavClick('fama')} style={activeTab === 'fama' ? styles.navButtonActive : styles.navButton} className={activeTab === 'fama' ? 'nav-button-active' : ''}>🏆 Fama</button>
+        <button onClick={() => handleNavClick('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton} className={activeTab === 'pagos' ? 'nav-button-active' : ''}>Pagos</button>
+        {currentUser === 'Juanma' && (<button onClick={handleAdminClick} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton} className={activeTab === 'admin' ? 'nav-button-active' : ''}>Admin</button>)}
+        <button onClick={() => handleNavClick('profile')} style={styles.profileNavButton}><PlayerProfileDisplay name={currentUser} profile={userProfiles[currentUser]} /></button>
+        <button onClick={handleLogout} style={styles.logoutButton}>Salir</button>
+      </nav>
+      <div key={activeTab} className="content-enter-active" style={styles.content}><CurrentScreen /></div></>);
+    }
+  };
+  return (
+    <>
+      {winnerData && <WinnerAnimation winnerData={winnerData} onClose={() => setWinnerData(null)} />}
+      <div id="app-container" className={isVipActive ? 'vip-active' : ''} style={styles.container}>
+        <div style={styles.card} id="app-card">
+          {renderContent()}
         </div>
-    );
-};
+      </div>
+      {screen === 'app' && <NewsTicker stats={fameStats} userProfiles={userProfiles} />}
+    </>
+  );
+}
+
+export default App;
 
