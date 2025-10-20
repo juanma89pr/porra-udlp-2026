@@ -860,55 +860,8 @@ const LoadingSkeleton = ({ type = 'list' }) => {
 };
 
 
-const PieChart = ({ data }) => {
-    const radius = 50;
-    const circumference = 2 * Math.PI * radius;
-    let accumulatedRotation = 0;
-
-    return (
-        <div style={styles.pieChartContainer}>
-            <svg viewBox="0 0 120 120" style={styles.pieChartSvg}>
-                <g transform="rotate(-90 60 60)">
-                    {data.map((segment, index) => {
-                        const percentage = parseFloat(segment.percentage);
-                        if (isNaN(percentage) || percentage === 0) return null;
-                        const strokeDasharray = `${(percentage / 100) * circumference} ${circumference}`;
-                        const rotation = accumulatedRotation;
-                        accumulatedRotation += (percentage / 100) * 360;
-
-                        return (
-                            <circle
-                                key={index}
-                                cx="60"
-                                cy="60"
-                                r={radius}
-                                fill="transparent"
-                                stroke={segment.color}
-                                strokeWidth="20"
-                                strokeDasharray={circumference}
-                                strokeDashoffset={circumference}
-                                style={{
-                                    '--stroke-dasharray': strokeDasharray,
-                                    '--rotation': `${rotation}deg`,
-                                    animationDelay: `${index * 0.2}s`
-                                }}
-                                className="pie-chart-segment-new"
-                            />
-                        );
-                    })}
-                </g>
-            </svg>
-            <div style={styles.pieChartLegend}>
-                {data.map((segment, index) => (
-                    <div key={index} style={styles.pieChartLegendItem}>
-                        <span style={{...styles.pieChartLegendColor, backgroundColor: segment.color}}></span>
-                        <span>{segment.label} ({segment.percentage}%)</span>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
+// Componente auxiliar. Eliminado para evitar el error de linter 'PieChart' is assigned a value but never used
+// const PieChart = ({ data }) => { ... }; 
 
 // --- NUEVO COMPONENTE: ProximaJornadaInfo (para MiJornada)
 const ProximaJornadaInfo = ({ jornada }) => {
@@ -3830,7 +3783,10 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
     );
 };
 
-// ... (El componente App() debe estar en el archivo completo)
+// ============================================================================
+// --- COMPONENTE PRINCIPAL APP Y CIERRE ---
+// ============================================================================
+
 function App() {
   const [showInitialSplash, setShowInitialSplash] = useState(true);
   const [screen, setScreen] = useState('splash');
@@ -3849,9 +3805,9 @@ function App() {
   const [userProfiles, setUserProfiles] = useState({});
   const [onlineUsers, setOnlineUsers] = useState({});
   const [isVipActive, setIsVipActive] = useState(false);
-  const [clasificacionData, setClasificacionData] = useState([]); // NUEVO: Para pasar a componentes hijos
-  const [fameStats, setFameStats] = useState(null); // NUEVO: Para estadísticas globales
-  const [announcement, setAnnouncement] = useState(null); // NUEVO: Para el modal de resultados
+  const [clasificacionData, setClasificacionData] = useState([]); 
+  const [fameStats, setFameStats] = useState(null); 
+  const [announcement, setAnnouncement] = useState(null); 
   const anonymousUserRef = useRef(null);
 
   useEffect(() => {
@@ -3889,7 +3845,7 @@ function App() {
         .exploded { transition: transform 1s ease-out, opacity 1s ease-out; }
         @keyframes trophy-grow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         @keyframes text-fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes highlight { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes highlight { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
         @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
