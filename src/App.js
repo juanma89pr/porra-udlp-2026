@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
-// FIX CRÍTICO: Se añaden todas las utilidades de firestore usadas, incluyendo deleteField.
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, serverTimestamp, addDoc, deleteField, arrayUnion } from "firebase/firestore";
+// FIX CRÍTICO: Se añaden todas las utilidades de firestore usadas, incluyendo deleteField. arrayUnion ELIMINADO.
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, serverTimestamp, addDoc, deleteField } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -345,7 +345,7 @@ const styles = {
     newsTickerContent: { flex: 1, textAlign: 'left' },
     newsTickerTitle: { color: colors.yellow, fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase' },
     newsTickerText: { color: colors.lightText, fontSize: '0.9rem' },
-    splashStatImage: { width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover', margin: '5px auto', border: `2px solid ${colors.yellow}` },
+    splashStatImage: { width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover' },
     splashStatDescription: { color: colors.silver, fontSize: '0.9rem' },
     verificationResultsContainer: { marginTop: '20px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: `1px solid ${colors.blue}` },
     verificationList: { listStyleType: 'none', padding: 0, columns: 2, columnGap: '20px' },
@@ -1709,7 +1709,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
                                             {pronostico.jokerPronosticos.map((p, index) => (
                                                 <div key={index} style={styles.jokerBetRow}>
                                                     <label style={{...styles.label, justifyContent: 'center', fontSize: '0.8rem'}}>Apuesta Joker {index + 1}</label>
-                                                    <div style={styles.resultInputContainer}><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="L" /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="V"/></div>
+                                                    <div style={styles.resultInputContainer}><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesLocal} onChange={(e) => handleJokerPronosticoChange(index, 'golesLocal', e.target.value)} style={{...styles.resultInput, fontSize: '1.2rem'}} placeholder="L" /><span style={styles.separator}>-</span><input type="tel" inputMode="numeric" pattern="[0-9]*" value={p.golesVisitante} onChange={(e) => handleJokerPronosticoChange(index, 'golesVisitante', e.target.value)} style={styles.resultInput, fontSize: '1.2rem'}} placeholder="V"/></div>
                                                     {jokerStats[index] && (<small style={{...styles.statsIndicator, color: jokerStats[index].color, fontSize: '0.8rem', textAlign: 'center', display: 'block', marginTop: '5px'}}>{jokerStats[index].text}</small>)}
                                                 </div>
                                             ))}
@@ -3333,7 +3333,8 @@ const AdminTools = ({ onBack }) => {
             const pronosticosPorJornada = {};
             for(const j of jornadas) {
                 const pronosSnap = await getDocs(collection(db, "pronosticos", j.id, "jugadores"));
-                pronosticosPorJornada[j.id] = pronosSnap.docs.map(d => ({id: d.id, puntosObtenidos: 0, ...d.data()}));
+                // FIX: Aseguramos que los puntos se usen para el cálculo
+                pronosticosPorJornada[j.id] = pronosSnap.docs.map(d => ({id: d.id, puntosObtenidos: d.data().puntosObtenidos || 0, ...d.data()}));
             }
             
             const newFameStats = {};
@@ -3342,8 +3343,11 @@ const AdminTools = ({ onBack }) => {
             setFameMessage('Calculando: Rey Midas...');
             const premiosPorJugador = JUGADORES.reduce((acc, j) => ({ ...acc, [j]: 0 }), {});
             for(const j of jornadas) {
-                if(j.ganadores && j.ganadores.length > 0 && j.premioTotal) {
-                    const premioPorGanador = (j.premioTotal || 0) / j.ganadores.length;
+                // El campo premioTotal no existe si no hubo ganadores, pero el boteTransferido sí.
+                const premioTotal = (j.bote || 0) + (j.recaudadoJornada || 0); // Recalcular premio total si es necesario
+                
+                if(j.ganadores && j.ganadores.length > 0) {
+                    const premioPorGanador = (j.premioTotal || premioTotal) / j.ganadores.length;
                     j.ganadores.forEach(g => {
                         if(premiosPorJugador[g] !== undefined) {
                             premiosPorJugador[g] += premioPorGanador;
@@ -3351,19 +3355,20 @@ const AdminTools = ({ onBack }) => {
                     });
                 }
             }
-            const midasEntry = Object.entries(premiosPorJugador).sort((a, b) => b[1] - a[1])[0];
+            const midasEntry = Object.entries(premiosPorJugador).sort((a, b) => b[1] - a[1])[0] || ['-', 0];
             newFameStats.rey_midas = { jugador: midasEntry[0], valor: `${midasEntry[1].toFixed(2)}€` };
 
-            // 2. Pelotazo (Más puntos en una jornada)
+            // 2. Pelotazo (Más puntos en una jornada) - FIX: se corrige el no-loop-func
             setFameMessage('Calculando: El Pelotazo...');
             let pelotazo = { jugador: null, valor: 0 };
-            for(const j of jornadas) {
-                pronosticosPorJornada[j.id].forEach(p => {
-                    if ((p.puntosObtenidos || 0) > pelotazo.valor) {
+            JUGADORES.forEach(jugadorId => {
+                 jornadas.forEach(j => {
+                    const p = pronosticosPorJornada[j.id].find(pr => pr.id === jugadorId);
+                    if (p && (p.puntosObtenidos || 0) > pelotazo.valor) {
                         pelotazo = { jugador: p.id, valor: p.puntosObtenidos };
                     }
                 });
-            }
+            });
             newFameStats.pelotazo = { ...pelotazo, valor: `${pelotazo.valor} puntos` };
 
             // Resto de estadísticas
@@ -3387,28 +3392,27 @@ const AdminTools = ({ onBack }) => {
                         if(otrosConMismoResultado === 0) atrevidoCounts[p.id]++;
                     }
                     // Mr. Regularidad
-                    if(p.puntosObtenidos > 0) regularidadCounts[p.id]++;
+                    if((p.puntosObtenidos || 0) > 0) regularidadCounts[p.id]++;
                     // Profeta
                     const goleadorReal = (j.goleador || '').trim().toLowerCase();
                     const goleadorApostado = (p.goleador || '').trim().toLowerCase();
                     if (goleadorApostado === goleadorReal && goleadorReal !== 'sg') profetaCounts[p.id]++;
                     
                     // Rachas
-                    if(p.puntosObtenidos > 0) {
+                    if((p.puntosObtenidos || 0) > 0) {
                         rachasPuntuando[p.id].actual++;
                         rachasPuntuando[p.id].max = Math.max(rachasPuntuando[p.id].max, rachasPuntuando[p.id].actual);
                         rachasCenizo[p.id].actual = 0;
                     } else {
-                        // Solo cuenta racha cenizo si participó
                         if (p.golesLocal !== '' || p.golesVisitante !== '') {
                             rachasCenizo[p.id].actual++;
                             rachasCenizo[p.id].max = Math.max(rachasCenizo[p.id].max, rachasCenizo[p.id].actual);
                         } else {
-                            // Si no participó, la racha cenizo se rompe o se mantiene a 0
                             rachasCenizo[p.id].actual = 0;
                         }
                         rachasPuntuando[p.id].actual = 0;
                     }
+                    
                     // Obstinado
                     if (miResultado !== '-') {
                         if (!obstinadoCounts[miResultado]) obstinadoCounts[miResultado] = {};
@@ -3704,6 +3708,7 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
 
             // 6. Finalizar y limpiar
             setProcessingMessage("Paso 6/6: Commit de la transacción...");
+            // Cambiamos el estado final de la jornada en Firebase
             batch.update(jornadaRef, { estado: "Cerrada" }); // La jornada se cierra y pasa a Finalizada
             await batch.commit();
             setProcessingMessage(`¡Jornada ${jornada.numeroJornada} cerrada con éxito!`);
@@ -3776,8 +3781,7 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
             // 3. Resetear el documento de la jornada
             setProcessingMessage("Paso 3/3: Reseteando la jornada...");
             batch.update(jornadaRef, {
-                // Volvemos al estado 'Finalizada' para poder recalcular
-                estado: "Finalizada",
+                estado: "Finalizada", // Se mantiene Finalizada pero se puede cambiar a Cerrada en el admin item
                 ganadores: deleteField(),
                 premioTotal: deleteField(),
                 boteTransferido: deleteField(),
