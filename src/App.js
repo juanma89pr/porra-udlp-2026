@@ -71,7 +71,7 @@ const styles = {
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `2px dashed ${colors.blue}`, borderRadius: '12px', textAlign: 'center', color: colors.lightText },
     loginContainer: { textAlign: 'center' },
     userList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px', marginTop: '30px' },
-    userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
+    userButton: { position: 'relative', width: '100%', padding: '15px 10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', border: `2px solid ${colors.blue}`, borderRadius: '8px', backgroundColor: 'transparent', color: colors.lightText, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     loginProfileIconCircle: { width: '40px', height: '40px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1.5rem', color: colors.darkText },
     navbar: { display: 'flex', flexWrap: 'wrap', gap: '5px', borderBottom: `2px solid ${colors.blue}`, paddingBottom: '15px', marginBottom: '20px', alignItems: 'center' },
     navButton: { padding: '8px 12px', fontSize: '0.9rem', border: 'none', borderBottom: '3px solid transparent', borderRadius: '6px 6px 0 0', backgroundColor: 'transparent', color: colors.lightText, cursor: 'pointer', textTransform: 'uppercase', fontWeight: '600' },
@@ -97,7 +97,7 @@ const styles = {
     tdTotalPoints: { fontFamily: "'Orbitron', sans-serif", fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', color: colors.yellow },
     currentUserRow: { backgroundColor: `${colors.blue}50`, boxShadow: `0 0 10px ${colors.blue}` },
     laJornadaContainer: { textAlign: 'center', padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px' },
-    matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', fontSize: '1.5rem', fontWeight: 'bold', margin: '20px 0', fontFamily: "'Orbitron', sans-serif' },
+    matchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', fontSize: '1.5rem', fontWeight: 'bold', margin: '20px 0', fontFamily: "'Orbitron', sans-serif'" },
     matchDetails: { display: 'flex', justifyContent: 'center', gap: '20px', color: '#ccc', marginBottom: '20px' },
     countdownContainer: { margin: '20px 0' },
     countdown: { fontFamily: "'Orbitron', sans-serif", fontSize: 'clamp(1.3rem, 5vw, 1.8rem)', fontWeight: 'bold', color: colors.yellow, backgroundColor: colors.deepBlue, padding: '8px 15px', borderRadius: '8px', display: 'inline-block' },
@@ -580,6 +580,7 @@ const LaJornadaScreen = ({ user, liveData, userProfiles }) => {
         </div>
     );
 };
+
 const ClasificacionScreen = ({ currentUser, userProfiles, liveData, liveJornada }) => {
     const [clasificacion, setClasificacion] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -629,7 +630,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, liveData, liveJornada 
                     <tr>
                         <th style={styles.th}>#</th>
                         <th style={styles.th}>Jugador</th>
-                        <th style={styles.th} style={{ textAlign: 'center' }}>Puntos</th>
+                        <th style={{ ...styles.th, textAlign: 'center' }}>Puntos</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -740,8 +741,8 @@ const JornadaDetalleScreen = ({ jornadaId, onBack, userProfiles }) => {
                                             <td style={styles.td}>{`${p.golesLocal}-${p.golesVisitante} (${p.resultado1x2}) - ${p.sinGoleador ? 'SG' : p.goleador}`}</td>
                                             {['Finalizada', 'Puntos Aplicados'].includes(jornada.estado) && <td style={styles.td}>{p.puntosObtenidos ?? '-'}</td>}
                                         </>
-                                    ) : <td style={styles.td} colSpan={2}><i>Pronóstico Oculto</i></td>
-                                ) : <td style={styles.td} colSpan={2}><i>Sin Pronóstico</i></td>}
+                                    ) : <td style={{...styles.td}} colSpan={2}><i>Pronóstico Oculto</i></td>
+                                ) : <td style={{...styles.td}} colSpan={2}><i>Sin Pronóstico</i></td>}
                             </tr>
                         );
                     })}
