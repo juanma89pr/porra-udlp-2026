@@ -3255,14 +3255,15 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
                     const participoRacha = pronosticosRachaSnaps.map(snap => snap.exists() ? snap.data().golesLocal !== '' : false);
                     
                     if (puntosRacha.length >= 3) {
-                        const ultimasTresPuntos = puntosRacha.slice(0, 3);
-                        const ultimasTresParticipaciones = participoRacha.slice(0, 3);
-
+                        const ultimasTresPuntos = puntosRacha.filter(p => p >= 0).slice(0, 3);
+                        const ultimasTresParticipaciones = participoRacha.filter(p => p); // Filtramos solo si participó
+                        
                         // En Racha: 3 participaciones consecutivas con puntos > 0
-                        if (ultimasTresPuntos.every(p => p > 0)) newBadges.add('en_racha');
+                        if (ultimasTresPuntos.length === 3 && ultimasTresPuntos.every(p => p > 0)) newBadges.add('en_racha');
                         
                         // Mala Racha: 3 participaciones consecutivas con 0 puntos
-                        if (ultimasTresPuntos.every(p => p === 0) && ultimasTresParticipaciones.every(p => p)) newBadges.add('mala_racha');
+                        // Requiere 3 participaciones (golesLocal != '') Y que en las 3 la puntuación fuera 0
+                        if (ultimasTresPuntos.length === 3 && ultimasTresPuntos.every(p => p === 0) && ultimasTresParticipaciones.length === 3) newBadges.add('mala_racha');
                     }
                 }
                 
@@ -3271,6 +3272,7 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
                 const sortedClasificacion = currentClasificacionData.map(c => ({...c, puntosAjustados: c.puntosTotales + (puntosPorJugador[c.id] || 0)})).sort((a,b) => b.puntosAjustados - a.puntosAjustados);
                 const liderActual = sortedClasificacion[0]?.id;
                 
+                // Re-evaluar si el jugador es el líder después de sumar los puntos de la jornada
                 if (jugadorId === liderActual && nuevoPuntosTotales > 0) {
                      newBadges.add('lider_general');
                 } else if (jugadorId !== liderActual) {
