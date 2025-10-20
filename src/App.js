@@ -1341,39 +1341,7 @@ const FullStatsModal = ({ stats, onClose }) => {
     );
 };
 
-const ConfirmacionPronosticoModal = ({ pronostico, onConfirm, onCancel }) => {
-    const cleanJokerPronosticos = pronostico.jokerPronosticos.filter(p => p.golesLocal !== '' || p.golesVisitante !== '');
-    return (
-        <div style={styles.modalOverlay}>
-            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-                <h3 style={styles.title}>CONFIRMAR PRONÓSTICO</h3>
-                <div style={styles.confirmacionResumen}>
-                    <p><strong>Resultado Exacto:</strong> {pronostico.golesLocal}-{pronostico.golesVisitante}</p>
-                    <p><strong>1X2:</strong> {pronostico.resultado1x2}</p>
-                    <p><strong>Goleador:</strong> {pronostico.sinGoleador ? 'Sin Goleador (SG)' : (pronostico.goleador || 'N/A')}</p>
-                    {pronostico.jokerActivo && (
-                        <div style={{marginTop: '10px'}}>
-                            <strong>Apuestas Joker ({cleanJokerPronosticos.length}):</strong>
-                            <div style={styles.jokerChipsContainer}>
-                                {cleanJokerPronosticos.map((jp, index) => (
-                                    <span key={index} style={styles.jokerDetailChip}>{jp.golesLocal}-{jp.golesVisitante}</span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                    {pronostico.pin && <p style={{marginTop: '10px', color: styles.colors.warning}}>🔒 Protegido con PIN.</p>}
-                </div>
-                <p style={{textAlign: 'center', marginBottom: '20px'}}>¿Estás seguro de que quieres guardar este pronóstico?</p>
-                <div style={{display: 'flex', justifyContent: 'space-around', gap: '10px'}}>
-                    <button onClick={onCancel} style={{...styles.mainButton, backgroundColor: 'transparent', color: styles.colors.lightText, borderColor: styles.colors.lightText}}>Cancelar</button>
-                    <button onClick={onConfirm} style={styles.mainButton}>
-                        Guardar
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
+
 
 
 const initialPronosticoState = { 
