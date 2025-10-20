@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
-// MODIFICADO: Se usan solo las funciones necesarias para evitar errores de linter en Netlify
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, serverTimestamp, addDoc } from "firebase/firestore";
+// FIX CRÍTICO: Se añaden todas las utilidades de firestore usadas, incluyendo deleteField.
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, serverTimestamp, addDoc, deleteField, arrayUnion } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -260,7 +260,7 @@ const styles = {
     installButton: { background: 'none', border: 'none', color: colors.silver, textDecoration: 'underline', cursor: 'pointer', marginTop: '15px', fontSize: '0.9rem' },
     installInstructions: { display: 'flex', gap: '20px', textAlign: 'left', marginBottom: '20px' },
     installSection: { flex: 1, '& h4': { color: colors.yellow, borderBottom: `1px solid ${colors.blue}`, paddingBottom: '5px' }, '& ol': { paddingLeft: '20px' }, '& li': { marginBottom: '10px' } },
-    escudosGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px', marginTop: '20px', marginBottom: '20px' },
+    escudosGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '20px', marginBottom: '20px' },
     escudoCard: { backgroundColor: colors.darkUIAlt, padding: '10px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     escudoCardImg: { width: '80px', height: '80px', objectFit: 'contain' },
     escudoCardName: { fontSize: '0.9rem', color: colors.lightText, textAlign: 'center', margin: 0, fontWeight: 'bold' },
@@ -349,7 +349,7 @@ const styles = {
     splashStatDescription: { color: colors.silver, fontSize: '0.9rem' },
     verificationResultsContainer: { marginTop: '20px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: `1px solid ${colors.blue}` },
     verificationList: { listStyleType: 'none', padding: 0, columns: 2, columnGap: '20px' },
-    pieChartContainer: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginTop: '15px' },
+    pieChartContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', marginTop: '15px' },
     pieChartSvg: { width: '120px', height: '120px' },
     pieChartLegend: { display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' },
     pieChartLegendItem: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' },
@@ -1818,7 +1818,7 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
 };
 
 // Componente principal de la vista de LA JORNADA
-const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, clasificacionData }) => {
+const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, clasificacionData, onlineUsers }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
     const [allPronosticos, setAllPronosticos] = useState([]);
@@ -2097,9 +2097,6 @@ const ClasificacionScreen = ({ currentUser, liveData, liveJornada, userProfiles 
 
     const provisionalRanking = useMemo(() => {
         if (!liveData || liveJornada?.estado !== 'En vivo' || clasificacion.length === 0) return null;
-        
-        // El cálculo provisional se centraliza en MiJornada/LaJornada
-        // Aquí solo mostramos el ranking base y el indicador de Live
         
         return clasificacion.map(c => ({
             ...c,
@@ -2709,7 +2706,7 @@ const JornadaAdminItem = ({ jornada, plantilla, searchTerm, filterRange, onProce
                     <option value="En vivo">En vivo</option>
                     <option value="Finalizada">Finalizada</option>
                 </select>
-                {/* FIX: Añadidas etiquetas y placeholders a los inputs de fecha */}
+                {/* FIX: Añadidas etiquetas a los inputs de fecha */}
                 <div><label style={styles.label}>Apertura Apuestas</label><input type="datetime-local" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} style={styles.adminInput} /></div>
                 <div><label style={styles.label}>Cierre Apuestas</label><input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={styles.adminInput} /></div>
                 <div><label style={styles.label}>Fecha Partido</label><input type="datetime-local" value={fechaPartido} onChange={(e) => setFechaPartido(e.target.value)} style={styles.adminInput} /></div>
@@ -2761,7 +2758,7 @@ const JornadaAdminItem = ({ jornada, plantilla, searchTerm, filterRange, onProce
                         Esta acción es irreversible. Calculará todos los puntos, insignias y bote.
                     </p>
                     <div style={{display: 'flex', justifyContent: 'center', gap: '10px'}}>
-                        <button onClick={() => onProcessAndClose(jornada, clasificacionData)} style={{...styles.saveButton, backgroundColor: colors.success, marginTop: '15px'}}>
+                        <button onClick={() => onProcessAndClose(jornada)} style={{...styles.saveButton, backgroundColor: colors.success, marginTop: '15px'}}>
                             Calcular Puntos y Cerrar Jornada
                         </button>
                         <button onClick={() => onResetJornada(jornada)} style={{...styles.saveButton, backgroundColor: styles.colors.danger, marginTop: '15px'}}>
@@ -3030,7 +3027,7 @@ const AdminPorraAnual = ({ onBack }) => {
         try {
             const pronosticosRef = collection(db, "porraAnualPronosticos");
             const pronosticosSnap = await getDocs(pronosticosRef);
-            const pronosticos = pronosticosSnap.docs.map(p => ({ id: p.id, puntosObtenidos: 0, ...p.data() }));
+            const pronosticos = pronosticosSnap.docs.map(p => ({ id: p.id, ...p.data() }));
             
             const batch = writeBatch(db);
 
@@ -3232,13 +3229,13 @@ const AdminTools = ({ onBack }) => {
             const clasificacionSnap = await getDocs(clasificacionRef);
             const resetBatch = writeBatch(db);
             clasificacionSnap.forEach(doc => {
-                resetBatch.update(doc.ref, {
+                resetBatch.set(doc.ref, {
                     puntosTotales: 0,
                     puntosResultadoExacto: 0,
                     puntos1x2: 0,
                     puntosGoleador: 0,
                     plenos: 0,
-                });
+                }, { merge: true });
             });
             await resetBatch.commit();
 
@@ -3257,7 +3254,7 @@ const AdminTools = ({ onBack }) => {
                 const pronosticosSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
                 
                 pronosticosSnap.forEach(pronosticoDoc => {
-                    const p = { id: pronosticoDoc.id, puntosObtenidos: 0, puntosResultadoExacto: 0, puntos1x2: 0, puntosGoleador: 0, plenoConseguido: false, ...pronosticoDoc.data() };
+                    const p = { id: pronosticoDoc.id, ...pronosticoDoc.data() };
                     const esVipJornada = jornada.esVip || false;
                     let puntosExacto = 0, puntos1X2 = 0, puntosGoleadorCat = 0;
                     
@@ -3292,16 +3289,12 @@ const AdminTools = ({ onBack }) => {
                         }
                     }
 
-                    const puntosTotalesJornada = puntosExacto + puntos1X2 + puntosGoleadorCat;
-                    const pleno = aciertoExacto && acierto1x2 && aciertoGoleador;
-
-
                     if (statsAccumulator[p.id]) {
-                        statsAccumulator[p.id].puntosTotales += puntosTotalesJornada;
+                        statsAccumulator[p.id].puntosTotales += (puntosExacto + puntos1X2 + puntosGoleadorCat);
                         statsAccumulator[p.id].puntosResultadoExacto += puntosExacto;
                         statsAccumulator[p.id].puntos1x2 += puntos1X2;
                         statsAccumulator[p.id].puntosGoleador += puntosGoleadorCat;
-                        if (pleno) {
+                        if (aciertoExacto && acierto1x2 && aciertoGoleador) {
                             statsAccumulator[p.id].plenos += 1;
                         }
                     }
@@ -3345,8 +3338,8 @@ const AdminTools = ({ onBack }) => {
             
             const newFameStats = {};
 
-            // 1. Rey Midas (Más dinero ganado)
-            setFameMessage('Calculando: El Rey Midas...');
+            // 1. Rey Midas (Más dinero ganado) - CORREGIDO
+            setFameMessage('Calculando: Rey Midas...');
             const premiosPorJugador = JUGADORES.reduce((acc, j) => ({ ...acc, [j]: 0 }), {});
             for(const j of jornadas) {
                 if(j.ganadores && j.ganadores.length > 0 && j.premioTotal) {
@@ -3358,20 +3351,18 @@ const AdminTools = ({ onBack }) => {
                     });
                 }
             }
-            const midasEntry = Object.entries(premiosPorJugador).sort((a, b) => b[1] - a[1])[0] || ['-', 0];
+            const midasEntry = Object.entries(premiosPorJugador).sort((a, b) => b[1] - a[1])[0];
             newFameStats.rey_midas = { jugador: midasEntry[0], valor: `${midasEntry[1].toFixed(2)}€` };
 
             // 2. Pelotazo (Más puntos en una jornada)
             setFameMessage('Calculando: El Pelotazo...');
             let pelotazo = { jugador: null, valor: 0 };
-            for (const j of jornadas) {
-                const maxPuntosJornada = pronosticosPorJornada[j.id].reduce((max, p) => {
-                    return (p.puntosObtenidos || 0) > (max.valor || 0) ? { jugador: p.id, valor: p.puntosObtenidos } : max;
-                }, { jugador: null, valor: 0 });
-                
-                if (maxPuntosJornada.valor > pelotazo.valor) {
-                    pelotazo = maxPuntosJornada;
-                }
+            for(const j of jornadas) {
+                pronosticosPorJornada[j.id].forEach(p => {
+                    if ((p.puntosObtenidos || 0) > pelotazo.valor) {
+                        pelotazo = { jugador: p.id, valor: p.puntosObtenidos };
+                    }
+                });
             }
             newFameStats.pelotazo = { ...pelotazo, valor: `${pelotazo.valor} puntos` };
 
@@ -3392,47 +3383,36 @@ const AdminTools = ({ onBack }) => {
                     // Atrevido
                     const miResultado = `${p.golesLocal}-${p.golesVisitante}`;
                     if(miResultado === resultadoJornada) {
-                        // Busca si alguien más (incluyendo jokers) acertó el resultado exacto
-                        const otrosConMismoResultado = pronosJornada.filter(otro => {
-                            if (otro.id === p.id) return false;
-                            const principal = `${otro.golesLocal}-${otro.golesVisitante}`;
-                            if (principal === resultadoJornada) return true;
-                            if (otro.jokerActivo && (otro.jokerPronosticos || []).some(jp => `${jp.golesLocal}-${jp.golesVisitante}` === resultadoJornada)) return true;
-                            return false;
-                        }).length;
-
+                        const otrosConMismoResultado = pronosJornada.filter(otro => otro.id !== p.id && `${otro.golesLocal}-${otro.golesVisitante}` === miResultado).length;
                         if(otrosConMismoResultado === 0) atrevidoCounts[p.id]++;
                     }
                     // Mr. Regularidad
                     if(p.puntosObtenidos > 0) regularidadCounts[p.id]++;
-                    
                     // Profeta
                     const goleadorReal = (j.goleador || '').trim().toLowerCase();
                     const goleadorApostado = (p.goleador || '').trim().toLowerCase();
                     if (goleadorApostado === goleadorReal && goleadorReal !== 'sg') profetaCounts[p.id]++;
                     
                     // Rachas
-                    if (p.golesLocal !== '' || p.golesVisitante !== '') { // Solo si participó
-                        if(p.puntosObtenidos > 0) {
-                            rachasPuntuando[p.id].actual++;
-                            rachasPuntuando[p.id].max = Math.max(rachasPuntuando[p.id].max, rachasPuntuando[p.id].actual);
-                            rachasCenizo[p.id].actual = 0;
-                        } else {
-                            rachasPuntuando[p.id].actual = 0;
+                    if(p.puntosObtenidos > 0) {
+                        rachasPuntuando[p.id].actual++;
+                        rachasPuntuando[p.id].max = Math.max(rachasPuntuando[p.id].max, rachasPuntuando[p.id].actual);
+                        rachasCenizo[p.id].actual = 0;
+                    } else {
+                        // Solo cuenta racha cenizo si participó
+                        if (p.golesLocal !== '' || p.golesVisitante !== '') {
                             rachasCenizo[p.id].actual++;
                             rachasCenizo[p.id].max = Math.max(rachasCenizo[p.id].max, rachasCenizo[p.id].actual);
+                        } else {
+                            // Si no participó, la racha cenizo se rompe o se mantiene a 0
+                            rachasCenizo[p.id].actual = 0;
                         }
-                    } else {
-                         // Si no participó, la racha se rompe o se mantiene
                         rachasPuntuando[p.id].actual = 0;
-                        rachasCenizo[p.id].actual = 0;
                     }
-                    
                     // Obstinado
-                    if (p.golesLocal !== '' && p.golesVisitante !== '') {
-                        const apuestaPrincipal = `${p.golesLocal}-${p.golesVisitante}`;
-                        if (!obstinadoCounts[apuestaPrincipal]) obstinadoCounts[apuestaPrincipal] = {};
-                        obstinadoCounts[apuestaPrincipal][p.id] = (obstinadoCounts[apuestaPrincipal][p.id] || 0) + 1;
+                    if (miResultado !== '-') {
+                        if (!obstinadoCounts[miResultado]) obstinadoCounts[miResultado] = {};
+                        obstinadoCounts[miResultado][p.id] = (obstinadoCounts[miResultado][p.id] || 0) + 1;
                     }
                 });
             }
@@ -3460,7 +3440,7 @@ const AdminTools = ({ onBack }) => {
                     }
                 }
             }
-            newFameStats.obstinado = { jugador: obstinado.jugador, valor: `${obstinado.valor} veces (${obstinado.resultado || 'N/A'})` };
+            newFameStats.obstinado = { jugador: obstinado.jugador, valor: `${obstinado.valor} veces (${obstinado.resultado})` };
 
             setFameMessage('Guardando estadísticas...');
             await setDoc(doc(db, "estadisticas", "globales"), newFameStats);
@@ -3533,7 +3513,7 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
     };
     
     // --- NUEVO: Proceso centralizado de cierre de jornada ---
-    const handleProcessAndCloseJornada = async (jornada, currentClasificacionData) => {
+    const handleProcessAndCloseJornada = async (jornada) => {
         if (!window.confirm(`¿Estás SEGURO de que quieres PROCESAR y CERRAR la Jornada ${jornada.numeroJornada}? Esta acción es DEFINITIVA y ejecutará todos los cálculos.`)) return;
 
         setProcessing(true);
@@ -3542,17 +3522,21 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
         try {
             const jornadaRef = doc(db, "jornadas", jornada.id);
             const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
+            const clasificacionRef = collection(db, "clasificacion");
 
             // 1. Obtener todos los pronósticos y datos de clasificación
             setProcessingMessage("Paso 1/6: Obteniendo datos y clasificación...");
-            const pronosticosSnap = await getDocs(pronosticosRef);
+            const [pronosticosSnap, clasificacionSnap] = await Promise.all([
+                getDocs(pronosticosRef),
+                getDocs(clasificacionRef)
+            ]);
             
-            // Aseguramos que los puntos obtenidos anteriores sean 0 si no existe el campo.
-            const pronosticos = pronosticosSnap.docs.map(d => ({ id: d.id, puntosObtenidos: 0, puntosResultadoExacto: 0, puntos1x2: 0, puntosGoleador: 0, plenoConseguido: false, ...d.data() }));
-            const clasificacionActualMap = currentClasificacionData.reduce((acc, doc) => ({ ...acc, [doc.id]: doc }), {});
+            const pronosticos = pronosticosSnap.docs.map(d => ({ id: d.id, puntosObtenidos: 0, ...d.data() }));
+            const clasificacionActual = clasificacionSnap.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {});
 
             const batch = writeBatch(db);
             const puntosPorJugador = {};
+            let ganadoresJornada = [];
             let maxPuntos = -1;
 
             // 2. Calcular puntos para cada jugador y actualizar el pronóstico
@@ -3599,7 +3583,7 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
                 if (puntosJornada > maxPuntos) maxPuntos = puntosJornada;
                 
                 // Actualizar puntos en el documento del pronóstico
-                batch.update(doc(pronosticosRef.doc(p.id).ref), { 
+                batch.update(doc(db, "pronosticos", jornada.id, "jugadores", p.id), { 
                     puntosObtenidos: puntosJornada,
                     puntosResultadoExacto: puntosExacto,
                     puntos1x2: puntos1X2,
@@ -3644,19 +3628,21 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
             
             // 4. Sumar puntos a la clasificación general (puntos totales)
             setProcessingMessage("Paso 4/6: Actualizando clasificación general...");
+            ganadoresJornada = Object.keys(puntosPorJugador).filter(id => puntosPorJugador[id] === maxPuntos);
             
             for(const jugadorId of JUGADORES) {
                  const p = pronosticos.find(pr => pr.id === jugadorId);
                  const puntos = puntosPorJugador[jugadorId] || 0;
+                 const userDocRef = doc(clasificacionRef, jugadorId);
+
                  if (puntos > 0 || (p && (p.puntosResultadoExacto || p.puntos1x2 || p.puntosGoleador))) {
-                     batch.update(doc(db, "clasificacion", jugadorId), { 
+                     batch.update(userDocRef, { 
                         puntosTotales: increment(puntos),
-                        // También se actualizan los desgloses para la tabla general
                         puntosResultadoExacto: increment(p?.puntosResultadoExacto || 0),
                         puntos1x2: increment(p?.puntos1x2 || 0),
                         puntosGoleador: increment(p?.puntosGoleador || 0),
                         plenos: increment(p?.plenoConseguido ? 1 : 0),
-                     });
+                     }, { merge: true });
                  }
             }
             
@@ -3668,18 +3654,15 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
             const ultimasJornadasSnap = await getDocs(qJornadasPrevias);
             const ultimasJornadasIds = ultimasJornadasSnap.docs.map(d => d.id).filter(id => id !== jornada.id); // Excluir la jornada actual si ya está finalizada
             
-            const campeonesJornada = Object.keys(puntosPorJugador).filter(id => puntosPorJugador[id] === maxPuntos && maxPuntos > 0);
-
             for (const jugadorId of JUGADORES) {
-                const currentProfile = clasificacionActualMap[jugadorId] || {};
-                
-                // Limpiar insignias temporales (Campeón, Pleno, Rachas)
+                const userRef = doc(clasificacionRef, jugadorId);
+                const currentProfile = clasificacionActual[jugadorId] || {};
                 let newBadges = new Set(currentProfile.badges ? currentProfile.badges.filter(b => !['campeon_jornada', 'en_racha', 'mala_racha', 'pleno_jornada'].includes(b)) : []);
                 
                 const pronosticoJornadaActual = pronosticos.find(p => p.id === jugadorId);
 
                 // 5.2. Campeón Jornada (🏆) y Pleno (🎯)
-                if (campeonesJornada.includes(jugadorId)) newBadges.add('campeon_jornada');
+                if (ganadoresJornada.includes(jugadorId)) newBadges.add('campeon_jornada');
                 if (pronosticoJornadaActual?.plenoConseguido) newBadges.add('pleno_jornada');
 
                 // 5.3. Calcular Rachas (🔥 y 🥶)
@@ -3700,39 +3683,28 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
                         const ultimasTresPuntos = puntosRacha.filter(p => p >= 0).slice(0, 3);
                         const ultimasTresParticipaciones = participoRacha.slice(0, 3); 
                         
-                        // En Racha: 3 participaciones consecutivas con puntos > 0
                         if (ultimasTresParticipaciones.length === 3 && ultimasTresPuntos.every(p => p > 0)) newBadges.add('en_racha');
-                        
-                        // Mala Racha: 3 participaciones consecutivas con 0 puntos
                         if (ultimasTresParticipaciones.length === 3 && ultimasTresPuntos.every(p => p === 0)) newBadges.add('mala_racha');
                     }
                 }
                 
                 // 5.4. Asignar Líder General (👑)
-                // Recalculamos el ranking provisional sumando los puntos de la jornada actual
-                const sortedClasificacion = JUGADORES.map(id => {
-                    const currentTotal = (clasificacionActualMap[id]?.puntosTotales || 0);
-                    const jornadaPuntos = puntosPorJugador[id] || 0;
-                    return { id, puntosAjustados: currentTotal + jornadaPuntos };
-                }).sort((a,b) => b.puntosAjustados - a.puntosAjustados);
-                
+                const sortedClasificacion = clasificacionData.map(c => ({...c, puntosAjustados: (c.puntosTotales || 0) + (puntosPorJugador[c.id] || 0) })).sort((a,b) => b.puntosAjustados - a.puntosAjustados);
                 const liderActual = sortedClasificacion[0]?.id;
-                const nuevoPuntosTotales = (currentProfile.puntosTotales || 0) + (puntosPorJugador[jugadorId] || 0);
-
-                if (jugadorId === liderActual && nuevoPuntosTotales > 0) {
+                
+                if (jugadorId === liderActual && (currentProfile.puntosTotales || 0) + (puntosPorJugador[jugadorId] || 0) > 0) {
                      newBadges.add('lider_general');
                 } else {
                     newBadges.delete('lider_general');
                 }
 
-                batch.update(doc(db, "clasificacion", jugadorId), { badges: Array.from(newBadges) });
+                batch.update(userRef, { badges: Array.from(newBadges) }, { merge: true });
             }
 
 
             // 6. Finalizar y limpiar
             setProcessingMessage("Paso 6/6: Commit de la transacción...");
-            // Cambiamos el estado final de la jornada en Firebase
-            batch.update(jornadaRef, { estado: "Finalizada" });
+            batch.update(jornadaRef, { estado: "Cerrada" }); // La jornada se cierra y pasa a Finalizada
             await batch.commit();
             setProcessingMessage(`¡Jornada ${jornada.numeroJornada} cerrada con éxito!`);
 
@@ -3795,13 +3767,17 @@ const AdminPanelScreen = ({ teamLogos, plantilla, setPlantilla, clasificacionDat
                     puntosGoleador: deleteField(),
                     plenoConseguido: deleteField(),
                     premioCobrado: deleteField(),
+                    // Resetear la confirmación de pago por usuario también
+                    pagoConfirmadoPorUsuario: deleteField(),
+                    pagado: deleteField(),
                 });
             }
             
             // 3. Resetear el documento de la jornada
             setProcessingMessage("Paso 3/3: Reseteando la jornada...");
             batch.update(jornadaRef, {
-                estado: "Finalizada", // Se mantiene Finalizada pero se puede cambiar a Cerrada en el admin item
+                // Volvemos al estado 'Finalizada' para poder recalcular
+                estado: "Finalizada",
                 ganadores: deleteField(),
                 premioTotal: deleteField(),
                 boteTransferido: deleteField(),
@@ -3983,7 +3959,7 @@ function App() {
         @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
         @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
         .content-enter-active { animation: slideInFromRight 0.4s ease-out; }
-        @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
+        @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
         .stats-indicator { animation: pop-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
         @keyframes confetti-fall { 0% { transform: translateY(-100vh) rotate(0deg); } 100% { transform: translateY(100vh) rotate(var(--angle)); } }
         .confetti-particle { position: absolute; width: var(--size); height: var(--size); background-color: var(--color); top: 0; left: var(--x); animation: confetti-fall 5s linear var(--delay) infinite; }
@@ -3995,11 +3971,10 @@ function App() {
         @keyframes point-jump-up { 0% { transform: translateY(0); color: ${colors.lightText}; } 50% { transform: translateY(-10px) scale(1.2); color: ${colors.success}; } 100% { transform: translateY(0); color: ${colors.lightText}; } }
         .point-jump-up { animation: point-jump-up 0.7s ease-out; }
         .stat-fade-in { animation: fadeIn 0.5s ease-in-out; }
-        @keyframes bounce-in { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
         @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
         .pulsed { animation: pulse-once 0.4s ease-in-out; }
         @keyframes pie-draw { to { stroke-dashoffset: 0; } }
-        .pie-chart-segment-new { transform-origin: 60px 60px; stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dasharray); transform: rotate(var(--rotation)); animation: pie-draw 1s ease-out forwards; }
+        .pie-chart-segment-new { transform-origin: 60px 60px; stroke-dasharray: var(--stroke-dasharray); stroke-dashoffset: var(--stroke-dashoffset); transform: rotate(var(--rotation)); animation: pie-draw 1s ease-out forwards; }
         @keyframes reaction-fade-out { to { opacity: 0; transform: scale(0.5); } }
         .fade-out { animation: reaction-fade-out 0.5s forwards; }
         @keyframes reaction-fly { 0% { transform: translate(0, 0) scale(1.2); opacity: 1; } 100% { transform: translate(80px, -80px) scale(0); opacity: 0; } }
@@ -4106,15 +4081,19 @@ function App() {
                       profiles: userProfiles
                   });
               } else {
-                  // Necesitamos la siguiente jornada para saber el bote
+                  // Si no hay ganadores, se busca el bote en la próxima jornada
                   const nextJornadaQuery = query(collection(db, "jornadas"), where("numeroJornada", ">", jornada.numeroJornada), orderBy("numeroJornada"), limit(1));
                   const nextJornadaSnap = await getDocs(nextJornadaQuery);
+                  let boteAmount = 0;
                   if (!nextJornadaSnap.empty) {
-                      const nextJornada = nextJornadaSnap.docs[0].data();
+                      boteAmount = nextJornadaSnap.docs[0].data().bote || 0;
+                  }
+                  
+                  if (jornada.boteTransferido > 0 || boteAmount > 0) {
                       setAnnouncement({
                           type: 'bote',
                           numeroJornada: jornada.numeroJornada,
-                          boteAmount: nextJornada.bote || 0,
+                          boteAmount: boteAmount, // Muestra el bote de la siguiente jornada
                       });
                   }
               }
@@ -4156,7 +4135,7 @@ function App() {
             if (activeTab === 'profile') return <ProfileScreen user={currentUser} userProfile={userProfiles[currentUser]} onEdit={() => setScreen('customizeProfile')} onBack={() => setActiveTab('miJornada')} />;
             switch (activeTab) {
                 case 'miJornada': return <MiJornadaScreen user={currentUser} setActiveTab={handleNavClick} teamLogos={teamLogos} liveData={liveJornada?.liveData} plantilla={plantilla} userProfiles={userProfiles} />;
-                case 'laJornada': return <LaJornadaScreen user={currentUser} teamLogos={teamLogos} liveData={liveJornada?.liveData} userProfiles={userProfiles} clasificacionData={clasificacionData} />;
+                case 'laJornada': return <LaJornadaScreen user={currentUser} teamLogos={teamLogos} liveData={liveJornada?.liveData} userProfiles={userProfiles} onlineUsers={onlineUsers} clasificacionData={clasificacionData} />;
                 case 'calendario': return <CalendarioScreen onViewJornada={setViewingJornadaId} teamLogos={teamLogos} />;
                 case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} liveData={liveJornada?.liveData} liveJornada={liveJornada} userProfiles={userProfiles} />;
                 case 'pagos': return <PagosScreen user={currentUser} userProfiles={userProfiles} />;
