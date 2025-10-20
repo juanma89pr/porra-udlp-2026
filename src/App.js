@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 // Importamos las funciones necesarias de Firebase
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, serverTimestamp, addDoc } from "firebase/firestore";
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, serverTimestamp, addDoc } from "firebase/firestore";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 
 // --- CONFIGURACIÓN DE FIREBASE ---
