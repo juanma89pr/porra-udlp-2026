@@ -2739,7 +2739,7 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                 if (puntosPrevios > 0) {
                      batch.update(clasificacionDocRef, { 
                         puntosTotales: increment(-puntosPrevios),
-                        puntosResultadoExacto: increment(-puntosResultadoExactosPrevios),
+                        puntosResultadoExacto: increment(-puntosResultadoExactoPrevios),
                         puntos1x2: increment(-puntos1x2Previos),
                         puntosGoleador: increment(-puntosGoleadorPrevios)
                     });
