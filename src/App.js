@@ -223,7 +223,7 @@ const styles = {
     adminJornadaItem: { padding: '20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `1px solid ${colors.blue}`, borderRadius: '12px', marginBottom: '20px' },
     testJornadaAdminItem: { border: `2px dashed ${colors.success}` },
     adminControls: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', margin: '15px 0' },
-    adminInput: { width: '90%', padding: '10px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText },
+    adminInput: { width: '90%', padding: '10px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText, fontSize: '1rem', transition: 'all 0.3s ease' },
     adminSelect: { width: '95%', padding: '10px', border: `1px solid ${colors.blue}`, borderRadius: '6px', backgroundColor: colors.deepBlue, color: colors.lightText },
     saveButton: { padding: '10px 18px', border: 'none', borderRadius: '5px', backgroundColor: colors.success, color: 'white', cursor: 'pointer', textTransform: 'uppercase', fontWeight: 'bold' },
     vipToggleContainer: { display: 'flex', alignItems: 'center', gap: '10px' },
@@ -265,7 +265,7 @@ const styles = {
     installButton: { background: 'none', border: 'none', color: colors.silver, textDecoration: 'underline', cursor: 'pointer', marginTop: '15px', fontSize: '0.9rem' },
     installInstructions: { display: 'flex', gap: '20px', textAlign: 'left', marginBottom: '20px' },
     installSection: { flex: 1, '& h4': { color: colors.yellow, borderBottom: `1px solid ${colors.blue}`, paddingBottom: '5px' }, '& ol': { paddingLeft: '20px' }, '& li': { marginBottom: '10px' } },
-    escudosGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px', marginTop: '20px', marginBottom: '20px' },
+    escudosGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '20px', marginBottom: '20px' },
     escudoCard: { backgroundColor: colors.darkUIAlt, padding: '10px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     escudoCardImg: { width: '80px', height: '80px', objectFit: 'contain' },
     escudoCardName: { fontSize: '0.9rem', color: colors.lightText, textAlign: 'center', margin: 0, fontWeight: 'bold' },
@@ -794,6 +794,147 @@ const PieChart = ({ data }) => {
     );
 };
 
+// CORRECCIÓN DE DEPENDENCIA: Este componente debe estar definido en la PARTE 1
+const LiveAnalysisPanels = ({ jornada, liveData, participantes, userProfiles, clasificacionData }) => {
+    
+    // Panel 1: Ganador Provisional y Simulaciones
+    const liveWinnerPanelData = useMemo(() => {
+        if (!liveData || !jornada || participantes.length === 0) {
+            return { currentWinner: "Nadie", simulationLocal: "Nadie", simulationVisitor: "Nadie", impacto: "" };
+        }
+        
+        const findWinner = (simulatedLiveData) => {
+            const ranking = participantes.map(p => ({
+                id: p.id,
+                puntos: calculateProvisionalPoints(p, simulatedLiveData, jornada),
+                isDiscarded: p.golesLocal !== '' && p.golesVisitante !== '' && (simulatedLiveData.golesLocal > parseInt(p.golesLocal) || simulatedLiveData.golesVisitante > parseInt(p.golesVisitante))
+            })).filter(p => !p.isDiscarded) // Solo considerar no descartados para ganar
+            .sort((a, b) => b.puntos - a.puntos);
+
+            if (ranking.length > 0 && ranking[0].puntos > 0) {
+                const topScore = ranking[0].puntos;
+                const winners = ranking.filter(p => p.puntos === topScore);
+                
+                // Muestra empate si hay más de uno con la misma puntuación máxima
+                return {
+                    name: winners.length > 1 ? "Empate" : winners[0].id,
+                    points: topScore,
+                    winnerData: winners.length === 1 ? winners[0] : null
+                };
+            }
+            return { name: "Nadie", points: 0, winnerData: null };
+        };
+
+        const { name: currentWinner, winnerData: currentWinnerData } = findWinner(liveData);
+        
+        // Cálculo del impacto en la clasificación (simplificado)
+        let impacto = "";
+        if (currentWinnerData && clasificacionData.length > 0) {
+            const currentPointsInGeneral = clasificacionData.find(j => j.id === currentWinnerData.id)?.puntosTotales || 0;
+            const newTotalPoints = currentPointsInGeneral + currentWinnerData.points;
+            
+            const currentRank = clasificacionData.findIndex(j => j.id === currentWinnerData.id) + 1;
+            
+            // Simular nueva clasificación
+            const simulatedClasificacion = clasificacionData.map(j => {
+                if (j.id === currentWinnerData.id) {
+                    return { ...j, puntosTotales: newTotalPoints };
+                }
+                return j;
+            }).sort((a, b) => b.puntosTotales - a.puntosTotales);
+
+            const newRank = simulatedClasificacion.findIndex(j => j.id === currentWinnerData.id) + 1;
+            
+            if (newRank < currentRank) {
+                impacto = `(subiría al ${newRank}º)`;
+            }
+        }
+
+        const localGoalLiveData = { ...liveData, golesLocal: liveData.golesLocal + 1, primerGoleador: '' };
+        const { name: simulationLocal } = findWinner(localGoalLiveData);
+
+        const visitorGoalLiveData = { ...liveData, golesVisitante: liveData.golesVisitante + 1, primerGoleador: '' };
+        const { name: simulationVisitor } = findWinner(visitorGoalLiveData);
+
+        return { currentWinner, simulationLocal, simulationVisitor, impacto };
+
+    }, [liveData, jornada, participantes, clasificacionData]);
+
+    // Panel 2: Acierto de Goleador
+    // CORREGIDO: Se cambia "ultimoGoleador" por "primerGoleador"
+    const acertantesGoleador = useMemo(() => {
+        if (!liveData.primerGoleador || liveData.primerGoleador === 'SG') return [];
+        return participantes.filter(p => p.goleador && p.goleador.trim().toLowerCase() === liveData.primerGoleador.trim().toLowerCase());
+    }, [liveData.primerGoleador, participantes]);
+
+    // Panel 3: Descartados (Jugadores que ya no pueden acertar su resultado exacto principal)
+    const descartados = useMemo(() => {
+        return participantes.filter(p => {
+            const pLocal = parseInt(p.golesLocal);
+            const pVisitante = parseInt(p.golesVisitante);
+            if (isNaN(pLocal) || isNaN(pVisitante)) return false;
+            // Regla de descarte: si los goles reales superan tu pronóstico
+            return liveData.golesLocal > pLocal || liveData.golesVisitante > pVisitante;
+        });
+    }, [liveData.golesLocal, liveData.golesVisitante, participantes]);
+
+    return (
+        <div style={styles.liveAnalysisContainer}>
+            {/* Panel de Ganador Provisional */}
+            <div style={{...styles.liveAnalysisCard, gridColumn: '1 / -1', border: `2px solid ${colors.yellow}`, boxShadow: `0 0 15px ${colors.yellow}50`}}>
+                 <div style={styles.liveWinnerCurrent}>
+                    <span style={styles.liveWinnerLabel}>Ganador(es) Provisional(es)</span>
+                    <div style={styles.liveWinnerName}>
+                        {liveWinnerPanelData.currentWinner ? (
+                            <PlayerProfileDisplay name={liveWinnerPanelData.currentWinner} profile={userProfiles[liveWinnerPanelData.currentWinner]} />
+                        ) : 'Nadie'}
+                        <span style={{fontSize: '1rem', color: colors.silver, marginLeft: '10px'}}>{liveWinnerPanelData.impacto}</span>
+                    </div>
+                </div>
+                <div style={styles.liveWinnerSimulations}>
+                    <div style={styles.liveWinnerSimulationItem}>
+                        <span style={styles.liveWinnerLabel}>Si marca {jornada.equipoLocal}...</span>
+                        <div style={styles.liveWinnerName}>
+                             <PlayerProfileDisplay name={liveWinnerPanelData.simulationLocal} profile={userProfiles[liveWinnerPanelData.simulationLocal]} />
+                        </div>
+                    </div>
+                    <div style={styles.liveWinnerSimulationItem}>
+                        <span style={styles.liveWinnerLabel}>Si marca {jornada.equipoVisitante}...</span>
+                        <div style={styles.liveWinnerName}>
+                             <PlayerProfileDisplay name={liveWinnerPanelData.simulationVisitor} profile={userProfiles[liveWinnerPanelData.simulationVisitor]} />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Panel Acierto Goleador */}
+            <div style={styles.liveAnalysisCard}>
+                <h4 style={styles.liveAnalysisTitle}>🎯 Acierto Primer Goleador</h4>
+                {acertantesGoleador.length > 0 ? (
+                     <ul style={styles.liveAnalysisList}>
+                        {acertantesGoleador.map(p => (
+                            <li key={p.id} style={styles.liveAnalysisListItem}><PlayerProfileDisplay name={p.id} profile={userProfiles[p.id]} /></li>
+                        ))}
+                    </ul>
+                ) : <p style={{textAlign: 'center', color: colors.silver}}>Nadie ha acertado el primer goleador.</p>}
+            </div>
+
+            {/* Panel Descartados */}
+            <div style={styles.liveAnalysisCard}>
+                <h4 style={styles.liveAnalysisTitle}>❌ Descartados (Sin opción a Exacto)</h4>
+                 {descartados.length > 0 ? (
+                     <ul style={styles.liveAnalysisList}>
+                        {descartados.map(p => (
+                            <li key={p.id} style={styles.liveAnalysisListItem}><PlayerProfileDisplay name={p.id} profile={userProfiles[p.id]} /></li>
+                        ))}
+                    </ul>
+                ) : <p style={{textAlign: 'center', color: colors.silver}}>Nadie ha sido descartado aún.</p>}
+            </div>
+        </div>
+    );
+};
+
+
 // ============================================================================
 // --- COMPONENTES DE LAS PANTALLAS (ORDENADOS POR DEPENDENCIA) ---
 // ============================================================================
@@ -1277,21 +1418,17 @@ const HistorialCompletoModal = ({ user, allJornadas, userProfiles, onClose }) =>
                 const pronosticoSnap = await getDoc(doc(db, "pronosticos", jornada.id, "jugadores", user));
                 const p = pronosticoSnap.exists() ? pronosticoSnap.data() : null;
                 
-                if (!p) return null;
+                if (!p || !p.puntosObtenidos) return null;
 
                 // Lógica de justificación de aciertos
                 let aciertos = [];
-                if (p.puntosObtenidos > 0) {
-                    const esVip = jornada.esVip || false;
-                    const aciertoExacto = (p.puntosObtenidos === (esVip ? 6 : 3)) || (p.puntosObtenidos >= (esVip ? 9 : 5) && p.puntosObtenidos <= (esVip ? 13 : 7)); // Simplificado, ya que puede tener joker
-                    const acierto1x2 = p.resultado1x2 === (jornada.resultadoLocal > jornada.resultadoVisitante ? 'Gana UD Las Palmas' : (jornada.resultadoLocal < jornada.resultadoVisitante ? 'Pierde UD Las Palmas' : 'Empate'));
-                    const aciertoGoleador = (p.goleador || '').trim() === (jornada.goleador || '').trim();
+                const esVip = jornada.esVip || false;
 
-                    if (aciertoExacto) aciertos.push('Resultado Exacto');
-                    if (acierto1x2) aciertos.push('1X2');
-                    if (aciertoGoleador) aciertos.push('Primer Goleador');
-                    if (p.jokerActivo && p.jokerPronosticos?.some(jp => parseInt(jp.golesLocal) === jornada.resultadoLocal && parseInt(jp.golesVisitante) === jornada.resultadoVisitante)) aciertos.push('Joker');
-                }
+                // Usamos los campos detallados que ahora guarda el Admin Panel
+                if (p.puntosResultadoExacto > 0) aciertos.push('Resultado Exacto');
+                if (p.puntos1x2 > 0) aciertos.push('1X2');
+                if (p.puntosGoleador > 0) aciertos.push('Primer Goleador');
+                if (p.jokerActivo && p.jokerPronosticos?.some(jp => parseInt(jp.golesLocal) === jornada.resultadoLocal && parseInt(jp.golesVisitante) === jornada.resultadoVisitante)) aciertos.push('Joker');
                 
                 return {
                     numeroJornada: jornada.numeroJornada,
@@ -1305,7 +1442,7 @@ const HistorialCompletoModal = ({ user, allJornadas, userProfiles, onClose }) =>
                 };
             });
 
-            const resultados = (await Promise.all(promises)).filter(Boolean);
+            const resultados = (await Promise.all(promises)).filter(Boolean).sort((a, b) => b.numeroJornada - a.numeroJornada);
             setHistorial(resultados);
             setLoading(false);
         };
@@ -1603,7 +1740,18 @@ const MiJornadaScreen = ({ user, setActiveTab, teamLogos, liveData, plantilla, u
             const batch = writeBatch(db);
             const { pinConfirm, ...pronosticoToSave } = pronostico;
             
-            batch.set(pronosticoRef, { ...pronosticoToSave, jokerPronosticos: cleanJokerPronosticos, lastUpdated: serverTimestamp() });
+            // Inicializar campos de puntos detallados en 0 si no existen
+            const pronosticoWithDefaults = {
+                puntosResultadoExacto: 0,
+                puntos1x2: 0,
+                puntosGoleador: 0,
+                puntosObtenidos: 0,
+                ...pronosticoToSave,
+                jokerPronosticos: cleanJokerPronosticos,
+                lastUpdated: serverTimestamp()
+            };
+
+            batch.set(pronosticoRef, pronosticoWithDefaults);
             
             const historialData = {
                 pronostico: { golesLocal: pronostico.golesLocal, golesVisitante: pronostico.golesVisitante, resultado1x2: pronostico.resultado1x2, goleador: pronostico.goleador, sinGoleador: pronostico.sinGoleador, },
@@ -1954,7 +2102,8 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers,
                 const isDiscarded = p.golesLocal !== '' && p.golesVisitante !== '' && (liveData.golesLocal > parseInt(p.golesLocal) || liveData.golesVisitante > parseInt(p.golesVisitante));
                 
                 return { id: p.id, puntos, aciertoExactoProvisional, isDiscarded };
-            }).sort((a, b) => {
+            }).filter(p => !p.isDiscarded) // Solo considerar no descartados para ganar
+            .sort((a, b) => {
                 // Prioridad 1: Puntos
                 if (a.puntos !== b.puntos) { return b.puntos - a.puntos; }
                 // Prioridad 2: Acierto Exacto Provisional (para desempatar)
@@ -2058,6 +2207,7 @@ const LaJornadaScreen = ({ user, teamLogos, liveData, userProfiles, onlineUsers,
                     
                     {isLiveView && (
                         <>
+                            {/* CORREGIDO: LiveAnalysisPanels ahora está definido en la parte 1 y es accesible */}
                             <LiveAnalysisPanels
                                 jornada={jornadaActual}
                                 liveData={liveData}
@@ -2210,17 +2360,12 @@ const JornadaHistoricoScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) 
     const getAciertos = (p) => {
         if (!p.puntosObtenidos) return [];
         let aciertos = [];
-        const esVip = jornada.esVip || false;
         
-        // Asumiendo que el cálculo de puntosTotales ya es correcto
-        const puntosExacto = esVip ? 6 : 3;
-        const puntos1x2 = esVip ? 2 : 1;
-        const puntosGoleador = esVip ? 4 : 2;
-
+        // Usamos los campos detallados que ahora guarda el Admin Panel
         if (p.puntosResultadoExacto > 0) aciertos.push('Exacto');
         if (p.puntos1x2 > 0) aciertos.push('1X2');
-        if (p.puntosGoleador > 0) aciertos.push('Goleador');
-        if (p.jokerActivo && p.puntosObtenidos > (puntosExacto + puntos1x2 + puntosGoleador)) aciertos.push('Joker');
+        if (p.puntosGoleador > 0) aciertos.push('Primer Goleador');
+        if (p.jokerActivo && p.puntosObtenidos > (p.puntosResultadoExacto + p.puntos1x2 + p.puntosGoleador)) aciertos.push('Joker');
 
         return aciertos;
     };
@@ -2265,7 +2410,7 @@ const JornadaHistoricoScreen = ({ jornadaId, onBack, teamLogos, userProfiles }) 
                                     <td style={styles.td}><PlayerProfileDisplay name={p.id} profile={profile} /></td>
                                     <td style={styles.td}>{p.golesLocal}-{p.golesVisitante} {p.jokerActivo && '🃏'}</td>
                                     <td style={styles.td}><span style={{color: aciertos.includes('1X2') ? styles.colors.success : styles.colors.danger}}>{p.resultado1x2 || 'N/A'}</span></td>
-                                    <td style={styles.td}><span style={{color: aciertos.includes('Goleador') ? styles.colors.success : styles.colors.danger}}>{p.sinGoleador ? 'SG' : (p.goleador || 'N/A')}</span></td>
+                                    <td style={styles.td}><span style={{color: aciertos.includes('Primer Goleador') ? styles.colors.success : styles.colors.danger}}>{p.sinGoleador ? 'SG' : (p.goleador || 'N/A')}</span></td>
                                     <td style={styles.tdTotalPoints}><AnimatedPoints value={p.puntosObtenidos || 0} /></td>
                                 </tr>
                             );
@@ -2310,6 +2455,7 @@ const CalendarioScreen = ({ onViewJornada, teamLogos }) => {
                     const targetScreen = jornada.estado === 'Finalizada' ? 'historico' : 'detalle';
                     
                     const handleClick = () => {
+                        // El callback en App.js ahora maneja un objeto {id, type}
                         onViewJornada(jornada.id, targetScreen);
                     };
 
@@ -2584,10 +2730,19 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
             // 1. Reseteo de puntos CRÍTICO (Recálculo Seguro)
             for (const p of pronosticos) {
                 const puntosPrevios = p.puntosObtenidos || 0;
+                const puntosResultadoExactoPrevios = p.puntosResultadoExacto || 0;
+                const puntos1x2Previos = p.puntos1x2 || 0;
+                const puntosGoleadorPrevios = p.puntosGoleador || 0;
+
                 const clasificacionDocRef = doc(db, "clasificacion", p.id);
                 // Si ya tenía puntos, los restamos de su total antes de recalcular
                 if (puntosPrevios > 0) {
-                     batch.update(clasificacionDocRef, { puntosTotales: increment(-puntosPrevios) });
+                     batch.update(clasificacionDocRef, { 
+                        puntosTotales: increment(-puntosPrevios),
+                        puntosResultadoExacto: increment(-puntosResultadoExactosPrevios),
+                        puntos1x2: increment(-puntos1x2Previos),
+                        puntosGoleador: increment(-puntosGoleadorPrevios)
+                    });
                 }
             }
             await batch.commit(); // Ejecutamos el reseteo primero para evitar duplicados
@@ -2596,7 +2751,6 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
             const batchFinal = writeBatch(db);
             const costeApuesta = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
             const recaudadoJornada = pronosticos.length * costeApuesta; 
-            let maxPuntosExacto = -1;
             
             for (const p of pronosticos) {
                 let puntosJornada = 0;
@@ -2634,7 +2788,7 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                     else if (parseInt(resultadoLocal) < parseInt(resultadoVisitante)) resultado1x2Real = 'Pierde UD Las Palmas';
                     else resultado1x2Real = 'Empate';
                 } else {
-                    if (parseInt(resultadoVisitante) > parseInt(resultadoLocal)) resultado11x2Real = 'Gana UD Las Palmas';
+                    if (parseInt(resultadoVisitante) > parseInt(resultadoLocal)) resultado1x2Real = 'Gana UD Las Palmas';
                     else if (parseInt(resultadoVisitante) < parseInt(resultadoLocal)) resultado1x2Real = 'Pierde UD Las Palmas';
                     else resultado1x2Real = 'Empate';
                 }
@@ -2676,11 +2830,9 @@ const JornadaAdminItem = ({ jornada, plantilla }) => {
                     puntos1x2: increment(puntos1x2),
                     puntosGoleador: increment(puntosGoleador)
                 });
-
-                if (aciertoExacto) maxPuntosExacto = Math.max(maxPuntosExacto, puntosJornada);
             }
             
-            // 3. Determinar GANADORES de la jornada (Regla: Solo Acierto Exacto)
+            // 3. Determinar GANADORES de la jornada (Regla: Solo Acierto Exacto da Premio)
             if (hayAciertoExacto) {
                 const candidatos = Object.entries(puntosPorJugador).filter(([, data]) => data.aciertoExacto);
                 
