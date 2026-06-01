@@ -40,18 +40,6 @@ const GRUPOS_PAGOS = {
     'Mari': ["Pedrito", "Himar", "Sarito", "Claudio", "Pedro", "Mari"]
 };
 
-const SECRET_MESSAGES = ["Pronóstico Secreto 🤫", "Aquí huele a BOTE...", "Voy a ganar yo 😎", "Top Secret", "Clasificado ⭐", "Me lo guardo para mí", "Jugada Maestra en proceso...", "Ni el VAR lo sabe"];
-const STAT_REACTION_EMOJIS = ['👍', '🔥', '🤯', '😂', '😥', '👏'];
-const GOAL_REACTION_EMOJIS = ['🙌', '⚽', '🎉', '🤩', '🤯'];
-
-const BADGE_DEFINITIONS = {
-    lider_general: { icon: '👑', name: 'Líder General', priority: 1, style: 'leader-glow' },
-    campeon_jornada: { icon: '🏆', name: 'Campeón de la Jornada', priority: 2, style: 'champion-glow' },
-    pleno_jornada: { icon: '🎯', name: 'Pleno en la Jornada', priority: 3, style: 'pleno-flash' },
-    en_racha: { icon: '🔥', name: 'En Racha', priority: 4, style: 'fire-streak' },
-    mala_racha: { icon: '🥶', name: 'Mala Racha', priority: 5, style: 'cold-streak' },
-};
-
 const EQUIPOS_LIGA = ["UD Las Palmas", "UD Almería", "Málaga CF", "CD Castellón", "Burgos CF", "Real Zaragoza", "SD Eibar", "Real Sporting de Gijón", "Real Racing Club"];
 
 const PLANTILLA_ACTUALIZADA = [
@@ -65,9 +53,6 @@ const PLANTILLA_ACTUALIZADA = [
     { dorsal: "22", nombre: "Ale García", imageUrl: "" }, { dorsal: "29", nombre: "Adam Arvelo", imageUrl: "" }, { dorsal: "25", nombre: "Milos Lukovic", imageUrl: "" },
     { dorsal: "19", nombre: "Sandro Ramírez", imageUrl: "" }, { dorsal: "11", nombre: "Marc Cardona", imageUrl: "" }, { dorsal: "7", nombre: "Jaime Mata", imageUrl: "" }
 ];
-
-const PROFILE_COLORS = ['#FFD700', '#0055A4', '#FFFFFF', '#fca311', '#52b788', '#e63946', '#9b59b6', 'linear-gradient(45deg, #FFC72C, #0055A4)', 'linear-gradient(45deg, #e63946, #fca311)', 'linear-gradient(45deg, #52b788, #9b59b6)'];
-const PROFILE_ICONS = ['🐥', '🇮🇨', '⚽️', '🥅', '🏆', '🥇', '🎉', '🔥', '💪', '😎', '🎯', '🧠', '⭐', '🐐', '👑', '💸', '💣', '🚀'];
 
 // ============================================================================
 // --- ESTILOS "GAMBLING / GOLDEN PLAYOFF" ---
@@ -214,19 +199,19 @@ const PlayoffWelcomeModal = ({ onClose }) => {
         <div style={styles.modalOverlay}>
             <div style={styles.modalContent}>
                 <h2 style={{...styles.title, fontSize: '2rem', marginBottom: '5px'}}>
-                    {step === 1 && "LA BATALLA FINAL"}{step === 2 && "NUEVAS REGLAS"}{step === 3 && "GLORIA O NADA"}
+                    {step === 1 && "LA BATALLA FINAL"}{step === 2 && "DINÁMICA PLAYOFF"}{step === 3 && "BOTÍN Y PREMIOS"}
                 </h2>
                 <div style={styles.modalDots}>
                     <div style={step === 1 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 2 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 3 ? styles.modalDotActive : styles.modalDotInactive} />
                 </div>
                 <div style={{minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
-                    {step === 1 && (<><p style={{fontSize: '1.2rem', marginBottom: '15px'}}>La liga regular ha concluido. La <strong>UD Las Palmas ha quedado 5ª</strong> en la clasificación oficial.</p><div style={{backgroundColor: 'rgba(255,215,0,0.1)', padding: '15px', borderRadius: '8px', border: `1px solid ${styles.colors.goldenDark}`}}><p style={{color: styles.colors.golden, fontStyle: 'italic', fontWeight: 'bold'}}>El reparto de puntos y premios de la Porra Anual queda CONGELADO a la espera de saber si logramos el épico ascenso a Primera División.</p></div></>)}
-                    {step === 2 && (<div style={{textAlign: 'left', lineHeight: 1.6}}><p style={{marginBottom: '10px'}}><strong>1. Mi Jornada:</strong> En las eliminatorias de vuelta, los botones cambiarán a <em>"PASA / NO PASA"</em> o <em>"ASCIENDE / NO ASCIENDE"</em>.</p><p style={{marginBottom: '10px'}}><strong>2. El Camino (+5 Puntos):</strong> Haz una apuesta única al equipo que crees que ascenderá. Será 🤫 secreta hasta que empiece el playoff.</p><div style={{padding: '10px', backgroundColor: 'rgba(220, 53, 69, 0.2)', border: `1px solid ${styles.colors.danger}`, borderRadius: '8px', textAlign: 'center', marginBottom: '10px'}}><strong style={{color: styles.colors.danger}}>¡ATENCIÓN! Tienes hasta {fechaCierre} para hacer tu apuesta en la pestaña EL CAMINO.</strong></div><p><strong>3. Ojo al crono:</strong> El resultado exacto siempre incluye la PRÓRROGA, pero excluye los penaltis.</p></div>)}
-                    {step === 3 && (<><p style={{fontSize: '1.1rem', marginBottom: '15px'}}>Las cuentas y deudas anteriores han sido liquidadas fuera de la app.</p><div style={{backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '15px', borderRadius: '8px', border: `1px solid ${styles.colors.success}`}}><h4 style={{color: styles.colors.success, marginBottom: '10px', textTransform: 'uppercase'}}>Premio Final Acumulado</h4><p style={{fontSize: '0.9rem', marginBottom: '10px'}}>El bote de las 2 últimas jornadas VIPs se ha reservado para el podio final del Playoff.</p><ul style={{listStyle: 'none', padding: 0, fontWeight: 'bold'}}><li>🥇 1º Clasif: Premio valorado en 40€</li><li>🥈 2º Clasif: Premio valorado en 15€</li><li>🥉 3º Clasif: Premio valorado en 5€</li></ul></div></>)}
+                    {step === 1 && (<><p style={{fontSize: '1.2rem', marginBottom: '15px'}}>La liga regular ha concluido con la <strong>UD Las Palmas en 5ª posición</strong>.</p><div style={{backgroundColor: 'rgba(255,215,0,0.1)', padding: '15px', borderRadius: '8px', border: `1px solid ${styles.colors.goldenDark}`}}><p style={{color: styles.colors.golden, fontStyle: 'italic', fontWeight: 'bold'}}>El reparto de puntos y premios de la Porra Anual queda CONGELADO a la espera de saber si logramos el épico ascenso a Primera División.</p></div></>)}
+                    {step === 2 && (<div style={{textAlign: 'left', lineHeight: 1.6}}><p style={{marginBottom: '10px'}}><strong>1. Los Partidos:</strong> Las IDAS de Semifinal y Final mantienen el clásico 1X2. Las VUELTAS serán <strong>Partidos VIP</strong> y el 1X2 cambiará a <em>PASA/NO PASA</em> o <em>ASCIENDE/NO ASCIENDE</em>.</p><p style={{marginBottom: '10px'}}><strong>2. El Camino (+5 Puntos):</strong> Haz una apuesta única al equipo que crees que ascenderá. Será 🤫 secreta hasta que empiece el playoff.</p><div style={{padding: '10px', backgroundColor: 'rgba(220, 53, 69, 0.2)', border: `1px solid ${styles.colors.danger}`, borderRadius: '8px', textAlign: 'center', marginBottom: '10px'}}><strong style={{color: styles.colors.danger}}>¡ATENCIÓN! Tienes hasta {fechaCierre} para hacer tu apuesta en la pestaña EL CAMINO.</strong></div><p><strong>3. Ojo al crono:</strong> El resultado exacto siempre incluye la PRÓRROGA, pero excluye los penaltis.</p></div>)}
+                    {step === 3 && (<><p style={{fontSize: '1.1rem', marginBottom: '15px'}}>La recaudación económica habitual partido a partido (1€ normal / 2€ VIP) se mantiene viva.</p><div style={{backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '15px', borderRadius: '8px', border: `1px solid ${styles.colors.success}`}}><h4 style={{color: styles.colors.success, marginBottom: '10px', textTransform: 'uppercase'}}>Premio Final Acumulado</h4><p style={{fontSize: '0.9rem', marginBottom: '10px'}}>Adicionalmente, el bote de las últimas jornadas de liga se ha reservado para el podio final.</p><ul style={{listStyle: 'none', padding: 0, fontWeight: 'bold'}}><li>🥇 1º Clasif: Premio valorado en 40€</li><li>🥈 2º Clasif: Premio valorado en 15€</li><li>🥉 3º Clasif: Premio valorado en 5€</li></ul></div></>)}
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '20px'}}>
                     {step > 1 ? <button onClick={() => setStep(prev => prev - 1)} style={styles.secondaryButton}>Atrás</button> : <div></div>}
-                    {step < 3 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV2', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡A JUGAR!</button>}
+                    {step < 3 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV3', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡A JUGAR!</button>}
                 </div>
             </div>
         </div>
@@ -682,7 +667,8 @@ const EstadisticasScreen = ({ userProfiles }) => {
     useEffect(() => {
         const fetchStats = async () => {
             const jSnap = await getDocs(query(collection(db, "jornadas"), where("estado", "==", "Finalizada")));
-            const jornadas = jSnap.docs.map(d => ({id: d.id, ...d.data()}));
+            // 1. ORDENAMOS cronológicamente para que las rachas sean reales
+            const jornadas = jSnap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => a.numeroJornada - b.numeroJornada);
             
             const st = {};
             JUGADORES.forEach(j => st[j] = { maxPtsJornada: 0, golesAcertados: 0, rachaP: 0, rachaC: 0, aRP: 0, aRC: 0, plenos: 0, exactos: 0, segurita: 0, participaciones: 0 });
@@ -695,13 +681,17 @@ const EstadisticasScreen = ({ userProfiles }) => {
                     if(!s) return;
                     
                     s.participaciones++;
-                    if (data.puntosObtenidos > s.maxPtsJornada) s.maxPtsJornada = data.puntosObtenidos;
-                    if (data.puntosGoleador > 0) s.golesAcertados++;
-                    if (data.puntosObtenidos >= 3) s.plenos++;
-                    if (data.puntosResultadoExacto > 0) s.exactos++;
-                    if (data.puntosObtenidos > 0 && data.puntosResultadoExacto === 0 && data.puntosGoleador === 0) s.segurita++;
+                    const pts = Number(data.puntosObtenidos) || 0;
+                    const ptsGoleador = Number(data.puntosGoleador) || 0;
+                    const ptsExacto = Number(data.puntosResultadoExacto) || 0;
+
+                    if (pts > s.maxPtsJornada) s.maxPtsJornada = pts;
+                    if (ptsGoleador > 0) s.golesAcertados++;
+                    if (pts >= 3) s.plenos++;
+                    if (ptsExacto > 0) s.exactos++;
+                    if (pts > 0 && ptsExacto === 0 && ptsGoleador === 0) s.segurita++;
                     
-                    if (data.puntosObtenidos > 0) { s.aRP++; s.aRC = 0; } else { s.aRC++; s.aRP = 0; }
+                    if (pts > 0) { s.aRP++; s.aRC = 0; } else { s.aRC++; s.aRP = 0; }
                     if (s.aRP > s.rachaP) s.rachaP = s.aRP;
                     if (s.aRC > s.rachaC) s.rachaC = s.aRC;
                 });
@@ -713,17 +703,26 @@ const EstadisticasScreen = ({ userProfiles }) => {
 
     if (!stats) return <LoadingSkeleton />;
 
-    const getTop = (f) => Object.entries(stats).sort((a,b) => b[1][f] - a[1][f])[0];
+    const getTop = (f) => {
+        const sorted = Object.entries(stats).sort((a,b) => b[1][f] - a[1][f]);
+        return sorted[0];
+    };
     
+    // Función para evitar mostrar un premio si el top es 0
+    const renderStatValue = (val, field) => {
+        if (val[1][field] === 0) return <span style={{color: styles.colors.silver, fontSize: '1rem'}}>Nadie aún</span>;
+        return <><PlayerProfileDisplay name={val[0]} profile={userProfiles ? userProfiles[val[0]] : {}} /></>;
+    };
+
     const epicCards = [
-        { title: '⚽ El Visionario', value: getTop('golesAcertados'), desc: 'Aciertos de goleador' },
-        { title: '💣 El Pelotazo', value: getTop('maxPtsJornada'), desc: 'Puntos en 1 sola jornada' },
-        { title: '🔥 En Llamas', value: getTop('rachaP'), desc: 'Jornadas seguidas puntuando' },
-        { title: '🥶 El Cenizo', value: getTop('rachaC'), desc: 'Jornadas seguidas a cero' },
-        { title: '🎯 Francotirador', value: getTop('exactos'), desc: 'Resultados exactos acertados' },
-        { title: '🏆 El Maestro', value: getTop('plenos'), desc: 'Jornadas de 3 o más puntos' },
-        { title: '🛡️ El Segurita', value: getTop('segurita'), desc: 'Aciertos logrados solo al 1X2' },
-        { title: '🙏 El Fiel', value: getTop('participaciones'), desc: 'Jornadas totales apostadas' },
+        { title: '⚽ El Visionario', value: getTop('golesAcertados'), field: 'golesAcertados', desc: 'Aciertos de goleador' },
+        { title: '💣 El Pelotazo', value: getTop('maxPtsJornada'), field: 'maxPtsJornada', desc: 'Puntos en 1 sola jornada' },
+        { title: '🔥 En Llamas', value: getTop('rachaP'), field: 'rachaP', desc: 'Jornadas seguidas puntuando' },
+        { title: '🥶 El Cenizo', value: getTop('rachaC'), field: 'rachaC', desc: 'Jornadas seguidas a cero' },
+        { title: '🎯 Francotirador', value: getTop('exactos'), field: 'exactos', desc: 'Resultados exactos acertados' },
+        { title: '🏆 El Maestro', value: getTop('plenos'), field: 'plenos', desc: 'Jornadas de 3 o más puntos' },
+        { title: '🛡️ El Segurita', value: getTop('segurita'), field: 'segurita', desc: 'Aciertos logrados solo al 1X2' },
+        { title: '🙏 El Fiel', value: getTop('participaciones'), field: 'participaciones', desc: 'Jornadas totales apostadas' },
     ];
 
     return (
@@ -733,8 +732,8 @@ const EstadisticasScreen = ({ userProfiles }) => {
                 {epicCards.map((card, idx) => (
                     <div key={idx} style={{backgroundColor: 'rgba(0,0,0,0.4)', padding: '20px 10px', borderRadius: '12px', textAlign: 'center', border: `1px solid ${styles.colors.goldenDark}50`, boxShadow: `inset 0 0 15px rgba(255,215,0,0.05)`}}>
                         <h3 style={{color: styles.colors.silver, fontSize: '0.95rem', textTransform: 'uppercase', height: '40px'}}>{card.title}</h3>
-                        <p style={{fontSize:'1.3rem', margin:'10px 0', color: styles.colors.golden}}><PlayerProfileDisplay name={card.value[0]} profile={userProfiles ? userProfiles[card.value[0]] : {}} /></p>
-                        <p style={{color: styles.colors.lightText, fontSize: '0.85rem'}}><span style={{fontWeight: 'bold', fontSize: '1rem', color: styles.colors.success}}>{card.value[1][card.title.includes('Visionario') ? 'golesAcertados' : card.title.includes('Pelotazo') ? 'maxPtsJornada' : card.title.includes('Llamas') ? 'rachaP' : card.title.includes('Cenizo') ? 'rachaC' : card.title.includes('Francotirador') ? 'exactos' : card.title.includes('Maestro') ? 'plenos' : card.title.includes('Segurita') ? 'segurita' : 'participaciones']}</span> {card.desc}</p>
+                        <p style={{fontSize:'1.3rem', margin:'10px 0', color: styles.colors.golden}}>{renderStatValue(card.value, card.field)}</p>
+                        <p style={{color: styles.colors.lightText, fontSize: '0.85rem'}}><span style={{fontWeight: 'bold', fontSize: '1rem', color: styles.colors.success}}>{card.value[1][card.field]}</span> {card.desc}</p>
                     </div>
                 ))}
             </div>
@@ -787,6 +786,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     const [tipoPartido, setTipoPartido] = useState(jornada.tipoPartido || 'ida');
     const [h2hInfo, setH2hInfo] = useState(jornada.h2hInfo || '');
     const [goleador, setGoleador] = useState(jornada.goleador || '');
+    const [bote, setBote] = useState(jornada.bote || 0); // Campo Bote añadido
     
     const toInputFormat = (date) => { if (!date || !date.seconds) return ''; const d = new Date(date.seconds * 1000); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
     
@@ -802,7 +802,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     const handleSaveChanges = async () => {
         const jornadaRef = doc(db, "jornadas", jornada.id);
         await updateDoc(jornadaRef, { 
-            estado, resultadoLocal, resultadoVisitante, esVip, tipoPartido, h2hInfo, goleador,
+            estado, resultadoLocal, resultadoVisitante, esVip, tipoPartido, h2hInfo, goleador, bote: parseFloat(bote) || 0,
             fechaApertura: fechaApertura ? new Date(fechaApertura) : null, 
             fechaCierre: fechaCierre ? new Date(fechaCierre) : null, 
             fechaPartido: fechaPartido ? new Date(fechaPartido) : null 
@@ -819,7 +819,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     if (!isUnlocked) {
         return (
             <div style={{...styles.adminJornadaItem, display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: styles.colors.success}}>
-                <div><span style={{fontWeight: 'bold', color: styles.colors.success}}>✓ {jornada.equipoLocal} vs {jornada.equipoVisitante}</span> <span style={{color: styles.colors.silver, fontSize: '0.8rem'}}>(Finalizada)</span></div>
+                <div><span style={{fontWeight: 'bold', color: styles.colors.success}}>✓ J{jornada.numeroJornada}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</span> <span style={{color: styles.colors.silver, fontSize: '0.8rem'}}>(Finalizada)</span></div>
                 <button onClick={() => setIsUnlocked(true)} style={{...styles.secondaryButton, padding: '5px 10px', fontSize: '0.7rem'}}>Desbloquear</button>
             </div>
         )
@@ -828,7 +828,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     return (
         <div style={styles.adminJornadaItem}>
             <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '15px', borderBottom: `1px solid ${styles.colors.goldenDark}`, paddingBottom: '10px'}}>
-                <p style={{fontSize: '1.2rem', color: styles.colors.golden}}><strong>{jornada.equipoLocal} vs {jornada.equipoVisitante}</strong></p>
+                <p style={{fontSize: '1.2rem', color: styles.colors.golden}}><strong>J{jornada.numeroJornada}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</strong></p>
                 <div><label>⭐ VIP</label><input type="checkbox" checked={esVip} onChange={(e) => setEsVip(e.target.checked)} style={styles.checkbox}/></div>
             </div>
             
@@ -841,6 +841,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 <div><label style={styles.label}>Fecha Partido (H.Canaria):</label><input type="datetime-local" value={fechaPartido} onChange={(e) => setFechaPartido(e.target.value)} style={styles.input} /></div>
                 
                 <div style={{gridColumn: '1 / -1'}}><label style={styles.label}>Historial vs Rival (Opcional - Se mostrará a los usuarios):</label><input type="text" value={h2hInfo} onChange={(e) => setH2hInfo(e.target.value)} placeholder="Ej: UDLP 2-1 Málaga | Málaga 0-0 UDLP" style={styles.input} /></div>
+                <div><label style={styles.label}>BOTE INICIAL (€):</label><input type="number" value={bote} onChange={(e) => setBote(e.target.value)} style={styles.input} /></div>
 
                 <div>
                     <label style={styles.label}>Resultado Final (Oficial):</label>
@@ -1006,7 +1007,6 @@ function App() {
         });
         const unsubStatus = onValue(ref(rtdb, 'status/'), (snapshot) => { setOnlineUsers(snapshot.val() || {}); });
 
-        // Timer para quitar el Splash Screen épico
         const splashTimer = setTimeout(() => { setScreen('login'); }, 2500);
 
         return () => { document.head.removeChild(styleSheet); unsubEscudos(); unsubClasificacion(); unsubStatus(); clearTimeout(splashTimer); }
@@ -1017,8 +1017,8 @@ function App() {
             setCurrentUser(user);
             set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
             setScreen('app');
-            // Cambiado 'playoffWelcomeSeen' a 'playoffWelcomeSeenV2' para forzar que salga de nuevo a todos
-            if (!localStorage.getItem('playoffWelcomeSeenV2')) { setShowWelcomeModal(true); }
+            // Clave V3 para que el modal le salte a todos de nuevo
+            if (!localStorage.getItem('playoffWelcomeSeenV3')) { setShowWelcomeModal(true); }
         } catch (error) { alert("Error al iniciar sesión."); }
     };
 
