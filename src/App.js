@@ -1008,4 +1008,113 @@ const AdminPanelScreen = ({ plantilla }) => {
     );
 };
 
+// ============================================================================
+// --- COMPONENTE PRINCIPAL APP ---
+// ============================================================================
+function App() {
+    const [screen, setScreen] = useState('splash');
+    const [activeTab, setActiveTab] = useState('miJornada');
+    const [currentUser, setCurrentUser] = useState(null);
+    const [teamLogos, setTeamLogos] = useState({});
+    const [plantilla, setPlantilla] = useState(PLANTILLA_ACTUALIZADA);
+    const [userProfiles, setUserProfiles] = useState({});
+    const [onlineUsers, setOnlineUsers] = useState({});
+    const [clasificacionData, setClasificacionData] = useState([]);
+    const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+
+    useEffect(() => {
+        // --- INYECCIÓN DE TÍTULO E ICONO ÉPICO ---
+        document.title = "🏆 PLAYOFF 2026";
+        let link = document.querySelector("link[rel~='icon']");
+        if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+        }
+        link.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⭐</text></svg>';
+
+        // --- ESTILOS CSS BASE PREMIUM ---
+        const styleSheet = document.createElement("style"); 
+        styleSheet.innerText = `
+            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600;700&display=swap');
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html { font-size: 16px !important; -webkit-text-size-adjust: 100%; }
+            body, #root { width: 100%; min-width: 100%; overflow-x: hidden; background-color: ${colors.deepBlue}; }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
+            @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+            @keyframes pulse { 0% { transform: scale(1); } 100% { transform: scale(1.05); } }
+            .content-enter-active { animation: slideInFromRight 0.4s ease-out; }
+            @keyframes blink-live { 50% { background-color: #5a0000; } }
+        `;
+        document.head.appendChild(styleSheet);
+        
+        signInAnonymously(auth);
+        
+        const unsubEscudos = onSnapshot(doc(db, "configuracion", "escudos"), (docSnap) => { if (docSnap.exists()) setTeamLogos(docSnap.data()); });
+        const unsubClasificacion = onSnapshot(collection(db, "clasificacion"), (snapshot) => { 
+            const profiles = {}; const clasificacion = []; 
+            snapshot.forEach(doc => { const data = doc.data(); profiles[doc.id] = data; clasificacion.push({id: doc.id, ...data}); }); 
+            setUserProfiles(profiles); setClasificacionData(clasificacion);
+        });
+        const unsubStatus = onValue(ref(rtdb, 'status/'), (snapshot) => { setOnlineUsers(snapshot.val() || {}); });
+
+        const splashTimer = setTimeout(() => { setScreen('login'); }, 2500);
+
+        return () => { document.head.removeChild(styleSheet); unsubEscudos(); unsubClasificacion(); unsubStatus(); clearTimeout(splashTimer); }
+    }, []);
+
+    const handleLogin = async (user) => {
+        try {
+            setCurrentUser(user);
+            set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
+            setScreen('app');
+            // Clave V4 para que el modal le salte a todos de nuevo con las fuentes premium
+            if (!localStorage.getItem('playoffWelcomeSeenV4')) { setShowWelcomeModal(true); }
+        } catch (error) { alert("Error al iniciar sesión."); }
+    };
+
+    const handleLogout = async () => { if (currentUser) set(ref(rtdb, 'status/' + currentUser), false); setCurrentUser(null); setScreen('login'); };
+
+    if (screen === 'splash') return <EpicSplashScreen />;
+    if (screen === 'login') return <div style={styles.container}><div style={styles.card}><div style={{textAlign: 'center'}}><h2 style={styles.title}>ACCESO PLAYOFF</h2><div style={styles.userList}>{JUGADORES.map(j => <button key={j} onClick={() => handleLogin(j)} style={styles.userButton}><div style={styles.loginProfileIconCircle}>{userProfiles[j]?.icon || '❓'}</div> {j}</button>)}</div></div></div></div>;
+
+    const renderContent = () => {
+        switch (activeTab) {
+            case 'miJornada': return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} />;
+            case 'elCamino': return <ElCaminoScreen user={currentUser} userProfiles={userProfiles} />;
+            case 'laJornada': return <LaJornadaScreen user={currentUser} teamLogos={teamLogos} userProfiles={userProfiles} onlineUsers={onlineUsers} clasificacionData={clasificacionData} />;
+            case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} />;
+            case 'ligaRegular': return <LigaRegularScreen userProfiles={userProfiles} />;
+            case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} />;
+            case 'pagos': return <PagosScreen />;
+            case 'calendario': return <CalendarioScreen teamLogos={teamLogos} />;
+            case 'admin': return currentUser === 'Juanma' ? <AdminPanelScreen plantilla={plantilla} /> : null;
+            default: return null;
+        }
+    };
+
+    return (
+        <>
+            {showWelcomeModal && <PlayoffWelcomeModal onClose={() => setShowWelcomeModal(false)} />}
+            <div style={styles.container}>
+                <div style={styles.card}>
+                    <nav style={styles.navbar}>
+                        <button onClick={() => setActiveTab('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>⭐ Mi Jornada</button>
+                        <button onClick={() => setActiveTab('elCamino')} style={activeTab === 'elCamino' ? styles.navButtonActive : styles.navButton}>🏆 El Camino</button>
+                        <button onClick={() => setActiveTab('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button>
+                        <button onClick={() => setActiveTab('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button>
+                        <button onClick={() => setActiveTab('ligaRegular')} style={activeTab === 'ligaRegular' ? styles.navButtonActive : styles.navButton}>Liga Reg.</button>
+                        <button onClick={() => setActiveTab('estadisticas')} style={activeTab === 'estadisticas' ? styles.navButtonActive : styles.navButton}>Estadísticas</button>
+                        <button onClick={() => setActiveTab('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>
+                        <button onClick={() => setActiveTab('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button>
+                        {currentUser === 'Juanma' && (<button onClick={() => setActiveTab('admin')} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}
+                        <button onClick={handleLogout} style={styles.logoutButton}>Salir</button>
+                    </nav>
+                    <div key={activeTab} className="content-enter-active" style={{paddingTop: '15px'}}>{renderContent()}</div>
+                </div>
+            </div>
+        </>
+    );
+}
 export default App;
