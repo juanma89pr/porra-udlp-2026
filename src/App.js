@@ -191,7 +191,7 @@ const EpicSplashScreen = () => (
     </div>
 );
 
-// --- MODAL DE BIENVENIDA PREMIUM V5 (CON PASO DE INSTALACIÓN) ---
+// --- MODAL ÉPICO DE BIENVENIDA V6 (CON PASO DE INSTALACIÓN Y TONO DIRECTO) ---
 const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
     const [step, setStep] = useState(1);
     const [config, setConfig] = useState(null);
@@ -203,58 +203,58 @@ const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
 
     const solicitarPermisos = async () => {
         if (!('Notification' in window)) {
-            alert('Este navegador no soporta notificaciones.');
+            alert('Tu dispositivo no soporta notificaciones automáticas.');
             return;
         }
         try {
             const permission = await Notification.requestPermission();
             if (permission === 'granted') {
-                alert('¡Permiso concedido! Listo para cuando activemos el sistema backend.');
+                alert('¡Fichado! Recibirás avisos para que no te quedes en tierra.');
             } else {
-                alert('Permiso denegado.');
+                alert('Sin permisos no hay avisos. Tú decides.');
             }
         } catch (e) {
             console.error(e);
         }
     };
 
-    const fechaCierre = config?.fechaCierreApuestaExtra ? formatFullDateTime(config.fechaCierreApuestaExtra) : 'el inicio del primer partido';
+    const fechaCierre = config?.fechaCierreApuestaExtra ? formatFullDateTime(config.fechaCierreApuestaExtra) : 'el pitido inicial';
 
     return (
         <div style={styles.modalOverlay}>
             <div style={styles.modalContent}>
-                <h2 style={{...styles.title, fontSize: '2rem', marginBottom: '0', borderBottom: 'none'}}>
-                    {step === 1 && "LA BATALLA FINAL"}{step === 2 && "DINÁMICA PLAYOFF"}{step === 3 && "BOTÍN Y PREMIOS"}{step === 4 && "📲 LLEVALA EN TU MÓVIL"}
+                <h2 style={{...styles.title, fontSize: '1.8rem', marginBottom: '0', borderBottom: 'none', letterSpacing: '2px', lineHeight: 1.2}}>
+                    {step === 1 && "🔥 ACTUALIZACIÓN ÉPICA"}{step === 2 && "⚔️ REGLAS DE COMBATE"}{step === 3 && "🏆 EL BOTÍN Y EL CAMINO"}{step === 4 && "🔔 ALERTAS ACTIVADAS"}
                 </h2>
                 <div style={styles.modalDots}>
                     <div style={step === 1 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 2 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 3 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 4 ? styles.modalDotActive : styles.modalDotInactive} />
                 </div>
                 
-                <div style={{minHeight: '260px', display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', fontFamily: "'Montserrat', sans-serif"}}>
+                <div style={{minHeight: '250px', display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', fontFamily: "'Montserrat', sans-serif"}}>
                     {step === 1 && (
                         <>
-                            <p style={{fontSize: '1.1rem', marginBottom: '20px', color: styles.colors.silver, lineHeight: 1.5}}>La liga regular ha concluido con la <strong>UD Las Palmas en 5ª posición</strong>.</p>
-                            <div style={{backgroundColor: 'rgba(212,175,55,0.05)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(212,175,55,0.2)`}}>
-                                <p style={{color: styles.colors.golden, fontStyle: 'italic', fontWeight: '600', lineHeight: 1.5}}>El reparto de puntos y premios de la Porra Anual queda CONGELADO a la espera de saber si logramos el épico ascenso a Primera División.</p>
+                            <p style={{fontSize: '1.1rem', marginBottom: '20px', color: styles.colors.lightText, lineHeight: 1.5, fontWeight: '600'}}>La fase regular ha terminado. Empieza el verdadero fuego.</p>
+                            <div style={{backgroundColor: 'rgba(212,175,55,0.05)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(212,175,55,0.3)`}}>
+                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6}}>La clasificación anual queda congelada. Hemos actualizado la app a la versión <strong style={{color: styles.colors.golden}}>GOLDEN PLAYOFF</strong> para la batalla final. Nuevo diseño, nuevas reglas y cero piedad. El Joker ha muerto.</p>
                             </div>
                         </>
                     )}
                     {step === 2 && (
                         <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>1. Los Partidos:</span> Las IDAS mantienen el clásico 1X2. Las VUELTAS serán <strong>Partidos VIP</strong> y cambiarán a <em>PASA / ASCIENDE</em>.</p>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>2. El Camino (+5 Pts):</span> Apuesta única y secreta al equipo que ascenderá.</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>IDAS (1€):</span> Formato de toda la vida. Resultado exacto, 1X2 clásico y Goleador.</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>VUELTAS (2€):</span> Partidos VIP. Puntos dobles y a cara de perro: el 1X2 cambia a <em>PASA / NO PASA</em> o <em>ASCIENDE / NO ASCIENDE</em>.</p>
                             <div style={{padding: '12px', backgroundColor: 'rgba(230,57,70,0.1)', border: `1px solid rgba(230,57,70,0.3)`, borderRadius: '12px', textAlign: 'center', marginBottom: '10px'}}>
-                                <strong style={{color: styles.colors.danger, fontSize: '0.9rem'}}>¡ATENCIÓN! Tienes hasta {fechaCierre} para hacer tu apuesta secreta.</strong>
+                                <strong style={{color: styles.colors.danger, fontSize: '0.85rem'}}>IMPORTANTE: El resultado final incluye prórroga. (No penaltis).</strong>
                             </div>
                         </div>
                     )}
                     {step === 3 && (
                         <>
-                            <p style={{fontSize: '1rem', marginBottom: '20px', color: styles.colors.silver, lineHeight: 1.5}}>La recaudación económica habitual partido a partido se mantiene activa.</p>
-                            <div style={{backgroundColor: 'rgba(16,185,129,0.05)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(16,185,129,0.3)`}}>
-                                <h4 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.success, marginBottom: '15px', fontSize: '1.2rem', letterSpacing: '1px'}}>PREMIO FINAL ACUMULADO</h4>
-                                <p style={{fontSize: '0.85rem', marginBottom: '15px', color: styles.colors.silver}}>El bote reservado de la liga es para el podio final.</p>
-                                <ul style={{listStyle: 'none', padding: 0, fontWeight: '600', color: styles.colors.lightText, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem'}}>
+                            <p style={{fontSize: '0.95rem', marginBottom: '15px', color: styles.colors.silver, lineHeight: 1.5}}>En la nueva pestaña <strong>EL CAMINO</strong>, apuesta en secreto por el equipo que crees que ascenderá. Si aciertas, sumas <strong>+5 PUNTOS</strong>. Tienes hasta {fechaCierre}.</p>
+                            <div style={{backgroundColor: 'rgba(16,185,129,0.05)', padding: '15px', borderRadius: '16px', border: `1px solid rgba(16,185,129,0.3)`}}>
+                                <h4 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.success, marginBottom: '10px', fontSize: '1.1rem', letterSpacing: '1px'}}>EL TESORO DE LA LIGA</h4>
+                                <p style={{fontSize: '0.85rem', marginBottom: '10px', color: styles.colors.silver}}>El bote acumulado espera a los reyes del Playoff:</p>
+                                <ul style={{listStyle: 'none', padding: 0, fontWeight: '600', color: styles.colors.lightText, display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.9rem'}}>
                                     <li>🥇 1º: Premio a elegir (Valor 40€)</li>
                                     <li>🥈 2º: Premio a elegir (Valor 15€)</li>
                                     <li>🥉 3º: Premio a elegir (Valor 5€)</li>
@@ -264,19 +264,19 @@ const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
                     )}
                     {step === 4 && (
                         <div style={{textAlign: 'left', lineHeight: 1.5, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px', fontSize: '0.95rem'}}>De cara a la próxima temporada, vamos a implementar <strong>notificaciones automáticas</strong> de apertura y cierre de apuestas. Para que funcionen, debes <strong>Instalar la App</strong>:</p>
+                            <p style={{marginBottom: '15px', fontSize: '0.95rem'}}>Se acabó avisar por WhatsApp. A partir de ahora, la app te avisará <strong>1 HORA</strong> y <strong>10 MINUTOS</strong> antes de cerrar apuestas. Para que esto funcione, <strong style={{color: styles.colors.lightText}}>debes instalar la app</strong>:</p>
                             <div style={{backgroundColor: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '12px', marginBottom: '15px', border: '1px solid rgba(255,255,255,0.1)'}}>
-                                <p style={{marginBottom: '10px', fontSize: '0.9rem'}}>🤖 <strong>En Android:</strong> Toca los 3 puntitos de Chrome arriba y dale a <em>"Añadir a pantalla de inicio"</em>.</p>
-                                <p style={{fontSize: '0.9rem'}}>🍎 <strong>En iPhone:</strong> Toca el botón central de Compartir (cuadrado con flecha) y dale a <em>"Añadir a la pantalla de inicio"</em>.</p>
+                                <p style={{marginBottom: '10px', fontSize: '0.85rem'}}>🤖 <strong>Android:</strong> Toca los 3 puntitos arriba y dale a <em>"Añadir a pantalla de inicio"</em>.</p>
+                                <p style={{fontSize: '0.85rem'}}>🍎 <strong>iPhone:</strong> Toca el botón Compartir y dale a <em>"Añadir a la pantalla de inicio"</em>.</p>
                             </div>
-                            <button onClick={solicitarPermisos} style={{...styles.secondaryButton, width: '100%', borderColor: styles.colors.success, color: styles.colors.success}}>🔔 PERMITIR NOTIFICACIONES</button>
+                            <button onClick={solicitarPermisos} style={{...styles.secondaryButton, width: '100%', borderColor: styles.colors.success, color: styles.colors.success}}>🔔 PERMITIR AVISOS PUSH</button>
                         </div>
                     )}
                 </div>
                 
                 <div style={{display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: '30px'}}>
                     {step > 1 ? <button onClick={() => setStep(prev => prev - 1)} style={styles.secondaryButton}>Atrás</button> : <div></div>}
-                    {step < 4 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV5', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡A JUGAR!</button>}
+                    {step < 4 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV6', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡A LA BATALLA!</button>}
                 </div>
             </div>
         </div>
@@ -907,7 +907,6 @@ const CalendarioScreen = ({ teamLogos }) => {
         </div>
     );
 };
-
 // ============================================================================
 // --- ADMINISTRADOR ---
 // ============================================================================
@@ -947,6 +946,20 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
         const jornadaRef = doc(db, "jornadas", jornada.id);
         await updateDoc(jornadaRef, { estado: 'En vivo', liveData: { golesLocal: liveData.golesLocal, golesVisitante: liveData.golesVisitante, primerGoleador: liveData.primerGoleador, isLive: true } });
         alert('Marcador en vivo actualizado');
+    };
+
+    // --- NUEVO: FUNCIONES FALSAS PARA LOS BOTONES PUSH ---
+    const handleSendPush1Hora = async () => {
+        if(window.confirm("¿Seguro que quieres enviar notificación PUSH: '1 Hora para cierre' a todos los usuarios?")) {
+            // Aquí iría tu código real (ej. llamada a Firebase Cloud Functions: httpsCallable(functions, 'sendPushNotification')({ tiempo: '1h' }))
+            alert("✅ Notificación PUSH (1 HORA) enviada (simulación).");
+        }
+    };
+    const handleSendPush10Min = async () => {
+        if(window.confirm("¿Seguro que quieres enviar notificación PUSH: '10 Minutos para cierre' a todos los usuarios?")) {
+            // Aquí iría tu código real (ej. llamada a Firebase Cloud Functions)
+            alert("🚨 Notificación PUSH (10 MIN) enviada (simulación).");
+        }
     };
 
     if (!isUnlocked) {
@@ -989,6 +1002,17 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                     <select value={goleador} onChange={(e) => setGoleador(e.target.value)} style={styles.adminSelect}><option value="">-- Elige --</option><option value="SG">Sin Goleador (SG)</option>{plantilla.sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(j => <option key={j.nombre} value={j.nombre}>{j.nombre}</option>)}</select>
                 </div>
             </div>
+
+            {/* --- SECCIÓN NOTIFICACIONES PUSH --- */}
+            {estado === 'Abierta' && (
+                <div style={{marginTop: '25px', padding: '20px', backgroundColor: 'rgba(252, 163, 17, 0.05)', borderRadius: '12px', border: `1px solid rgba(252, 163, 17, 0.3)`}}>
+                    <h4 style={{color: styles.colors.warning, textTransform: 'uppercase', marginBottom: '15px', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>🔔 Gestión de Alarmas (Push)</h4>
+                    <div style={{display: 'flex', gap: '15px', flexWrap: 'wrap'}}>
+                        <button onClick={handleSendPush1Hora} style={{...styles.secondaryButton, flex: 1, borderColor: styles.colors.warning, color: styles.colors.warning}}>🚨 AVISO 1 HORA</button>
+                        <button onClick={handleSendPush10Min} style={{...styles.secondaryButton, flex: 1, borderColor: styles.colors.danger, color: styles.colors.danger}}>🚨 AVISO 10 MIN</button>
+                    </div>
+                </div>
+            )}
             
             <button onClick={handleSaveChanges} style={{...styles.saveButton, width: '100%', marginTop: '25px'}}>GUARDAR TODOS LOS CAMBIOS</button>
 
@@ -1146,7 +1170,7 @@ function App() {
             setCurrentUser(user);
             set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
             setScreen('app');
-            if (!localStorage.getItem('playoffWelcomeSeenV5')) { setShowWelcomeModal(true); }
+            if (!localStorage.getItem('playoffWelcomeSeenV6')) { setShowWelcomeModal(true); }
         } catch (error) { alert("Error al iniciar sesión."); }
     };
 
