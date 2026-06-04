@@ -26,6 +26,7 @@ const messaging = getMessaging(app);
 const rtdb = getDatabase(app);
 const functions = getFunctions(app);
 
+// IMPORTANTE: Sustituye esto por tu clave real generada en Firebase Cloud Messaging
 const VAPID_KEY = "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE";
 
 // --- DATOS DE LA APLICACIÓN ---
@@ -40,7 +41,7 @@ const PLANTILLA_ACTUALIZADA = [
     { dorsal: "3", nombre: "Mika Mármol", imageUrl: "" }, { dorsal: "15", nombre: "Juanma Herzog", imageUrl: "" }, { dorsal: "4", nombre: "Álex Suárez", imageUrl: "" },
     { dorsal: "5", nombre: "Enrique Clemente", imageUrl: "" }, { dorsal: "6", nombre: "Sergio Barcia", imageUrl: "" }, { dorsal: "23", nombre: "Cristian Gutiérrez", imageUrl: "" },
     { dorsal: "17", nombre: "Viti Rozada", imageUrl: "" }, { dorsal: "2", nombre: "Marvin Park", imageUrl: "" }, { dorsal: "16", nombre: "Lorenzo Amatucci", imageUrl: "" },
-    { dorsal: "18", nombre: "Edward Cedeño", imageUrl: "" }, { dorsal: "12", nombre: "Enzo Loiodice", imageUrl: "" }, { dorsal: "20", "nombre": "Kirian Rodríguez", imageUrl: "" },
+    { dorsal: "18", nombre: "Edward Cedeño", imageUrl: "" }, { dorsal: "12", nombre: "Enzo Loiodice", imageUrl: "" }, { dorsal: "20", nombre: "Kirian Rodríguez", imageUrl: "" },
     { dorsal: "8", nombre: "Iván Gil", imageUrl: "" }, { dorsal: "21", nombre: "Jonathan Viera", imageUrl: "" }, { dorsal: "9", nombre: "Jeremía Recoba", imageUrl: "" },
     { dorsal: "14", nombre: "Manu Fuster", imageUrl: "" }, { dorsal: "10", nombre: "Jesé", imageUrl: "" }, { dorsal: "24", nombre: "Pejiño", imageUrl: "" },
     { dorsal: "22", nombre: "Ale García", imageUrl: "" }, { dorsal: "29", nombre: "Adam Arvelo", imageUrl: "" }, { dorsal: "25", nombre: "Milos Lukovic", imageUrl: "" },
@@ -48,7 +49,7 @@ const PLANTILLA_ACTUALIZADA = [
 ];
 
 // ============================================================================
-// --- ESTILOS "GAMBLING / GOLDEN PLAYOFF" ---
+// --- ESTILOS "GAMBLING / GOLDEN PLAYOFF" PREMIUM ---
 // ============================================================================
 const colors = {
     deepBlue: '#001d3d', blue: '#003366', golden: '#FFD700', goldenDark: '#d4af37', yellow: '#FFD700', gold: '#FFD700', silver: '#C0C0C0', 
@@ -112,7 +113,7 @@ const styles = {
     pasaButtonInactive: { flex: 1, padding: '15px', fontSize: '1.2rem', fontWeight: 'bold', cursor: 'pointer', border: `1px solid rgba(255,215,0,0.3)`, borderRadius: '12px', backgroundColor: 'rgba(0,0,0,0.4)', color: colors.silver, transition: 'all 0.3s ease', textTransform: 'uppercase', fontFamily: "'Oswald', sans-serif" },
     
     modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 10, 20, 0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' },
-    modalContent: { backgroundColor: 'rgba(0, 29, 61, 0.9)', padding: '40px 30px', borderRadius: '24px', width: '90%', maxWidth: '500px', border: `1px solid rgba(255, 215, 0, 0.2)`, boxShadow: `0 30px 60px rgba(0,0,0,0.8), inset 0 0 20px rgba(255,215,0,0.05)`, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' },
+    modalContent: { backgroundColor: 'rgba(0, 29, 61, 0.95)', padding: '40px 30px', borderRadius: '24px', width: '90%', maxWidth: '500px', border: `1px solid rgba(255, 215, 0, 0.3)`, boxShadow: `0 30px 60px rgba(0,0,0,0.8), inset 0 0 30px rgba(255,215,0,0.05)`, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' },
     modalDots: { display: 'flex', justifyContent: 'center', gap: '8px', margin: '25px 0' },
     modalDotActive: { width: '25px', height: '6px', borderRadius: '3px', backgroundColor: colors.golden, transition: 'all 0.3s' },
     modalDotInactive: { width: '10px', height: '6px', borderRadius: '3px', backgroundColor: 'rgba(255,255,255,0.2)', transition: 'all 0.3s' },
@@ -190,7 +191,8 @@ const EpicSplashScreen = () => (
     </div>
 );
 
-const PlayoffWelcomeModal = ({ onClose }) => {
+// --- MODAL DE BIENVENIDA PREMIUM V5 (CON PASO DE INSTALACIÓN) ---
+const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
     const [step, setStep] = useState(1);
     const [config, setConfig] = useState(null);
 
@@ -199,19 +201,36 @@ const PlayoffWelcomeModal = ({ onClose }) => {
         return () => unsub();
     }, []);
 
+    const solicitarPermisos = async () => {
+        if (!('Notification' in window)) {
+            alert('Este navegador no soporta notificaciones.');
+            return;
+        }
+        try {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                alert('¡Permiso concedido! Listo para cuando activemos el sistema backend.');
+            } else {
+                alert('Permiso denegado.');
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
     const fechaCierre = config?.fechaCierreApuestaExtra ? formatFullDateTime(config.fechaCierreApuestaExtra) : 'el inicio del primer partido';
 
     return (
         <div style={styles.modalOverlay}>
             <div style={styles.modalContent}>
-                <h2 style={{...styles.title, fontSize: '2.2rem', marginBottom: '0', borderBottom: 'none'}}>
-                    {step === 1 && "LA BATALLA FINAL"}{step === 2 && "DINÁMICA PLAYOFF"}{step === 3 && "BOTÍN Y PREMIOS"}
+                <h2 style={{...styles.title, fontSize: '2rem', marginBottom: '0', borderBottom: 'none'}}>
+                    {step === 1 && "LA BATALLA FINAL"}{step === 2 && "DINÁMICA PLAYOFF"}{step === 3 && "BOTÍN Y PREMIOS"}{step === 4 && "📲 LLEVALA EN TU MÓVIL"}
                 </h2>
                 <div style={styles.modalDots}>
-                    <div style={step === 1 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 2 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 3 ? styles.modalDotActive : styles.modalDotInactive} />
+                    <div style={step === 1 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 2 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 3 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 4 ? styles.modalDotActive : styles.modalDotInactive} />
                 </div>
                 
-                <div style={{minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', fontFamily: "'Montserrat', sans-serif"}}>
+                <div style={{minHeight: '260px', display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', fontFamily: "'Montserrat', sans-serif"}}>
                     {step === 1 && (
                         <>
                             <p style={{fontSize: '1.1rem', marginBottom: '20px', color: styles.colors.silver, lineHeight: 1.5}}>La liga regular ha concluido con la <strong>UD Las Palmas en 5ª posición</strong>.</p>
@@ -243,17 +262,26 @@ const PlayoffWelcomeModal = ({ onClose }) => {
                             </div>
                         </>
                     )}
+                    {step === 4 && (
+                        <div style={{textAlign: 'left', lineHeight: 1.5, color: styles.colors.silver}}>
+                            <p style={{marginBottom: '15px', fontSize: '0.95rem'}}>De cara a la próxima temporada, vamos a implementar <strong>notificaciones automáticas</strong> de apertura y cierre de apuestas. Para que funcionen, debes <strong>Instalar la App</strong>:</p>
+                            <div style={{backgroundColor: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '12px', marginBottom: '15px', border: '1px solid rgba(255,255,255,0.1)'}}>
+                                <p style={{marginBottom: '10px', fontSize: '0.9rem'}}>🤖 <strong>En Android:</strong> Toca los 3 puntitos de Chrome arriba y dale a <em>"Añadir a pantalla de inicio"</em>.</p>
+                                <p style={{fontSize: '0.9rem'}}>🍎 <strong>En iPhone:</strong> Toca el botón central de Compartir (cuadrado con flecha) y dale a <em>"Añadir a la pantalla de inicio"</em>.</p>
+                            </div>
+                            <button onClick={solicitarPermisos} style={{...styles.secondaryButton, width: '100%', borderColor: styles.colors.success, color: styles.colors.success}}>🔔 PERMITIR NOTIFICACIONES</button>
+                        </div>
+                    )}
                 </div>
                 
                 <div style={{display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: '30px'}}>
                     {step > 1 ? <button onClick={() => setStep(prev => prev - 1)} style={styles.secondaryButton}>Atrás</button> : <div></div>}
-                    {step < 3 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV4', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡A JUGAR!</button>}
+                    {step < 4 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV5', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡A JUGAR!</button>}
                 </div>
             </div>
         </div>
     );
 };
-
 // ============================================================================
 // --- PANTALLAS DE USUARIO ---
 // ============================================================================
@@ -265,6 +293,10 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles }) => {
     const [hasSubmitted, setHasSubmitted] = useState(false);
     const [message, setMessage] = useState('');
     const [participantes, setParticipantes] = useState([]);
+    
+    // --- ESTADOS PARA LOS CRONÓMETROS ---
+    const [timeLeftApertura, setTimeLeftApertura] = useState('');
+    const [timeLeftCierre, setTimeLeftCierre] = useState('');
 
     useEffect(() => {
         const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
@@ -285,6 +317,38 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles }) => {
         });
         return () => unsub();
     }, [user]);
+
+    // --- LÓGICA DE LOS CRONÓMETROS ---
+    useEffect(() => {
+        if (!currentJornada) return;
+        
+        const formatDiff = (diff) => {
+            const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+            const m = Math.floor((diff / 1000 / 60) % 60);
+            const s = Math.floor((diff / 1000) % 60);
+            return `${d > 0 ? d + 'd ' : ''}${h}h ${m}m ${s}s`;
+        };
+
+        const timer = setInterval(() => {
+            const now = new Date();
+            
+            if (currentJornada.estado === 'Pre-apertura' && currentJornada.fechaApertura) {
+                const target = new Date(currentJornada.fechaApertura.seconds * 1000);
+                const diff = target - now;
+                if (diff <= 0) setTimeLeftApertura('¡A PUNTO DE ABRIR!');
+                else setTimeLeftApertura(formatDiff(diff));
+            }
+            
+            if (currentJornada.estado === 'Abierta' && currentJornada.fechaCierre) {
+                const target = new Date(currentJornada.fechaCierre.seconds * 1000);
+                const diff = target - now;
+                if (diff <= 0) setTimeLeftCierre('¡CERRANDO APUESTAS!');
+                else setTimeLeftCierre(formatDiff(diff));
+            }
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [currentJornada]);
 
     const handleChange = (e) => { const { name, value, type, checked } = e.target; setPronostico(p => ({ ...p, [name]: type === 'checkbox' ? checked : value, ...(name === 'sinGoleador' && checked && { goleador: '' }) })); };
     
@@ -330,17 +394,33 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles }) => {
 
                 {isLiveView && liveData.primerGoleador && <p style={{color: styles.colors.golden, marginTop: '15px', fontSize: '1.3rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>⚽ {liveData.primerGoleador}</p>}
 
+                {/* --- SECCIÓN PRE-APERTURA CON CRONÓMETRO --- */}
                 {currentJornada.estado === 'Pre-apertura' && (
                     <div style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '25px', borderRadius: '16px', marginTop: '30px', border: `1px solid rgba(255,215,0,0.15)`}}>
                         <h4 style={{color: styles.colors.silver, marginBottom: '15px', textTransform: 'uppercase', fontSize: '0.9rem', letterSpacing: '1px', fontFamily: "'Oswald', sans-serif"}}>Historial Fase Regular</h4>
                         <p style={{color: styles.colors.golden, fontSize: '1.1rem', fontWeight: '600'}}>{currentJornada.h2hInfo || 'Sin datos registrados.'}</p>
-                        <p style={{marginTop: '20px', color: styles.colors.lightText, fontStyle: 'italic', fontSize: '0.9rem'}}>🕒 Apuestas cerradas temporalmente.</p>
+                        
+                        {timeLeftApertura && (
+                            <div style={{marginTop: '25px', padding: '15px', backgroundColor: 'rgba(252, 163, 17, 0.1)', border: `1px solid rgba(252, 163, 17, 0.3)`, borderRadius: '12px'}}>
+                                <p style={{color: styles.colors.silver, fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px'}}>Apertura de apuestas en:</p>
+                                <p style={{color: styles.colors.warning, fontSize: '1.8rem', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", letterSpacing: '2px', marginTop: '5px'}}>{timeLeftApertura}</p>
+                            </div>
+                        )}
                     </div>
                 )}
 
+                {/* --- SECCIÓN ABIERTA CON CRONÓMETRO --- */}
                 {isAbiertaNotSubmitted && (
                     <form onSubmit={handleGuardar} style={{marginTop: '30px', textAlign: 'left'}}>
                         {currentJornada.h2hInfo && (<div style={styles.h2hContainer}><h4 style={{...styles.formSectionTitle, fontSize: '1rem', color: styles.colors.silver, marginBottom: '10px'}}>⚔️ Historial Regular ⚔️</h4><p style={{color: styles.colors.lightText, fontWeight: 'bold'}}>{currentJornada.h2hInfo}</p></div>)}
+                        
+                        {timeLeftCierre && (
+                            <div style={{marginBottom: '25px', padding: '12px', backgroundColor: 'rgba(230,57,70,0.1)', border: `1px solid rgba(230,57,70,0.3)`, borderRadius: '12px', textAlign: 'center'}}>
+                                <p style={{color: styles.colors.silver, fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px'}}>Cierre de apuestas en:</p>
+                                <p style={{color: styles.colors.danger, fontSize: '1.6rem', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", letterSpacing: '2px', marginTop: '5px'}}>{timeLeftCierre}</p>
+                            </div>
+                        )}
+                        
                         <p style={{color: styles.colors.warning, fontSize: '0.85rem', textAlign: 'center', marginBottom: '25px', fontWeight: '600'}}>⚠️ El resultado numérico incluye Prórroga (Excluye Penaltis)</p>
 
                         <div style={styles.formGroup}>
@@ -364,7 +444,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles }) => {
                     <div style={{marginTop: '35px'}}>
                         <h4 style={styles.formSectionTitle}>TU PRONÓSTICO</h4>
                         <div style={{backgroundColor: 'rgba(212, 175, 55, 0.05)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(212,175,55,0.3)`, display: 'inline-block', minWidth: '85%', backdropFilter: 'blur(5px)'}}>
-                            {hasSubmitted ? (<><p style={{fontSize: '1.8rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '2px', color: colors.golden}}><strong>{pronostico.golesLocal} - {pronostico.golesVisitante}</strong></p><p style={{color: styles.colors.lightText, marginTop: '8px', fontSize: '1.1rem', fontWeight: '600'}}>{pronostico.resultado1x2}</p><p style={{color: styles.colors.silver, marginTop: '8px', fontSize: '0.95rem'}}>⚽ {pronostico.sinGoleador ? 'Sin Goleador' : pronostico.goleador}</p></>) : (<p style={{color: styles.colors.danger, fontWeight: 'bold', fontSize: '1.1rem'}}>No enviaste pronóstico a tiempo.</p>)}
+                            {hasSubmitted ? (<><p style={{fontSize: '1.8rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '2px', color: styles.colors.golden}}><strong>{pronostico.golesLocal} - {pronostico.golesVisitante}</strong></p><p style={{color: styles.colors.lightText, marginTop: '8px', fontSize: '1.1rem', fontWeight: '600'}}>{pronostico.resultado1x2}</p><p style={{color: styles.colors.silver, marginTop: '8px', fontSize: '0.95rem'}}>⚽ {pronostico.sinGoleador ? 'Sin Goleador' : pronostico.goleador}</p></>) : (<p style={{color: styles.colors.danger, fontWeight: 'bold', fontSize: '1.1rem'}}>No enviaste pronóstico a tiempo.</p>)}
                         </div>
                     </div>
                 )}
@@ -374,7 +454,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles }) => {
                         <h4 style={{color: styles.colors.silver, marginBottom: '20px', fontSize: '0.9rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>HAN APOSTADO ({participantes.length}/{JUGADORES.length})</h4>
                         <div style={{display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center'}}>
                             {participantes.map(pId => (
-                                <div key={pId} style={{display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(255,255,255,0.05)', padding: '10px 18px', borderRadius: '25px', border: `1px solid rgba(255,255,255,0.1)`}}><PlayerProfileDisplay name={pId} profile={userProfiles[pId]} /><span style={{fontSize: '1.1rem', marginLeft: '5px', opacity: 0.8}}>🤫</span></div>
+                                <div key={pId} style={{display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(255,255,255,0.05)', padding: '10px 18px', borderRadius: '25px', border: `1px solid rgba(255,255,255,0.1)`}}><PlayerProfileDisplay name={pId} profile={userProfiles[pId]} isOnline={onlineUsers[pId]} /><span style={{fontSize: '1.1rem', marginLeft: '5px', opacity: 0.8}}>🤫</span></div>
                             ))}
                         </div>
                         <p style={{fontSize: '0.8rem', color: styles.colors.silver, marginTop: '20px', fontStyle: 'italic'}}>Los resultados son secretos hasta el inicio del partido.</p>
@@ -384,6 +464,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles }) => {
         </div>
     );
 };
+
 const ElCaminoScreen = ({ user, userProfiles }) => {
     const [config, setConfig] = useState(null); 
     const [apuesta, setApuesta] = useState(''); 
@@ -1065,8 +1146,8 @@ function App() {
             setCurrentUser(user);
             set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
             setScreen('app');
-            // Clave V4 para que el modal le salte a todos de nuevo con las fuentes premium
-            if (!localStorage.getItem('playoffWelcomeSeenV4')) { setShowWelcomeModal(true); }
+            // Clave V5 para que el modal le salte a todos de nuevo con el paso de instalación
+            if (!localStorage.getItem('playoffWelcomeSeenV5')) { setShowWelcomeModal(true); }
         } catch (error) { alert("Error al iniciar sesión."); }
     };
 
@@ -1092,7 +1173,7 @@ function App() {
 
     return (
         <>
-            {showWelcomeModal && <PlayoffWelcomeModal onClose={() => setShowWelcomeModal(false)} />}
+            {showWelcomeModal && <PlayoffWelcomeModal onClose={() => setShowWelcomeModal(false)} currentUser={currentUser} />}
             <div style={styles.container}>
                 <div style={styles.card}>
                     <nav style={styles.navbar}>
