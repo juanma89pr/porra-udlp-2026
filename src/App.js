@@ -286,7 +286,7 @@ const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
 // --- PANTALLAS DE USUARIO ---
 // ============================================================================
 
-const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles }) => {
+const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers }) => {
     const [currentJornada, setCurrentJornada] = useState(null);
     const [loading, setLoading] = useState(true);
     const [pronostico, setPronostico] = useState({ golesLocal: '', golesVisitante: '', resultado1x2: '', goleador: '', sinGoleador: false, jokerActivo: false, jokerPronosticos: [] });
@@ -454,7 +454,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles }) => {
                         <h4 style={{color: styles.colors.silver, marginBottom: '20px', fontSize: '0.9rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>HAN APOSTADO ({participantes.length}/{JUGADORES.length})</h4>
                         <div style={{display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center'}}>
                             {participantes.map(pId => (
-                                <div key={pId} style={{display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(255,255,255,0.05)', padding: '10px 18px', borderRadius: '25px', border: `1px solid rgba(255,255,255,0.1)`}}><PlayerProfileDisplay name={pId} profile={userProfiles[pId]} isOnline={onlineUsers[pId]} /><span style={{fontSize: '1.1rem', marginLeft: '5px', opacity: 0.8}}>🤫</span></div>
+                                <div key={pId} style={{display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(255,255,255,0.05)', padding: '10px 18px', borderRadius: '25px', border: `1px solid rgba(255,255,255,0.1)`}}><PlayerProfileDisplay name={pId} profile={userProfiles[pId]} isOnline={onlineUsers ? onlineUsers[pId] : false} /><span style={{fontSize: '1.1rem', marginLeft: '5px', opacity: 0.8}}>🤫</span></div>
                             ))}
                         </div>
                         <p style={{fontSize: '0.8rem', color: styles.colors.silver, marginTop: '20px', fontStyle: 'italic'}}>Los resultados son secretos hasta el inicio del partido.</p>
@@ -465,7 +465,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles }) => {
     );
 };
 
-const ElCaminoScreen = ({ user, userProfiles }) => {
+const ElCaminoScreen = ({ user, userProfiles, onlineUsers }) => {
     const [config, setConfig] = useState(null); 
     const [apuesta, setApuesta] = useState(''); 
     const [hasBet, setHasBet] = useState(false);
@@ -545,7 +545,7 @@ const ElCaminoScreen = ({ user, userProfiles }) => {
                         <ul style={{listStyle: 'none', padding: 0}}>
                             {allBets.map(b => (
                                 <li key={b.id} style={{padding: '12px 0', borderBottom: `1px solid rgba(255,255,255,0.05)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                                    <PlayerProfileDisplay name={b.id} profile={userProfiles[b.id]} />
+                                    <PlayerProfileDisplay name={b.id} profile={userProfiles[b.id]} isOnline={onlineUsers ? onlineUsers[b.id] : false} />
                                     {b.id === user ? ( <span style={{fontWeight: 'bold', color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px', fontSize: '1.1rem'}}>{b.equipo}</span> ) : (
                                         isSecreto ? <span style={styles.secrecyBadge}>Secreta 🤫</span> : <span style={{fontWeight: '600', color: styles.colors.silver, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px', fontSize: '1.1rem'}}>{b.equipo}</span>
                                     )}
@@ -625,7 +625,7 @@ const LaJornadaScreen = ({ user, teamLogos, userProfiles, onlineUsers, clasifica
                                 return (
                                     <div key={p.id} style={{backgroundColor: 'rgba(0,0,0,0.4)', padding: '18px', borderRadius: '16px', borderLeft: `4px solid ${styles.colors.golden}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.2)'}}>
                                         <div style={{textAlign: 'left'}}>
-                                            <PlayerProfileDisplay name={p.id} profile={userProfiles[p.id]} isOnline={onlineUsers[p.id]} />
+                                            <PlayerProfileDisplay name={p.id} profile={userProfiles[p.id]} isOnline={onlineUsers ? onlineUsers[p.id] : false} />
                                             <div style={{fontSize: '0.9rem', color: styles.colors.silver, marginTop: '8px'}}>
                                                 <strong style={{color: styles.colors.lightText, fontSize: '1.05rem'}}>{p.golesLocal}-{p.golesVisitante}</strong> ({p.resultado1x2})<br/>⚽ {p.sinGoleador ? 'Sin Goleador' : p.goleador}
                                             </div>
@@ -795,7 +795,7 @@ const PagosScreen = () => {
     );
 };
 
-const EstadisticasScreen = ({ userProfiles }) => {
+const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
     const [stats, setStats] = useState(null);
 
     useEffect(() => {
@@ -844,7 +844,7 @@ const EstadisticasScreen = ({ userProfiles }) => {
     
     const renderStatValue = (val, field) => {
         if (val[1][field] === 0) return <span style={{color: styles.colors.silver, fontSize: '1rem', fontStyle: 'italic'}}>Nadie aún</span>;
-        return <><PlayerProfileDisplay name={val[0]} profile={userProfiles ? userProfiles[val[0]] : {}} /></>;
+        return <><PlayerProfileDisplay name={val[0]} profile={userProfiles ? userProfiles[val[0]] : {}} isOnline={onlineUsers ? onlineUsers[val[0]] : false} /></>;
     };
 
     const epicCards = [
@@ -1146,7 +1146,6 @@ function App() {
             setCurrentUser(user);
             set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
             setScreen('app');
-            // Clave V5 para que el modal le salte a todos de nuevo con el paso de instalación
             if (!localStorage.getItem('playoffWelcomeSeenV5')) { setShowWelcomeModal(true); }
         } catch (error) { alert("Error al iniciar sesión."); }
     };
@@ -1158,12 +1157,12 @@ function App() {
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'miJornada': return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} />;
-            case 'elCamino': return <ElCaminoScreen user={currentUser} userProfiles={userProfiles} />;
+            case 'miJornada': return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
+            case 'elCamino': return <ElCaminoScreen user={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'laJornada': return <LaJornadaScreen user={currentUser} teamLogos={teamLogos} userProfiles={userProfiles} onlineUsers={onlineUsers} clasificacionData={clasificacionData} />;
             case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} />;
             case 'ligaRegular': return <LigaRegularScreen userProfiles={userProfiles} />;
-            case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} />;
+            case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'pagos': return <PagosScreen />;
             case 'calendario': return <CalendarioScreen teamLogos={teamLogos} />;
             case 'admin': return currentUser === 'Juanma' ? <AdminPanelScreen plantilla={plantilla} /> : null;
