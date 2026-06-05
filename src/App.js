@@ -26,6 +26,7 @@ const messaging = getMessaging(app);
 const rtdb = getDatabase(app);
 const functions = getFunctions(app);
 
+// IMPORTANTE: Sustituye esto por tu clave real generada en Firebase Cloud Messaging
 const VAPID_KEY = "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE";
 
 // --- DATOS DE LA APLICACIÓN ---
@@ -164,7 +165,6 @@ const styles = {
     saveButton: { padding: '12px 20px', border: 'none', borderRadius: '10px', backgroundColor: colors.success, color: 'white', cursor: 'pointer', textTransform: 'uppercase', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px' },
     liveAdminContainer: { marginTop: '30px', paddingTop: '25px', borderTop: `1px solid rgba(230,57,70,0.3)`, backgroundColor: 'rgba(230, 57, 70, 0.05)', padding: '20px', borderRadius: '12px' },
     
-    // Novedad: Ficha de apuesta (Pill)
     betPill: { display: 'inline-block', padding: '6px 12px', borderRadius: '20px', fontSize: '0.9rem', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px', border: `1px solid rgba(255,255,255,0.1)`, backgroundColor: 'rgba(0,0,0,0.5)', color: colors.silver, margin: '2px' },
     betPillWin: { display: 'inline-block', padding: '6px 12px', borderRadius: '20px', fontSize: '0.9rem', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px', border: `1px solid ${colors.success}`, backgroundColor: 'rgba(16,185,129,0.15)', color: colors.success, margin: '2px', boxShadow: `0 0 10px rgba(16,185,129,0.5)` }
 };
@@ -242,32 +242,15 @@ const EpicSplashScreen = () => (
     </div>
 );
 
-// --- MODAL ÉPICO DE BIENVENIDA V8 (PLANTILLA ACTUALIZADA Y LÓGICA DINERO) ---
-const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
+// --- MODAL ÉPICO DE BIENVENIDA V10 (CON AVISO DEL PIN) ---
+const PlayoffWelcomeModal = ({ onClose }) => {
     const [step, setStep] = useState(1);
-    const [config, setConfig] = useState(null);
-
-    useEffect(() => {
-        const unsub = onSnapshot(doc(db, "configuracion", "playoff"), (d) => { if(d.exists()) setConfig(d.data()); });
-        return () => unsub();
-    }, []);
-
-    const solicitarPermisos = async () => {
-        if (!('Notification' in window)) { alert('Tu dispositivo no soporta notificaciones automáticas.'); return; }
-        try {
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') alert('¡Fichado! Recibirás avisos para que no te quedes en tierra.');
-            else alert('Sin permisos no hay avisos. Tú decides.');
-        } catch (e) { console.error(e); }
-    };
-
-    const fechaCierre = config?.fechaCierreApuestaExtra ? formatFullDateTime(config.fechaCierreApuestaExtra) : 'el pitido inicial';
 
     return (
         <div style={styles.modalOverlay}>
             <div style={styles.modalContent}>
                 <h2 style={{...styles.title, fontSize: '1.8rem', marginBottom: '0', borderBottom: 'none', letterSpacing: '2px', lineHeight: 1.2}}>
-                    {step === 1 && "🔥 ACTUALIZACIÓN V8"}{step === 2 && "🃏 EL JOKER DE PLAYOFF"}{step === 3 && "💰 QUIÉN GANA EL BOTE"}{step === 4 && "👁️ FICHAS DE APUESTA"}
+                    {step === 1 && "🔥 ACTUALIZACIÓN V10"}{step === 2 && "🃏 EL JOKER EXTRA"}{step === 3 && "💰 QUIÉN GANA EL BOTE"}{step === 4 && "🔒 BLINDAJE CON PIN"}
                 </h2>
                 <div style={styles.modalDots}>
                     <div style={step === 1 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 2 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 3 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 4 ? styles.modalDotActive : styles.modalDotInactive} />
@@ -276,35 +259,32 @@ const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
                 <div style={{minHeight: '260px', display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', fontFamily: "'Montserrat', sans-serif"}}>
                     {step === 1 && (
                         <>
-                            <p style={{fontSize: '1.1rem', marginBottom: '20px', color: styles.colors.lightText, lineHeight: 1.5, fontWeight: '600'}}>Plantilla corregida y el retorno de la herramienta más letal.</p>
+                            <p style={{fontSize: '1.1rem', marginBottom: '20px', color: styles.colors.lightText, lineHeight: 1.5, fontWeight: '600'}}>Seguridad y herramientas listas para la guerra.</p>
                             <div style={{backgroundColor: 'rgba(212,175,55,0.05)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(212,175,55,0.3)`}}>
-                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '10px'}}>1. <strong>Plantilla Actualizada:</strong> Hemos corregido la lista de jugadores para el 1º Goleador. ¡Revisa tu apuesta si faltaba alguien!</p>
-                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6}}>2. Vuelve el Joker por aclamación popular. <strong>1 ÚNICO USO</strong> para todo el Playoff.</p>
+                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '10px'}}>1. <strong>Plantilla Actualizada:</strong> Lista de 1º Goleador corregida y al día.</p>
+                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6}}>2. <strong>Joker Restaurado:</strong> 1 único uso para todo el Playoff. Úsalo con cabeza.</p>
                             </div>
                         </>
                     )}
                     {step === 2 && (
                         <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.warning, fontWeight: 'bold'}}>5 HUECOS EXTRA:</span> Activar el Joker abre 5 casilleros solo para Resultados Exactos. Si fallas el principal pero uno de los Joker acierta, ganas los puntos para la liga.</p>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>EL COSTE:</span> Pagas por cada resultado extra que rellenes (1€ normal / 2€ VIP).</p>
-                            <div style={{padding: '12px', backgroundColor: 'rgba(16,185,129,0.1)', border: `1px solid rgba(16,185,129,0.3)`, borderRadius: '12px', textAlign: 'center', marginBottom: '10px'}}>
-                                <strong style={{color: styles.colors.success, fontSize: '0.85rem'}}>Todo el dinero extra va directo a engordar el bote de esa jornada.</strong>
-                            </div>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.warning, fontWeight: 'bold'}}>5 HUECOS EXTRA:</span> Activar el Joker abre 5 casilleros solo para Resultados Exactos. Si fallas el principal pero uno de los Joker acierta, te llevas los puntos y el bote.</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>EL COSTE:</span> Pagas por cada resultado que rellenes (1€ en Ida / 2€ en Vuelta VIP). Todo el dinero extra engorda el bote.</p>
                         </div>
                     )}
                     {step === 3 && (
                         <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px', color: styles.colors.lightText, fontWeight: '600'}}>Aclaración fundamental sobre el dinero de la jornada:</p>
-                            <p style={{marginBottom: '15px'}}>El ganador del bote <strong style={{color: styles.colors.success}}>NUNCA es el que más puntos saca</strong>. El bote se lo lleva exclusivamente quien acierte el <strong>Resultado Exacto</strong> del partido.</p>
-                            <p style={{marginBottom: '15px'}}>Si aciertas el resultado exacto usando el Joker, <strong>entras en el reparto del dinero de la jornada</strong>. Si sois varios, se divide. Si nadie acierta, se acumula.</p>
+                            <p style={{marginBottom: '15px', color: styles.colors.lightText, fontWeight: '600'}}>Aclaración sobre el ganador de la jornada:</p>
+                            <p style={{marginBottom: '15px'}}>El dinero <strong style={{color: styles.colors.success}}>NO es para quien saque más puntos</strong>. El bote se lo lleva exclusivamente quien acierte el <strong>Resultado Exacto</strong>.</p>
+                            <p style={{marginBottom: '15px'}}>Si aciertas el resultado usando el Joker, entras en el reparto del dinero. Si sois varios, se divide. Si nadie acierta, se acumula a la siguiente.</p>
                         </div>
                     )}
                     {step === 4 && (
                         <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>SECRETISMO TOTAL:</span> Las apuestas de Joker no se verán hasta que arranque el partido.</p>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.success, fontWeight: 'bold'}}>NEÓN VERDE:</span> Cuando la jornada finalice, la app mostrará las apuestas como fichas. La ficha que te haya hecho ganar el dinero brillará en <strong style={{color: styles.colors.success}}>Verde Neón</strong>.</p>
-                            <div style={{textAlign: 'center', marginTop: '10px'}}>
-                                <span style={styles.betPill}>1-0</span> <span style={styles.betPillWin}>2-1</span> <span style={styles.betPill}>1-1</span>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.danger, fontWeight: 'bold'}}>SISTEMA DE PIN RESTABLECIDO:</span> Para garantizar que nadie espíe ni modifique tus apuestas, volvemos a la lógica estricta de la fase regular.</p>
+                            <p style={{marginBottom: '15px'}}>Para <strong>Guardar tu apuesta</strong> se te pedirá tu código PIN secreto de 4 dígitos. Además, si quieres revisar tu apuesta guardada, tu panel estará oculto hasta que introduzcas tu PIN.</p>
+                            <div style={{padding: '12px', backgroundColor: 'rgba(230,57,70,0.1)', border: `1px solid rgba(230,57,70,0.3)`, borderRadius: '12px', textAlign: 'center', marginBottom: '10px'}}>
+                                <strong style={{color: styles.colors.danger, fontSize: '0.85rem'}}>Si alguien entra a tu perfil, no verá tu apuesta sin tu clave.</strong>
                             </div>
                         </div>
                     )}
@@ -312,7 +292,7 @@ const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
                 
                 <div style={{display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: '30px'}}>
                     {step > 1 ? <button onClick={() => setStep(prev => prev - 1)} style={styles.secondaryButton}>Atrás</button> : <div></div>}
-                    {step < 4 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV8', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡A LA BATALLA!</button>}
+                    {step < 4 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV10', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡ENTENDIDO!</button>}
                 </div>
             </div>
         </div>
@@ -336,6 +316,13 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     const [jokerUsadoPreviamente, setJokerUsadoPreviamente] = useState(false);
     const [estadisticasJoker, setEstadisticasJoker] = useState({ usuarios: 0, dineroExtra: 0 });
 
+    // --- ESTADOS DE SEGURIDAD (PIN) ---
+    const [showPinModal, setShowPinModal] = useState(false);
+    const [pinAction, setPinAction] = useState(''); // 'view' o 'save'
+    const [enteredPin, setEnteredPin] = useState('');
+    const [pinError, setPinError] = useState('');
+    const [isBetVisible, setIsBetVisible] = useState(false);
+
     useEffect(() => {
         const fetchJornadaYJoker = async () => {
             const qJornadas = query(collection(db, "jornadas"), orderBy("numeroJornada"));
@@ -346,26 +333,27 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             if (activa) {
                 setCurrentJornada(activa);
                 
-                // Comprobar si el usuario ya usó el Joker en alguna jornada ANTERIOR del Playoff (Jornadas 43+)
                 let usado = false;
                 for (let j of jornadas.filter(jor => jor.numeroJornada >= 43)) {
-                    if (j.id === activa.id) continue; // No comprobamos la actual aquí
+                    if (j.id === activa.id) continue;
                     const p = await getDoc(doc(db, "pronosticos", j.id, "jugadores", user));
                     if (p.exists() && p.data().jokerActivo) { usado = true; break; }
                 }
                 setJokerUsadoPreviamente(usado);
 
-                // Cargar pronóstico actual
                 const pSnap = await getDoc(doc(db, "pronosticos", activa.id, "jugadores", user));
                 if (pSnap.exists()) { 
                     const data = pSnap.data();
                     if(!data.jokerPronosticos) data.jokerPronosticos = [{local:'', visitante:''},{local:'', visitante:''},{local:'', visitante:''},{local:'', visitante:''},{local:'', visitante:''}];
                     while(data.jokerPronosticos.length < 5) data.jokerPronosticos.push({local:'', visitante:''});
                     setPronostico(data); 
-                    setHasSubmitted(true); 
-                } else { setHasSubmitted(false); }
+                    setHasSubmitted(true);
+                    setIsBetVisible(false); // La apuesta se carga pero queda oculta inicialmente
+                } else { 
+                    setHasSubmitted(false); 
+                    setIsBetVisible(true); // Si no hay apuesta, el form está visible
+                }
 
-                // Cargar participantes y calcular estadísticas del Joker de esta jornada
                 onSnapshot(collection(db, "pronosticos", activa.id, "jugadores"), (pSnapRealtime) => {
                     const parts = [];
                     let jUsados = 0; let dineroExtra = 0;
@@ -387,7 +375,6 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         fetchJornadaYJoker();
     }, [user]);
 
-    // --- LÓGICA DE LOS CRONÓMETROS ---
     useEffect(() => {
         if (!currentJornada) return;
         const formatDiff = (diff) => {
@@ -419,10 +406,40 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         setPronostico({...pronostico, jokerPronosticos: newJokers});
     };
 
-    const handleGuardar = async (e) => {
+    // --- LÓGICA DE SEGURIDAD (PIN) ---
+    const handleGuardarClick = (e) => {
         e.preventDefault();
         if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || pronostico.resultado1x2 === '' || (!pronostico.goleador && !pronostico.sinGoleador)) { setMessage('Rellena todos los campos principales.'); return; }
-        try { await setDoc(doc(db, "pronosticos", currentJornada.id, "jugadores", user), { ...pronostico, lastUpdated: serverTimestamp() }); setHasSubmitted(true); setMessage('¡Pronóstico Guardado con éxito!'); } catch (err) { setMessage('Error al guardar.'); }
+        setPinAction('save');
+        setEnteredPin('');
+        setPinError('');
+        setShowPinModal(true);
+    };
+
+    const handleViewClick = () => {
+        setPinAction('view');
+        setEnteredPin('');
+        setPinError('');
+        setShowPinModal(true);
+    };
+
+    const confirmPin = async () => {
+        const realPin = userProfiles[user]?.pin || '1234';
+        if (enteredPin !== realPin) {
+            setPinError('PIN incorrecto. Inténtalo de nuevo.');
+            return;
+        }
+        setShowPinModal(false);
+        if (pinAction === 'save') {
+            try { 
+                await setDoc(doc(db, "pronosticos", currentJornada.id, "jugadores", user), { ...pronostico, lastUpdated: serverTimestamp() }); 
+                setHasSubmitted(true); 
+                setIsBetVisible(true);
+                setMessage('¡Pronóstico Guardado con éxito!'); 
+            } catch (err) { setMessage('Error al guardar.'); }
+        } else if (pinAction === 'view') {
+            setIsBetVisible(true);
+        }
     };
 
     if (loading) return <LoadingSkeleton />;
@@ -433,7 +450,9 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     const isVFinal = currentJornada.tipoPartido === 'vuelta_final';
     const liveData = currentJornada.liveData;
     const isLiveView = currentJornada.estado === 'En vivo' && liveData?.isLive;
-    const isAbiertaNotSubmitted = currentJornada.estado === 'Abierta' && !hasSubmitted;
+    const isAbiertaNotSubmitted = currentJornada.estado === 'Abierta';
+    const isPartidoAbierto = ['Pre-apertura', 'Abierta'].includes(currentJornada.estado);
+    const requireUnlock = isPartidoAbierto && hasSubmitted && !isBetVisible;
 
     return (
         <div>
@@ -448,10 +467,10 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 <div style={styles.miJornadaMatchInfo}>
                     <TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} />
                     <div style={styles.miJornadaScoreInputs}>
-                        {isAbiertaNotSubmitted ? (
+                        {isAbiertaNotSubmitted && !requireUnlock ? (
                             <><input type="number" name="golesLocal" value={pronostico.golesLocal} onChange={handleChange} style={styles.resultInput} min="0" placeholder="L" /><span style={styles.separator}>-</span><input type="number" name="golesVisitante" value={pronostico.golesVisitante} onChange={handleChange} style={styles.resultInput} min="0" placeholder="V" /></>
                         ) : (
-                            <><div style={{...styles.resultInput, display: 'flex', justifyContent: 'center', alignItems: 'center'}}>{isLiveView ? liveData.golesLocal : (currentJornada.estado === 'Finalizada' ? currentJornada.resultadoLocal : (hasSubmitted ? pronostico.golesLocal : '-'))}</div><span style={styles.separator}>-</span><div style={{...styles.resultInput, display: 'flex', justifyContent: 'center', alignItems: 'center'}}>{isLiveView ? liveData.golesVisitante : (currentJornada.estado === 'Finalizada' ? currentJornada.resultadoVisitante : (hasSubmitted ? pronostico.golesVisitante : '-'))}</div></>
+                            <><div style={{...styles.resultInput, display: 'flex', justifyContent: 'center', alignItems: 'center'}}>{isLiveView ? liveData.golesLocal : (currentJornada.estado === 'Finalizada' ? currentJornada.resultadoLocal : (requireUnlock ? '?' : pronostico.golesLocal))}</div><span style={styles.separator}>-</span><div style={{...styles.resultInput, display: 'flex', justifyContent: 'center', alignItems: 'center'}}>{isLiveView ? liveData.golesVisitante : (currentJornada.estado === 'Finalizada' ? currentJornada.resultadoVisitante : (requireUnlock ? '?' : pronostico.golesVisitante))}</div></>
                         )}
                     </div>
                     <TeamDisplay teamLogos={teamLogos} teamName={currentJornada.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} />
@@ -459,102 +478,114 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
 
                 {isLiveView && liveData.primerGoleador && <p style={{color: styles.colors.golden, marginTop: '15px', fontSize: '1.3rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>⚽ {liveData.primerGoleador}</p>}
 
-                {/* --- SECCIÓN PRE-APERTURA --- */}
-                {currentJornada.estado === 'Pre-apertura' && (
-                    <div style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '25px', borderRadius: '16px', marginTop: '30px', border: `1px solid rgba(255,215,0,0.15)`}}>
-                        <h4 style={{color: styles.colors.silver, marginBottom: '15px', textTransform: 'uppercase', fontSize: '0.9rem', letterSpacing: '1px', fontFamily: "'Oswald', sans-serif"}}>Historial Fase Regular</h4>
-                        <p style={{color: styles.colors.golden, fontSize: '1.1rem', fontWeight: '600'}}>{currentJornada.h2hInfo || 'Sin datos registrados.'}</p>
-                        {timeLeftApertura && (
-                            <div style={{marginTop: '25px', padding: '15px', backgroundColor: 'rgba(252, 163, 17, 0.1)', border: `1px solid rgba(252, 163, 17, 0.3)`, borderRadius: '12px'}}>
-                                <p style={{color: styles.colors.silver, fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px'}}>Apertura de apuestas en:</p>
-                                <p style={{color: styles.colors.warning, fontSize: '1.8rem', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", letterSpacing: '2px', marginTop: '5px'}}>{timeLeftApertura}</p>
-                            </div>
-                        )}
+                {/* --- SECCIÓN BLINDADA (CANDADO) --- */}
+                {requireUnlock ? (
+                    <div style={{marginTop: '40px', padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: '20px', border: `1px solid rgba(255,215,0,0.2)`, boxShadow: `0 10px 30px rgba(0,0,0,0.5)`}}>
+                        <div style={{fontSize: '4rem', marginBottom: '15px'}}>🔒</div>
+                        <h4 style={{color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", fontSize: '1.5rem', letterSpacing: '1px', marginBottom: '10px', textTransform: 'uppercase'}}>APUESTA BLINDADA</h4>
+                        <p style={{color: styles.colors.silver, fontSize: '0.95rem', marginBottom: '25px', lineHeight: 1.5}}>Tu apuesta se ha guardado correctamente y está protegida. Nadie puede verla hasta que arranque el partido.</p>
+                        <button onClick={handleViewClick} style={styles.mainButton}>VER / MODIFICAR APUESTA</button>
                     </div>
-                )}
-
-                {/* --- FORMULARIO DE APUESTAS --- */}
-                {isAbiertaNotSubmitted && (
-                    <form onSubmit={handleGuardar} style={{marginTop: '30px', textAlign: 'left'}}>
-                        {currentJornada.h2hInfo && (<div style={styles.h2hContainer}><h4 style={{...styles.formSectionTitle, fontSize: '1rem', color: styles.colors.silver, marginBottom: '10px'}}>⚔️ Historial Regular ⚔️</h4><p style={{color: styles.colors.lightText, fontWeight: 'bold'}}>{currentJornada.h2hInfo}</p></div>)}
-                        
-                        {timeLeftCierre && (
-                            <div style={{marginBottom: '25px', padding: '12px', backgroundColor: 'rgba(230,57,70,0.1)', border: `1px solid rgba(230,57,70,0.3)`, borderRadius: '12px', textAlign: 'center'}}>
-                                <p style={{color: styles.colors.silver, fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px'}}>Cierre de apuestas en:</p>
-                                <p style={{color: styles.colors.danger, fontSize: '1.6rem', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", letterSpacing: '2px', marginTop: '5px'}}>{timeLeftCierre}</p>
-                            </div>
-                        )}
-                        
-                        <p style={{color: styles.colors.warning, fontSize: '0.85rem', textAlign: 'center', marginBottom: '25px', fontWeight: '600'}}>⚠️ El resultado numérico incluye Prórroga (Excluye Penaltis)</p>
-
-                        <div style={styles.formGroup}>
-                            <label style={styles.label}>{isIda ? "RESULTADO 1X2" : "DESENLACE ELIMINATORIA"} <span style={styles.oddsBadge}>{currentJornada.esVip ? '2 PTS' : '1 PT'}</span></label>
-                            {isIda && (<select name="resultado1x2" value={pronostico.resultado1x2} onChange={handleChange} style={styles.input}><option value="">-- Seleccionar --</option><option value="Gana UD Las Palmas">Gana UD Las Palmas</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UD Las Palmas</option></select>)}
-                            {isVSemi && (<div style={{display: 'flex', gap: '15px'}}><button type="button" onClick={() => handleChange({target: {name: 'resultado1x2', value: 'Pasa UD Las Palmas'}})} style={pronostico.resultado1x2 === 'Pasa UD Las Palmas' ? styles.pasaButtonActive : styles.pasaButtonInactive}>PASA UDLP</button><button type="button" onClick={() => handleChange({target: {name: 'resultado1x2', value: 'No Pasa UD Las Palmas'}})} style={pronostico.resultado1x2 === 'No Pasa UD Las Palmas' ? styles.pasaButtonActive : styles.pasaButtonInactive}>NO PASA</button></div>)}
-                            {isVFinal && (<div style={{display: 'flex', gap: '15px'}}><button type="button" onClick={() => handleChange({target: {name: 'resultado1x2', value: 'Asciende UD Las Palmas'}})} style={pronostico.resultado1x2 === 'Asciende UD Las Palmas' ? styles.pasaButtonActive : styles.pasaButtonInactive}>ASCIENDE UDLP</button><button type="button" onClick={() => handleChange({target: {name: 'resultado1x2', value: 'No Asciende UD Las Palmas'}})} style={pronostico.resultado1x2 === 'No Asciende UD Las Palmas' ? styles.pasaButtonActive : styles.pasaButtonInactive}>NO ASCIENDE</button></div>)}
-                        </div>
-
-                        <div style={styles.formGroup}>
-                            <label style={styles.label}>1º GOLEADOR UDLP <span style={styles.oddsBadge}>{currentJornada.esVip ? '4 PTS' : '2 PTS'}</span></label>
-                            <select name="goleador" value={pronostico.goleador} onChange={handleChange} style={styles.input} disabled={pronostico.sinGoleador}><option value="">-- Seleccionar Jugador --</option>{plantilla.sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(j => <option key={j.nombre} value={j.nombre}>{j.nombre}</option>)}</select>
-                            <div style={{marginTop: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center'}}><input type="checkbox" name="sinGoleador" id="sgCheck" checked={pronostico.sinGoleador} onChange={handleChange} style={styles.checkbox} /><label htmlFor="sgCheck" style={{marginLeft: '10px', color: styles.colors.silver, fontWeight: 'bold', cursor: 'pointer'}}>Sin Goleador (SG) <span style={{...styles.oddsBadge, marginLeft: '5px'}}>1 PT</span></label></div>
-                        </div>
-
-                        {/* --- MÓDULO JOKER EXTRA --- */}
-                        <div style={{...styles.formGroup, backgroundColor: pronostico.jokerActivo ? 'rgba(252, 163, 17, 0.1)' : 'rgba(0,0,0,0.3)', border: pronostico.jokerActivo ? `1px solid ${styles.colors.warning}` : `1px solid rgba(255,215,0,0.05)`}}>
-                            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'}}>
-                                <label style={{...styles.label, marginBottom: 0, color: pronostico.jokerActivo ? styles.colors.warning : styles.colors.silver}}>🃏 JOKER EXTRA DE PLAYOFF</label>
-                                {jokerUsadoPreviamente ? (
-                                    <span style={{color: styles.colors.danger, fontWeight: 'bold', fontSize: '0.85rem'}}>🚫 Ya utilizado</span>
-                                ) : (
-                                    <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                                        <span style={{fontSize: '0.8rem', color: styles.colors.silver}}>{currentJornada.esVip ? '2€/hueco' : '1€/hueco'}</span>
-                                        <input type="checkbox" name="jokerActivo" checked={pronostico.jokerActivo} onChange={handleChange} style={styles.checkbox} />
+                ) : (
+                    <>
+                        {/* --- SECCIÓN PRE-APERTURA --- */}
+                        {currentJornada.estado === 'Pre-apertura' && (
+                            <div style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '25px', borderRadius: '16px', marginTop: '30px', border: `1px solid rgba(255,215,0,0.15)`}}>
+                                <h4 style={{color: styles.colors.silver, marginBottom: '15px', textTransform: 'uppercase', fontSize: '0.9rem', letterSpacing: '1px', fontFamily: "'Oswald', sans-serif"}}>Historial Fase Regular</h4>
+                                <p style={{color: styles.colors.golden, fontSize: '1.1rem', fontWeight: '600'}}>{currentJornada.h2hInfo || 'Sin datos registrados.'}</p>
+                                {timeLeftApertura && (
+                                    <div style={{marginTop: '25px', padding: '15px', backgroundColor: 'rgba(252, 163, 17, 0.1)', border: `1px solid rgba(252, 163, 17, 0.3)`, borderRadius: '12px'}}>
+                                        <p style={{color: styles.colors.silver, fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px'}}>Apertura de apuestas en:</p>
+                                        <p style={{color: styles.colors.warning, fontSize: '1.8rem', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", letterSpacing: '2px', marginTop: '5px'}}>{timeLeftApertura}</p>
                                     </div>
                                 )}
                             </div>
-                            
-                            {pronostico.jokerActivo && !jokerUsadoPreviamente && (
-                                <div style={{marginTop: '20px'}}>
-                                    <p style={{color: styles.colors.silver, fontSize: '0.85rem', marginBottom: '15px', fontStyle: 'italic'}}>Añade hasta 5 resultados exactos extra. Todo acertante de resultado suma el premio.</p>
-                                    <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                                        {[0,1,2,3,4].map(i => (
-                                            <div key={i} style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'}}>
-                                                <span style={{color: styles.colors.warning, fontWeight: 'bold', width: '20px'}}>{i+1}.</span>
-                                                <input type="number" value={pronostico.jokerPronosticos[i]?.local || ''} onChange={(e) => handleJokerChange(i, 'local', e.target.value)} style={styles.jokerInput} min="0" placeholder="L" />
-                                                <span style={{color: styles.colors.silver, fontWeight: 'bold'}}>-</span>
-                                                <input type="number" value={pronostico.jokerPronosticos[i]?.visitante || ''} onChange={(e) => handleJokerChange(i, 'visitante', e.target.value)} style={styles.jokerInput} min="0" placeholder="V" />
-                                            </div>
-                                        ))}
+                        )}
+
+                        {/* --- FORMULARIO DE APUESTAS --- */}
+                        {isAbiertaNotSubmitted && (
+                            <form onSubmit={handleGuardarClick} style={{marginTop: '30px', textAlign: 'left'}}>
+                                {currentJornada.h2hInfo && (<div style={styles.h2hContainer}><h4 style={{...styles.formSectionTitle, fontSize: '1rem', color: styles.colors.silver, marginBottom: '10px'}}>⚔️ Historial Regular ⚔️</h4><p style={{color: styles.colors.lightText, fontWeight: 'bold'}}>{currentJornada.h2hInfo}</p></div>)}
+                                
+                                {timeLeftCierre && (
+                                    <div style={{marginBottom: '25px', padding: '12px', backgroundColor: 'rgba(230,57,70,0.1)', border: `1px solid rgba(230,57,70,0.3)`, borderRadius: '12px', textAlign: 'center'}}>
+                                        <p style={{color: styles.colors.silver, fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px'}}>Cierre de apuestas en:</p>
+                                        <p style={{color: styles.colors.danger, fontSize: '1.6rem', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", letterSpacing: '2px', marginTop: '5px'}}>{timeLeftCierre}</p>
                                     </div>
+                                )}
+                                
+                                <p style={{color: styles.colors.warning, fontSize: '0.85rem', textAlign: 'center', marginBottom: '25px', fontWeight: '600'}}>⚠️ El resultado numérico incluye Prórroga (Excluye Penaltis)</p>
+
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>{isIda ? "RESULTADO 1X2" : "DESENLACE ELIMINATORIA"} <span style={styles.oddsBadge}>{currentJornada.esVip ? '2 PTS' : '1 PT'}</span></label>
+                                    {isIda && (<select name="resultado1x2" value={pronostico.resultado1x2} onChange={handleChange} style={styles.input}><option value="">-- Seleccionar --</option><option value="Gana UD Las Palmas">Gana UD Las Palmas</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UD Las Palmas</option></select>)}
+                                    {isVSemi && (<div style={{display: 'flex', gap: '15px'}}><button type="button" onClick={() => handleChange({target: {name: 'resultado1x2', value: 'Pasa UD Las Palmas'}})} style={pronostico.resultado1x2 === 'Pasa UD Las Palmas' ? styles.pasaButtonActive : styles.pasaButtonInactive}>PASA UDLP</button><button type="button" onClick={() => handleChange({target: {name: 'resultado1x2', value: 'No Pasa UD Las Palmas'}})} style={pronostico.resultado1x2 === 'No Pasa UD Las Palmas' ? styles.pasaButtonActive : styles.pasaButtonInactive}>NO PASA</button></div>)}
+                                    {isVFinal && (<div style={{display: 'flex', gap: '15px'}}><button type="button" onClick={() => handleChange({target: {name: 'resultado1x2', value: 'Asciende UD Las Palmas'}})} style={pronostico.resultado1x2 === 'Asciende UD Las Palmas' ? styles.pasaButtonActive : styles.pasaButtonInactive}>ASCIENDE UDLP</button><button type="button" onClick={() => handleChange({target: {name: 'resultado1x2', value: 'No Asciende UD Las Palmas'}})} style={pronostico.resultado1x2 === 'No Asciende UD Las Palmas' ? styles.pasaButtonActive : styles.pasaButtonInactive}>NO ASCIENDE</button></div>)}
                                 </div>
-                            )}
-                        </div>
 
-                        <button type="submit" style={{...styles.mainButton, width: '100%', fontSize: '1.2rem', padding: '16px'}}>GUARDAR APUESTA</button>
-                        {message && <p style={styles.message}>{message}</p>}
-                    </form>
-                )}
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>1º GOLEADOR UDLP <span style={styles.oddsBadge}>{currentJornada.esVip ? '4 PTS' : '2 PTS'}</span></label>
+                                    <select name="goleador" value={pronostico.goleador} onChange={handleChange} style={styles.input} disabled={pronostico.sinGoleador}><option value="">-- Seleccionar Jugador --</option>{plantilla.sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(j => <option key={j.nombre} value={j.nombre}>{j.nombre}</option>)}</select>
+                                    <div style={{marginTop: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center'}}><input type="checkbox" name="sinGoleador" id="sgCheck" checked={pronostico.sinGoleador} onChange={handleChange} style={styles.checkbox} /><label htmlFor="sgCheck" style={{marginLeft: '10px', color: styles.colors.silver, fontWeight: 'bold', cursor: 'pointer'}}>Sin Goleador (SG) <span style={{...styles.oddsBadge, marginLeft: '5px'}}>1 PT</span></label></div>
+                                </div>
 
-                {/* --- TU PRONÓSTICO (ESTILO FICHAS) --- */}
-                {(hasSubmitted || ['Cerrada', 'En vivo', 'Finalizada'].includes(currentJornada.estado)) && (
-                    <div style={{marginTop: '35px'}}>
-                        <h4 style={styles.formSectionTitle}>TU PRONÓSTICO</h4>
-                        <div style={{backgroundColor: 'rgba(212, 175, 55, 0.05)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(212,175,55,0.3)`, display: 'inline-block', minWidth: '85%', backdropFilter: 'blur(5px)'}}>
-                            {hasSubmitted ? (
-                                <>
-                                    <div style={{marginBottom: '15px'}}>
-                                        <span style={styles.betPill}>{pronostico.golesLocal}-{pronostico.golesVisitante}</span>
-                                        {pronostico.jokerActivo && pronostico.jokerPronosticos.map((jp, idx) => (
-                                            jp.local !== '' && jp.visitante !== '' && <span key={idx} style={{...styles.betPill, borderColor: styles.colors.warning, color: styles.colors.warning}}>🃏 {jp.local}-{jp.visitante}</span>
-                                        ))}
+                                {/* --- MÓDULO JOKER EXTRA --- */}
+                                <div style={{...styles.formGroup, backgroundColor: pronostico.jokerActivo ? 'rgba(252, 163, 17, 0.1)' : 'rgba(0,0,0,0.3)', border: pronostico.jokerActivo ? `1px solid ${styles.colors.warning}` : `1px solid rgba(255,215,0,0.05)`}}>
+                                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'}}>
+                                        <label style={{...styles.label, marginBottom: 0, color: pronostico.jokerActivo ? styles.colors.warning : styles.colors.silver}}>🃏 JOKER EXTRA DE PLAYOFF</label>
+                                        {jokerUsadoPreviamente ? (
+                                            <span style={{color: styles.colors.danger, fontWeight: 'bold', fontSize: '0.85rem'}}>🚫 Ya utilizado</span>
+                                        ) : (
+                                            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                                                <span style={{fontSize: '0.8rem', color: styles.colors.silver}}>{currentJornada.esVip ? '2€/hueco' : '1€/hueco'}</span>
+                                                <input type="checkbox" name="jokerActivo" checked={pronostico.jokerActivo} onChange={handleChange} style={styles.checkbox} />
+                                            </div>
+                                        )}
                                     </div>
-                                    <p style={{color: styles.colors.lightText, marginTop: '8px', fontSize: '1.1rem', fontWeight: '600'}}>{pronostico.resultado1x2}</p>
-                                    <p style={{color: styles.colors.silver, marginTop: '8px', fontSize: '0.95rem'}}>⚽ {pronostico.sinGoleador ? 'Sin Goleador' : pronostico.goleador}</p>
-                                </>
-                            ) : (<p style={{color: styles.colors.danger, fontWeight: 'bold', fontSize: '1.1rem'}}>No enviaste pronóstico a tiempo.</p>)}
-                        </div>
-                    </div>
+                                    
+                                    {pronostico.jokerActivo && !jokerUsadoPreviamente && (
+                                        <div style={{marginTop: '20px'}}>
+                                            <p style={{color: styles.colors.silver, fontSize: '0.85rem', marginBottom: '15px', fontStyle: 'italic'}}>Añade hasta 5 resultados exactos extra. Todo acertante de resultado suma el premio.</p>
+                                            <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                                                {[0,1,2,3,4].map(i => (
+                                                    <div key={i} style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'}}>
+                                                        <span style={{color: styles.colors.warning, fontWeight: 'bold', width: '20px'}}>{i+1}.</span>
+                                                        <input type="number" value={pronostico.jokerPronosticos[i]?.local || ''} onChange={(e) => handleJokerChange(i, 'local', e.target.value)} style={styles.jokerInput} min="0" placeholder="L" />
+                                                        <span style={{color: styles.colors.silver, fontWeight: 'bold'}}>-</span>
+                                                        <input type="number" value={pronostico.jokerPronosticos[i]?.visitante || ''} onChange={(e) => handleJokerChange(i, 'visitante', e.target.value)} style={styles.jokerInput} min="0" placeholder="V" />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button type="submit" style={{...styles.mainButton, width: '100%', fontSize: '1.2rem', padding: '16px'}}>GUARDAR APUESTA</button>
+                                {message && <p style={styles.message}>{message}</p>}
+                            </form>
+                        )}
+
+                        {/* --- TU PRONÓSTICO (ESTILO FICHAS) --- */}
+                        {(hasSubmitted && isBetVisible) || (['Cerrada', 'En vivo', 'Finalizada'].includes(currentJornada.estado)) ? (
+                            <div style={{marginTop: '35px'}}>
+                                <h4 style={styles.formSectionTitle}>TU PRONÓSTICO</h4>
+                                <div style={{backgroundColor: 'rgba(212, 175, 55, 0.05)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(212,175,55,0.3)`, display: 'inline-block', minWidth: '85%', backdropFilter: 'blur(5px)'}}>
+                                    {hasSubmitted ? (
+                                        <>
+                                            <div style={{marginBottom: '15px'}}>
+                                                <span style={styles.betPill}>{pronostico.golesLocal}-{pronostico.golesVisitante}</span>
+                                                {pronostico.jokerActivo && pronostico.jokerPronosticos.map((jp, idx) => (
+                                                    jp.local !== '' && jp.visitante !== '' && <span key={idx} style={{...styles.betPill, borderColor: styles.colors.warning, color: styles.colors.warning}}>🃏 {jp.local}-{jp.visitante}</span>
+                                                ))}
+                                            </div>
+                                            <p style={{color: styles.colors.lightText, marginTop: '8px', fontSize: '1.1rem', fontWeight: '600'}}>{pronostico.resultado1x2}</p>
+                                            <p style={{color: styles.colors.silver, marginTop: '8px', fontSize: '0.95rem'}}>⚽ {pronostico.sinGoleador ? 'Sin Goleador' : pronostico.goleador}</p>
+                                        </>
+                                    ) : (<p style={{color: styles.colors.danger, fontWeight: 'bold', fontSize: '1.1rem'}}>No enviaste pronóstico a tiempo.</p>)}
+                                </div>
+                            </div>
+                        ) : null}
+                    </>
                 )}
 
                 {/* --- ALERTA DE JOKERS / DINERO EXTRA --- */}
@@ -577,6 +608,26 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     </div>
                 )}
             </div>
+
+            {/* --- MODAL DEL PIN DE SEGURIDAD --- */}
+            {showPinModal && (
+                <div style={styles.modalOverlay}>
+                    <div style={styles.modalContent}>
+                        <div style={{fontSize: '3rem', marginBottom: '10px'}}>🔒</div>
+                        <h3 style={{...styles.title, marginBottom: '15px', borderBottom: 'none'}}>SEGURIDAD</h3>
+                        <p style={{color: styles.colors.silver, fontSize: '0.95rem', marginBottom: '25px', lineHeight: 1.5}}>Introduce tu PIN de 4 dígitos para {pinAction === 'save' ? 'guardar' : 'ver'} tu apuesta.</p>
+                        
+                        <input type="password" value={enteredPin} onChange={e => setEnteredPin(e.target.value)} maxLength="4" placeholder="••••" style={{...styles.input, textAlign: 'center', fontSize: '2.5rem', letterSpacing: '15px', width: '180px', padding: '15px', borderRadius: '16px', backgroundColor: 'rgba(0,0,0,0.6)', border: `2px solid ${styles.colors.goldenDark}`}} autoFocus />
+                        
+                        {pinError && <p style={{color: styles.colors.danger, marginTop: '15px', fontWeight: 'bold', backgroundColor: 'rgba(230,57,70,0.1)', padding: '10px', borderRadius: '8px', width: '100%'}}>{pinError}</p>}
+                        
+                        <div style={{display: 'flex', gap: '15px', marginTop: '30px', width: '100%'}}>
+                            <button onClick={() => setShowPinModal(false)} style={{...styles.secondaryButton, flex: 1}}>CANCELAR</button>
+                            <button onClick={confirmPin} style={{...styles.mainButton, flex: 1, marginTop: 0}}>CONFIRMAR</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -1349,8 +1400,8 @@ function App() {
             setCurrentUser(user);
             set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
             setScreen('app');
-            // MODAL V8: Saltará automáticamente al hacer login
-            if (!localStorage.getItem('playoffWelcomeSeenV8')) { setShowWelcomeModal(true); }
+            // MODAL V10: Saltará automáticamente al hacer login
+            if (!localStorage.getItem('playoffWelcomeSeenV10')) { setShowWelcomeModal(true); }
         } catch (error) { alert("Error al iniciar sesión."); }
     };
 
