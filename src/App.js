@@ -168,7 +168,7 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
         if (!(golesLocal > pL || golesVisitante > pV) && golesLocal === pL && golesVisitante === pV) exactoAcertado = true;
     }
     
-    // Chequeo de los Jokers (solo si no acertó el principal, para no duplicar puntos)
+    // Chequeo de los Jokers
     if (!exactoAcertado && pronostico.jokerActivo && pronostico.jokerPronosticos) {
         for (let jp of pronostico.jokerPronosticos) {
             if (jp.local !== '' && jp.visitante !== '') {
@@ -462,6 +462,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             </div>
                         )}
                         
+                        <p style={{color: styles.colors.warning, fontSize: '0.85rem', textAlign: 'center', marginBottom: '25px', fontWeight: '600'}}>⚠️ El resultado numérico incluye Prórroga (Excluye Penaltis)</p>
+
                         <div style={styles.formGroup}>
                             <label style={styles.label}>{isIda ? "RESULTADO 1X2" : "DESENLACE ELIMINATORIA"} <span style={styles.oddsBadge}>{currentJornada.esVip ? '2 PTS' : '1 PT'}</span></label>
                             {isIda && (<select name="resultado1x2" value={pronostico.resultado1x2} onChange={handleChange} style={styles.input}><option value="">-- Seleccionar --</option><option value="Gana UD Las Palmas">Gana UD Las Palmas</option><option value="Empate">Empate</option><option value="Pierde UD Las Palmas">Pierde UD Las Palmas</option></select>)}
@@ -656,6 +658,100 @@ const LaJornadaScreen = ({ user, teamLogos, userProfiles, onlineUsers, clasifica
                             })}
                         </div>
                     )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ElCaminoScreen = ({ user, userProfiles, onlineUsers }) => {
+    const [config, setConfig] = useState(null); 
+    const [apuesta, setApuesta] = useState(''); 
+    const [hasBet, setHasBet] = useState(false);
+    const [allBets, setAllBets] = useState([]);
+    const [timeLeft, setTimeLeft] = useState('');
+
+    useEffect(() => { 
+        const unsubConfig = onSnapshot(doc(db, "configuracion", "playoff"), (d) => { if(d.exists()) setConfig(d.data()); }); 
+        getDoc(doc(db, "apuestasExtra", user)).then(d => { if(d.exists()){ setApuesta(d.data().equipo); setHasBet(true); }}); 
+        const unsubBets = onSnapshot(collection(db, "apuestasExtra"), (snap) => { setAllBets(snap.docs.map(d => ({id: d.id, ...d.data()}))); });
+        return () => { unsubConfig(); unsubBets(); };
+    }, [user]);
+
+    useEffect(() => {
+        if (!config?.fechaCierreApuestaExtra?.seconds) return;
+        const timer = setInterval(() => {
+            const target = new Date(config.fechaCierreApuestaExtra.seconds * 1000);
+            const now = new Date();
+            const diff = target - now;
+            if (diff <= 0) { setTimeLeft('CERRADO'); clearInterval(timer); } 
+            else {
+                const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+                const m = Math.floor((diff / 1000 / 60) % 60);
+                const s = Math.floor((diff / 1000) % 60);
+                setTimeLeft(`${d}d ${h}h ${m}m ${s}s`);
+            }
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [config]);
+
+    const handleBet = async (eq) => { 
+        if(hasBet || config?.bloqueado) return; 
+        if(window.confirm(`¿Apostar por ${eq}? Sumarás +5 puntos si asciende.`)) { 
+            await setDoc(doc(db, "apuestasExtra", user), { equipo: eq }); setApuesta(eq); setHasBet(true); 
+        }
+    };
+
+    const isSecreto = config?.fechaCierreApuestaExtra && new Date() < new Date(config.fechaCierreApuestaExtra.seconds * 1000);
+
+    return (
+        <div>
+            <h2 style={styles.title}>EL CAMINO AL ASCENSO</h2>
+            <div style={styles.bracketContainer}>
+                <div style={styles.bracketMatchup}><div style={{...styles.bracketTeam, ...(config?.semi1_ganador === 'UD Almería' ? styles.bracketWinner : {})}}>UD Almería</div><span style={{color: styles.colors.silver, fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif"}}>VS</span><div style={{...styles.bracketTeam, ...(config?.semi1_ganador === 'CD Castellón' ? styles.bracketWinner : {})}}>CD Castellón</div></div>
+                <div style={styles.bracketMatchup}><div style={{...styles.bracketTeam, ...(config?.semi2_ganador === 'Málaga CF' ? styles.bracketWinner : {})}}>Málaga CF</div><span style={{color: styles.colors.silver, fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif"}}>VS</span><div style={{...styles.bracketTeam, ...(config?.semi2_ganador === 'UD Las Palmas' ? styles.bracketWinner : {})}}>UD Las Palmas</div></div>
+                <div style={styles.bracketFinal}><h4 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.golden, marginBottom: '15px', fontSize: '1.5rem', letterSpacing: '2px'}}>GRAN FINAL</h4><p style={{fontSize: '1.2rem', fontWeight: '600', color: styles.colors.lightText}}>{config?.semi1_ganador || '???'} vs {config?.semi2_ganador || '???'}</p>{config?.ascendido && <h3 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.success, marginTop: '20px', fontSize: '2rem', textShadow: '0 0 20px rgba(16,185,129,0.5)'}}>🎉 ASCIENDE: {config.ascendido} 🎉</h3>}</div>
+            </div>
+            
+            <div style={{...styles.form, textAlign: 'center'}}>
+                <h3 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.golden, marginBottom: '10px', fontSize: '1.4rem', letterSpacing: '1px'}}>APUESTA EXTRA <span style={styles.oddsBadge}>+5 PTS</span></h3>
+                <p style={{marginBottom: '20px', color: styles.colors.silver, fontSize: '0.9rem'}}>¿Qué equipo logrará el ansiado ascenso a Primera?</p>
+                
+                {isSecreto && !config?.bloqueado && timeLeft !== 'CERRADO' && (
+                    <div style={{marginBottom: '25px', padding: '15px', backgroundColor: 'rgba(230,57,70,0.1)', border: `1px solid rgba(230,57,70,0.3)`, borderRadius: '12px'}}>
+                        <p style={{color: styles.colors.silver, fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.85rem', marginBottom: '5px', letterSpacing: '1px'}}>Cierre de Apuestas en:</p>
+                        <p style={{color: styles.colors.danger, fontSize: '2rem', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", letterSpacing: '2px', textShadow: '0 0 10px rgba(230,57,70,0.4)'}}>{timeLeft}</p>
+                    </div>
+                )}
+
+                {!hasBet && (!config || !config.bloqueado) && timeLeft !== 'CERRADO' ? (
+                    <div style={{display: 'flex', gap: '15px', flexWrap: 'wrap', justifyContent: 'center'}}>
+                        {["UD Almería", "Málaga CF", "UD Las Palmas", "CD Castellón"].map(eq => (<button key={eq} onClick={() => handleBet(eq)} style={{...styles.secondaryButton, padding: '12px 20px', fontSize: '1rem'}}>{eq}</button>))}
+                    </div>
+                ) : (
+                    <div style={{padding: '20px', backgroundColor: 'rgba(212,175,55,0.05)', borderRadius: '16px', border: `1px solid rgba(212,175,55,0.3)`}}>
+                        <p style={{fontWeight: '600', fontSize: '1.1rem', color: styles.colors.silver}}>Tu apuesta: <span style={{color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", fontSize: '1.4rem', letterSpacing: '1px', marginLeft: '10px'}}>{apuesta || 'No apostaste'}</span></p>
+                        {config?.ascendido && apuesta && <p style={{marginTop: '15px', fontWeight: 'bold', fontSize: '1.1rem', color: config.ascendido === apuesta ? styles.colors.success : styles.colors.danger}}>{config.ascendido === apuesta ? '¡HAS GANADO +5 PUNTOS!' : 'Apuesta Fallada'}</p>}
+                    </div>
+                )}
+            </div>
+
+            <div style={{marginTop: '40px'}}>
+                <h4 style={styles.formSectionTitle}>APUESTAS DE LOS JUGADORES</h4>
+                <div style={{backgroundColor: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(255,215,0,0.15)`}}>
+                    {allBets.length > 0 ? (
+                        <ul style={{listStyle: 'none', padding: 0}}>
+                            {allBets.map(b => (
+                                <li key={b.id} style={{padding: '12px 0', borderBottom: `1px solid rgba(255,255,255,0.05)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                    <PlayerProfileDisplay name={b.id} profile={userProfiles[b.id]} isOnline={onlineUsers ? onlineUsers[b.id] : false} />
+                                    {b.id === user ? ( <span style={{fontWeight: 'bold', color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px', fontSize: '1.1rem'}}>{b.equipo}</span> ) : (
+                                        isSecreto ? <span style={styles.secrecyBadge}>Secreta 🤫</span> : <span style={{fontWeight: '600', color: styles.colors.silver, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px', fontSize: '1.1rem'}}>{b.equipo}</span>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (<p style={{textAlign: 'center', color: styles.colors.silver, fontStyle: 'italic'}}>Aún no hay apuestas.</p>)}
                 </div>
             </div>
         </div>
@@ -977,7 +1073,6 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
         alert('Marcador en vivo actualizado');
     };
 
-    // --- NUEVO: FUNCIONES FALSAS PARA LOS BOTONES PUSH ---
     const handleSendPush1Hora = async () => {
         if(window.confirm("¿Seguro que quieres enviar notificación PUSH: '1 Hora para cierre' a todos los usuarios?")) {
             alert("✅ Notificación PUSH (1 HORA) enviada (simulación).");
@@ -1092,7 +1187,7 @@ const AdminPlayoffPanel = () => {
                 <div><label style={styles.label}>¡EQUIPO ASCENDIDO!:</label><input type="text" value={config.ascendido || ''} onChange={e=>setConfig({...config, ascendido: e.target.value})} style={styles.input} /></div>
                 <div><label style={styles.label}>Cierre Apuestas Extras (+5):</label><input type="datetime-local" value={config.fechaCierreApuestaExtra || ''} onChange={e=>setConfig({...config, fechaCierreApuestaExtra: e.target.value})} style={styles.input} /></div>
             </div>
-            <div style={{marginTop: '25px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: '10px', display: 'flex', alignItems: 'center'}}><input type="checkbox" checked={config.bloqueado} onChange={e=>setConfig({...config, bloqueado: e.target.checked})} style={styles.checkbox} /> <span style={{color:colors.lightText, marginLeft:'12px', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase'}}>Bloquear Apuestas Extra (Botones)</span></div>
+            <div style={{marginTop: '25px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: '10px', display: 'flex', alignItems: 'center'}}><input type="checkbox" checked={config.bloqueado} onChange={e=>setConfig({...config, bloqueado: e.target.checked})} style={styles.checkbox} /> <span style={{color:styles.colors.lightText, marginLeft:'12px', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase'}}>Bloquear Apuestas Extra (Botones)</span></div>
             <button onClick={handleSave} style={{...styles.saveButton, marginTop:'20px', width: '100%'}}>GUARDAR CUADRO PLAYOFF</button>
         </div>
     );
@@ -1167,7 +1262,7 @@ function App() {
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600;700&display=swap');
             * { margin: 0; padding: 0; box-sizing: border-box; }
             html { font-size: 16px !important; -webkit-text-size-adjust: 100%; }
-            body, #root { width: 100%; min-width: 100%; overflow-x: hidden; background-color: ${colors.deepBlue}; }
+            body, #root { width: 100%; min-width: 100%; overflow-x: hidden; background-color: ${styles.colors.deepBlue}; }
             @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
             @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
             @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
