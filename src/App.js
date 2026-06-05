@@ -242,7 +242,7 @@ const EpicSplashScreen = () => (
     </div>
 );
 
-// --- MODAL ÉPICO DE BIENVENIDA V10 (CON AVISO DEL PIN) ---
+// --- MODAL ÉPICO DE BIENVENIDA V11 (AVISO DE SEGURIDAD CORREGIDO) ---
 const PlayoffWelcomeModal = ({ onClose }) => {
     const [step, setStep] = useState(1);
 
@@ -250,7 +250,7 @@ const PlayoffWelcomeModal = ({ onClose }) => {
         <div style={styles.modalOverlay}>
             <div style={styles.modalContent}>
                 <h2 style={{...styles.title, fontSize: '1.8rem', marginBottom: '0', borderBottom: 'none', letterSpacing: '2px', lineHeight: 1.2}}>
-                    {step === 1 && "🔥 ACTUALIZACIÓN V10"}{step === 2 && "🃏 EL JOKER EXTRA"}{step === 3 && "💰 QUIÉN GANA EL BOTE"}{step === 4 && "🔒 BLINDAJE CON PIN"}
+                    {step === 1 && "🔥 ACTUALIZACIÓN V11"}{step === 2 && "🃏 EL JOKER DE PLAYOFF"}{step === 3 && "💰 QUIÉN GANA EL BOTE"}{step === 4 && "🔒 CONFIGURA TU PIN"}
                 </h2>
                 <div style={styles.modalDots}>
                     <div style={step === 1 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 2 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 3 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 4 ? styles.modalDotActive : styles.modalDotInactive} />
@@ -259,32 +259,32 @@ const PlayoffWelcomeModal = ({ onClose }) => {
                 <div style={{minHeight: '260px', display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', fontFamily: "'Montserrat', sans-serif"}}>
                     {step === 1 && (
                         <>
-                            <p style={{fontSize: '1.1rem', marginBottom: '20px', color: styles.colors.lightText, lineHeight: 1.5, fontWeight: '600'}}>Seguridad y herramientas listas para la guerra.</p>
+                            <p style={{fontSize: '1.1rem', marginBottom: '20px', color: styles.colors.lightText, lineHeight: 1.5, fontWeight: '600'}}>Errores corregidos. Todo listo para la batalla real.</p>
                             <div style={{backgroundColor: 'rgba(212,175,55,0.05)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(212,175,55,0.3)`}}>
-                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '10px'}}>1. <strong>Plantilla Actualizada:</strong> Lista de 1º Goleador corregida y al día.</p>
-                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6}}>2. <strong>Joker Restaurado:</strong> 1 único uso para todo el Playoff. Úsalo con cabeza.</p>
+                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '10px'}}>1. <strong>Plantilla Actualizada:</strong> Lista de 1º Goleador corregida con los datos reales.</p>
+                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6}}>2. <strong>Joker Restaurado:</strong> 1 único uso para todo el Playoff.</p>
                             </div>
                         </>
                     )}
                     {step === 2 && (
                         <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.warning, fontWeight: 'bold'}}>5 HUECOS EXTRA:</span> Activar el Joker abre 5 casilleros solo para Resultados Exactos. Si fallas el principal pero uno de los Joker acierta, te llevas los puntos y el bote.</p>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>EL COSTE:</span> Pagas por cada resultado que rellenes (1€ en Ida / 2€ en Vuelta VIP). Todo el dinero extra engorda el bote.</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.warning, fontWeight: 'bold'}}>5 HUECOS EXTRA:</span> Activar el Joker abre 5 casilleros solo para Resultados Exactos. Si fallas el principal pero uno de los Joker acierta, ganas los puntos y optas al bote.</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>EL COSTE:</span> Pagas por cada resultado extra que rellenes. Todo el dinero extra engorda directamente el bote de la jornada.</p>
                         </div>
                     )}
                     {step === 3 && (
                         <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
                             <p style={{marginBottom: '15px', color: styles.colors.lightText, fontWeight: '600'}}>Aclaración sobre el ganador de la jornada:</p>
-                            <p style={{marginBottom: '15px'}}>El dinero <strong style={{color: styles.colors.success}}>NO es para quien saque más puntos</strong>. El bote se lo lleva exclusivamente quien acierte el <strong>Resultado Exacto</strong>.</p>
-                            <p style={{marginBottom: '15px'}}>Si aciertas el resultado usando el Joker, entras en el reparto del dinero. Si sois varios, se divide. Si nadie acierta, se acumula a la siguiente.</p>
+                            <p style={{marginBottom: '15px'}}>El dinero <strong style={{color: styles.colors.success}}>NUNCA es para quien saca más puntos</strong>. El bote se lo lleva exclusivamente quien acierte el <strong>Resultado Exacto</strong>.</p>
+                            <p style={{marginBottom: '15px'}}>Si aciertas el resultado exacto (en la principal o el Joker), entras en el reparto del dinero. Si sois varios, se divide.</p>
                         </div>
                     )}
                     {step === 4 && (
                         <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.danger, fontWeight: 'bold'}}>SISTEMA DE PIN RESTABLECIDO:</span> Para garantizar que nadie espíe ni modifique tus apuestas, volvemos a la lógica estricta de la fase regular.</p>
-                            <p style={{marginBottom: '15px'}}>Para <strong>Guardar tu apuesta</strong> se te pedirá tu código PIN secreto de 4 dígitos. Además, si quieres revisar tu apuesta guardada, tu panel estará oculto hasta que introduzcas tu PIN.</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.danger, fontWeight: 'bold'}}>SISTEMA DE PIN RESTAURADO:</span> Ha habido un fallo en la versión anterior y algunas apuestas quedaron desprotegidas. Pedimos disculpas si tu apuesta fue vista.</p>
+                            <p style={{marginBottom: '15px'}}>El código genérico ha sido <strong>eliminado</strong>. A partir de ahora, al guardar o ver tu apuesta, la app te pedirá que <strong>establezcas tu propio PIN de 4 dígitos</strong>.</p>
                             <div style={{padding: '12px', backgroundColor: 'rgba(230,57,70,0.1)', border: `1px solid rgba(230,57,70,0.3)`, borderRadius: '12px', textAlign: 'center', marginBottom: '10px'}}>
-                                <strong style={{color: styles.colors.danger, fontSize: '0.85rem'}}>Si alguien entra a tu perfil, no verá tu apuesta sin tu clave.</strong>
+                                <strong style={{color: styles.colors.danger, fontSize: '0.85rem'}}>Podrás modificar tu PIN en cualquier momento.</strong>
                             </div>
                         </div>
                     )}
@@ -292,7 +292,7 @@ const PlayoffWelcomeModal = ({ onClose }) => {
                 
                 <div style={{display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: '30px'}}>
                     {step > 1 ? <button onClick={() => setStep(prev => prev - 1)} style={styles.secondaryButton}>Atrás</button> : <div></div>}
-                    {step < 4 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV10', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡ENTENDIDO!</button>}
+                    {step < 4 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV11', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡ENTENDIDO!</button>}
                 </div>
             </div>
         </div>
@@ -317,10 +317,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     const [estadisticasJoker, setEstadisticasJoker] = useState({ usuarios: 0, dineroExtra: 0 });
 
     // --- ESTADOS DE SEGURIDAD (PIN) ---
-    const [showPinModal, setShowPinModal] = useState(false);
-    const [pinAction, setPinAction] = useState(''); // 'view' o 'save'
-    const [enteredPin, setEnteredPin] = useState('');
-    const [pinError, setPinError] = useState('');
+    const [pinModal, setPinModal] = useState({ isOpen: false, targetAction: '', mode: 'enter', error: '' }); // mode: 'enter', 'create', 'modify'
+    const [pinData, setPinData] = useState({ current: '', newPin: '', confirm: '' });
     const [isBetVisible, setIsBetVisible] = useState(false);
 
     useEffect(() => {
@@ -348,10 +346,10 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     while(data.jokerPronosticos.length < 5) data.jokerPronosticos.push({local:'', visitante:''});
                     setPronostico(data); 
                     setHasSubmitted(true);
-                    setIsBetVisible(false); // La apuesta se carga pero queda oculta inicialmente
+                    setIsBetVisible(false); // Apuesta oculta por defecto al entrar
                 } else { 
                     setHasSubmitted(false); 
-                    setIsBetVisible(true); // Si no hay apuesta, el form está visible
+                    setIsBetVisible(true); 
                 }
 
                 onSnapshot(collection(db, "pronosticos", activa.id, "jugadores"), (pSnapRealtime) => {
@@ -407,38 +405,67 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     };
 
     // --- LÓGICA DE SEGURIDAD (PIN) ---
+    const openPinModal = (action) => {
+        const userPin = userProfiles[user]?.pin;
+        setPinData({ current: '', newPin: '', confirm: '' });
+        setPinModal({
+            isOpen: true,
+            targetAction: action, // 'save' o 'view'
+            mode: userPin ? 'enter' : 'create', // Si no tiene PIN, obligar a crear
+            error: ''
+        });
+    };
+
     const handleGuardarClick = (e) => {
         e.preventDefault();
         if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || pronostico.resultado1x2 === '' || (!pronostico.goleador && !pronostico.sinGoleador)) { setMessage('Rellena todos los campos principales.'); return; }
-        setPinAction('save');
-        setEnteredPin('');
-        setPinError('');
-        setShowPinModal(true);
+        openPinModal('save');
     };
 
-    const handleViewClick = () => {
-        setPinAction('view');
-        setEnteredPin('');
-        setPinError('');
-        setShowPinModal(true);
-    };
-
-    const confirmPin = async () => {
-        const realPin = userProfiles[user]?.pin || '1234';
-        if (enteredPin !== realPin) {
-            setPinError('PIN incorrecto. Inténtalo de nuevo.');
-            return;
-        }
-        setShowPinModal(false);
-        if (pinAction === 'save') {
+    const executeTargetAction = async () => {
+        if (pinModal.targetAction === 'save') {
             try { 
                 await setDoc(doc(db, "pronosticos", currentJornada.id, "jugadores", user), { ...pronostico, lastUpdated: serverTimestamp() }); 
                 setHasSubmitted(true); 
                 setIsBetVisible(true);
                 setMessage('¡Pronóstico Guardado con éxito!'); 
             } catch (err) { setMessage('Error al guardar.'); }
-        } else if (pinAction === 'view') {
+        } else if (pinModal.targetAction === 'view') {
             setIsBetVisible(true);
+        }
+        setPinModal({ ...pinModal, isOpen: false });
+    };
+
+    const handlePinSubmit = async () => {
+        const userPin = userProfiles[user]?.pin;
+
+        if (pinModal.mode === 'enter') {
+            if (pinData.current !== userPin) {
+                setPinModal(prev => ({ ...prev, error: 'PIN incorrecto.' }));
+                return;
+            }
+            executeTargetAction();
+        } 
+        else if (pinModal.mode === 'create' || pinModal.mode === 'modify') {
+            if (pinModal.mode === 'modify' && pinData.current !== userPin) {
+                setPinModal(prev => ({ ...prev, error: 'El PIN actual no es correcto.' }));
+                return;
+            }
+            if (pinData.newPin.length !== 4) {
+                setPinModal(prev => ({ ...prev, error: 'El nuevo PIN debe tener 4 dígitos.' }));
+                return;
+            }
+            if (pinData.newPin !== pinData.confirm) {
+                setPinModal(prev => ({ ...prev, error: 'Los PINs no coinciden.' }));
+                return;
+            }
+            
+            try {
+                await setDoc(doc(db, "clasificacion", user), { pin: pinData.newPin }, { merge: true });
+                executeTargetAction();
+            } catch (error) {
+                setPinModal(prev => ({ ...prev, error: 'Error al guardar el PIN.' }));
+            }
         }
     };
 
@@ -483,8 +510,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     <div style={{marginTop: '40px', padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: '20px', border: `1px solid rgba(255,215,0,0.2)`, boxShadow: `0 10px 30px rgba(0,0,0,0.5)`}}>
                         <div style={{fontSize: '4rem', marginBottom: '15px'}}>🔒</div>
                         <h4 style={{color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", fontSize: '1.5rem', letterSpacing: '1px', marginBottom: '10px', textTransform: 'uppercase'}}>APUESTA BLINDADA</h4>
-                        <p style={{color: styles.colors.silver, fontSize: '0.95rem', marginBottom: '25px', lineHeight: 1.5}}>Tu apuesta se ha guardado correctamente y está protegida. Nadie puede verla hasta que arranque el partido.</p>
-                        <button onClick={handleViewClick} style={styles.mainButton}>VER / MODIFICAR APUESTA</button>
+                        <p style={{color: styles.colors.silver, fontSize: '0.95rem', marginBottom: '25px', lineHeight: 1.5}}>Tu apuesta se ha guardado y está protegida. Nadie puede verla sin tu código de seguridad.</p>
+                        <button onClick={() => openPinModal('view')} style={styles.mainButton}>VER / MODIFICAR APUESTA</button>
                     </div>
                 ) : (
                     <>
@@ -610,20 +637,51 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             </div>
 
             {/* --- MODAL DEL PIN DE SEGURIDAD --- */}
-            {showPinModal && (
+            {pinModal.isOpen && (
                 <div style={styles.modalOverlay}>
                     <div style={styles.modalContent}>
                         <div style={{fontSize: '3rem', marginBottom: '10px'}}>🔒</div>
                         <h3 style={{...styles.title, marginBottom: '15px', borderBottom: 'none'}}>SEGURIDAD</h3>
-                        <p style={{color: styles.colors.silver, fontSize: '0.95rem', marginBottom: '25px', lineHeight: 1.5}}>Introduce tu PIN de 4 dígitos para {pinAction === 'save' ? 'guardar' : 'ver'} tu apuesta.</p>
                         
-                        <input type="password" value={enteredPin} onChange={e => setEnteredPin(e.target.value)} maxLength="4" placeholder="••••" style={{...styles.input, textAlign: 'center', fontSize: '2.5rem', letterSpacing: '15px', width: '180px', padding: '15px', borderRadius: '16px', backgroundColor: 'rgba(0,0,0,0.6)', border: `2px solid ${styles.colors.goldenDark}`}} autoFocus />
+                        {pinModal.mode === 'enter' && (
+                            <>
+                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', marginBottom: '25px', lineHeight: 1.5}}>Introduce tu PIN de 4 dígitos para confirmar.</p>
+                                <input type="password" value={pinData.current} onChange={e => setPinData({...pinData, current: e.target.value})} maxLength="4" placeholder="••••" style={{...styles.input, textAlign: 'center', fontSize: '2.5rem', letterSpacing: '15px', width: '180px', padding: '15px', borderRadius: '16px', backgroundColor: 'rgba(0,0,0,0.6)', border: `2px solid ${styles.colors.goldenDark}`}} autoFocus />
+                                
+                                <button onClick={() => setPinModal({...pinModal, mode: 'modify', error: ''})} style={{background: 'none', border: 'none', color: styles.colors.golden, textDecoration: 'underline', marginTop: '15px', cursor: 'pointer', fontSize: '0.85rem'}}>¿Modificar PIN actual?</button>
+                            </>
+                        )}
+
+                        {pinModal.mode === 'create' && (
+                            <>
+                                <div style={{backgroundColor: 'rgba(230,57,70,0.1)', padding: '15px', borderRadius: '12px', border: `1px solid rgba(230,57,70,0.3)`, marginBottom: '20px'}}>
+                                    <p style={{color: styles.colors.danger, fontSize: '0.9rem', fontWeight: 'bold'}}>⚠️ No tienes PIN configurado. Tu apuesta ha podido quedar expuesta.</p>
+                                </div>
+                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', marginBottom: '20px'}}>Crea un PIN de 4 dígitos para blindar tus pronósticos a partir de ahora.</p>
+                                
+                                <div style={{display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center'}}>
+                                    <input type="password" value={pinData.newPin} onChange={e => setPinData({...pinData, newPin: e.target.value})} maxLength="4" placeholder="NUEVO PIN" style={{...styles.input, textAlign: 'center', fontSize: '1.5rem', letterSpacing: '10px', width: '220px'}} autoFocus />
+                                    <input type="password" value={pinData.confirm} onChange={e => setPinData({...pinData, confirm: e.target.value})} maxLength="4" placeholder="CONFIRMAR PIN" style={{...styles.input, textAlign: 'center', fontSize: '1.5rem', letterSpacing: '10px', width: '220px'}} />
+                                </div>
+                            </>
+                        )}
+
+                        {pinModal.mode === 'modify' && (
+                            <>
+                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', marginBottom: '20px'}}>Introduce tu PIN actual y el nuevo PIN.</p>
+                                <div style={{display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center'}}>
+                                    <input type="password" value={pinData.current} onChange={e => setPinData({...pinData, current: e.target.value})} maxLength="4" placeholder="PIN ACTUAL" style={{...styles.input, textAlign: 'center', fontSize: '1.2rem', letterSpacing: '10px', width: '220px'}} autoFocus />
+                                    <input type="password" value={pinData.newPin} onChange={e => setPinData({...pinData, newPin: e.target.value})} maxLength="4" placeholder="NUEVO PIN" style={{...styles.input, textAlign: 'center', fontSize: '1.2rem', letterSpacing: '10px', width: '220px'}} />
+                                    <input type="password" value={pinData.confirm} onChange={e => setPinData({...pinData, confirm: e.target.value})} maxLength="4" placeholder="CONFIRMAR NUEVO" style={{...styles.input, textAlign: 'center', fontSize: '1.2rem', letterSpacing: '10px', width: '220px'}} />
+                                </div>
+                            </>
+                        )}
                         
-                        {pinError && <p style={{color: styles.colors.danger, marginTop: '15px', fontWeight: 'bold', backgroundColor: 'rgba(230,57,70,0.1)', padding: '10px', borderRadius: '8px', width: '100%'}}>{pinError}</p>}
+                        {pinModal.error && <p style={{color: styles.colors.danger, marginTop: '15px', fontWeight: 'bold', backgroundColor: 'rgba(230,57,70,0.1)', padding: '10px', borderRadius: '8px', width: '100%'}}>{pinModal.error}</p>}
                         
                         <div style={{display: 'flex', gap: '15px', marginTop: '30px', width: '100%'}}>
-                            <button onClick={() => setShowPinModal(false)} style={{...styles.secondaryButton, flex: 1}}>CANCELAR</button>
-                            <button onClick={confirmPin} style={{...styles.mainButton, flex: 1, marginTop: 0}}>CONFIRMAR</button>
+                            <button onClick={() => setPinModal({...pinModal, isOpen: false})} style={{...styles.secondaryButton, flex: 1}}>CANCELAR</button>
+                            <button onClick={handlePinSubmit} style={{...styles.mainButton, flex: 1, marginTop: 0}}>{pinModal.mode === 'enter' ? 'CONFIRMAR' : 'GUARDAR PIN'}</button>
                         </div>
                     </div>
                 </div>
@@ -1400,8 +1458,8 @@ function App() {
             setCurrentUser(user);
             set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
             setScreen('app');
-            // MODAL V10: Saltará automáticamente al hacer login
-            if (!localStorage.getItem('playoffWelcomeSeenV10')) { setShowWelcomeModal(true); }
+            // MODAL V11: Saltará automáticamente al hacer login
+            if (!localStorage.getItem('playoffWelcomeSeenV11')) { setShowWelcomeModal(true); }
         } catch (error) { alert("Error al iniciar sesión."); }
     };
 
@@ -1427,7 +1485,7 @@ function App() {
 
     return (
         <>
-            {showWelcomeModal && <PlayoffWelcomeModal onClose={() => setShowWelcomeModal(false)} currentUser={currentUser} />}
+            {showWelcomeModal && <PlayoffWelcomeModal onClose={() => setShowWelcomeModal(false)} />}
             <div style={styles.container}>
                 <div style={styles.card}>
                     <nav style={styles.navbar}>
