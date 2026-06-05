@@ -26,7 +26,6 @@ const messaging = getMessaging(app);
 const rtdb = getDatabase(app);
 const functions = getFunctions(app);
 
-// IMPORTANTE: Sustituye esto por tu clave real generada en Firebase Cloud Messaging
 const VAPID_KEY = "AQUÍ_VA_LA_CLAVE_LARGA_QUE_COPIASTE";
 
 // --- DATOS DE LA APLICACIÓN ---
@@ -37,15 +36,43 @@ const APUESTA_VIP = 2;
 const EQUIPOS_LIGA = ["UD Las Palmas", "UD Almería", "Málaga CF", "CD Castellón", "Burgos CF", "Real Zaragoza", "SD Eibar", "Real Sporting de Gijón", "Real Racing Club"];
 
 const PLANTILLA_ACTUALIZADA = [
-    { dorsal: "1", nombre: "Dinko Horkas", imageUrl: "" }, { dorsal: "13", nombre: "José Antonio Caro", imageUrl: "" }, { dorsal: "35", nombre: "Adri Suárez", imageUrl: "" },
-    { dorsal: "3", nombre: "Mika Mármol", imageUrl: "" }, { dorsal: "15", nombre: "Juanma Herzog", imageUrl: "" }, { dorsal: "4", nombre: "Álex Suárez", imageUrl: "" },
-    { dorsal: "5", nombre: "Enrique Clemente", imageUrl: "" }, { dorsal: "6", nombre: "Sergio Barcia", imageUrl: "" }, { dorsal: "23", nombre: "Cristian Gutiérrez", imageUrl: "" },
-    { dorsal: "17", nombre: "Viti Rozada", imageUrl: "" }, { dorsal: "2", nombre: "Marvin Park", imageUrl: "" }, { dorsal: "16", nombre: "Lorenzo Amatucci", imageUrl: "" },
-    { dorsal: "18", nombre: "Edward Cedeño", imageUrl: "" }, { dorsal: "12", nombre: "Enzo Loiodice", imageUrl: "" }, { dorsal: "20", nombre: "Kirian Rodríguez", imageUrl: "" },
-    { dorsal: "8", nombre: "Iván Gil", imageUrl: "" }, { dorsal: "21", nombre: "Jonathan Viera", imageUrl: "" }, { dorsal: "9", nombre: "Jeremía Recoba", imageUrl: "" },
-    { dorsal: "14", nombre: "Manu Fuster", imageUrl: "" }, { dorsal: "10", nombre: "Jesé", imageUrl: "" }, { dorsal: "24", nombre: "Pejiño", imageUrl: "" },
-    { dorsal: "22", nombre: "Ale García", imageUrl: "" }, { dorsal: "29", nombre: "Adam Arvelo", imageUrl: "" }, { dorsal: "25", nombre: "Milos Lukovic", imageUrl: "" },
-    { dorsal: "19", nombre: "Sandro Ramírez", imageUrl: "" }, { dorsal: "11", nombre: "Marc Cardona", imageUrl: "" }, { dorsal: "7", nombre: "Jaime Mata", imageUrl: "" }
+    { dorsal: "1", nombre: "Dinko Horkas", imageUrl: "" },
+    { dorsal: "13", nombre: "José Antonio Caro", imageUrl: "" },
+    { dorsal: "30", nombre: "Álvaro Killane", imageUrl: "" },
+    { dorsal: "35", nombre: "Adri Suárez", imageUrl: "" },
+    { dorsal: "2", nombre: "Marvin Park", imageUrl: "" },
+    { dorsal: "3", nombre: "Mika Mármol", imageUrl: "" },
+    { dorsal: "4", nombre: "Álex Suárez", imageUrl: "" },
+    { dorsal: "5", nombre: "Enrique Clemente", imageUrl: "" },
+    { dorsal: "6", nombre: "Sergio Barcia", imageUrl: "" },
+    { dorsal: "15", nombre: "Juanma Herzog", imageUrl: "" },
+    { dorsal: "23", nombre: "Cristian Gutiérrez", imageUrl: "" },
+    { dorsal: "27", nombre: "Valentín Pezzolesi", imageUrl: "" },
+    { dorsal: "31", nombre: "Carlos Navarro", imageUrl: "" },
+    { dorsal: "42", nombre: "Víctor Villote", imageUrl: "" },
+    { dorsal: "7", nombre: "Nicolás Benedetti", imageUrl: "" },
+    { dorsal: "8", nombre: "Iván Gil", imageUrl: "" },
+    { dorsal: "9", nombre: "Jeremía Recoba", imageUrl: "" },
+    { dorsal: "12", nombre: "Enzo Loiodice", imageUrl: "" },
+    { dorsal: "14", nombre: "Manu Fuster", imageUrl: "" },
+    { dorsal: "16", nombre: "Lorenzo Amatucci", imageUrl: "" },
+    { dorsal: "17", nombre: "Viti Rozada", imageUrl: "" },
+    { dorsal: "20", nombre: "Kirian Rodríguez", imageUrl: "" },
+    { dorsal: "21", nombre: "Jonathan Viera", imageUrl: "" },
+    { dorsal: "22", nombre: "Ale García", imageUrl: "" },
+    { dorsal: "26", nombre: "Iñaki González", imageUrl: "" },
+    { dorsal: "36", nombre: "José Carlos González", imageUrl: "" },
+    { dorsal: "10", nombre: "Jesé", imageUrl: "" },
+    { dorsal: "18", nombre: "Taisei Miyashiro", imageUrl: "" },
+    { dorsal: "19", nombre: "Sandro Ramírez", imageUrl: "" },
+    { dorsal: "24", nombre: "Pejiño", imageUrl: "" },
+    { dorsal: "34", nombre: "Diego Martín", imageUrl: "" },
+    { dorsal: "37", nombre: "Arturo Rodríguez", imageUrl: "" },
+    { dorsal: "38", nombre: "Iván Medina", imageUrl: "" },
+    { dorsal: "39", nombre: "Estanis Pedrola", imageUrl: "" },
+    { dorsal: "41", nombre: "Elías Romero", imageUrl: "" },
+    { dorsal: "44", nombre: "Rafa Cruz", imageUrl: "" },
+    { dorsal: "49", nombre: "Iker Bravo", imageUrl: "" }
 ];
 
 // ============================================================================
@@ -155,20 +182,18 @@ const getNombreJornada = (num) => {
     return `JORNADA ${num}`;
 };
 
-// LÓGICA DE PUNTOS ACTUALIZADA CON JOKER
+// LÓGICA DE PUNTOS
 const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
     if (!pronostico || !liveData || !jornada || jornada.estado !== 'En vivo') return 0;
     let ptos = 0; const esVip = jornada.esVip || false; const { golesLocal, golesVisitante } = liveData;
     
     let exactoAcertado = false;
     
-    // Chequeo del resultado principal
     if (pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') {
         const pL = parseInt(pronostico.golesLocal), pV = parseInt(pronostico.golesVisitante);
         if (!(golesLocal > pL || golesVisitante > pV) && golesLocal === pL && golesVisitante === pV) exactoAcertado = true;
     }
     
-    // Chequeo de los Jokers
     if (!exactoAcertado && pronostico.jokerActivo && pronostico.jokerPronosticos) {
         for (let jp of pronostico.jokerPronosticos) {
             if (jp.local !== '' && jp.visitante !== '') {
@@ -217,7 +242,7 @@ const EpicSplashScreen = () => (
     </div>
 );
 
-// --- MODAL ÉPICO DE BIENVENIDA V7 (CON EL JOKER EXTRA) ---
+// --- MODAL ÉPICO DE BIENVENIDA V8 (PLANTILLA ACTUALIZADA Y LÓGICA DINERO) ---
 const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
     const [step, setStep] = useState(1);
     const [config, setConfig] = useState(null);
@@ -242,7 +267,7 @@ const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
         <div style={styles.modalOverlay}>
             <div style={styles.modalContent}>
                 <h2 style={{...styles.title, fontSize: '1.8rem', marginBottom: '0', borderBottom: 'none', letterSpacing: '2px', lineHeight: 1.2}}>
-                    {step === 1 && "🔥 EL PUEBLO HA HABLADO"}{step === 2 && "🃏 EL JOKER EXTRA"}{step === 3 && "📲 NOTIFICACIONES PUSH"}{step === 4 && "👁️ FICHA DE APUESTAS"}
+                    {step === 1 && "🔥 ACTUALIZACIÓN V8"}{step === 2 && "🃏 EL JOKER DE PLAYOFF"}{step === 3 && "💰 QUIÉN GANA EL BOTE"}{step === 4 && "👁️ FICHAS DE APUESTA"}
                 </h2>
                 <div style={styles.modalDots}>
                     <div style={step === 1 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 2 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 3 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 4 ? styles.modalDotActive : styles.modalDotInactive} />
@@ -251,35 +276,33 @@ const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
                 <div style={{minHeight: '260px', display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', fontFamily: "'Montserrat', sans-serif"}}>
                     {step === 1 && (
                         <>
-                            <p style={{fontSize: '1.1rem', marginBottom: '20px', color: styles.colors.lightText, lineHeight: 1.5, fontWeight: '600'}}>Vuelve la herramienta más letal por aclamación popular.</p>
+                            <p style={{fontSize: '1.1rem', marginBottom: '20px', color: styles.colors.lightText, lineHeight: 1.5, fontWeight: '600'}}>Plantilla corregida y el retorno de la herramienta más letal.</p>
                             <div style={{backgroundColor: 'rgba(212,175,55,0.05)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(212,175,55,0.3)`}}>
-                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6}}>Varios jugadores exigieron el retorno del Joker para el Playoff. La Administración ha aceptado. Se añade <strong>1 ÚNICO JOKER EXTRA</strong> para toda la fase final. Úsalo sabiamente, porque una vez pulsado el botón, se bloqueará para siempre.</p>
+                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '10px'}}>1. <strong>Plantilla Actualizada:</strong> Hemos corregido la lista de jugadores para el 1º Goleador. ¡Revisa tu apuesta si faltaba alguien!</p>
+                                <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6}}>2. Vuelve el Joker por aclamación popular. <strong>1 ÚNICO USO</strong> para todo el Playoff.</p>
                             </div>
                         </>
                     )}
                     {step === 2 && (
                         <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.warning, fontWeight: 'bold'}}>5 HUECOS EXTRA:</span> Activar el Joker abre 5 casilleros solo para Resultados Exactos. Si fallas el principal pero uno de los Joker acierta, ganas los mismos puntos.</p>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>EL COSTE:</span> No pagas por activar el botón, pagas por cada resultado que rellenes. (1€ en Ida / 2€ en Vuelta VIP).</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.warning, fontWeight: 'bold'}}>5 HUECOS EXTRA:</span> Activar el Joker abre 5 casilleros solo para Resultados Exactos. Si fallas el principal pero uno de los Joker acierta, ganas los puntos para la liga.</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>EL COSTE:</span> Pagas por cada resultado extra que rellenes (1€ normal / 2€ VIP).</p>
                             <div style={{padding: '12px', backgroundColor: 'rgba(16,185,129,0.1)', border: `1px solid rgba(16,185,129,0.3)`, borderRadius: '12px', textAlign: 'center', marginBottom: '10px'}}>
-                                <strong style={{color: styles.colors.success, fontSize: '0.85rem'}}>Aumentará el Bote de la Jornada para el ganador final.</strong>
+                                <strong style={{color: styles.colors.success, fontSize: '0.85rem'}}>Todo el dinero extra va directo a engordar el bote de esa jornada.</strong>
                             </div>
                         </div>
                     )}
                     {step === 3 && (
-                        <div style={{textAlign: 'left', lineHeight: 1.5, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px', fontSize: '0.95rem'}}>Se acabó avisar por WhatsApp. A partir de ahora, la app te avisará <strong>1 HORA</strong> y <strong>10 MINUTOS</strong> antes de cerrar apuestas. Para que funcione, <strong style={{color: styles.colors.lightText}}>debes instalar la app</strong>:</p>
-                            <div style={{backgroundColor: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '12px', marginBottom: '15px', border: '1px solid rgba(255,255,255,0.1)'}}>
-                                <p style={{marginBottom: '10px', fontSize: '0.85rem'}}>🤖 <strong>Android:</strong> 3 puntitos de Chrome arriba ➔ <em>"Añadir a pantalla de inicio"</em>.</p>
-                                <p style={{fontSize: '0.85rem'}}>🍎 <strong>iPhone:</strong> Botón Compartir ➔ <em>"Añadir a la pantalla de inicio"</em>.</p>
-                            </div>
-                            <button onClick={solicitarPermisos} style={{...styles.secondaryButton, width: '100%', borderColor: styles.colors.success, color: styles.colors.success}}>🔔 PERMITIR AVISOS PUSH</button>
+                        <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
+                            <p style={{marginBottom: '15px', color: styles.colors.lightText, fontWeight: '600'}}>Aclaración fundamental sobre el dinero de la jornada:</p>
+                            <p style={{marginBottom: '15px'}}>El ganador del bote <strong style={{color: styles.colors.success}}>NUNCA es el que más puntos saca</strong>. El bote se lo lleva exclusivamente quien acierte el <strong>Resultado Exacto</strong> del partido.</p>
+                            <p style={{marginBottom: '15px'}}>Si aciertas el resultado exacto usando el Joker, <strong>entras en el reparto del dinero de la jornada</strong>. Si sois varios, se divide. Si nadie acierta, se acumula.</p>
                         </div>
                     )}
                     {step === 4 && (
                         <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>SECRETISMO TOTAL:</span> Las apuestas de Joker, igual que las normales, no se verán hasta que empiece el partido.</p>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.success, fontWeight: 'bold'}}>NEÓN VERDE:</span> Cuando entres a ver los resultados, la app mostrará tus apuestas como "Fichas" estilo Bet365. La ficha que acierte el resultado exacto se iluminará en <strong style={{color: styles.colors.success}}>Verde Neón</strong>.</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>SECRETISMO TOTAL:</span> Las apuestas de Joker no se verán hasta que arranque el partido.</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.success, fontWeight: 'bold'}}>NEÓN VERDE:</span> Cuando la jornada finalice, la app mostrará las apuestas como fichas. La ficha que te haya hecho ganar el dinero brillará en <strong style={{color: styles.colors.success}}>Verde Neón</strong>.</p>
                             <div style={{textAlign: 'center', marginTop: '10px'}}>
                                 <span style={styles.betPill}>1-0</span> <span style={styles.betPillWin}>2-1</span> <span style={styles.betPill}>1-1</span>
                             </div>
@@ -289,7 +312,7 @@ const PlayoffWelcomeModal = ({ onClose, currentUser }) => {
                 
                 <div style={{display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: '30px'}}>
                     {step > 1 ? <button onClick={() => setStep(prev => prev - 1)} style={styles.secondaryButton}>Atrás</button> : <div></div>}
-                    {step < 4 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV7', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡A LA BATALLA!</button>}
+                    {step < 4 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV8', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡A LA BATALLA!</button>}
                 </div>
             </div>
         </div>
@@ -493,7 +516,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             
                             {pronostico.jokerActivo && !jokerUsadoPreviamente && (
                                 <div style={{marginTop: '20px'}}>
-                                    <p style={{color: styles.colors.silver, fontSize: '0.85rem', marginBottom: '15px', fontStyle: 'italic'}}>Añade hasta 5 resultados exactos extra. Si fallas el principal pero aciertas aquí, te llevas los puntos.</p>
+                                    <p style={{color: styles.colors.silver, fontSize: '0.85rem', marginBottom: '15px', fontStyle: 'italic'}}>Añade hasta 5 resultados exactos extra. Todo acertante de resultado suma el premio.</p>
                                     <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                                         {[0,1,2,3,4].map(i => (
                                             <div key={i} style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'}}>
@@ -894,7 +917,8 @@ const PagosScreen = () => {
 
             <div style={{marginTop: '30px'}}>
                 {jornadas.filter(j => j.estado === 'Finalizada').reverse().map(j => {
-                    const jConBote = j.ganadores?.length === 0;
+                    // Ahora j.ganadores se lee directamente del guardado automático del Administrador
+                    const jConBote = !j.ganadores || j.ganadores.length === 0;
                     return (
                         <div key={j.id} style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '25px', borderRadius: '16px', marginBottom: '25px', border: `1px solid rgba(255,215,0,0.15)`, boxShadow: '0 5px 15px rgba(0,0,0,0.2)'}}>
                             <h4 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.lightText, fontSize: '1.3rem', marginBottom: '15px', letterSpacing: '1px', textTransform: 'uppercase'}}>{getNombreJornada(j.numeroJornada)}: {j.equipoLocal} vs {j.equipoVisitante}</h4>
@@ -907,8 +931,8 @@ const PagosScreen = () => {
                                 <div style={{textAlign: 'center', padding: '15px', backgroundColor: 'rgba(230, 57, 70, 0.1)', borderRadius: '12px', border: `1px solid rgba(230,57,70,0.3)`, color: styles.colors.danger, fontWeight: 'bold', letterSpacing: '1px'}}>💰 BOTE ACUMULADO. EL PREMIO PASA A LA SIGUIENTE JORNADA.</div>
                             ) : (
                                 <div style={{textAlign: 'center', padding: '15px', backgroundColor: 'rgba(212, 175, 55, 0.05)', borderRadius: '12px', border: `1px solid rgba(212,175,55,0.4)`}}>
-                                    <p style={{marginBottom: '10px', fontSize: '1.05rem'}}><strong>🏆 Ganador(es):</strong> {j.ganadores?.join(', ') || 'Nadie'}</p>
-                                    <p style={{color: styles.colors.success, fontWeight: 'bold', fontSize: '1.1rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>Premio por ganador: {j.ganadores?.length ? (j.premioTotal / j.ganadores.length).toFixed(2) : 0}€</p>
+                                    <p style={{marginBottom: '10px', fontSize: '1.05rem'}}><strong>🏆 Ganador(es) Resultado Exacto:</strong> {j.ganadores.join(', ')}</p>
+                                    <p style={{color: styles.colors.success, fontWeight: 'bold', fontSize: '1.1rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>Premio por ganador: {(j.premioTotal / j.ganadores.length).toFixed(2)}€</p>
                                 </div>
                             )}
                         </div>
@@ -1022,7 +1046,7 @@ const CalendarioScreen = ({ teamLogos }) => {
                         {j.estado === 'Finalizada' && (
                             <div style={{marginTop: '15px', backgroundColor: 'rgba(0,0,0,0.4)', padding: '15px', borderRadius: '12px', borderLeft: `4px solid ${styles.colors.golden}`}}>
                                 <p style={{color: styles.colors.lightText, fontSize: '1.05rem'}}><strong>Resultado:</strong> <span style={{fontFamily: "'Oswald', sans-serif", fontSize: '1.2rem', marginLeft: '5px'}}>{j.resultadoLocal} - {j.resultadoVisitante}</span></p>
-                                <p style={{color: styles.colors.golden, marginTop: '8px', fontSize: '0.95rem'}}><strong>{j.ganadores?.length > 0 ? '🏆 Ganadores:' : '💰'}</strong> {j.ganadores?.length > 0 ? j.ganadores.join(', ') : 'Bote Acumulado'}</p>
+                                <p style={{color: styles.colors.golden, marginTop: '8px', fontSize: '0.95rem'}}><strong>{j.ganadores?.length > 0 ? '🏆 Ganadores Exacto:' : '💰'}</strong> {j.ganadores?.length > 0 ? j.ganadores.join(', ') : 'Bote Acumulado'}</p>
                             </div>
                         )}
                     </div>
@@ -1058,13 +1082,46 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
     const handleSaveChanges = async () => {
         const jornadaRef = doc(db, "jornadas", jornada.id);
-        await updateDoc(jornadaRef, { 
+        
+        let ganadoresArray = [];
+        
+        // Lógica automática de reparto de dinero: Al finalizar, detecta quién clavó el Resultado Exacto (Principal o Joker)
+        if (estado === 'Finalizada' && resultadoLocal !== '' && resultadoVisitante !== '') {
+            const pSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
+            pSnap.forEach(docSnap => {
+                const p = docSnap.data();
+                let isWinner = false;
+                
+                // Comprueba apuesta principal
+                if (parseInt(p.golesLocal) === parseInt(resultadoLocal) && parseInt(p.golesVisitante) === parseInt(resultadoVisitante)) {
+                    isWinner = true;
+                } 
+                // Comprueba los Jokers si no acertó la principal
+                else if (p.jokerActivo && p.jokerPronosticos) {
+                    for (let jp of p.jokerPronosticos) {
+                        if (jp.local !== '' && jp.visitante !== '' && parseInt(jp.local) === parseInt(resultadoLocal) && parseInt(jp.visitante) === parseInt(resultadoVisitante)) {
+                            isWinner = true; break;
+                        }
+                    }
+                }
+                
+                if (isWinner) ganadoresArray.push(docSnap.id);
+            });
+        }
+
+        const updateData = { 
             estado, resultadoLocal, resultadoVisitante, esVip, tipoPartido, h2hInfo, goleador, bote: parseFloat(bote) || 0,
             fechaApertura: fechaApertura ? new Date(fechaApertura) : null, 
             fechaCierre: fechaCierre ? new Date(fechaCierre) : null, 
             fechaPartido: fechaPartido ? new Date(fechaPartido) : null 
-        });
-        alert('Guardado');
+        };
+
+        if (estado === 'Finalizada') {
+            updateData.ganadores = ganadoresArray;
+        }
+
+        await updateDoc(jornadaRef, updateData);
+        alert('Jornada guardada y ganadores calculados automáticamente.');
     };
 
     const handleUpdateLiveState = async () => {
@@ -1262,7 +1319,7 @@ function App() {
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600;700&display=swap');
             * { margin: 0; padding: 0; box-sizing: border-box; }
             html { font-size: 16px !important; -webkit-text-size-adjust: 100%; }
-            body, #root { width: 100%; min-width: 100%; overflow-x: hidden; background-color: ${styles.colors.deepBlue}; }
+            body, #root { width: 100%; min-width: 100%; overflow-x: hidden; background-color: ${colors.deepBlue}; }
             @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
             @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
             @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
@@ -1292,8 +1349,8 @@ function App() {
             setCurrentUser(user);
             set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
             setScreen('app');
-            // MODAL V7: Saltará automáticamente al hacer login
-            if (!localStorage.getItem('playoffWelcomeSeenV7')) { setShowWelcomeModal(true); }
+            // MODAL V8: Saltará automáticamente al hacer login
+            if (!localStorage.getItem('playoffWelcomeSeenV8')) { setShowWelcomeModal(true); }
         } catch (error) { alert("Error al iniciar sesión."); }
     };
 
