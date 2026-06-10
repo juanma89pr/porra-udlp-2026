@@ -48,7 +48,7 @@ const PLANTILLA_ACTUALIZADA = [
     { dorsal: "6", nombre: "Sergio Barcia", imageUrl: "" },
     { dorsal: "15", nombre: "Juanma Herzog", imageUrl: "" },
     { dorsal: "23", nombre: "Cristian Gutiérrez", imageUrl: "" },
-    { dorsal: "27", nombre: "Valentín Pezzolesi", imageUrl: "" },
+    { dorsal: "27", nombre: "Valent Pezzolesi", imageUrl: "" },
     { dorsal: "31", nombre: "Carlos Navarro", imageUrl: "" },
     { dorsal: "42", nombre: "Víctor Villote", imageUrl: "" },
     { dorsal: "7", nombre: "Nicolás Benedetti", imageUrl: "" },
@@ -177,8 +177,97 @@ const styles = {
 };
 
 // ============================================================================
-// --- MODAL DE BIENVENIDA V12 ---
+// --- LÓGICA Y HELPERS ---
 // ============================================================================
+const formatFullDateTime = (firebaseDate) => { 
+    if (!firebaseDate || !firebaseDate.seconds) return 'Fecha por confirmar'; 
+    return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(firebaseDate.seconds * 1000)).replace(',', ' a las'); 
+};
+
+const getNombreJornada = (num) => {
+    if (num === 43) return "IDA SEMIFINAL";
+    if (num === 44) return "VUELTA SEMIFINAL";
+    if (num === 45) return "IDA FINAL";
+    if (num === 46) return "VUELTA FINAL";
+    return `JORNADA ${num}`;
+};
+
+// --- CORRECCIÓN DE BUG: PUNTUACIÓN CON PARSE INT PARA EVITAR ERRORES DE STRING ---
+const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
+    if (!pronostico || !liveData || !jornada || jornada.estado !== 'En vivo') return 0;
+    let ptos = 0; const esVip = jornada.esVip || false; 
+    
+    // Forzamos que los goles sean numéricos
+    const gL = parseInt(liveData.golesLocal) || 0;
+    const gV = parseInt(liveData.golesVisitante) || 0;
+    
+    let exactoAcertado = false;
+    
+    if (pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') {
+        const pL = parseInt(pronostico.golesLocal) || 0;
+        const pV = parseInt(pronostico.golesVisitante) || 0;
+        if (gL === pL && gV === pV) exactoAcertado = true;
+    }
+    
+    if (!exactoAcertado && pronostico.jokerActivo && pronostico.jokerPronosticos) {
+        for (let jp of pronostico.jokerPronosticos) {
+            if (jp.local !== '' && jp.visitante !== '') {
+                const jpL = parseInt(jp.local) || 0;
+                const jpV = parseInt(jp.visitante) || 0;
+                if (gL === jpL && gV === jpV) {
+                    exactoAcertado = true;
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (exactoAcertado) ptos += esVip ? 6 : 3;
+
+    if (jornada.tipoPartido !== 'vuelta_semi' && jornada.tipoPartido !== 'vuelta_final') {
+        let rReal = '';
+        if (jornada.equipoLocal === "UD Las Palmas") {
+            rReal = gL > gV ? 'Gana UD Las Palmas' : (gL < gV ? 'Pierde UD Las Palmas' : 'Empate');
+        } else if (jornada.equipoVisitante === "UD Las Palmas") {
+            rReal = gV > gL ? 'Gana UD Las Palmas' : (gV < gL ? 'Pierde UD Las Palmas' : 'Empate');
+        } else {
+            // Fallback por si no juega la UD
+            rReal = gL > gV ? 'Gana Local' : (gL < gV ? 'Gana Visitante' : 'Empate');
+        }
+        if (pronostico.resultado1x2 === rReal) ptos += esVip ? 2 : 1;
+    }
+    
+    const golReal = (liveData.primerGoleador || '').trim().toLowerCase();
+    const golAp = (pronostico.goleador || '').trim().toLowerCase();
+    
+    if (gL > 0 || gV > 0 || golReal === "sg") {
+        if (pronostico.sinGoleador && golReal === "sg") ptos += 1;
+        else if (!pronostico.sinGoleador && golAp !== "" && golAp === golReal && golReal !== "sg") ptos += esVip ? 4 : 2;
+    }
+    return ptos;
+};
+
+// ============================================================================
+// --- COMPONENTES UI Y MODALES ---
+// ============================================================================
+const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.lightText, isOnline = false }) => {
+    const p = profile || {}; const color = p.color || defaultColor; const isG = typeof color === 'string' && color.startsWith('linear-gradient');
+    const nStyle = { ...(isG ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color }), fontWeight: 'bold' };
+    return (<span style={{display: 'inline-flex', alignItems: 'center', gap: '8px' }}>{p.icon && <span>{p.icon}</span>}<span style={nStyle}>{name}</span>{isOnline && <span style={{width: '8px', height: '8px', backgroundColor: styles.colors.success, borderRadius: '50%', boxShadow: `0 0 8px ${styles.colors.success}`}}></span>}</span>);
+};
+
+const TeamDisplay = ({ teamLogos, teamName, shortName = false, imgStyle }) => (<div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:'8px', flex: '0 0 auto'}}><img src={teamLogos[teamName] || 'https://placehold.co/80x80/1b263b/e0e1dd?text=?'} style={imgStyle} alt={teamName} /><span style={{fontSize:'clamp(0.85rem, 2.5vw, 1rem)', fontWeight:'600', color:styles.colors.lightText, fontFamily:"'Montserrat', sans-serif"}}>{shortName && teamName === "UD Las Palmas" ? "UDLP" : teamName}</span></div>);
+
+const LoadingSkeleton = () => (<div style={{padding:'60px', textAlign:'center', color:styles.colors.golden, fontFamily:"'Oswald', sans-serif", fontSize:'1.2rem', letterSpacing:'2px'}}>CARGANDO DATOS...</div>);
+
+const EpicSplashScreen = () => (
+    <div style={styles.epicSplashContainer}>
+        <p style={styles.epicSplashSubtitle}>PORRA UDLP 2026</p>
+        <h1 style={styles.epicSplashTitle}>ESTAMOS EN<br/>PLAYOFF</h1>
+    </div>
+);
+
+// --- MODAL ÉPICO DE BIENVENIDA V12 ---
 const PlayoffWelcomeModal = ({ onClose }) => {
     const [step, setStep] = useState(1);
 
@@ -333,6 +422,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         setPronostico({...pronostico, jokerPronosticos: newJokers});
     };
 
+    // --- LÓGICA DE SEGURIDAD (PIN) ---
     const openPinModal = (action) => {
         const userPin = userProfiles[user]?.pin;
         setPinData({ current: '', newPin: '', confirm: '' });
@@ -491,6 +581,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             </form>
                         )}
 
+                        {/* --- TU PRONÓSTICO --- */}
                         {(hasSubmitted && isBetVisible) || (['Cerrada', 'En vivo', 'Finalizada'].includes(currentJornada.estado)) ? (
                             <div style={{marginTop: '35px'}}>
                                 <h4 style={styles.formSectionTitle}>TU PRONÓSTICO</h4>
@@ -513,6 +604,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     </>
                 )}
 
+                {/* --- ALERTA DE JOKERS / DINERO EXTRA --- */}
                 {['Abierta', 'Pre-apertura'].includes(currentJornada.estado) && participantes.length > 0 && (
                     <div style={{marginTop: '40px', backgroundColor: 'rgba(0,0,0,0.2)', padding: '25px', borderRadius: '16px', border: `1px dashed rgba(255,215,0,0.2)`}}>
                         <h4 style={{color: styles.colors.silver, marginBottom: '20px', fontSize: '0.9rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>HAN APOSTADO ({participantes.length}/{JUGADORES.length})</h4>
@@ -533,6 +625,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 )}
             </div>
 
+            {/* --- MODAL DEL PIN DE SEGURIDAD --- */}
             {pinModal.isOpen && (
                 <div style={styles.modalOverlay}>
                     <div style={styles.modalContent}>
@@ -612,6 +705,15 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     const liveData = jornadaActual.liveData;
     const isLiveView = jornadaActual.estado === 'En vivo' && liveData?.isLive;
 
+    // Helper con parseInt para detectar resultados exactos en La Jornada
+    const isExactResultWinner = (pL, pV) => {
+        if (!isLiveView && jornadaActual.estado !== 'Finalizada') return false;
+        const gL = isLiveView ? parseInt(liveData.golesLocal) : parseInt(jornadaActual.resultadoLocal);
+        const gV = isLiveView ? parseInt(liveData.golesVisitante) : parseInt(jornadaActual.resultadoVisitante);
+        if (isNaN(gL) || isNaN(gV)) return false;
+        return parseInt(pL) === gL && parseInt(pV) === gV;
+    };
+
     return (
         <div>
             {isLiveView && <div style={styles.liveBanner}>🔴 PARTIDO EN VIVO 🔴</div>}
@@ -628,6 +730,8 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoVisitante} shortName={true} imgStyle={{width: '60px', height: '60px', objectFit: 'contain'}} />
                 </div>
 
+                {isLiveView && liveData.primerGoleador && <p style={{color: styles.colors.golden, marginTop: '15px', fontWeight: 'bold', fontSize: '1.3rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>⚽ {liveData.primerGoleador}</p>}
+
                 {['Abierta', 'Pre-apertura'].includes(jornadaActual.estado) ? (
                     <div style={styles.placeholder}>Apuestas secretas hasta el pitido inicial. Han apostado: {participantes.length}/{JUGADORES.length}</div>
                 ) : (
@@ -638,15 +742,18 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                 return ptsB - ptsA;
                         }).map(p => {
                             let ptsDisplay = isLiveView ? calculateProvisionalPoints(p, liveData, jornadaActual) : (p.puntosObtenidos || 0);
+                            const principalWin = isExactResultWinner(p.golesLocal, p.golesVisitante);
+
                             return (
                                 <div key={p.id} style={{backgroundColor: 'rgba(0,0,0,0.4)', padding: '18px', borderRadius: '16px', borderLeft: `4px solid ${styles.colors.golden}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                                     <div style={{textAlign: 'left'}}>
                                         <PlayerProfileDisplay name={p.id} profile={userProfiles[p.id]} isOnline={onlineUsers ? onlineUsers[p.id] : false} />
                                         <div style={{marginTop: '10px'}}>
-                                            <span style={{...styles.badge, border: `1px solid ${styles.colors.silver}`, color: styles.colors.silver, padding: '4px 10px'}}>{p.golesLocal}-{p.golesVisitante}</span>
+                                            <span style={principalWin ? styles.betPillWin : styles.betPill}>{p.golesLocal}-{p.golesVisitante}</span>
                                             {p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.map((jp, idx) => {
                                                 if(jp.local === '' || jp.visitante === '') return null;
-                                                return <span key={idx} style={{...styles.badge, border: `1px solid ${styles.colors.warning}`, color: styles.colors.warning, marginLeft: '5px', padding: '4px 10px'}}>🃏 {jp.local}-{jp.visitante}</span>
+                                                const isJokerWin = isExactResultWinner(jp.local, jp.visitante);
+                                                return <span key={idx} style={isJokerWin ? styles.betPillWin : {...styles.betPill, borderColor: styles.colors.warning, color: styles.colors.warning}}>🃏 {jp.local}-{jp.visitante}</span>
                                             })}
                                         </div>
                                         <div style={{fontSize: '0.85rem', color: styles.colors.silver, marginTop: '8px'}}><strong style={{color: '#fff'}}>{p.resultado1x2}</strong><br/>⚽ {p.sinGoleador ? 'Sin Goleador' : p.goleador}</div>
@@ -839,9 +946,9 @@ const LigaRegularScreen = ({ userProfiles, onlineUsers }) => {
 
     return (
         <div>
-            <h2 style={styles.title}>LIGA REGULAR</h2>
+            <h2 style={styles.title} className="app-title">LIGA REGULAR</h2>
             <p style={{textAlign: 'center', marginBottom: '25px', color: styles.colors.silver, fontSize: '0.9rem', lineHeight: 1.5}}>Clasificación consolidada de la Fase Regular.<br/>Esta es la base de puntos para la batalla del Playoff.</p>
-            <div style={{overflowX: 'auto', backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: '20px', border: `1px solid rgba(255,215,0,0.15)`, padding: '10px'}}>
+            <div style={{overflowX: 'auto', backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: '20px', border: `1px solid rgba(255,215,0,0.15)`, padding: '10px', backdropFilter: 'blur(5px)'}}>
                 <table style={styles.table}>
                     <thead><tr><th style={styles.th}>POS</th><th style={styles.th}>JUGADOR</th><th style={{...styles.th, textAlign: 'center'}}>PUNTOS BASE</th></tr></thead>
                     <tbody>
@@ -877,7 +984,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers }) => {
 
     return (
         <div>
-            <h2 style={styles.title}>CLASIFICACIÓN GLOBAL</h2>
+            <h2 style={styles.title} className="app-title">CLASIFICACIÓN GLOBAL</h2>
             
             <div style={styles.prizeBannerFinal}>
                 <h4 style={styles.prizeBannerTitle}>PREMIO FINAL ACUMULADO</h4>
@@ -888,7 +995,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers }) => {
                 </div>
             </div>
 
-            <div style={{overflowX: 'auto', backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: '20px', border: `1px solid rgba(255,215,0,0.15)`, padding: '10px'}}>
+            <div style={{overflowX: 'auto', backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: '20px', border: `1px solid rgba(255,215,0,0.15)`, padding: '10px', backdropFilter: 'blur(5px)'}}>
                 <table style={styles.table}>
                     <thead><tr><th style={styles.th}>POS</th><th style={styles.th}>JUGADOR</th><th style={{...styles.th, textAlign: 'center'}}>TOTAL</th><th style={{...styles.th, textAlign: 'center'}}>P. EXACTO</th></tr></thead>
                     <tbody>
@@ -902,7 +1009,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers }) => {
                                         {jugador.desgloseExtra && <div style={{fontSize: '0.75rem', color: styles.colors.success, marginTop: '5px', fontWeight: 'bold'}}>{jugador.desgloseExtra}</div>}
                                     </td>
                                     <td style={styles.tdTotalPoints}>{jugador.puntosTotales || 0}</td>
-                                    <td style={{...styles.td, textAlign: 'center', color: styles.colors.silver}}>{jugador.puntosResultadoExacto || 0}</td>
+                                    <td style={{...styles.td, textAlign: 'center', color: styles.colors.silver, fontFamily: "'Montserrat', sans-serif"}}>{jugador.puntosResultadoExacto || 0}</td>
                                 </tr>
                             )
                         })}
@@ -935,7 +1042,7 @@ const PagosScreen = () => {
                         }
                     });
                     
-                    const premio = (j.bote || 0) + rec;
+                    const premio = (parseFloat(j.bote) || 0) + rec;
                     return { ...j, pronosticos, recaudadoJornada: rec, premioTotal: premio };
                 });
                 setJornadas(jConP); setLoading(false);
@@ -947,24 +1054,34 @@ const PagosScreen = () => {
 
     return (
         <div>
-            <h2 style={styles.title}>LIBRO DE CUENTAS</h2>
+            <h2 style={styles.title} className="app-title">LIBRO DE CUENTAS</h2>
+            
+            <div style={styles.prizeBannerFinal}>
+                <h4 style={styles.prizeBannerTitle}>PREMIO FINAL ACUMULADO</h4>
+                <div style={styles.prizeList}>
+                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥇</span> <span><strong>1º CLASIFICADO:</strong> Premio a elegir valorado en 40€</span></div>
+                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥈</span> <span><strong>2º CLASIFICADO:</strong> Premio a elegir valorado en 15€</span></div>
+                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥉</span> <span><strong>3º CLASIFICADO:</strong> Premio a elegir valorado en 5€</span></div>
+                </div>
+            </div>
+
             <div style={{marginTop: '30px'}}>
                 {jornadas.filter(j => j.estado === 'Finalizada').reverse().map(j => {
                     const jConBote = !j.ganadores || j.ganadores.length === 0;
                     return (
-                        <div key={j.id} style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '25px', borderRadius: '16px', marginBottom: '25px', border: `1px solid rgba(255,215,0,0.15)`}}>
-                            <h4 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.lightText, fontSize: '1.3rem', marginBottom: '15px'}}>{getNombreJornada(j.numeroJornada)}: {j.equipoLocal} vs {j.equipoVisitante}</h4>
+                        <div key={j.id} style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '25px', borderRadius: '16px', marginBottom: '25px', border: `1px solid rgba(255,215,0,0.15)`, boxShadow: '0 5px 15px rgba(0,0,0,0.2)'}}>
+                            <h4 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.lightText, fontSize: '1.3rem', marginBottom: '15px', letterSpacing: '1px', textTransform: 'uppercase'}}>{getNombreJornada(j.numeroJornada)}: {j.equipoLocal} vs {j.equipoVisitante}</h4>
                             <div style={{display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px', marginBottom: '20px', color: styles.colors.golden, fontSize: '0.9rem', backgroundColor: 'rgba(0,0,0,0.4)', padding: '15px', borderRadius: '12px'}}>
                                 <span><strong style={{color: styles.colors.silver}}>Recaudado:</strong> {j.recaudadoJornada}€</span>
-                                <span><strong style={{color: styles.colors.silver}}>Bote:</strong> {j.bote || 0}€</span>
+                                <span><strong style={{color: styles.colors.silver}}>Bote Ini:</strong> {j.bote || 0}€</span>
                                 <span><strong style={{color: styles.colors.silver}}>Total Juego:</strong> {j.premioTotal}€</span>
                             </div>
                             {jConBote ? (
-                                <div style={{textAlign: 'center', padding: '15px', backgroundColor: 'rgba(230, 57, 70, 0.1)', borderRadius: '12px', border: `1px solid rgba(230,57,70,0.3)`, color: styles.colors.danger, fontWeight: 'bold'}}>💰 BOTE ACUMULADO. EL PREMIO PASA A LA SIGUIENTE JORNADA.</div>
+                                <div style={{textAlign: 'center', padding: '15px', backgroundColor: 'rgba(230, 57, 70, 0.1)', borderRadius: '12px', border: `1px solid rgba(230,57,70,0.3)`, color: styles.colors.danger, fontWeight: 'bold', letterSpacing: '1px'}}>💰 BOTE ACUMULADO. EL PREMIO PASA A LA SIGUIENTE JORNADA.</div>
                             ) : (
                                 <div style={{textAlign: 'center', padding: '15px', backgroundColor: 'rgba(212, 175, 55, 0.05)', borderRadius: '12px', border: `1px solid rgba(212,175,55,0.4)`}}>
-                                    <p style={{marginBottom: '10px', fontSize: '1.05rem'}}><strong>🏆 Ganador(es) Exacto:</strong> {j.ganadores.join(', ')}</p>
-                                    <p style={{color: styles.colors.success, fontWeight: 'bold', fontSize: '1.1rem'}}>Premio por ganador: {(j.premioTotal / j.ganadores.length).toFixed(2)}€</p>
+                                    <p style={{marginBottom: '10px', fontSize: '1.05rem'}}><strong>🏆 Ganador(es) Resultado Exacto:</strong> {j.ganadores.join(', ')}</p>
+                                    <p style={{color: styles.colors.success, fontWeight: 'bold', fontSize: '1.1rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>Premio por ganador: {(j.premioTotal / j.ganadores.length).toFixed(2)}€</p>
                                 </div>
                             )}
                         </div>
@@ -992,6 +1109,7 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
                     const data = p.data();
                     const s = st[p.id];
                     if(!s) return;
+                    
                     s.participaciones++;
                     const pts = Number(data.puntosObtenidos) || 0;
                     const ptsGoleador = Number(data.puntosGoleador) || 0;
@@ -1002,6 +1120,7 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
                     if (pts >= 3) s.plenos++;
                     if (ptsExacto > 0) s.exactos++;
                     if (pts > 0 && ptsExacto === 0 && ptsGoleador === 0) s.segurita++;
+                    
                     if (pts > 0) { s.aRP++; s.aRC = 0; } else { s.aRC++; s.aRP = 0; }
                     if (s.aRP > s.rachaP) s.rachaP = s.aRP;
                     if (s.aRC > s.rachaC) s.rachaC = s.aRC;
@@ -1014,26 +1133,36 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
 
     if (!stats) return <LoadingSkeleton />;
 
-    const getTop = (f) => { const sorted = Object.entries(stats).sort((a,b) => b[1][f] - a[1][f]); return sorted[0]; };
-    const renderStatValue = (val, field) => { if (val[1][field] === 0) return <span style={{color: styles.colors.silver, fontSize: '1rem'}}>Nadie aún</span>; return <PlayerProfileDisplay name={val[0]} profile={userProfiles ? userProfiles[val[0]] : {}} isOnline={onlineUsers ? onlineUsers[val[0]] : false} />; };
+    const getTop = (f) => {
+        const sorted = Object.entries(stats).sort((a,b) => b[1][f] - a[1][f]);
+        return sorted[0];
+    };
+    
+    const renderStatValue = (val, field) => {
+        if (val[1][field] === 0) return <span style={{color: styles.colors.silver, fontSize: '1rem', fontStyle: 'italic'}}>Nadie aún</span>;
+        return <><PlayerProfileDisplay name={val[0]} profile={userProfiles ? userProfiles[val[0]] : {}} isOnline={onlineUsers ? onlineUsers[val[0]] : false} /></>;
+    };
 
     const epicCards = [
         { title: '⚽ El Visionario', value: getTop('golesAcertados'), field: 'golesAcertados', desc: 'Aciertos de goleador' },
-        { title: '💣 El Pelotazo', value: getTop('maxPtsJornada'), field: 'maxPtsJornada', desc: 'Puntos en 1 jornada' },
+        { title: '💣 El Pelotazo', value: getTop('maxPtsJornada'), field: 'maxPtsJornada', desc: 'Puntos en 1 sola jornada' },
         { title: '🔥 En Llamas', value: getTop('rachaP'), field: 'rachaP', desc: 'Jornadas seguidas puntuando' },
         { title: '🥶 El Cenizo', value: getTop('rachaC'), field: 'rachaC', desc: 'Jornadas seguidas a cero' },
-        { title: '🎯 Francotirador', value: getTop('exactos'), field: 'exactos', desc: 'Resultados exactos acertados' }
+        { title: '🎯 Francotirador', value: getTop('exactos'), field: 'exactos', desc: 'Resultados exactos acertados' },
+        { title: '🏆 El Maestro', value: getTop('plenos'), field: 'plenos', desc: 'Jornadas de 3 o más puntos' },
+        { title: '🛡️ El Segurita', value: getTop('segurita'), field: 'segurita', desc: 'Aciertos logrados solo al 1X2' },
+        { title: '🙏 El Fiel', value: getTop('participaciones'), field: 'participaciones', desc: 'Jornadas totales apostadas' },
     ];
 
     return (
         <div>
-            <h2 style={styles.title}>SALÓN DE LA FAMA</h2>
+            <h2 style={styles.title} className="app-title">SALÓN DE LA FAMA</h2>
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px', marginTop: '30px'}}>
                 {epicCards.map((card, idx) => (
-                    <div key={idx} style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '25px 15px', borderRadius: '16px', textAlign: 'center', border: `1px solid rgba(255,215,0,0.1)`}}>
-                        <h3 style={{color: styles.colors.silver, fontSize: '0.9rem', textTransform: 'uppercase', height: '40px', fontFamily: "'Oswald', sans-serif"}}>{card.title}</h3>
-                        <p style={{fontSize:'1.4rem', margin:'15px 0'}}>{renderStatValue(card.value, card.field)}</p>
-                        <p style={{color: styles.colors.lightText, fontSize: '0.85rem'}}><span style={{fontWeight: 'bold', fontSize: '1.2rem', color: styles.colors.success}}>{card.value[1][card.field]}</span><br/>{card.desc}</p>
+                    <div key={idx} style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '25px 15px', borderRadius: '16px', textAlign: 'center', border: `1px solid rgba(255,215,0,0.1)`, boxShadow: `0 8px 20px rgba(0,0,0,0.3)`, transition: 'transform 0.3s ease'}}>
+                        <h3 style={{color: styles.colors.silver, fontSize: '0.9rem', textTransform: 'uppercase', height: '40px', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>{card.title}</h3>
+                        <p style={{fontSize:'1.4rem', margin:'15px 0', color: styles.colors.golden}}>{renderStatValue(card.value, card.field)}</p>
+                        <p style={{color: styles.colors.lightText, fontSize: '0.85rem'}}><span style={{fontWeight: 'bold', fontSize: '1.2rem', color: styles.colors.success, fontFamily: "'Oswald', sans-serif"}}>{card.value[1][card.field]}</span><br/>{card.desc}</p>
                     </div>
                 ))}
             </div>
@@ -1051,16 +1180,16 @@ const CalendarioScreen = ({ teamLogos }) => {
     if (loading) return <LoadingSkeleton />;
     return (
         <div>
-            <h2 style={styles.title}>CALENDARIO</h2>
+            <h2 style={styles.title} className="app-title">CALENDARIO</h2>
             <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
                 {jornadas.map(j => (
-                    <div key={j.id} style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(255,215,0,0.15)`}}>
+                    <div key={j.id} style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(255,215,0,0.15)`, boxShadow: '0 4px 10px rgba(0,0,0,0.2)'}}>
                         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
                             <div style={{display: 'flex', flexDirection: 'column'}}>
-                                <strong style={{fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif", color: styles.colors.golden}}>{j.esVip && '⭐ '}{getNombreJornada(j.numeroJornada)}: {j.equipoLocal} vs {j.equipoVisitante}</strong>
+                                <strong style={{fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px', textTransform: 'uppercase', color: styles.colors.golden}}>{j.esVip && '⭐ '}{getNombreJornada(j.numeroJornada)}: {j.equipoLocal} vs {j.equipoVisitante}</strong>
                                 <small style={{color: styles.colors.silver, marginTop: '5px', fontSize: '0.85rem'}}>{formatFullDateTime(j.fechaPartido)}</small>
                             </div>
-                            <div style={{backgroundColor: styles.colors.status[j.estado] || styles.colors.silver, padding: '6px 12px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff'}}>{j.estado}</div>
+                            <div style={{backgroundColor: styles.colors.status[j.estado] || styles.colors.silver, padding: '6px 12px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', textTransform: 'uppercase', boxShadow: '0 2px 5px rgba(0,0,0,0.3)'}}>{j.estado}</div>
                         </div>
                         {j.estado === 'Finalizada' && (
                             <div style={{marginTop: '15px', backgroundColor: 'rgba(0,0,0,0.4)', padding: '15px', borderRadius: '12px', borderLeft: `4px solid ${styles.colors.golden}`}}>
@@ -1076,7 +1205,7 @@ const CalendarioScreen = ({ teamLogos }) => {
 };
 
 // ============================================================================
-// --- ADMINISTRADOR Y CIERRE DE TEMPORADA ---
+// --- ADMINISTRADOR ---
 // ============================================================================
 const AdminCierreTemporada = () => {
     const [udlpAsciende, setUdlpAsciende] = useState('Sí');
@@ -1088,7 +1217,7 @@ const AdminCierreTemporada = () => {
         if (!udlpPosicion || !equipoAscendidoPlayoff) {
             alert('Por favor, rellena todos los campos antes de finalizar.'); return;
         }
-        if(!window.confirm("¡ATENCIÓN! Esto leerá la Porra Anual y El Camino, calculará los puntos (+5, +10, +20) y los sumará a la Clasificación Global. Esta acción es irreversible. ¿Seguro que los datos son correctos?")) return;
+        if(!window.confirm("¡ATENCIÓN! Esto calculará todos los puntos extra (+20, +10, +5) de la Porra Anual y El Camino, y los sumará a la Clasificación Global. ¿Seguro que los datos son correctos?")) return;
         
         setProcesando(true);
         try {
@@ -1102,7 +1231,7 @@ const AdminCierreTemporada = () => {
             const apuestasExtra = {};
             extraSnap.forEach(d => apuestasExtra[d.id] = d.data());
 
-            // Inyección de seguridad por si acaso
+            // Asegurar que Carlos, Carmelo y José tienen el Málaga si no votaron
             ['Carlos', 'Carmelo', 'José'].forEach(nombre => {
                 if(!apuestasExtra[nombre]) apuestasExtra[nombre] = { equipo: 'Málaga CF' };
             });
@@ -1114,32 +1243,30 @@ const AdminCierreTemporada = () => {
                 let ptsSumar = 0;
                 let desglose = [];
 
-                // 1. Puntos de El Camino (+5)
+                // 1. Calcular "El Camino"
                 if(apuestasExtra[userId] && apuestasExtra[userId].equipo === equipoAscendidoPlayoff) {
                     ptsSumar += 5;
                     desglose.push('+5 (El Camino)');
                 }
 
-                // 2. Puntos de Porra Anual (+5, +10 o +20)
+                // 2. Calcular "Porra Anual"
                 if(apuestasAnuales[userId]) {
                     const ap = apuestasAnuales[userId];
                     const apAsciende = (ap.asciende === 'Sí' || ap.asciende === true) ? 'Sí' : 'No';
                     const aciertoAsciende = (apAsciende === udlpAsciende);
-                    const aciertoPosicion = (String(ap.posicion) === String(udlpPosicion));
+                    // Comparar strings por si acaso hay espacios
+                    const aciertoPosicion = (String(ap.posicion).trim() === String(udlpPosicion).trim());
 
                     if (aciertoAsciende && aciertoPosicion) {
-                        ptsSumar += 20; 
-                        desglose.push('+20 (Pleno Anual)');
+                        ptsSumar += 20; desglose.push('+20 (Pleno Anual)');
                     } else if (aciertoPosicion) {
-                        ptsSumar += 10; 
-                        desglose.push('+10 (Posición Anual)');
+                        ptsSumar += 10; desglose.push('+10 (Posición Anual)');
                     } else if (aciertoAsciende) {
-                        ptsSumar += 5; 
-                        desglose.push('+5 (Ascenso Anual)');
+                        ptsSumar += 5; desglose.push('+5 (Ascenso Anual)');
                     }
                 }
 
-                // 3. Guardar en Base de Datos
+                // 3. Sumar y actualizar base de datos
                 if (ptsSumar > 0) {
                     const currentTotal = docSnap.data().puntosTotales || 0;
                     batch.update(doc(db, "clasificacion", userId), {
@@ -1151,7 +1278,7 @@ const AdminCierreTemporada = () => {
             });
 
             await batch.commit();
-            alert("¡Cálculo realizado! Todos los puntos extra se han sumado a la Clasificación Global con éxito.");
+            alert("¡Puntos extra repartidos! La Clasificación Global ha sido actualizada.");
         } catch (error) {
             console.error(error); alert("Error al procesar el cierre de temporada.");
         }
@@ -1161,7 +1288,7 @@ const AdminCierreTemporada = () => {
     return (
         <div style={{padding: '25px', backgroundColor: 'rgba(230,57,70,0.1)', border: `1px solid ${styles.colors.danger}`, borderRadius: '16px', marginBottom: '30px'}}>
             <h3 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.danger, marginBottom: '15px'}}>🚨 CIERRE DE TEMPORADA DEFINITIVO</h3>
-            <p style={{color: styles.colors.silver, fontSize: '0.9rem', marginBottom: '20px'}}>Usa este módulo SOLO cuando la temporada y el Playoff hayan terminado. Sumará automáticamente todos los puntos acumulados en la Porra Anual y en El Camino.</p>
+            <p style={{color: styles.colors.silver, fontSize: '0.9rem', marginBottom: '20px'}}>Usa esto SOLO cuando la liga haya terminado. Sumará automáticamente los puntos extra de la Porra Anual y El Camino.</p>
             
             <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
                 <div>
@@ -1176,7 +1303,7 @@ const AdminCierreTemporada = () => {
                     <input type="number" value={udlpPosicion} onChange={e=>setUdlpPosicion(e.target.value)} placeholder="Ej: 3" style={styles.input} />
                 </div>
                 <div style={{gridColumn: '1 / -1'}}>
-                    <label style={styles.label}>Equipo Campeón Playoff (Sube a Primera):</label>
+                    <label style={styles.label}>Equipo Campeón Playoff (Sube):</label>
                     <select value={equipoAscendidoPlayoff} onChange={e=>setEquipoAscendidoPlayoff(e.target.value)} style={styles.input}>
                         <option value="">-- Selecciona --</option>
                         <option value="UD Las Palmas">UD Las Palmas</option>
@@ -1188,7 +1315,7 @@ const AdminCierreTemporada = () => {
             </div>
             
             <button onClick={handleFinalizarTemporada} disabled={procesando} style={{...styles.mainButton, width: '100%', backgroundColor: styles.colors.danger, color: '#fff', border: 'none', background: 'none'}}>
-                {procesando ? 'CALCULANDO Y REPARTIENDO...' : 'FINALIZAR TEMPORADA Y REPARTIR PUNTOS'}
+                {procesando ? 'PROCESANDO...' : 'FINALIZAR TEMPORADA Y REPARTIR PUNTOS'}
             </button>
         </div>
     );
@@ -1199,69 +1326,227 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     const [resultadoLocal, setResultadoLocal] = useState(jornada.resultadoLocal === undefined ? '' : jornada.resultadoLocal);
     const [resultadoVisitante, setResultadoVisitante] = useState(jornada.resultadoVisitante === undefined ? '' : jornada.resultadoVisitante);
     const [esVip, setEsVip] = useState(jornada.esVip || false);
+    const [tipoPartido, setTipoPartido] = useState(jornada.tipoPartido || 'ida');
+    const [h2hInfo, setH2hInfo] = useState(jornada.h2hInfo || '');
+    const [goleador, setGoleador] = useState(jornada.goleador || '');
     const [bote, setBote] = useState(jornada.bote || 0);
+    
+    const toInputFormat = (date) => { if (!date || !date.seconds) return ''; const d = new Date(date.seconds * 1000); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+    
+    const [fechaApertura, setFechaApertura] = useState(toInputFormat(jornada.fechaApertura));
+    const [fechaCierre, setFechaCierre] = useState(toInputFormat(jornada.fechaCierre));
+    const [fechaPartido, setFechaPartido] = useState(toInputFormat(jornada.fechaPartido));
+
     const [isUnlocked, setIsUnlocked] = useState(jornada.estado !== 'Finalizada');
+    const [liveData, setLiveData] = useState({ golesLocal: 0, golesVisitante: 0, primerGoleador: '', isLive: false });
+
+    useEffect(() => { if (jornada.liveData) { setLiveData({ ...jornada.liveData }); } }, [jornada.liveData]);
 
     const handleSaveChanges = async () => {
         const jornadaRef = doc(db, "jornadas", jornada.id);
+        
         let ganadoresArray = [];
         
+        // --- PARSE INT AQUÍ PARA EVITAR ERRORES DE LECTURA AL BUSCAR GANADORES ---
         if (estado === 'Finalizada' && resultadoLocal !== '' && resultadoVisitante !== '') {
+            const resL = parseInt(resultadoLocal);
+            const resV = parseInt(resultadoVisitante);
+            
             const pSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
             pSnap.forEach(docSnap => {
                 const p = docSnap.data();
                 let isWinner = false;
-                if (parseInt(p.golesLocal) === parseInt(resultadoLocal) && parseInt(p.golesVisitante) === parseInt(resultadoVisitante)) { isWinner = true; } 
+                
+                if (parseInt(p.golesLocal) === resL && parseInt(p.golesVisitante) === resV) {
+                    isWinner = true;
+                } 
                 else if (p.jokerActivo && p.jokerPronosticos) {
                     for (let jp of p.jokerPronosticos) {
-                        if (jp.local !== '' && jp.visitante !== '' && parseInt(jp.local) === parseInt(resultadoLocal) && parseInt(jp.visitante) === parseInt(resultadoVisitante)) { isWinner = true; break; }
+                        if (jp.local !== '' && jp.visitante !== '' && parseInt(jp.local) === resL && parseInt(jp.visitante) === resV) {
+                            isWinner = true; break;
+                        }
                     }
                 }
+                
                 if (isWinner) ganadoresArray.push(docSnap.id);
             });
         }
 
-        const updateData = { estado, resultadoLocal, resultadoVisitante, esVip, bote: parseFloat(bote) || 0 };
-        if (estado === 'Finalizada') updateData.ganadores = ganadoresArray;
+        const updateData = { 
+            estado, resultadoLocal, resultadoVisitante, esVip, tipoPartido, h2hInfo, goleador, bote: parseFloat(bote) || 0,
+            fechaApertura: fechaApertura ? new Date(fechaApertura) : null, 
+            fechaCierre: fechaCierre ? new Date(fechaCierre) : null, 
+            fechaPartido: fechaPartido ? new Date(fechaPartido) : null 
+        };
+
+        if (estado === 'Finalizada') {
+            updateData.ganadores = ganadoresArray;
+        }
+
         await updateDoc(jornadaRef, updateData);
-        alert('Jornada guardada.');
+        alert('Jornada guardada y ganadores calculados automáticamente.');
+    };
+
+    const handleUpdateLiveState = async () => {
+        const jornadaRef = doc(db, "jornadas", jornada.id);
+        await updateDoc(jornadaRef, { estado: 'En vivo', liveData: { golesLocal: parseInt(liveData.golesLocal), golesVisitante: parseInt(liveData.golesVisitante), primerGoleador: liveData.primerGoleador, isLive: true } });
+        alert('Marcador en vivo actualizado');
+    };
+
+    const handleSendPush1Hora = async () => {
+        if(window.confirm("¿Seguro que quieres enviar notificación PUSH: '1 Hora para cierre' a todos los usuarios?")) {
+            alert("✅ Notificación PUSH (1 HORA) enviada (simulación).");
+        }
+    };
+    const handleSendPush10Min = async () => {
+        if(window.confirm("¿Seguro que quieres enviar notificación PUSH: '10 Minutos para cierre' a todos los usuarios?")) {
+            alert("🚨 Notificación PUSH (10 MIN) enviada (simulación).");
+        }
     };
 
     if (!isUnlocked) {
         return (
-            <div style={{padding: '20px', backgroundColor: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', marginBottom: '15px'}}>
-                <span style={{color: styles.colors.success, fontWeight: 'bold'}}>✓ {getNombreJornada(jornada.numeroJornada)} Finalizada</span>
-                <button onClick={() => setIsUnlocked(true)} style={styles.secondaryButton}>Editar</button>
+            <div style={{...styles.adminJornadaItem, display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(16, 185, 129, 0.05)', borderColor: 'rgba(16,185,129,0.3)'}}>
+                <div><span style={{fontWeight: 'bold', color: styles.colors.success, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>✓ {getNombreJornada(jornada.numeroJornada)}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</span> <span style={{color: styles.colors.silver, fontSize: '0.8rem'}}>(Finalizada)</span></div>
+                <button onClick={() => setIsUnlocked(true)} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem'}}>Desbloquear</button>
             </div>
         )
     }
 
     return (
-        <div style={{padding: '25px', backgroundColor: 'rgba(0,0,0,0.3)', border: `1px solid rgba(255,215,0,0.2)`, borderRadius: '16px', marginBottom: '25px'}}>
-            <h3 style={{color: styles.colors.golden, fontFamily: "'Oswald', sans-serif"}}>{getNombreJornada(jornada.numeroJornada)}</h3>
-            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '15px'}}>
-                <div><label style={styles.label}>Estado:</label><select value={estado} onChange={e=>setEstado(e.target.value)} style={styles.input}><option value="Pre-apertura">Pre-apertura</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="En vivo">En vivo</option><option value="Finalizada">Finalizada</option></select></div>
-                <div><label style={styles.label}>BOTE INICIAL (€):</label><input type="number" value={bote} onChange={e=>setBote(e.target.value)} style={styles.input} /></div>
-                <div><label style={styles.label}>Res. Local:</label><input type="number" value={resultadoLocal} onChange={e=>setResultadoLocal(e.target.value)} style={styles.input} /></div>
-                <div><label style={styles.label}>Res. Visitante:</label><input type="number" value={resultadoVisitante} onChange={e=>setResultadoVisitante(e.target.value)} style={styles.input} /></div>
+        <div style={styles.adminJornadaItem}>
+            <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '20px', borderBottom: `1px solid rgba(255,215,0,0.2)`, paddingBottom: '15px'}}>
+                <p style={{fontSize: '1.3rem', color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px', textTransform: 'uppercase'}}><strong>{getNombreJornada(jornada.numeroJornada)}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</strong></p>
+                <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}><label style={{color: styles.colors.silver, fontWeight: 'bold', fontSize: '0.9rem'}}>⭐ VIP</label><input type="checkbox" checked={esVip} onChange={(e) => setEsVip(e.target.checked)} style={styles.checkbox}/></div>
             </div>
-            <button onClick={handleSaveChanges} style={{...styles.mainButton, width: '100%'}}>GUARDAR JORNADA</button>
+            
+            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px'}}>
+                <div><label style={styles.label}>Estado:</label><select value={estado} onChange={(e) => setEstado(e.target.value)} style={styles.adminSelect}><option value="Próximamente">Próximamente</option><option value="Pre-apertura">Pre-apertura</option><option value="Abierta">Abierta</option><option value="Cerrada">Cerrada</option><option value="En vivo">En vivo</option><option value="Finalizada">Finalizada</option></select></div>
+                <div><label style={styles.label}>Tipo Eliminatoria:</label><select value={tipoPartido} onChange={(e) => setTipoPartido(e.target.value)} style={styles.adminSelect}><option value="ida">Liga / Ida (1X2)</option><option value="vuelta_semi">Vuelta Semi (Pasa/No pasa)</option><option value="vuelta_final">Vuelta Final (Asciende)</option></select></div>
+                
+                <div><label style={styles.label}>Apertura Apuestas:</label><input type="datetime-local" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} style={styles.input} /></div>
+                <div><label style={styles.label}>Cierre Apuestas:</label><input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={styles.input} /></div>
+                <div><label style={styles.label}>Fecha Partido (H.Canaria):</label><input type="datetime-local" value={fechaPartido} onChange={(e) => setFechaPartido(e.target.value)} style={styles.input} /></div>
+                
+                <div style={{gridColumn: '1 / -1'}}><label style={styles.label}>Historial vs Rival (Info Previa):</label><input type="text" value={h2hInfo} onChange={(e) => setH2hInfo(e.target.value)} placeholder="Ej: UDLP 2-1 Málaga | Málaga 0-0 UDLP" style={styles.input} /></div>
+                <div><label style={styles.label}>BOTE INICIAL (€):</label><input type="number" value={bote} onChange={(e) => setBote(e.target.value)} style={styles.input} /></div>
+
+                <div style={{backgroundColor: 'rgba(0,0,0,0.4)', padding: '15px', borderRadius: '12px', border: `1px solid rgba(255,255,255,0.05)`}}>
+                    <label style={{...styles.label, color: styles.colors.golden}}>Resultado Final (Oficial):</label>
+                    <div style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
+                        <input type="number" value={resultadoLocal} onChange={(e) => setResultadoLocal(e.target.value)} style={{...styles.input, width: '70px', textAlign: 'center', fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif"}} placeholder="L" />
+                        <span style={styles.separator}>-</span>
+                        <input type="number" value={resultadoVisitante} onChange={(e) => setResultadoVisitante(e.target.value)} style={{...styles.input, width: '70px', textAlign: 'center', fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif"}} placeholder="V" />
+                    </div>
+                </div>
+                <div style={{backgroundColor: 'rgba(0,0,0,0.4)', padding: '15px', borderRadius: '12px', border: `1px solid rgba(255,255,255,0.05)`}}>
+                    <label style={{...styles.label, color: styles.colors.golden}}>Primer Goleador (Final):</label>
+                    <select value={goleador} onChange={(e) => setGoleador(e.target.value)} style={styles.adminSelect}><option value="">-- Elige --</option><option value="SG">Sin Goleador (SG)</option>{plantilla.sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(j => <option key={j.nombre} value={j.nombre}>{j.nombre}</option>)}</select>
+                </div>
+            </div>
+
+            {estado === 'Abierta' && (
+                <div style={{marginTop: '25px', padding: '20px', backgroundColor: 'rgba(252, 163, 17, 0.05)', borderRadius: '12px', border: `1px solid rgba(252, 163, 17, 0.3)`}}>
+                    <h4 style={{color: styles.colors.warning, textTransform: 'uppercase', marginBottom: '15px', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>🔔 Gestión de Alarmas (Push)</h4>
+                    <div style={{display: 'flex', gap: '15px', flexWrap: 'wrap'}}>
+                        <button onClick={handleSendPush1Hora} style={{...styles.secondaryButton, flex: 1, borderColor: styles.colors.warning, color: styles.colors.warning}}>🚨 AVISO 1 HORA</button>
+                        <button onClick={handleSendPush10Min} style={{...styles.secondaryButton, flex: 1, borderColor: styles.colors.danger, color: styles.colors.danger}}>🚨 AVISO 10 MIN</button>
+                    </div>
+                </div>
+            )}
+            
+            <button onClick={handleSaveChanges} style={{...styles.saveButton, width: '100%', marginTop: '25px'}}>GUARDAR TODOS LOS CAMBIOS</button>
+
+            {(estado === 'Cerrada' || estado === 'En vivo') && (
+                <div style={styles.liveAdminContainer}>
+                    <h4 style={{color: styles.colors.danger, textTransform: 'uppercase', marginBottom: '20px', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>🔴 Control de Partido En Vivo</h4>
+                    <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '20px', alignItems: 'end'}}>
+                        <div><label style={{color: styles.colors.silver, fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', display: 'block'}}>Goles Local</label><input type="number" value={liveData.golesLocal} onChange={e => setLiveData({...liveData, golesLocal: parseInt(e.target.value) || 0})} style={{...styles.input, textAlign: 'center', fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif"}} /></div>
+                        <div><label style={{color: styles.colors.silver, fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', display: 'block'}}>Goles Visitante</label><input type="number" value={liveData.golesVisitante} onChange={e => setLiveData({...liveData, golesVisitante: parseInt(e.target.value) || 0})} style={{...styles.input, textAlign: 'center', fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif"}} /></div>
+                        <div style={{gridColumn: '1 / -1'}}><label style={{color: styles.colors.silver, fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', display: 'block'}}>Primer Goleador</label><select value={liveData.primerGoleador} onChange={e => setLiveData({...liveData, primerGoleador: e.target.value})} style={styles.adminSelect}><option value="">-</option><option value="SG">SG</option>{plantilla.map(j => <option key={j.nombre} value={j.nombre}>{j.nombre}</option>)}</select></div>
+                        <button onClick={handleUpdateLiveState} style={{...styles.saveButton, backgroundColor: styles.colors.danger, gridColumn: '1 / -1'}}>ACTUALIZAR MARCADOR VIVO</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
-const AdminPanelScreen = () => {
+const AdminPlayoffPanel = () => {
+    const [config, setConfig] = useState({ semi1_ganador: '', semi2_ganador: '', ascendido: '', bloqueado: false, fechaCierreApuestaExtra: '' });
+    
+    useEffect(() => { 
+        onSnapshot(doc(db, "configuracion", "playoff"), d => { 
+            if(d.exists()) {
+                const data = d.data();
+                if(data.fechaCierreApuestaExtra && data.fechaCierreApuestaExtra.seconds) {
+                    const date = new Date(data.fechaCierreApuestaExtra.seconds * 1000);
+                    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+                    data.fechaCierreApuestaExtra = date.toISOString().slice(0, 16);
+                }
+                setConfig(data); 
+            }
+        }); 
+    }, []);
+
+    const handleSave = async () => { 
+        const saveConfig = {...config};
+        if(saveConfig.fechaCierreApuestaExtra) saveConfig.fechaCierreApuestaExtra = new Date(saveConfig.fechaCierreApuestaExtra);
+        else saveConfig.fechaCierreApuestaExtra = null;
+        await setDoc(doc(db, "configuracion", "playoff"), saveConfig); 
+        alert("Configuración Guardada"); 
+    };
+
+    return (
+        <div style={styles.adminJornadaItem}>
+            <h3 style={{...styles.formSectionTitle, fontSize: '1.2rem', borderBottom: `1px solid rgba(255,215,0,0.2)`, paddingBottom: '10px'}}>⚙️ Gestión "El Camino"</h3>
+            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginTop: '20px'}}>
+                <div><label style={styles.label}>Ganador Semi 1:</label><select value={config.semi1_ganador} onChange={e=>setConfig({...config, semi1_ganador: e.target.value})} style={styles.adminSelect}><option value="">--</option><option value="UD Almería">Almería</option><option value="CD Castellón">Castellón</option></select></div>
+                <div><label style={styles.label}>Ganador Semi 2:</label><select value={config.semi2_ganador} onChange={e=>setConfig({...config, semi2_ganador: e.target.value})} style={styles.adminSelect}><option value="">--</option><option value="Málaga CF">Málaga</option><option value="UD Las Palmas">UDLP</option></select></div>
+                <div><label style={styles.label}>¡EQUIPO ASCENDIDO!:</label><input type="text" value={config.ascendido || ''} onChange={e=>setConfig({...config, ascendido: e.target.value})} style={styles.input} /></div>
+                <div><label style={styles.label}>Cierre Apuestas Extras (+5):</label><input type="datetime-local" value={config.fechaCierreApuestaExtra || ''} onChange={e=>setConfig({...config, fechaCierreApuestaExtra: e.target.value})} style={styles.input} /></div>
+            </div>
+            <div style={{marginTop: '25px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: '10px', display: 'flex', alignItems: 'center'}}><input type="checkbox" checked={config.bloqueado} onChange={e=>setConfig({...config, bloqueado: e.target.checked})} style={styles.checkbox} /> <span style={{color:styles.colors.lightText, marginLeft:'12px', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase'}}>Bloquear Apuestas Extra (Botones)</span></div>
+            <button onClick={handleSave} style={{...styles.saveButton, marginTop:'20px', width: '100%'}}>GUARDAR CUADRO PLAYOFF</button>
+        </div>
+    );
+};
+
+const AdminPanelScreen = ({ plantilla }) => {
     const [jornadas, setJornadas] = useState([]);
+    const [generando, setGenerando] = useState(false);
+
     useEffect(() => { 
         const unsub = onSnapshot(query(collection(db, "jornadas"), orderBy("numeroJornada", "desc")), (snap) => { setJornadas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))); }); 
         return () => unsub(); 
     }, []);
 
+    const handleGenerarPlayoffs = async () => {
+        if(!window.confirm("¿Estás seguro? Esto creará las 4 jornadas del Playoff en la base de datos.")) return;
+        setGenerando(true);
+        try {
+            const batch = writeBatch(db);
+            batch.set(doc(db, "jornadas", "jornada_43"), { numeroJornada: 43, equipoLocal: "UD Las Palmas", equipoVisitante: "Málaga CF", estado: "Pre-apertura", esVip: false, tipoPartido: "ida", fechaPartido: new Date("2026-06-07T20:00:00"), fechaApertura: new Date("2026-06-02T12:00:00"), fechaCierre: new Date("2026-06-07T20:00:00"), bote: 0, h2hInfo: "Fase Regular: UDLP 2-1 Málaga | Málaga 0-0 UDLP" });
+            batch.set(doc(db, "jornadas", "jornada_44"), { numeroJornada: 44, equipoLocal: "Málaga CF", equipoVisitante: "UD Las Palmas", estado: "Próximamente", esVip: true, tipoPartido: "vuelta_semi", fechaPartido: new Date("2026-06-10T20:00:00"), fechaApertura: new Date("2026-06-08T10:00:00"), fechaCierre: new Date("2026-06-10T20:00:00"), bote: 0, h2hInfo: "Fase Regular: UDLP 2-1 Málaga | Málaga 0-0 UDLP" });
+            batch.set(doc(db, "jornadas", "jornada_45"), { numeroJornada: 45, equipoLocal: "Rival Final", equipoVisitante: "UD Las Palmas", estado: "Próximamente", esVip: false, tipoPartido: "ida", fechaPartido: new Date("2026-06-14T20:00:00"), fechaApertura: new Date("2026-06-11T12:00:00"), fechaCierre: new Date("2026-06-14T20:00:00"), bote: 0, h2hInfo: "" });
+            batch.set(doc(db, "jornadas", "jornada_46"), { numeroJornada: 46, equipoLocal: "UD Las Palmas", equipoVisitante: "Rival Final", estado: "Próximamente", esVip: true, tipoPartido: "vuelta_final", fechaPartido: new Date("2026-06-20T20:00:00"), fechaApertura: new Date("2026-06-15T12:00:00"), fechaCierre: new Date("2026-06-20T20:00:00"), bote: 0, h2hInfo: "" });
+            await batch.commit(); alert("¡Jornadas de Playoff generadas con éxito!");
+        } catch (error) { console.error(error); alert("Error al generar las jornadas."); }
+        setGenerando(false);
+    };
+
     return (
         <div>
             <h2 style={styles.title}>PANEL DE CONTROL</h2>
+            <div style={{textAlign: 'center', marginBottom: '30px'}}>
+                <button onClick={handleGenerarPlayoffs} disabled={generando} style={{...styles.mainButton, backgroundColor: 'transparent', background: `linear-gradient(135deg, ${styles.colors.danger}, #8b0000)`, color: 'white', border: `1px solid rgba(255,255,255,0.2)`, boxShadow: '0 8px 20px rgba(230,57,70,0.4)'}}>
+                    {generando ? "GENERANDO..." : "⚡ AUTO-GENERAR HORARIOS PLAYOFF"}
+                </button>
+                <p style={{color: styles.colors.silver, marginTop: '15px', fontSize: '0.85rem', fontStyle: 'italic'}}>Solo usar una vez para inyectar la estructura inicial a la base de datos.</p>
+            </div>
+            <AdminPlayoffPanel />
             <AdminCierreTemporada />
-            {jornadas.map(j => (<JornadaAdminItem key={j.id} jornada={j} />))}
+            {jornadas.map(j => (<JornadaAdminItem key={j.id} jornada={j} plantilla={plantilla} />))}
         </div>
     );
 };
@@ -1274,18 +1559,36 @@ function App() {
     const [activeTab, setActiveTab] = useState('miJornada');
     const [currentUser, setCurrentUser] = useState(null);
     const [teamLogos, setTeamLogos] = useState({});
+    const [plantilla, setPlantilla] = useState(PLANTILLA_ACTUALIZADA);
     const [userProfiles, setUserProfiles] = useState({});
     const [onlineUsers, setOnlineUsers] = useState({});
+    const [clasificacionData, setClasificacionData] = useState([]);
     const [showWelcomeModal, setShowWelcomeModal] = useState(false);
 
     useEffect(() => {
+        // --- INYECCIÓN DE TÍTULO E ICONO ÉPICO ---
         document.title = "🏆 PLAYOFF 2026";
+        let link = document.querySelector("link[rel~='icon']");
+        if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+        }
+        link.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⭐</text></svg>';
+
+        // --- ESTILOS CSS BASE PREMIUM ---
         const styleSheet = document.createElement("style"); 
         styleSheet.innerText = `
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600;700&display=swap');
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            html { font-size: 16px !important; }
-            body { background-color: ${colors.deepBlue}; color: #fff; }
+            html { font-size: 16px !important; -webkit-text-size-adjust: 100%; }
+            body, #root { width: 100%; min-width: 100%; overflow-x: hidden; background-color: ${colors.deepBlue}; }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
+            @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+            @keyframes pulse { 0% { transform: scale(1); } 100% { transform: scale(1.05); } }
+            .content-enter-active { animation: slideInFromRight 0.4s ease-out; }
+            @keyframes blink-live { 50% { background-color: #5a0000; } }
         `;
         document.head.appendChild(styleSheet);
         
@@ -1293,8 +1596,9 @@ function App() {
         
         const unsubEscudos = onSnapshot(doc(db, "configuracion", "escudos"), (docSnap) => { if (docSnap.exists()) setTeamLogos(docSnap.data()); });
         const unsubClasificacion = onSnapshot(collection(db, "clasificacion"), (snapshot) => { 
-            const profiles = {}; snapshot.forEach(doc => { profiles[doc.id] = doc.data(); }); 
-            setUserProfiles(profiles); 
+            const profiles = {}; const clasificacion = []; 
+            snapshot.forEach(doc => { const data = doc.data(); profiles[doc.id] = data; clasificacion.push({id: doc.id, ...data}); }); 
+            setUserProfiles(profiles); setClasificacionData(clasificacion);
         });
         const unsubStatus = onValue(ref(rtdb, 'status/'), (snapshot) => { setOnlineUsers(snapshot.val() || {}); });
 
@@ -1308,6 +1612,7 @@ function App() {
             setCurrentUser(user);
             set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
             setScreen('app');
+            // MODAL V12: Saltará automáticamente al hacer login
             if (!localStorage.getItem('playoffWelcomeSeenV12')) { setShowWelcomeModal(true); }
         } catch (error) { alert("Error al iniciar sesión."); }
     };
@@ -1315,11 +1620,11 @@ function App() {
     const handleLogout = async () => { if (currentUser) set(ref(rtdb, 'status/' + currentUser), false); setCurrentUser(null); setScreen('login'); };
 
     if (screen === 'splash') return <EpicSplashScreen />;
-    if (screen === 'login') return <div style={styles.container}><div style={styles.card}><div style={{textAlign: 'center'}}><h2 style={styles.title}>ACCESO PLAYOFF</h2><div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '15px', marginTop: '30px'}}>{JUGADORES.map(j => <button key={j} onClick={() => handleLogin(j)} style={{...styles.secondaryButton, padding: '20px 10px'}}>{j}</button>)}</div></div></div></div>;
+    if (screen === 'login') return <div style={styles.container}><div style={styles.card}><div style={{textAlign: 'center'}}><h2 style={styles.title}>ACCESO PLAYOFF</h2><div style={styles.userList}>{JUGADORES.map(j => <button key={j} onClick={() => handleLogin(j)} style={styles.userButton}><div style={{position: 'relative'}}><div style={styles.loginProfileIconCircle}>{userProfiles[j]?.icon || '❓'}</div>{onlineUsers[j] && <div style={{position: 'absolute', bottom: '0', right: '-5px', width: '14px', height: '14px', backgroundColor: styles.colors.success, borderRadius: '50%', border: `2px solid ${styles.colors.deepBlue}`, boxShadow: `0 0 8px ${styles.colors.success}`}}></div>}</div> {j}</button>)}</div></div></div></div>;
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'miJornada': return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
+            case 'miJornada': return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'elCamino': return <ElCaminoScreen user={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'laJornada': return <LaJornadaScreen userProfiles={userProfiles} onlineUsers={onlineUsers} teamLogos={teamLogos} />;
             case 'porraAnual': return <PorraAnualScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
@@ -1328,7 +1633,7 @@ function App() {
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'pagos': return <PagosScreen />;
             case 'calendario': return <CalendarioScreen teamLogos={teamLogos} />;
-            case 'admin': return currentUser === 'Juanma' ? <AdminPanelScreen /> : null;
+            case 'admin': return currentUser === 'Juanma' ? <AdminPanelScreen plantilla={plantilla} /> : null;
             default: return null;
         }
     };
@@ -1351,7 +1656,7 @@ function App() {
                         {currentUser === 'Juanma' && (<button onClick={() => setActiveTab('admin')} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}
                         <button onClick={handleLogout} style={styles.logoutButton}>Salir</button>
                     </nav>
-                    <div key={activeTab} style={{paddingTop: '15px'}}>{renderContent()}</div>
+                    <div key={activeTab} className="content-enter-active" style={{paddingTop: '15px'}}>{renderContent()}</div>
                 </div>
             </div>
         </>
