@@ -239,15 +239,6 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
         else if (!pronostico.sinGoleador && golAp !== "" && golAp === golReal && golReal !== "sg") ptos += esVip ? 4 : 2;
     }
     return ptos;
-};    
-    const golReal = (liveData.primerGoleador || '').trim().toLowerCase();
-    const golAp = (pronostico.goleador || '').trim().toLowerCase();
-    
-    if (gL > 0 || gV > 0 || golReal === "sg") {
-        if (pronostico.sinGoleador && golReal === "sg") ptos += 1;
-        else if (!pronostico.sinGoleador && golAp !== "" && golAp === golReal && golReal !== "sg") ptos += esVip ? 4 : 2;
-    }
-    return ptos;
 };
 
 // ============================================================================
