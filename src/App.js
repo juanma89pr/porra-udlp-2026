@@ -1462,21 +1462,6 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
         }
     };
 
-        const updateData = { 
-            estado, resultadoLocal, resultadoVisitante, esVip, tipoPartido, h2hInfo, goleador, bote: parseFloat(bote) || 0,
-            fechaApertura: fechaApertura ? new Date(fechaApertura) : null, 
-            fechaCierre: fechaCierre ? new Date(fechaCierre) : null, 
-            fechaPartido: fechaPartido ? new Date(fechaPartido) : null 
-        };
-
-        if (estado === 'Finalizada') {
-            updateData.ganadores = ganadoresArray;
-        }
-
-        await updateDoc(jornadaRef, updateData);
-        alert('Jornada guardada y ganadores calculados automáticamente.');
-    };
-
     const handleUpdateLiveState = async () => {
         const jornadaRef = doc(db, "jornadas", jornada.id);
         await updateDoc(jornadaRef, { estado: 'En vivo', liveData: { golesLocal: parseInt(liveData.golesLocal), golesVisitante: parseInt(liveData.golesVisitante), primerGoleador: liveData.primerGoleador, isLive: true } });
