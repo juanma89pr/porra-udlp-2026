@@ -75,7 +75,7 @@ const styles = {
     placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `1px dashed ${colors.goldenDark}`, borderRadius: '16px', textAlign: 'center', color: colors.lightText },
     epicSplashContainer: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: `radial-gradient(circle at center, ${colors.blue} 0%, #000 100%)`, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 9999, animation: 'fadeOut 0.5s ease 2.5s forwards' },
     epicSplashSubtitle: { fontFamily: "'Montserrat', sans-serif", fontSize: 'clamp(1rem, 4vw, 1.5rem)', fontWeight: '600', color: colors.silver, letterSpacing: '5px', marginBottom: '10px', textTransform: 'uppercase' },
-    epicSplashTitle: { fontFamily: "'Oswald', sans-serif", fontSize: 'clamp(3rem, 8vw, 5rem)', fontWeight: 'bold', color: colors.silver, textShadow: `0 0 30px rgba(255,255,255,0.3)`, textTransform: 'uppercase', textAlign: 'center', animation: 'pulse 1.5s infinite alternate', lineHeight: 1.1 },
+    epicSplashTitle: { fontFamily: "'Oswald', sans-serif", fontSize: 'clamp(3rem, 10vw, 5.5rem)', fontWeight: 'bold', color: colors.silver, textShadow: `0 0 30px rgba(255,255,255,0.3)`, textTransform: 'uppercase', textAlign: 'center', animation: 'pulse 1.5s infinite alternate', lineHeight: 1.1 },
     navbar: { display: 'flex', flexWrap: 'wrap', gap: '8px', borderBottom: `1px solid rgba(255,215,0,0.2)`, paddingBottom: '15px', marginBottom: '25px', alignItems: 'center', justifyContent: 'center' },
     navButton: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: 'none', borderRadius: '8px', backgroundColor: 'transparent', color: colors.silver, cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
     navButtonActive: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: `1px solid ${colors.goldenDark}`, borderRadius: '8px', backgroundColor: 'rgba(212, 175, 55, 0.1)', color: colors.golden, cursor: 'pointer', textTransform: 'uppercase', fontWeight: 'bold', boxShadow: `0 4px 10px rgba(0,0,0,0.3)` },
@@ -108,7 +108,7 @@ const styles = {
     h2hContainer: { backgroundColor: 'rgba(0,0,0,0.2)', border: `1px solid rgba(255,215,0,0.2)`, borderRadius: '12px', padding: '20px', marginBottom: '25px', textAlign: 'center' },
     pasaButtonActive: { flex: 1, padding: '15px', fontSize: '1.2rem', fontWeight: 'bold', cursor: 'pointer', border: 'none', borderRadius: '12px', background: `linear-gradient(135deg, ${colors.goldenDark}, ${colors.golden})`, color: colors.darkText, transition: 'transform 0.2s ease', boxShadow: `0 8px 20px rgba(212,175,55,0.3)`, textTransform: 'uppercase', fontFamily: "'Oswald', sans-serif" },
     pasaButtonInactive: { flex: 1, padding: '15px', fontSize: '1.2rem', fontWeight: 'bold', cursor: 'pointer', border: `1px solid rgba(255,215,0,0.3)`, borderRadius: '12px', backgroundColor: 'rgba(0,0,0,0.4)', color: colors.silver, transition: 'all 0.3s ease', textTransform: 'uppercase', fontFamily: "'Oswald', sans-serif" },
-    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 10, 20, 0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000, backdropFilter: 'blur(8px)' },
+    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 10, 20, 0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' },
     modalContent: { backgroundColor: 'rgba(0, 29, 61, 0.95)', padding: '40px 30px', borderRadius: '24px', width: '90%', maxWidth: '500px', border: `1px solid rgba(255, 215, 0, 0.3)`, boxShadow: `0 30px 60px rgba(0,0,0,0.8), inset 0 0 30px rgba(255,215,0,0.05)`, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' },
     modalDots: { display: 'flex', justifyContent: 'center', gap: '8px', margin: '25px 0' },
     modalDotActive: { width: '25px', height: '6px', borderRadius: '3px', backgroundColor: colors.golden, transition: 'all 0.3s' },
@@ -252,7 +252,7 @@ const PlayoffWelcomeModal = ({ onClose }) => {
                     )}
                     {step === 2 && (
                         <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.success, fontWeight: 'bold'}}>ERRORES SOLUCIONADOS:</span> Se ha corregido el error matemático que no sumaba los puntos de "No Pasa". Además, hemos inyectado automáticamente la apuesta de Claudio para que conste en el marcador de la jornada de vuelta.</p>
+                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.success, fontWeight: 'bold'}}>ERRORES SOLUCIONADOS:</span> Se ha corregido el error matemático que no sumaba los puntos de "No Pasa" o "Pierde". Además, hemos inyectado automáticamente la apuesta de Claudio para que conste en el marcador de la jornada de vuelta.</p>
                         </div>
                     )}
                     {step === 3 && (
@@ -677,6 +677,31 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
         return parseInt(pL) === parseInt(gL) && parseInt(pV) === parseInt(gV);
     };
 
+    // --- CÁLCULO ECONÓMICO EN VIVO ---
+    const costeBase = jornadaActual.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+    let recaudacionApuestas = 0;
+    let ganadoresExactos = [];
+
+    participantes.forEach(p => {
+        recaudacionApuestas += costeBase; // Apuesta normal
+        let esGanador = false;
+        
+        if (isExactResultWinner(p.golesLocal, p.golesVisitante)) { esGanador = true; }
+
+        if (p.jokerActivo && p.jokerPronosticos) {
+            const huecosRellenos = p.jokerPronosticos.filter(jp => jp.local !== '' && jp.visitante !== '');
+            recaudacionApuestas += (huecosRellenos.length * costeBase);
+            for (let jp of huecosRellenos) {
+                if (isExactResultWinner(jp.local, jp.visitante)) { esGanador = true; }
+            }
+        }
+        if (esGanador) ganadoresExactos.push(p.id);
+    });
+
+    const boteInicial = parseFloat(jornadaActual.bote || 0);
+    const premioTotal = boteInicial + recaudacionApuestas;
+    const premioPorPersona = ganadoresExactos.length > 0 ? (premioTotal / ganadoresExactos.length).toFixed(2) : 0;
+
     return (
         <div>
             {isLiveView && <div style={styles.liveBanner}>🔴 PARTIDO EN VIVO 🔴</div>}
@@ -696,6 +721,35 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                 
                 {isLiveView && liveData.primerGoleador && <p style={{color: styles.colors.golden, marginTop: '15px', fontWeight: 'bold', fontSize: '1.3rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>⚽ {liveData.primerGoleador}</p>}
 
+                {/* --- PANEL ECONÓMICO --- */}
+                <div style={{backgroundColor: 'rgba(0,0,0,0.4)', padding: '20px', borderRadius: '16px', border: `1px solid ${styles.colors.goldenDark}`, marginBottom: '35px', marginTop: '30px', boxShadow: `0 8px 20px rgba(0,0,0,0.3)`}}>
+                    <h4 style={{color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", fontSize: '1.2rem', marginBottom: '15px', textTransform: 'uppercase'}}>💰 Resumen Económico</h4>
+                    <div style={{display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '15px', fontSize: '0.95rem'}}>
+                        <span style={{color: styles.colors.silver}}>Bote Previo: <strong style={{color: '#fff'}}>{boteInicial}€</strong></span>
+                        <span style={{color: styles.colors.silver}}>Apuestas/Jokers: <strong style={{color: '#fff'}}>{recaudacionApuestas}€</strong></span>
+                        <span style={{color: styles.colors.golden, fontWeight: 'bold', fontSize: '1.1rem'}}>Total en Juego: {premioTotal}€</span>
+                    </div>
+                    
+                    {(jornadaActual.estado === 'Finalizada' || isLiveView) ? (
+                        ganadoresExactos.length > 0 ? (
+                            <div style={{backgroundColor: 'rgba(16,185,129,0.1)', padding: '15px', borderRadius: '12px', border: `1px solid rgba(16,185,129,0.3)`}}>
+                                <p style={{color: styles.colors.success, fontWeight: 'bold', marginBottom: '5px'}}>🏆 ¡POSIBLES GANADORES!</p>
+                                <p style={{color: '#fff', fontSize: '0.9rem', marginBottom: '5px'}}>Acertantes ({ganadoresExactos.length}): {ganadoresExactos.join(', ')}</p>
+                                <p style={{color: styles.colors.golden, fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif"}}>{premioPorPersona}€ / ganador</p>
+                            </div>
+                        ) : (
+                            <div style={{backgroundColor: 'rgba(230,57,70,0.1)', padding: '15px', borderRadius: '12px', border: `1px solid rgba(230,57,70,0.3)`}}>
+                                <p style={{color: styles.colors.danger, fontWeight: 'bold'}}>❌ SIN ACERTANTES EXACTOS</p>
+                                <p style={{color: '#fff', fontSize: '0.9rem'}}>Los {premioTotal}€ pasarían al Bote de la próxima jornada.</p>
+                            </div>
+                        )
+                    ) : (
+                        <div style={{backgroundColor: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '10px', textAlign: 'center'}}>
+                            <span style={{color: styles.colors.silver, fontSize: '0.85rem'}}>El resultado del premio se calculará en vivo durante el partido.</span>
+                        </div>
+                    )}
+                </div>
+
                 <div style={{marginTop: '40px'}}>
                     <h4 style={styles.formSectionTitle}>PRONÓSTICOS</h4>
                     {jornadaActual.estado === 'Abierta' || jornadaActual.estado === 'Pre-apertura' ? (
@@ -711,7 +765,6 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                 return ptsB - ptsA;
                             }).map(p => {
                                 let ptsDisplay = isLiveView ? calculateProvisionalPoints(p, liveData, jornadaActual) : (p.puntosObtenidos || 0);
-                                
                                 const principalWin = isExactResultWinner(p.golesLocal, p.golesVisitante);
                                 
                                 return (
@@ -1210,7 +1263,7 @@ const CalendarioScreen = ({ teamLogos }) => {
 // --- ADMINISTRADOR Y CIERRE ---
 // ============================================================================
 const AdminCierreTemporada = () => {
-    const [udlpAsciende, setUdlpAsciende] = useState('Sí');
+    const [udlpAsciende, setUdlpAsciende] = useState('No');
     const [udlpPosicion, setUdlpPosicion] = useState('');
     const [equipoAscendidoPlayoff, setEquipoAscendidoPlayoff] = useState('');
     const [procesando, setProcesando] = useState(false);
@@ -1381,12 +1434,30 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     const handleSaveChanges = async () => {
         const jornadaRef = doc(db, "jornadas", jornada.id);
         let ganadoresArray = [];
+        
+        // --- INYECCIÓN AUTOMÁTICA CLAUDIO (Jornada 44) ---
+        if (jornada.numeroJornada === 44) {
+            const claudioRef = doc(db, "pronosticos", jornada.id, "jugadores", "Claudio");
+            const claudioDoc = await getDoc(claudioRef);
+            if (!claudioDoc.exists()) {
+                await setDoc(claudioRef, { 
+                    golesLocal: 3, 
+                    golesVisitante: 2, 
+                    resultado1x2: "No Pasa UD Las Palmas", 
+                    sinGoleador: true, 
+                    goleador: "", 
+                    jokerActivo: false,
+                    lastUpdated: serverTimestamp() 
+                });
+            }
+        }
+
         const batch = writeBatch(db);
         
         if (estado === 'Finalizada' && resultadoLocal !== '' && resultadoVisitante !== '') {
             
             if (jornada.puntosCalculados) {
-                if (!window.confirm("Los puntos ya están calculados. Si quieres recalculables por el error de Antonio, primero DALE A CANCELAR AQUÍ, luego pulsa en 'RESETEAR Y RESTAR PUNTOS' y por último vuelve a Guardar.")) return;
+                if (!window.confirm("Los puntos de esta jornada ya fueron repartidos. Si vas a corregir algo, pulsa 'CANCELAR', dale al botón rojo de 'RESETEAR PUNTOS' y luego vuelve a guardar.")) return;
             }
 
             const resL = parseInt(resultadoLocal);
@@ -1531,6 +1602,45 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     );
 };
 
+const AdminPlayoffPanel = () => {
+    const [config, setConfig] = useState({ semi1_ganador: '', semi2_ganador: '', ascendido: '', bloqueado: false, fechaCierreApuestaExtra: '' });
+    
+    useEffect(() => { 
+        onSnapshot(doc(db, "configuracion", "playoff"), d => { 
+            if(d.exists()) {
+                const data = d.data();
+                if(data.fechaCierreApuestaExtra && data.fechaCierreApuestaExtra.seconds) {
+                    const date = new Date(data.fechaCierreApuestaExtra.seconds * 1000);
+                    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+                    data.fechaCierreApuestaExtra = date.toISOString().slice(0, 16);
+                }
+                setConfig(data); 
+            }
+        }); 
+    }, []);
+
+    const handleSave = async () => { 
+        const saveConfig = {...config};
+        if(saveConfig.fechaCierreApuestaExtra) saveConfig.fechaCierreApuestaExtra = new Date(saveConfig.fechaCierreApuestaExtra);
+        else saveConfig.fechaCierreApuestaExtra = null;
+        await setDoc(doc(db, "configuracion", "playoff"), saveConfig); 
+        alert("Configuración Guardada"); 
+    };
+
+    return (
+        <div style={styles.adminJornadaItem}>
+            <h3 style={{...styles.formSectionTitle, fontSize: '1.2rem', borderBottom: `1px solid rgba(255,215,0,0.2)`, paddingBottom: '10px'}}>⚙️ Gestión "El Camino"</h3>
+            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginTop: '20px'}}>
+                <div><label style={styles.label}>Ganador Semi 1:</label><select value={config.semi1_ganador} onChange={e=>setConfig({...config, semi1_ganador: e.target.value})} style={styles.adminSelect}><option value="">--</option><option value="UD Almería">Almería</option><option value="CD Castellón">Castellón</option></select></div>
+                <div><label style={styles.label}>Ganador Semi 2:</label><select value={config.semi2_ganador} onChange={e=>setConfig({...config, semi2_ganador: e.target.value})} style={styles.adminSelect}><option value="">--</option><option value="Málaga CF">Málaga</option><option value="UD Las Palmas">UDLP</option></select></div>
+                <div><label style={styles.label}>¡EQUIPO ASCENDIDO!:</label><input type="text" value={config.ascendido || ''} onChange={e=>setConfig({...config, ascendido: e.target.value})} style={styles.input} /></div>
+                <div><label style={styles.label}>Cierre Apuestas Extras (+5):</label><input type="datetime-local" value={config.fechaCierreApuestaExtra || ''} onChange={e=>setConfig({...config, fechaCierreApuestaExtra: e.target.value})} style={styles.input} /></div>
+            </div>
+            <div style={{marginTop: '25px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: '10px', display: 'flex', alignItems: 'center'}}><input type="checkbox" checked={config.bloqueado} onChange={e=>setConfig({...config, bloqueado: e.target.checked})} style={styles.checkbox} /> <span style={{color:styles.colors.lightText, marginLeft:'12px', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase'}}>Bloquear Apuestas Extra (Botones)</span></div>
+            <button onClick={handleSave} style={{...styles.saveButton, marginTop:'20px', width: '100%'}}>GUARDAR CUADRO PLAYOFF</button>
+        </div>
+    );
+};
 
 const AdminPanelScreen = ({ plantilla }) => {
     const [jornadas, setJornadas] = useState([]);
