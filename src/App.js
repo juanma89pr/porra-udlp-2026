@@ -147,7 +147,25 @@ const getNombreJornada = (num) => {
     return `JORNADA ${num}`;
 };
 
-// --- CORRECCIÓN BUG: PARSEINT EN CÁLCULO PROVISIONAL (Y LECTURA DEL DESENLACE) ---
+// --- CORRECCIÓN DEFINITIVA: LÓGICA FLEXIBLE DE TEXTOS (PASA/NO PASA, GANA/PIERDE) ---
+const check1x2 = (apuesta, real, tipoPartido, desenlace) => {
+    const ap = (apuesta || '').toLowerCase().trim();
+    const re = (real || '').toLowerCase().trim();
+    const des = (desenlace || '').toLowerCase().trim();
+
+    if (tipoPartido === 'vuelta_semi' || tipoPartido === 'vuelta_final') {
+        if (des.includes('no pasa') && ap.includes('no pasa')) return true;
+        if (des.includes('pasa') && !des.includes('no pasa') && ap.includes('pasa') && !ap.includes('no pasa')) return true;
+        if (des.includes('no asciende') && ap.includes('no asciende')) return true;
+        if (des.includes('asciende') && !des.includes('no asciende') && ap.includes('asciende') && !ap.includes('no asciende')) return true;
+    } else {
+        if (re.includes('empat') && ap.includes('empat')) return true;
+        if (re.includes('pierde') && ap.includes('pierde')) return true;
+        if (re.includes('gana') && ap.includes('gana')) return true;
+    }
+    return false;
+};
+
 const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
     if (!pronostico || !liveData || !jornada || jornada.estado !== 'En vivo') return 0;
     let ptos = 0; const esVip = jornada.esVip || false; 
@@ -173,17 +191,13 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
     
     if (exactoAcertado) ptos += esVip ? 6 : 3;
 
-    if (jornada.tipoPartido !== 'vuelta_semi' && jornada.tipoPartido !== 'vuelta_final') {
-        let rReal = '';
-        if (jornada.equipoLocal === "UD Las Palmas") { rReal = gL > gV ? 'Gana UD Las Palmas' : (gL < gV ? 'Pierde UD Las Palmas' : 'Empate'); } 
-        else if (jornada.equipoVisitante === "UD Las Palmas") { rReal = gV > gL ? 'Gana UD Las Palmas' : (gV < gL ? 'Pierde UD Las Palmas' : 'Empate'); } 
-        else { rReal = gL > gV ? 'Gana Local' : (gL < gV ? 'Gana Visitante' : 'Empate'); }
-        if (pronostico.resultado1x2 === rReal) ptos += esVip ? 2 : 1;
-    } else {
-        // EN PARTIDO DE VUELTA SE MIRA EL DESENLACE QUE HA MARCADO EL ADMIN
-        if (jornada.desenlace && jornada.desenlace !== '' && pronostico.resultado1x2 === jornada.desenlace) {
-            ptos += esVip ? 2 : 1;
-        }
+    let rReal = '';
+    if (jornada.equipoLocal === "UD Las Palmas") { rReal = gL > gV ? 'gana' : (gL < gV ? 'pierde' : 'empate'); } 
+    else if (jornada.equipoVisitante === "UD Las Palmas") { rReal = gV > gL ? 'gana' : (gV < gL ? 'pierde' : 'empate'); } 
+    else { rReal = gL > gV ? 'gana' : (gL < gV ? 'pierde' : 'empate'); }
+
+    if (check1x2(pronostico.resultado1x2, rReal, jornada.tipoPartido, jornada.desenlace)) {
+        ptos += esVip ? 2 : 1;
     }
 
     const golReal = (liveData.primerGoleador || '').trim().toLowerCase();
@@ -1326,42 +1340,62 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
     useEffect(() => { if (jornada.liveData) { setLiveData({ ...jornada.liveData }); } }, [jornada.liveData]);
 
+    // --- NUEVO: FUNCIÓN PARA DESHACER EL CÁLCULO DE PUNTOS DE LA JORNADA ---
+    const handleResetPuntos = async () => {
+        if (!jornada.puntosCalculados) { alert("Esta jornada no ha sumado puntos en la clasificación, no hay nada que resetear."); return; }
+        if (!window.confirm("⚠️ PELIGRO: Esto RESTARÁ a la Clasificación General los puntos exactos que se dieron en esta jornada y la abrirá de nuevo. ¿Continuar?")) return;
+        
+        try {
+            const batch = writeBatch(db);
+            const pSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
+            const clasifSnap = await getDocs(collection(db, "clasificacion"));
+            let clasifActual = {};
+            clasifSnap.forEach(d => clasifActual[d.id] = d.data());
+
+            pSnap.forEach(docSnap => {
+                const p = docSnap.data();
+                const userId = docSnap.id;
+                
+                const ptsASustraer = p.puntosObtenidos || 0;
+                const exactosASustraer = p.puntosResultadoExacto || 0;
+
+                if (ptsASustraer > 0 || exactosASustraer > 0) {
+                    const cTotal = clasifActual[userId]?.puntosTotales || 0;
+                    const cExactos = clasifActual[userId]?.puntosResultadoExacto || 0;
+                    batch.update(doc(db, "clasificacion", userId), { 
+                        puntosTotales: Math.max(0, cTotal - ptsASustraer), 
+                        puntosResultadoExacto: Math.max(0, cExactos - exactosASustraer) 
+                    });
+                }
+                
+                batch.update(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: 0, puntosResultadoExacto: 0, puntosGoleador: 0 });
+            });
+
+            batch.update(doc(db, "jornadas", jornada.id), { puntosCalculados: false });
+            await batch.commit();
+            alert("✅ PUNTOS BORRADOS DE LA GENERAL. La jornada ya no está calculada. Modifica lo que necesites y vuelve a 'Guardar Todos Los Cambios'.");
+            setIsUnlocked(true);
+        } catch(error) { console.error(error); alert("Error al resetear."); }
+    };
+
     const handleSaveChanges = async () => {
         const jornadaRef = doc(db, "jornadas", jornada.id);
         let ganadoresArray = [];
-        
-        // --- INYECCIÓN AUTOMÁTICA CLAUDIO (Jornada 44) ---
-        if (jornada.numeroJornada === 44) {
-            const claudioRef = doc(db, "pronosticos", jornada.id, "jugadores", "Claudio");
-            const claudioDoc = await getDoc(claudioRef);
-            if (!claudioDoc.exists()) {
-                await setDoc(claudioRef, { 
-                    golesLocal: 3, 
-                    golesVisitante: 2, 
-                    resultado1x2: "No Pasa UD Las Palmas", 
-                    sinGoleador: true, 
-                    goleador: "", 
-                    jokerActivo: false,
-                    lastUpdated: serverTimestamp() 
-                });
-            }
-        }
-
         const batch = writeBatch(db);
         
         if (estado === 'Finalizada' && resultadoLocal !== '' && resultadoVisitante !== '') {
             
             if (jornada.puntosCalculados) {
-                if (!window.confirm("Los puntos de esta jornada ya fueron repartidos. Guardar ahora actualizará el panel, pero NO volverá a sumar puntos. ¿Continuar?")) return;
+                if (!window.confirm("Los puntos ya están calculados. Si quieres recalculables por el error de Antonio, primero DALE A CANCELAR AQUÍ, luego pulsa en 'RESETEAR Y RESTAR PUNTOS' y por último vuelve a Guardar.")) return;
             }
 
             const resL = parseInt(resultadoLocal);
             const resV = parseInt(resultadoVisitante);
             
             let rReal = '';
-            if (jornada.equipoLocal === "UD Las Palmas") { rReal = resL > resV ? 'Gana UD Las Palmas' : (resL < resV ? 'Pierde UD Las Palmas' : 'Empate'); } 
-            else if (jornada.equipoVisitante === "UD Las Palmas") { rReal = resV > resL ? 'Gana UD Las Palmas' : (resV < resL ? 'Pierde UD Las Palmas' : 'Empate'); } 
-            else { rReal = resL > resV ? 'Gana Local' : (resL < resV ? 'Gana Visitante' : 'Empate'); }
+            if (jornada.equipoLocal === "UD Las Palmas") { rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate'); } 
+            else if (jornada.equipoVisitante === "UD Las Palmas") { rReal = resV > resL ? 'gana' : (resV < resL ? 'pierde' : 'empate'); } 
+            else { rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate'); }
 
             const golReal = (goleador || '').trim().toLowerCase();
 
@@ -1389,15 +1423,9 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 if (isWinner) ganadoresArray.push(userId);
                 ptosJornada += ptosExacto;
 
-                // 2. SOLUCIÓN PASA/NO PASA Y GANA/PIERDE
-                if (tipoPartido === 'vuelta_semi' || tipoPartido === 'vuelta_final') {
-                    if (desenlace !== '' && p.resultado1x2 === desenlace) {
-                        ptosJornada += esVip ? 2 : 1;
-                    }
-                } else {
-                    if (p.resultado1x2 === rReal) {
-                        ptosJornada += esVip ? 2 : 1;
-                    }
+                // 2. SOLUCIÓN PASA/NO PASA Y GANA/PIERDE CON EL COMPROBADOR FLEXIBLE
+                if (check1x2(p.resultado1x2, rReal, tipoPartido, desenlace)) {
+                    ptosJornada += esVip ? 2 : 1;
                 }
 
                 // 3. GOLEADOR
@@ -1442,7 +1470,10 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
         return (
             <div style={{...styles.adminJornadaItem, display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(16, 185, 129, 0.05)', borderColor: 'rgba(16,185,129,0.3)'}}>
                 <div><span style={{fontWeight: 'bold', color: styles.colors.success, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>✓ {getNombreJornada(jornada.numeroJornada)}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</span> <span style={{color: styles.colors.silver, fontSize: '0.8rem'}}>(Finalizada)</span></div>
-                <button onClick={() => setIsUnlocked(true)} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem'}}>Desbloquear</button>
+                <div style={{display: 'flex', gap: '10px'}}>
+                    <button onClick={handleResetPuntos} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: styles.colors.danger, color: styles.colors.danger}}>RESETEAR PUNTOS</button>
+                    <button onClick={() => setIsUnlocked(true)} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem'}}>Desbloquear</button>
+                </div>
             </div>
         )
     }
@@ -1500,45 +1531,6 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     );
 };
 
-const AdminPlayoffPanel = () => {
-    const [config, setConfig] = useState({ semi1_ganador: '', semi2_ganador: '', ascendido: '', bloqueado: false, fechaCierreApuestaExtra: '' });
-    
-    useEffect(() => { 
-        onSnapshot(doc(db, "configuracion", "playoff"), d => { 
-            if(d.exists()) {
-                const data = d.data();
-                if(data.fechaCierreApuestaExtra && data.fechaCierreApuestaExtra.seconds) {
-                    const date = new Date(data.fechaCierreApuestaExtra.seconds * 1000);
-                    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-                    data.fechaCierreApuestaExtra = date.toISOString().slice(0, 16);
-                }
-                setConfig(data); 
-            }
-        }); 
-    }, []);
-
-    const handleSave = async () => { 
-        const saveConfig = {...config};
-        if(saveConfig.fechaCierreApuestaExtra) saveConfig.fechaCierreApuestaExtra = new Date(saveConfig.fechaCierreApuestaExtra);
-        else saveConfig.fechaCierreApuestaExtra = null;
-        await setDoc(doc(db, "configuracion", "playoff"), saveConfig); 
-        alert("Configuración Guardada"); 
-    };
-
-    return (
-        <div style={styles.adminJornadaItem}>
-            <h3 style={{...styles.formSectionTitle, fontSize: '1.2rem', borderBottom: `1px solid rgba(255,215,0,0.2)`, paddingBottom: '10px'}}>⚙️ Gestión "El Camino"</h3>
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginTop: '20px'}}>
-                <div><label style={styles.label}>Ganador Semi 1:</label><select value={config.semi1_ganador} onChange={e=>setConfig({...config, semi1_ganador: e.target.value})} style={styles.adminSelect}><option value="">--</option><option value="UD Almería">Almería</option><option value="CD Castellón">Castellón</option></select></div>
-                <div><label style={styles.label}>Ganador Semi 2:</label><select value={config.semi2_ganador} onChange={e=>setConfig({...config, semi2_ganador: e.target.value})} style={styles.adminSelect}><option value="">--</option><option value="Málaga CF">Málaga</option><option value="UD Las Palmas">UDLP</option></select></div>
-                <div><label style={styles.label}>¡EQUIPO ASCENDIDO!:</label><input type="text" value={config.ascendido || ''} onChange={e=>setConfig({...config, ascendido: e.target.value})} style={styles.input} /></div>
-                <div><label style={styles.label}>Cierre Apuestas Extras (+5):</label><input type="datetime-local" value={config.fechaCierreApuestaExtra || ''} onChange={e=>setConfig({...config, fechaCierreApuestaExtra: e.target.value})} style={styles.input} /></div>
-            </div>
-            <div style={{marginTop: '25px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: '10px', display: 'flex', alignItems: 'center'}}><input type="checkbox" checked={config.bloqueado} onChange={e=>setConfig({...config, bloqueado: e.target.checked})} style={styles.checkbox} /> <span style={{color:styles.colors.lightText, marginLeft:'12px', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase'}}>Bloquear Apuestas Extra (Botones)</span></div>
-            <button onClick={handleSave} style={{...styles.saveButton, marginTop:'20px', width: '100%'}}>GUARDAR CUADRO PLAYOFF</button>
-        </div>
-    );
-};
 
 const AdminPanelScreen = ({ plantilla }) => {
     const [jornadas, setJornadas] = useState([]);
