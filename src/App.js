@@ -1344,33 +1344,123 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
     const handleSaveChanges = async () => {
         const jornadaRef = doc(db, "jornadas", jornada.id);
-        
         let ganadoresArray = [];
+        const batch = writeBatch(db); // Usamos batch para actualizar todo de golpe sin fallos
         
-        // --- PARSE INT AQUÍ PARA EVITAR ERRORES DE LECTURA AL BUSCAR GANADORES ---
         if (estado === 'Finalizada' && resultadoLocal !== '' && resultadoVisitante !== '') {
+            
+            // SEGURO ANTI-DUPLICADOS: Evita sumar los puntos 2 veces si le das a Guardar varias veces
+            if (jornada.puntosCalculados) {
+                if (!window.confirm("Los puntos de esta jornada ya fueron repartidos. Guardar ahora actualizará el panel, pero NO volverá a sumar puntos en la clasificación. ¿Continuar?")) return;
+            }
+
             const resL = parseInt(resultadoLocal);
             const resV = parseInt(resultadoVisitante);
             
+            // --- CORRECCIÓN BUG 1X2 (Gana/Pierde/Empata) ---
+            let rReal = '';
+            if (jornada.equipoLocal === "UD Las Palmas") {
+                rReal = resL > resV ? 'Gana UD Las Palmas' : (resL < resV ? 'Pierde UD Las Palmas' : 'Empate');
+            } else if (jornada.equipoVisitante === "UD Las Palmas") {
+                rReal = resV > resL ? 'Gana UD Las Palmas' : (resV < resL ? 'Pierde UD Las Palmas' : 'Empate');
+            } else {
+                rReal = resL > resV ? 'Gana Local' : (resL < resV ? 'Gana Visitante' : 'Empate');
+            }
+
+            const golReal = (goleador || '').trim().toLowerCase();
+
+            // Descargamos las apuestas y la clasificación actual
             const pSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
+            const clasifSnap = await getDocs(collection(db, "clasificacion"));
+            let clasifActual = {};
+            clasifSnap.forEach(d => clasifActual[d.id] = d.data());
+
             pSnap.forEach(docSnap => {
                 const p = docSnap.data();
+                const userId = docSnap.id;
                 let isWinner = false;
-                
+                let ptosJornada = 0;
+                let ptosExacto = 0;
+                let ptosGol = 0;
+
+                // 1. COMPROBAR RESULTADO EXACTO (Principal)
                 if (parseInt(p.golesLocal) === resL && parseInt(p.golesVisitante) === resV) {
                     isWinner = true;
+                    ptosExacto += esVip ? 6 : 3;
                 } 
+                // 2. COMPROBAR RESULTADO EXACTO (Jokers)
                 else if (p.jokerActivo && p.jokerPronosticos) {
                     for (let jp of p.jokerPronosticos) {
                         if (jp.local !== '' && jp.visitante !== '' && parseInt(jp.local) === resL && parseInt(jp.visitante) === resV) {
-                            isWinner = true; break;
+                            isWinner = true;
+                            ptosExacto += esVip ? 6 : 3;
+                            break;
                         }
                     }
                 }
-                
-                if (isWinner) ganadoresArray.push(docSnap.id);
+
+                if (isWinner) ganadoresArray.push(userId);
+                ptosJornada += ptosExacto;
+
+                // 3. COMPROBAR 1X2 (Gana/Pierde/Empate)
+                if (tipoPartido !== 'vuelta_semi' && tipoPartido !== 'vuelta_final') {
+                    if (p.resultado1x2 === rReal) {
+                        ptosJornada += esVip ? 2 : 1;
+                    }
+                }
+
+                // 4. COMPROBAR GOLEADOR
+                const golAp = (p.goleador || '').trim().toLowerCase();
+                if (resL > 0 || resV > 0 || golReal === "sg") {
+                    if (p.sinGoleador && golReal === "sg") {
+                        ptosGol += 1; // 1 punto por SG
+                    } else if (!p.sinGoleador && golAp !== "" && golAp === golReal && golReal !== "sg") {
+                        ptosGol += esVip ? 4 : 2; // Goleador acertado (Puntos normales o VIP)
+                    }
+                }
+                ptosJornada += ptosGol;
+
+                // INYECTAR PUNTOS A LA BASE DE DATOS (Solo si no se habían calculado antes)
+                if (!jornada.puntosCalculados) {
+                    // Guarda el desglose en el pronóstico del jugador
+                    batch.update(doc(db, "pronosticos", jornada.id, "jugadores", userId), {
+                        puntosObtenidos: ptosJornada,
+                        puntosResultadoExacto: ptosExacto,
+                        puntosGoleador: ptosGol
+                    });
+
+                    // Suma el global en la clasificación
+                    const cTotal = clasifActual[userId]?.puntosTotales || 0;
+                    const cExactos = clasifActual[userId]?.puntosResultadoExacto || 0;
+                    batch.update(doc(db, "clasificacion", userId), {
+                        puntosTotales: cTotal + ptosJornada,
+                        puntosResultadoExacto: cExactos + ptosExacto
+                    });
+                }
             });
         }
+
+        const updateData = { 
+            estado, resultadoLocal, resultadoVisitante, esVip, tipoPartido, h2hInfo, goleador, bote: parseFloat(bote) || 0,
+            fechaApertura: fechaApertura ? new Date(fechaApertura) : null, 
+            fechaCierre: fechaCierre ? new Date(fechaCierre) : null, 
+            fechaPartido: fechaPartido ? new Date(fechaPartido) : null 
+        };
+
+        if (estado === 'Finalizada') {
+            updateData.ganadores = ganadoresArray;
+            if (!jornada.puntosCalculados) updateData.puntosCalculados = true;
+        }
+
+        batch.update(jornadaRef, updateData);
+        await batch.commit();
+        
+        if (estado === 'Finalizada' && !jornada.puntosCalculados) {
+            alert('¡JORNADA FINALIZADA! Puntos sumados a la clasificación general y bote calculado automáticamente.');
+        } else {
+            alert('Jornada guardada.');
+        }
+    };
 
         const updateData = { 
             estado, resultadoLocal, resultadoVisitante, esVip, tipoPartido, h2hInfo, goleador, bote: parseFloat(bote) || 0,
