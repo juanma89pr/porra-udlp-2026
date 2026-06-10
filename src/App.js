@@ -197,46 +197,49 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
     if (!pronostico || !liveData || !jornada || jornada.estado !== 'En vivo') return 0;
     let ptos = 0; const esVip = jornada.esVip || false; 
     
-    // Forzamos que los goles sean numéricos
     const gL = parseInt(liveData.golesLocal) || 0;
     const gV = parseInt(liveData.golesVisitante) || 0;
     
     let exactoAcertado = false;
     
     if (pronostico.golesLocal !== '' && pronostico.golesVisitante !== '') {
-        const pL = parseInt(pronostico.golesLocal) || 0;
-        const pV = parseInt(pronostico.golesVisitante) || 0;
+        const pL = parseInt(pronostico.golesLocal); const pV = parseInt(pronostico.golesVisitante);
         if (gL === pL && gV === pV) exactoAcertado = true;
     }
     
     if (!exactoAcertado && pronostico.jokerActivo && pronostico.jokerPronosticos) {
         for (let jp of pronostico.jokerPronosticos) {
             if (jp.local !== '' && jp.visitante !== '') {
-                const jpL = parseInt(jp.local) || 0;
-                const jpV = parseInt(jp.visitante) || 0;
-                if (gL === jpL && gV === jpV) {
-                    exactoAcertado = true;
-                    break;
-                }
+                const jpL = parseInt(jp.local); const jpV = parseInt(jp.visitante);
+                if (gL === jpL && gV === jpV) { exactoAcertado = true; break; }
             }
         }
     }
     
     if (exactoAcertado) ptos += esVip ? 6 : 3;
 
+    // --- CORRECCIÓN PASA/NO PASA Y ASCIENDE ---
     if (jornada.tipoPartido !== 'vuelta_semi' && jornada.tipoPartido !== 'vuelta_final') {
         let rReal = '';
-        if (jornada.equipoLocal === "UD Las Palmas") {
-            rReal = gL > gV ? 'Gana UD Las Palmas' : (gL < gV ? 'Pierde UD Las Palmas' : 'Empate');
-        } else if (jornada.equipoVisitante === "UD Las Palmas") {
-            rReal = gV > gL ? 'Gana UD Las Palmas' : (gV < gL ? 'Pierde UD Las Palmas' : 'Empate');
-        } else {
-            // Fallback por si no juega la UD
-            rReal = gL > gV ? 'Gana Local' : (gL < gV ? 'Gana Visitante' : 'Empate');
-        }
+        if (jornada.equipoLocal === "UD Las Palmas") { rReal = gL > gV ? 'Gana UD Las Palmas' : (gL < gV ? 'Pierde UD Las Palmas' : 'Empate'); } 
+        else if (jornada.equipoVisitante === "UD Las Palmas") { rReal = gV > gL ? 'Gana UD Las Palmas' : (gV < gL ? 'Pierde UD Las Palmas' : 'Empate'); } 
+        else { rReal = gL > gV ? 'Gana Local' : (gL < gV ? 'Gana Visitante' : 'Empate'); }
         if (pronostico.resultado1x2 === rReal) ptos += esVip ? 2 : 1;
+    } else {
+        // ES ELIMINATORIA: Usamos el desenlace que el Admin haya seleccionado
+        if (jornada.desenlace && jornada.desenlace !== '' && pronostico.resultado1x2 === jornada.desenlace) {
+            ptos += esVip ? 2 : 1;
+        }
     }
-    
+
+    const golReal = (liveData.primerGoleador || '').trim().toLowerCase();
+    const golAp = (pronostico.goleador || '').trim().toLowerCase();
+    if (gL > 0 || gV > 0 || golReal === "sg") {
+        if (pronostico.sinGoleador && golReal === "sg") ptos += 1;
+        else if (!pronostico.sinGoleador && golAp !== "" && golAp === golReal && golReal !== "sg") ptos += esVip ? 4 : 2;
+    }
+    return ptos;
+};    
     const golReal = (liveData.primerGoleador || '').trim().toLowerCase();
     const golAp = (pronostico.goleador || '').trim().toLowerCase();
     
