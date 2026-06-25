@@ -1263,163 +1263,318 @@ const CalendarioScreen = ({ teamLogos }) => {
 // --- ADMINISTRADOR Y CIERRE ---
 // ============================================================================
 const AdminCierreTemporada = () => {
-    const [udlpAsciende, setUdlpAsciende] = useState('No');
-    const [udlpPosicion, setUdlpPosicion] = useState('5');
-    const [equipoAscendidoPlayoff, setEquipoAscendidoPlayoff] = useState('Málaga CF');
+    // Datos reales fijos de la temporada
+    const UDLP_ASCIENDE = 'No';
+    const UDLP_POSICION = '5';
+    const EQUIPO_ASCENDIDO_PLAYOFF = 'Málaga CF';
+
     const [procesando, setProcesando] = useState(false);
-    const [yaEjecutado, setYaEjecutado] = useState(false);
+    const [diagnostico, setDiagnostico] = useState(null); // null = sin cargar, [] = cargado
+    const [cargandoDiag, setCargandoDiag] = useState(false);
+    const [cierreEjecutado, setCierreEjecutado] = useState(false);
 
-    // Comprobar si ya se ejecutó el cierre (si algún jugador tiene puntosExtraSumados)
-    useEffect(() => {
-        getDocs(collection(db, "clasificacion")).then(snap => {
-            const alguno = snap.docs.some(d => d.data().puntosExtraSumados > 0);
-            setYaEjecutado(alguno);
-        });
-    }, []);
-
-    const handleFinalizarTemporada = async () => {
-        if (!udlpPosicion || !equipoAscendidoPlayoff) {
-            alert('Por favor, rellena todos los campos antes de finalizar.'); return;
-        }
-        if (yaEjecutado) {
-            if (!window.confirm("⚠️ ATENCIÓN: Parece que el cierre ya se ejecutó antes (hay jugadores con puntos extra). Si lo vuelves a ejecutar se DUPLICARÁN los puntos. ¿Seguro que quieres continuar?")) return;
-        } else {
-            if (!window.confirm(`¡ATENCIÓN! Esto calculará todos los puntos extra de la Porra Anual y El Camino y los sumará a la Clasificación Global.\n\nDatos: UDLP ${udlpAsciende === 'Sí' ? 'ASCENDIÓ' : 'NO ascendió'}, posición ${udlpPosicion}ª. Campeón playoff: ${equipoAscendidoPlayoff}.\n\n¿Son correctos estos datos?`)) return;
-        }
-        
-        setProcesando(true);
+    // ── PASO 1: DIAGNÓSTICO ───────────────────────────────────────────────────
+    // Lee Firebase y calcula cuántos puntos le faltan a cada jugador SIN escribir nada
+    const handleDiagnostico = async () => {
+        setCargandoDiag(true);
         try {
+            // 1a. Leer clasificación actual
             const clasifSnap = await getDocs(collection(db, "clasificacion"));
+            const clasifActual = {};
+            clasifSnap.forEach(d => { clasifActual[d.id] = d.data(); });
+
+            // 1b. Buscar la última jornada finalizada (la del Málaga) y sus pronósticos
+            const jornadasSnap = await getDocs(query(
+                collection(db, "jornadas"),
+                where("estado", "==", "Finalizada"),
+                orderBy("numeroJornada", "desc"),
+                limit(1)
+            ));
+
+            let ultimaJornada = null;
+            let pronosticosUltima = {};
+            if (!jornadasSnap.empty) {
+                ultimaJornada = { id: jornadasSnap.docs[0].id, ...jornadasSnap.docs[0].data() };
+                // Leer pronósticos de esa jornada
+                const pSnap = await getDocs(collection(db, "pronosticos", ultimaJornada.id, "jugadores"));
+                pSnap.forEach(d => { pronosticosUltima[d.id] = d.data(); });
+            }
+
+            // 1c. Porra anual y apuestas extra
             const anualSnap = await getDocs(collection(db, "porraAnual"));
             const extraSnap = await getDocs(collection(db, "apuestasExtra"));
-            
             const apuestasAnuales = {};
-            anualSnap.forEach(d => apuestasAnuales[d.id] = d.data());
-            
+            anualSnap.forEach(d => { apuestasAnuales[d.id] = d.data(); });
             const apuestasExtra = {};
-            extraSnap.forEach(d => apuestasExtra[d.id] = d.data());
-
-            // Inyección automática para el Málaga por si no la cogió El Camino
-            ['Carlos', 'Carmelo', 'José'].forEach(nombre => {
-                if(!apuestasExtra[nombre]) apuestasExtra[nombre] = { equipo: 'Málaga CF' };
+            extraSnap.forEach(d => { apuestasExtra[d.id] = d.data(); });
+            // Inyección para jugadores que no apostaron en El Camino pero sabemos su equipo
+            ['Carlos', 'Carmelo', 'José'].forEach(n => {
+                if (!apuestasExtra[n]) apuestasExtra[n] = { equipo: 'Málaga CF' };
             });
 
-            const batch = writeBatch(db);
-            let resumen = [];
+            // 1d. Calcular puntos de la última jornada que NO se sumaron
+            // Una jornada con puntosCalculados=true pero puntos a 0 en clasificación = bug conocido
+            const resL = parseInt(ultimaJornada?.resultadoLocal);
+            const resV = parseInt(ultimaJornada?.resultadoVisitante);
+            const golReal = (ultimaJornada?.goleador || '').trim().toLowerCase();
+            const esVipU = ultimaJornada?.esVip || false;
 
-            clasifSnap.forEach(docSnap => {
-                const userId = docSnap.id;
-                let ptsSumar = 0;
+            let rReal = '';
+            if (ultimaJornada) {
+                if (ultimaJornada.equipoLocal === "UD Las Palmas") rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
+                else if (ultimaJornada.equipoVisitante === "UD Las Palmas") rReal = resV > resL ? 'gana' : (resV < resL ? 'pierde' : 'empate');
+                else rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
+            }
+
+            // 1e. Construir el diagnóstico por jugador
+            const filas = JUGADORES.map(userId => {
+                const clasif = clasifActual[userId] || {};
+                const totalActual = clasif.puntosTotales || 0;
+                const extraYaSumado = clasif.puntosExtraSumados || 0;
+                let ptsAñadir = 0;
                 let desglose = [];
 
-                // +5 por acertar el equipo que asciende en El Camino
-                if(apuestasExtra[userId] && apuestasExtra[userId].equipo === equipoAscendidoPlayoff) {
-                    ptsSumar += 5;
-                    desglose.push('+5 (El Camino: acertó ' + equipoAscendidoPlayoff + ')');
-                }
+                // ── Puntos de la última jornada (si no se sumaron) ──
+                let ptosJornada = 0; let ptosExacto = 0; let ptosGol = 0;
+                const pronU = pronosticosUltima[userId];
+                const ptosEnClasif = pronU?.puntosObtenidos || 0;
 
-                // Porra Anual: posición final y ascenso de UDLP
-                if(apuestasAnuales[userId]) {
-                    const ap = apuestasAnuales[userId];
-                    const apAsciende = (ap.asciende === 'Sí' || ap.asciende === true) ? 'Sí' : 'No';
-                    const aciertoAsciende = (apAsciende === udlpAsciende);
-                    const aciertoPosicion = (String(ap.posicion).trim() === String(udlpPosicion).trim());
-
-                    if (aciertoAsciende && aciertoPosicion) {
-                        ptsSumar += 20; desglose.push('+20 (Pleno Anual: posición ' + ap.posicion + 'ª + ascenso)');
-                    } else if (aciertoPosicion) {
-                        ptsSumar += 10; desglose.push('+10 (Posición Anual: ' + ap.posicion + 'ª)');
-                    } else if (aciertoAsciende) {
-                        ptsSumar += 5; desglose.push('+5 (Ascenso Anual: apostó ' + (apAsciende === 'Sí' ? 'Sí' : 'No') + ')');
+                if (ultimaJornada && pronU && ptosEnClasif === 0) {
+                    // El pronóstico existe pero tiene 0 puntos guardados → calcular
+                    if (parseInt(pronU.golesLocal) === resL && parseInt(pronU.golesVisitante) === resV) {
+                        ptosExacto = esVipU ? 6 : 3;
+                    } else if (pronU.jokerActivo && pronU.jokerPronosticos) {
+                        for (let jp of pronU.jokerPronosticos) {
+                            if (jp.local !== '' && jp.visitante !== '' && parseInt(jp.local) === resL && parseInt(jp.visitante) === resV) {
+                                ptosExacto = esVipU ? 6 : 3; break;
+                            }
+                        }
+                    }
+                    ptosJornada += ptosExacto;
+                    if (check1x2(pronU.resultado1x2, rReal, ultimaJornada.tipoPartido, ultimaJornada.desenlace)) {
+                        ptosJornada += esVipU ? 2 : 1;
+                    }
+                    const golAp = (pronU.goleador || '').trim().toLowerCase();
+                    if (resL > 0 || resV > 0 || golReal === 'sg') {
+                        if (pronU.sinGoleador && golReal === 'sg') ptosGol += 1;
+                        else if (!pronU.sinGoleador && golAp !== '' && golAp === golReal && golReal !== 'sg') ptosGol += esVipU ? 4 : 2;
+                    }
+                    ptosJornada += ptosGol;
+                    if (ptosJornada > 0) {
+                        ptsAñadir += ptosJornada;
+                        desglose.push(`+${ptosJornada} (Última jornada)`);
                     }
                 }
 
-                if (ptsSumar > 0) {
-                    resumen.push(`${userId}: ${desglose.join(', ')}`);
-                    const currentTotal = docSnap.data().puntosTotales || 0;
-                    batch.update(doc(db, "clasificacion", userId), {
-                        puntosTotales: currentTotal + ptsSumar,
-                        puntosExtraSumados: ptsSumar,
-                        desgloseExtra: desglose.join(' | ')
-                    });
+                // ── El Camino (+5) ──
+                if (!extraYaSumado && apuestasExtra[userId]?.equipo === EQUIPO_ASCENDIDO_PLAYOFF) {
+                    ptsAñadir += 5;
+                    desglose.push(`+5 (El Camino: ${EQUIPO_ASCENDIDO_PLAYOFF})`);
                 }
+
+                // ── Porra Anual ──
+                if (!extraYaSumado && apuestasAnuales[userId]) {
+                    const ap = apuestasAnuales[userId];
+                    const apAsciende = (ap.asciende === 'Sí' || ap.asciende === true) ? 'Sí' : 'No';
+                    const aciertoAsciende = apAsciende === UDLP_ASCIENDE;
+                    const aciertoPosicion = String(ap.posicion).trim() === UDLP_POSICION;
+                    if (aciertoAsciende && aciertoPosicion) {
+                        ptsAñadir += 20; desglose.push(`+20 (Pleno Anual: pos.${ap.posicion} + No asciende)`);
+                    } else if (aciertoPosicion) {
+                        ptsAñadir += 10; desglose.push(`+10 (Posición ${ap.posicion}ª)`);
+                    } else if (aciertoAsciende) {
+                        ptsAñadir += 5; desglose.push(`+5 (Ascenso: apostó ${apAsciende})`);
+                    }
+                }
+
+                return {
+                    userId,
+                    totalActual,
+                    ptsAñadir,
+                    totalFinal: totalActual + ptsAñadir,
+                    desglose,
+                    extraYaSumado,
+                    ptosJornada,
+                    ptosExacto,
+                    ptosGol,
+                    apuestaAnual: apuestasAnuales[userId] || null,
+                    apuestaExtra: apuestasExtra[userId] || null,
+                    pronU,
+                };
             });
 
-            await batch.commit();
-            setYaEjecutado(true);
-            alert("✅ ¡TEMPORADA CERRADA! Puntos extra repartidos.\n\n" + (resumen.length > 0 ? resumen.join('\n') : 'Ningún jugador sumó puntos extra.'));
-        } catch (error) {
-            console.error(error); alert("Error al procesar el cierre de temporada: " + error.message);
+            setDiagnostico({ filas, ultimaJornada, resL, resV, esVipU });
+        } catch(e) {
+            console.error(e);
+            alert("Error al cargar diagnóstico: " + e.message);
         }
-        setProcesando(false);
+        setCargandoDiag(false);
     };
 
-    const handleResetCierre = async () => {
-        if (!window.confirm("⚠️ PELIGRO: Esto eliminará los puntos extra (puntosExtraSumados y desgloseExtra) de todos los jugadores y restará esos puntos del total. Úsalo solo si ejecutaste el cierre con datos incorrectos. ¿Continuar?")) return;
+    // ── PASO 2: APLICAR CIERRE ────────────────────────────────────────────────
+    const handleAplicarCierre = async () => {
+        if (!diagnostico) return;
+        const hayPendientes = diagnostico.filas.some(f => f.ptsAñadir > 0);
+        if (!hayPendientes) { alert("No hay puntos pendientes de sumar."); return; }
+        if (!window.confirm("¿Confirmas aplicar todos los puntos pendientes mostrados en el diagnóstico? Esta acción escribirá en Firebase.")) return;
+
         setProcesando(true);
         try {
-            const clasifSnap = await getDocs(collection(db, "clasificacion"));
             const batch = writeBatch(db);
-            clasifSnap.forEach(docSnap => {
-                const data = docSnap.data();
-                const extra = data.puntosExtraSumados || 0;
-                if (extra > 0) {
-                    batch.update(doc(db, "clasificacion", docSnap.id), {
-                        puntosTotales: Math.max(0, (data.puntosTotales || 0) - extra),
-                        puntosExtraSumados: 0,
-                        desgloseExtra: ''
+            const { filas, ultimaJornada } = diagnostico;
+
+            for (const f of filas) {
+                if (f.ptsAñadir === 0) continue;
+
+                // Actualizar clasificación global
+                batch.update(doc(db, "clasificacion", f.userId), {
+                    puntosTotales: f.totalFinal,
+                    puntosExtraSumados: (f.extraYaSumado || 0) + (f.ptsAñadir - f.ptosJornada),
+                    desgloseExtra: f.desglose.filter(d => !d.includes('Última jornada')).join(' | '),
+                });
+
+                // Si había puntos de la última jornada pendientes, actualizar también el pronóstico
+                if (f.ptosJornada > 0 && f.pronU && ultimaJornada) {
+                    batch.update(doc(db, "pronosticos", ultimaJornada.id, "jugadores", f.userId), {
+                        puntosObtenidos: f.ptosJornada,
+                        puntosResultadoExacto: f.ptosExacto,
+                        puntosGoleador: f.ptosGol,
                     });
                 }
-            });
+            }
+
+            // Marcar la última jornada como calculada si no lo estaba
+            if (ultimaJornada) {
+                batch.update(doc(db, "jornadas", ultimaJornada.id), { puntosCalculados: true });
+            }
+
             await batch.commit();
-            setYaEjecutado(false);
-            alert("✅ Puntos extra eliminados de la clasificación. Puedes volver a ejecutar el cierre con los datos correctos.");
+            setCierreEjecutado(true);
+            // Recargar diagnóstico para mostrar estado actualizado
+            await handleDiagnostico();
+            alert("✅ ¡CIERRE COMPLETADO! Todos los puntos han sido sumados en Firebase.");
         } catch(e) {
-            console.error(e); alert("Error al resetear: " + e.message);
+            console.error(e);
+            alert("Error al aplicar el cierre: " + e.message);
         }
         setProcesando(false);
     };
 
+    // ── RESET TOTAL ───────────────────────────────────────────────────────────
+    const handleResetTotal = async () => {
+        if (!window.confirm("⚠️ PELIGRO TOTAL: Esto pondrá a 0 los puntosExtraSumados y restará esos puntos del total de TODOS los jugadores, y pondrá a 0 los puntos de la última jornada en los pronósticos. Úsalo solo si el cierre se aplicó con datos incorrectos.")) return;
+        setProcesando(true);
+        try {
+            const batch = writeBatch(db);
+            const clasifSnap = await getDocs(collection(db, "clasificacion"));
+            clasifSnap.forEach(d => {
+                const data = d.data();
+                const extra = data.puntosExtraSumados || 0;
+                if (extra > 0) {
+                    batch.update(doc(db, "clasificacion", d.id), {
+                        puntosTotales: Math.max(0, (data.puntosTotales || 0) - extra),
+                        puntosExtraSumados: 0,
+                        desgloseExtra: '',
+                    });
+                }
+            });
+            // Resetear puntos de la última jornada en pronósticos
+            if (diagnostico?.ultimaJornada) {
+                const pSnap = await getDocs(collection(db, "pronosticos", diagnostico.ultimaJornada.id, "jugadores"));
+                pSnap.forEach(d => {
+                    batch.update(doc(db, "pronosticos", diagnostico.ultimaJornada.id, "jugadores", d.id), {
+                        puntosObtenidos: 0, puntosResultadoExacto: 0, puntosGoleador: 0,
+                    });
+                });
+                batch.update(doc(db, "jornadas", diagnostico.ultimaJornada.id), { puntosCalculados: false });
+            }
+            await batch.commit();
+            setCierreEjecutado(false);
+            setDiagnostico(null);
+            alert("✅ Reset completo. Puedes volver a cargar el diagnóstico y aplicar el cierre.");
+        } catch(e) {
+            console.error(e);
+            alert("Error al resetear: " + e.message);
+        }
+        setProcesando(false);
+    };
+
+    const hayPendientes = diagnostico?.filas?.some(f => f.ptsAñadir > 0);
+
     return (
-        <div style={{padding: '25px', backgroundColor: 'rgba(230,57,70,0.1)', border: `1px solid ${styles.colors.danger}`, borderRadius: '16px', marginBottom: '30px'}}>
-            <h3 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.danger, marginBottom: '15px'}}>🚨 CIERRE DE TEMPORADA DEFINITIVO</h3>
-            <p style={{color: styles.colors.silver, fontSize: '0.9rem', marginBottom: '20px'}}>Sumará los puntos de la Porra Anual (posición UDLP + ascenso) y de El Camino (equipo ascendido) a la Clasificación Global.</p>
-            
-            {yaEjecutado && (
-                <div style={{marginBottom: '20px', padding: '12px', backgroundColor: 'rgba(16,185,129,0.1)', border: `1px solid ${styles.colors.success}`, borderRadius: '12px'}}>
-                    <p style={{color: styles.colors.success, fontWeight: 'bold', fontSize: '0.9rem'}}>✅ El cierre ya fue ejecutado. Los puntos extra están sumados en la clasificación.</p>
-                    <button onClick={handleResetCierre} disabled={procesando} style={{...styles.secondaryButton, marginTop: '10px', borderColor: styles.colors.danger, color: styles.colors.danger, fontSize: '0.8rem'}}>
-                        ↩ DESHACER CIERRE (si los datos eran incorrectos)
-                    </button>
+        <div style={{padding: '25px', backgroundColor: 'rgba(230,57,70,0.08)', border: `1px solid ${styles.colors.danger}`, borderRadius: '16px', marginBottom: '30px'}}>
+            <h3 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.danger, marginBottom: '5px', fontSize: '1.3rem'}}>🚨 CIERRE DE TEMPORADA DEFINITIVO</h3>
+            <p style={{color: styles.colors.silver, fontSize: '0.85rem', marginBottom: '20px'}}>
+                Datos fijos: <strong style={{color: styles.colors.golden}}>UDLP no ascendió · Posición 5ª · Campeón playoff: Málaga CF</strong>
+            </p>
+
+            {/* PASO 1 */}
+            <button onClick={handleDiagnostico} disabled={cargandoDiag || procesando} style={{...styles.secondaryButton, width: '100%', marginBottom: '20px', padding: '14px'}}>
+                {cargandoDiag ? '⏳ LEYENDO FIREBASE...' : '🔍 PASO 1: CARGAR DIAGNÓSTICO DESDE FIREBASE'}
+            </button>
+
+            {/* TABLA DE DIAGNÓSTICO */}
+            {diagnostico && (
+                <div style={{marginBottom: '20px'}}>
+                    <p style={{color: styles.colors.silver, fontSize: '0.8rem', marginBottom: '10px'}}>
+                        Última jornada detectada: <strong style={{color: '#fff'}}>{diagnostico.ultimaJornada?.equipoLocal} vs {diagnostico.ultimaJornada?.equipoVisitante}</strong> — Resultado: <strong style={{color: styles.colors.golden}}>{diagnostico.resL}-{diagnostico.resV}</strong> — Goleador: <strong style={{color: styles.colors.golden}}>{diagnostico.ultimaJornada?.goleador || 'SG'}</strong>
+                    </p>
+                    <div style={{overflowX: 'auto'}}>
+                        <table style={{...styles.table, marginTop: '5px', fontSize: '0.82rem'}}>
+                            <thead>
+                                <tr>
+                                    <th style={{...styles.th, fontSize: '0.75rem'}}>JUGADOR</th>
+                                    <th style={{...styles.th, fontSize: '0.75rem', textAlign:'center'}}>PTS AHORA</th>
+                                    <th style={{...styles.th, fontSize: '0.75rem', textAlign:'center'}}>A SUMAR</th>
+                                    <th style={{...styles.th, fontSize: '0.75rem', textAlign:'center'}}>TOTAL FINAL</th>
+                                    <th style={{...styles.th, fontSize: '0.75rem'}}>DESGLOSE</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {diagnostico.filas
+                                    .sort((a,b) => b.totalFinal - a.totalFinal)
+                                    .map(f => (
+                                    <tr key={f.userId} style={{...styles.tr, backgroundColor: f.ptsAñadir > 0 ? 'rgba(212,175,55,0.08)' : 'rgba(0,0,0,0.2)'}}>
+                                        <td style={styles.td}><strong style={{color: f.ptsAñadir > 0 ? styles.colors.golden : styles.colors.silver}}>{f.userId}</strong></td>
+                                        <td style={{...styles.td, textAlign:'center', color: styles.colors.silver}}>{f.totalActual}</td>
+                                        <td style={{...styles.td, textAlign:'center', fontWeight:'bold', color: f.ptsAñadir > 0 ? styles.colors.success : styles.colors.silver}}>
+                                            {f.ptsAñadir > 0 ? `+${f.ptsAñadir}` : '—'}
+                                        </td>
+                                        <td style={{...styles.td, textAlign:'center', fontFamily:"'Oswald', sans-serif", fontSize:'1.1rem', color: styles.colors.golden, fontWeight:'bold'}}>{f.totalFinal}</td>
+                                        <td style={{...styles.td, fontSize:'0.75rem', color: styles.colors.silver}}>
+                                            {f.desglose.length > 0 ? f.desglose.join(' · ') : (f.extraYaSumado > 0 ? '✅ Ya sumado' : 'Sin puntos extra')}
+                                            {f.apuestaAnual && <span style={{display:'block', color:'rgba(255,255,255,0.4)', marginTop:'3px'}}>
+                                                Anuales: pos.{f.apuestaAnual.posicion} / {f.apuestaAnual.asciende === true || f.apuestaAnual.asciende === 'Sí' ? 'Sí asciende' : 'No asciende'}
+                                            </span>}
+                                            {f.apuestaExtra && <span style={{display:'block', color:'rgba(255,255,255,0.4)', marginTop:'2px'}}>
+                                                Camino: {f.apuestaExtra.equipo}
+                                            </span>}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* PASO 2 */}
+                    {hayPendientes ? (
+                        <button onClick={handleAplicarCierre} disabled={procesando} style={{...styles.mainButton, width: '100%', marginTop: '20px', background: `linear-gradient(135deg, #c0392b, #e74c3c)`}}>
+                            {procesando ? '⏳ APLICANDO PUNTOS EN FIREBASE...' : '✅ PASO 2: APLICAR CIERRE Y GUARDAR EN FIREBASE'}
+                        </button>
+                    ) : (
+                        <div style={{marginTop: '20px', padding: '15px', backgroundColor: 'rgba(16,185,129,0.1)', border: `1px solid ${styles.colors.success}`, borderRadius: '12px', textAlign: 'center'}}>
+                            <p style={{color: styles.colors.success, fontWeight: 'bold'}}>✅ Todos los puntos ya están sumados correctamente. No hay nada pendiente.</p>
+                        </div>
+                    )}
+
+                    {/* RESET */}
+                    <div style={{marginTop: '15px', textAlign: 'center'}}>
+                        <button onClick={handleResetTotal} disabled={procesando} style={{...styles.secondaryButton, fontSize: '0.75rem', borderColor: styles.colors.danger, color: styles.colors.danger}}>
+                            ↩ DESHACER TODO EL CIERRE (solo si algo salió mal)
+                        </button>
+                    </div>
                 </div>
             )}
-            
-            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
-                <div>
-                    <label style={styles.label}>¿UDLP Ascendió?</label>
-                    <select value={udlpAsciende} onChange={e=>setUdlpAsciende(e.target.value)} style={styles.input}>
-                        <option value="Sí">Sí</option>
-                        <option value="No">No</option>
-                    </select>
-                </div>
-                <div>
-                    <label style={styles.label}>Posición Final Real UDLP:</label>
-                    <input type="number" value={udlpPosicion} onChange={e=>setUdlpPosicion(e.target.value)} placeholder="Ej: 5" style={styles.input} />
-                </div>
-                <div style={{gridColumn: '1 / -1'}}>
-                    <label style={styles.label}>Equipo Campeón Playoff (Sube):</label>
-                    <select value={equipoAscendidoPlayoff} onChange={e=>setEquipoAscendidoPlayoff(e.target.value)} style={styles.input}>
-                        <option value="">-- Selecciona --</option>
-                        <option value="UD Las Palmas">UD Las Palmas</option>
-                        <option value="Málaga CF">Málaga CF</option>
-                        <option value="UD Almería">UD Almería</option>
-                        <option value="CD Castellón">CD Castellón</option>
-                    </select>
-                </div>
-            </div>
-            <button onClick={handleFinalizarTemporada} disabled={procesando} style={{...styles.mainButton, width: '100%', marginTop: '20px', backgroundColor: styles.colors.danger, color: '#fff', border: 'none', background: styles.colors.danger}}>
-                {procesando ? 'PROCESANDO...' : (yaEjecutado ? '⚠️ VOLVER A EJECUTAR CIERRE' : 'FINALIZAR TEMPORADA Y REPARTIR PUNTOS')}
-            </button>
         </div>
     );
 };
