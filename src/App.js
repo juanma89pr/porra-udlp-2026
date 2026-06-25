@@ -1263,16 +1263,19 @@ const CalendarioScreen = ({ teamLogos }) => {
 // --- ADMINISTRADOR Y CIERRE ---
 // ============================================================================
 const AdminCierreTemporada = () => {
-    // ─── DATOS REALES DE FIREBASE (confirmados en las capturas) ───────────────
-    // Colección pronósticos anuales: "porraAnualPronosticos"  (NO "porraAnual")
-    // Campo ascenso en cada doc:     "ascenso" con valor "NO"/"SI" (NO "asciende"/"Sí")
-    // Campo posición en cada doc:    "posicion" con valor string "15" etc.
-    // Equipo ascendido en playoff:   "MALAGA" en configuracion/playoff.ascendido (NO "Málaga CF")
-    // Colección apuestas extra:      "apuestasExtra" ← este sí es correcto
-    // ─────────────────────────────────────────────────────────────────────────
-    const UDLP_ASCIENDE_REAL = 'NO';      // valor exacto en Firebase (mayúsculas)
-    const UDLP_POSICION_REAL = '5';       // posición final real de UDLP
-    const EQUIPO_ASCENDIDO_REAL = 'MALAGA'; // valor exacto en configuracion/playoff.ascendido
+    // ─── DATOS REALES CONFIRMADOS EN FIREBASE ─────────────────────────────────
+    // porraAnualPronosticos → campo "ascenso": "NO"/"SI", campo "posicion": "8" etc.
+    // apuestasExtra         → campo "equipo": "Málaga CF" / "CD Castellón" etc.
+    // UDLP acabó 5ª y NO ascendió. Málaga CF ascendió por playoff.
+    // ──────────────────────────────────────────────────────────────────────────
+    const UDLP_POSICION_FINAL = '5';
+    const UDLP_ASCENDIO = false;   // UDLP NO ascendió
+
+    // Lista de equipos que se consideran "Málaga" en cualquier formato de Firebase
+    const esMalaga = (equipo) => {
+        const e = (equipo || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        return e.includes('MALAGA') || e.includes('MLAGA');
+    };
 
     const [procesando, setProcesando] = useState(false);
     const [diagnostico, setDiagnostico] = useState(null);
@@ -1282,12 +1285,12 @@ const AdminCierreTemporada = () => {
     const handleDiagnostico = async () => {
         setCargandoDiag(true);
         try {
-            // 1a. Clasificación actual
+            // A. Clasificación actual (puntos acumulados hasta ahora en Firebase)
             const clasifSnap = await getDocs(collection(db, "clasificacion"));
             const clasifActual = {};
             clasifSnap.forEach(d => { clasifActual[d.id] = d.data(); });
 
-            // 1b. Última jornada finalizada y sus pronósticos
+            // B. Última jornada finalizada y sus pronósticos
             const jornadasSnap = await getDocs(query(
                 collection(db, "jornadas"),
                 where("estado", "==", "Finalizada"),
@@ -1302,109 +1305,147 @@ const AdminCierreTemporada = () => {
                 pSnap.forEach(d => { pronosticosUltima[d.id] = d.data(); });
             }
 
-            // 1c. Pronósticos anuales — colección real: "porraAnualPronosticos"
+            // C. Porra Anual — colección CONFIRMADA: "porraAnualPronosticos"
             const anualSnap = await getDocs(collection(db, "porraAnualPronosticos"));
             const apuestasAnuales = {};
             anualSnap.forEach(d => { apuestasAnuales[d.id] = d.data(); });
 
-            // 1d. Apuestas extra El Camino — colección: "apuestasExtra"
+            // D. El Camino — colección: "apuestasExtra"
             const extraSnap = await getDocs(collection(db, "apuestasExtra"));
             const apuestasExtra = {};
             extraSnap.forEach(d => { apuestasExtra[d.id] = d.data(); });
-            // Inyección para jugadores que apostaron Málaga pero no tienen doc
+            // Jugadores sin doc en apuestasExtra pero que sabemos apostaron Málaga
             ['Carlos', 'Carmelo', 'José'].forEach(n => {
-                if (!apuestasExtra[n]) apuestasExtra[n] = { equipo: EQUIPO_ASCENDIDO_REAL };
+                if (!apuestasExtra[n]) apuestasExtra[n] = { equipo: 'Málaga CF' };
             });
 
-            // 1e. Calcular puntos de la última jornada pendientes
+            // E. Preparar datos de la última jornada para calcular puntos
             const resL = parseInt(ultimaJornada?.resultadoLocal);
             const resV = parseInt(ultimaJornada?.resultadoVisitante);
             const golReal = (ultimaJornada?.goleador || '').trim().toLowerCase();
             const esVipU = ultimaJornada?.esVip || false;
             let rReal = '';
             if (ultimaJornada) {
-                if (ultimaJornada.equipoLocal === "UD Las Palmas") rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
-                else if (ultimaJornada.equipoVisitante === "UD Las Palmas") rReal = resV > resL ? 'gana' : (resV < resL ? 'pierde' : 'empate');
-                else rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
+                if (ultimaJornada.equipoLocal === "UD Las Palmas")
+                    rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
+                else if (ultimaJornada.equipoVisitante === "UD Las Palmas")
+                    rReal = resV > resL ? 'gana' : (resV < resL ? 'pierde' : 'empate');
+                else
+                    rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
             }
 
-            // 1f. Construir tabla de diagnóstico por jugador
+            // F. Calcular para cada jugador qué puntos EXTRA faltan sumar
+            //    IMPORTANTE: los puntos de la última jornada ya están en clasificación
+            //    según me confirmas. Los detectamos comparando puntosObtenidos en el pronóstico.
             const filas = JUGADORES.map(userId => {
                 const clasif = clasifActual[userId] || {};
                 const totalActual = clasif.puntosTotales || 0;
-                const extraYaSumado = clasif.puntosExtraSumados || 0;
-                let ptsAñadir = 0;
-                let desglose = [];
 
-                // ── Puntos última jornada (si puntosObtenidos === 0 en el pronóstico) ──
-                let ptosJornada = 0; let ptosExacto = 0; let ptosGol = 0;
+                // ── F1. ¿Los puntos de la última jornada ya están sumados? ──
+                // Los pronósticos guardan puntosObtenidos. Si > 0, ya se sumaron a clasificación.
+                // Si = 0, hay que calcularlos y sumarlos.
                 const pronU = pronosticosUltima[userId];
-                const ptosEnPron = Number(pronU?.puntosObtenidos) || 0;
+                const ptosJornadaEnPron = Number(pronU?.puntosObtenidos) || 0;
+                let ptosJornada = 0; let ptosExacto = 0; let ptosGol = 0;
+                let jornadaYaSumada = ptosJornadaEnPron > 0;
 
-                if (ultimaJornada && pronU && ptosEnPron === 0) {
+                if (ultimaJornada && pronU && !jornadaYaSumada) {
+                    // Calcular desde cero
                     if (parseInt(pronU.golesLocal) === resL && parseInt(pronU.golesVisitante) === resV) {
                         ptosExacto = esVipU ? 6 : 3;
                     } else if (pronU.jokerActivo && pronU.jokerPronosticos) {
                         for (let jp of pronU.jokerPronosticos) {
-                            if (jp.local !== '' && jp.visitante !== '' && parseInt(jp.local) === resL && parseInt(jp.visitante) === resV) {
+                            if (jp.local !== '' && jp.visitante !== '' &&
+                                parseInt(jp.local) === resL && parseInt(jp.visitante) === resV) {
                                 ptosExacto = esVipU ? 6 : 3; break;
                             }
                         }
                     }
                     ptosJornada += ptosExacto;
-                    if (check1x2(pronU.resultado1x2, rReal, ultimaJornada.tipoPartido, ultimaJornada.desenlace)) {
+                    if (check1x2(pronU.resultado1x2, rReal, ultimaJornada.tipoPartido, ultimaJornada.desenlace))
                         ptosJornada += esVipU ? 2 : 1;
-                    }
                     const golAp = (pronU.goleador || '').trim().toLowerCase();
                     if (resL > 0 || resV > 0 || golReal === 'sg') {
                         if (pronU.sinGoleador && golReal === 'sg') ptosGol += 1;
-                        else if (!pronU.sinGoleador && golAp !== '' && golAp === golReal && golReal !== 'sg') ptosGol += esVipU ? 4 : 2;
+                        else if (!pronU.sinGoleador && golAp !== '' && golAp === golReal && golReal !== 'sg')
+                            ptosGol += esVipU ? 4 : 2;
                     }
                     ptosJornada += ptosGol;
-                    if (ptosJornada > 0) { ptsAñadir += ptosJornada; desglose.push(`+${ptosJornada} (Última jornada)`); }
                 }
 
-                // ── El Camino (+5): comparar con valor real de Firebase "MALAGA" ──
-                if (!extraYaSumado) {
-                    const equipoApuestado = (apuestasExtra[userId]?.equipo || '').toUpperCase().trim();
-                    if (equipoApuestado === EQUIPO_ASCENDIDO_REAL || equipoApuestado === 'MÁLAGA CF' || equipoApuestado === 'MALAGA CF' || equipoApuestado === 'MÁLAGA') {
-                        ptsAñadir += 5;
-                        desglose.push(`+5 (El Camino: ${apuestasExtra[userId]?.equipo})`);
-                    }
-                }
+                // ── F2. El Camino (+5): ¿apostó por Málaga (el ascendido)? ──
+                // INDEPENDIENTE de puntosExtraSumados — calculamos siempre si lo merece
+                // y luego en handleAplicarCierre solo sumamos si no está ya en desgloseExtra
+                let ptsCamino = 0;
+                const equipoExtra = apuestasExtra[userId]?.equipo || '';
+                if (esMalaga(equipoExtra)) ptsCamino = 5;
 
-                // ── Porra Anual: colección porraAnualPronosticos, campo "ascenso" (NO/SI) ──
-                if (!extraYaSumado && apuestasAnuales[userId]) {
-                    const ap = apuestasAnuales[userId];
-                    // "ascenso" puede ser "NO", "SI", "Sí", true, false — normalizamos
+                // ── F3. Porra Anual ──
+                // Campos reales: "ascenso" = "NO"/"SI", "posicion" = "8" etc.
+                let ptsAnual = 0;
+                let motivoAnual = '';
+                const ap = apuestasAnuales[userId];
+                if (ap) {
                     const ascRaw = String(ap.ascenso || ap.asciende || '').toUpperCase().trim();
-                    const apAscendio = ascRaw === 'SI' || ascRaw === 'SÍ' || ascRaw === 'TRUE';
-                    const udlpAscendio = UDLP_ASCIENDE_REAL === 'SI';
-                    const aciertoAsciende = apAscendio === udlpAscendio; // ambos No → correcto
+                    const jugadorDijoSube = ascRaw === 'SI' || ascRaw === 'SÍ' || ascRaw === 'YES' || ascRaw === 'TRUE';
+                    const aciertoAsciende = jugadorDijoSube === UDLP_ASCENDIO; // ambos false = correcto
                     const posRaw = String(ap.posicion || '').trim();
-                    const aciertoPosicion = posRaw === UDLP_POSICION_REAL;
-
+                    const aciertoPosicion = posRaw === UDLP_POSICION_FINAL;
                     if (aciertoAsciende && aciertoPosicion) {
-                        ptsAñadir += 20; desglose.push(`+20 (Pleno Anual: pos.${posRaw} + No asciende ✓)`);
+                        ptsAnual = 20; motivoAnual = `+20 Pleno (pos.${posRaw} + No asciende ✓)`;
                     } else if (aciertoPosicion) {
-                        ptsAñadir += 10; desglose.push(`+10 (Posición ${posRaw}ª exacta ✓)`);
+                        ptsAnual = 10; motivoAnual = `+10 Posición ${posRaw}ª ✓`;
                     } else if (aciertoAsciende) {
-                        ptsAñadir += 5; desglose.push(`+5 (Ascenso anual: apostó ${ascRaw === 'SI' || ascRaw === 'SÍ' ? 'Sí' : 'No'} ✓)`);
+                        ptsAnual = 5; motivoAnual = `+5 Ascenso (apostó ${jugadorDijoSube ? 'Sí' : 'No'} ✓)`;
                     }
+                }
+
+                // ── F4. ¿Qué está ya sumado en Firebase (desgloseExtra)? ──
+                const desgloseActual = clasif.desgloseExtra || '';
+                const caminoYaSumado = desgloseActual.includes('Camino') || desgloseActual.includes('camino');
+                const anualYaSumado = desgloseActual.includes('Anual') || desgloseActual.includes('anual') || desgloseActual.includes('Pleno');
+
+                // ── F5. Total real a añadir ahora ──
+                let ptsAñadir = 0;
+                let desglose = [];
+
+                if (!jornadaYaSumada && ptosJornada > 0) {
+                    ptsAñadir += ptosJornada;
+                    desglose.push(`+${ptosJornada} pts jornada final`);
+                } else if (jornadaYaSumada) {
+                    desglose.push(`✓ Jornada (${ptosJornadaEnPron} pts ya sumados)`);
+                }
+
+                if (!caminoYaSumado && ptsCamino > 0) {
+                    ptsAñadir += ptsCamino;
+                    desglose.push(`+5 El Camino (${equipoExtra} ✓)`);
+                } else if (caminoYaSumado) {
+                    desglose.push(`✓ Camino ya sumado`);
+                }
+
+                if (!anualYaSumado && ptsAnual > 0) {
+                    ptsAñadir += ptsAnual;
+                    desglose.push(motivoAnual);
+                } else if (anualYaSumado) {
+                    desglose.push(`✓ Anual ya sumado`);
                 }
 
                 return {
                     userId, totalActual, ptsAñadir,
                     totalFinal: totalActual + ptsAñadir,
-                    desglose, extraYaSumado,
-                    ptosJornada, ptosExacto, ptosGol,
-                    apuestaAnual: apuestasAnuales[userId] || null,
+                    desglose,
+                    // Para aplicar cierre:
+                    ptosJornada, ptosExacto, ptosGol, jornadaYaSumada,
+                    ptsCamino, caminoYaSumado,
+                    ptsAnual, anualYaSumado, motivoAnual,
+                    // Para mostrar en tabla:
+                    apuestaAnual: ap || null,
                     apuestaExtra: apuestasExtra[userId] || null,
                     pronU,
                 };
             });
 
-            setDiagnostico({ filas, ultimaJornada, resL, resV, esVipU });
+            setDiagnostico({ filas, ultimaJornada, resL, resV });
         } catch(e) {
             console.error(e);
             alert("Error al cargar diagnóstico: " + e.message);
@@ -1416,8 +1457,13 @@ const AdminCierreTemporada = () => {
     const handleAplicarCierre = async () => {
         if (!diagnostico) return;
         const hayPendientes = diagnostico.filas.some(f => f.ptsAñadir > 0);
-        if (!hayPendientes) { alert("No hay puntos pendientes de sumar."); return; }
-        if (!window.confirm("¿Confirmas aplicar todos los puntos pendientes mostrados en el diagnóstico? Esta acción escribirá en Firebase.")) return;
+        if (!hayPendientes) { alert("No hay puntos pendientes de sumar según el diagnóstico."); return; }
+
+        const resumen = diagnostico.filas.filter(f => f.ptsAñadir > 0).map(f =>
+            `${f.userId}: +${f.ptsAñadir} pts → ${f.desglose.filter(d => !d.includes('✓ Jornada') && !d.includes('ya sumado')).join(', ')}`
+        ).join('\n');
+
+        if (!window.confirm(`¿Confirmas aplicar los siguientes puntos en Firebase?\n\n${resumen}\n\nSolo se suman los que faltan. Los ya sumados no se tocan.`)) return;
 
         setProcesando(true);
         try {
@@ -1427,33 +1473,38 @@ const AdminCierreTemporada = () => {
             for (const f of filas) {
                 if (f.ptsAñadir === 0) continue;
 
-                // Actualizar clasificación global
-                batch.update(doc(db, "clasificacion", f.userId), {
-                    puntosTotales: f.totalFinal,
-                    puntosExtraSumados: (f.extraYaSumado || 0) + (f.ptsAñadir - f.ptosJornada),
-                    desgloseExtra: f.desglose.filter(d => !d.includes('Última jornada')).join(' | '),
-                });
+                const clasifRef = doc(db, "clasificacion", f.userId);
+                let nuevosDesgloses = [];
 
-                // Si había puntos de la última jornada pendientes, actualizar también el pronóstico
-                if (f.ptosJornada > 0 && f.pronU && ultimaJornada) {
+                // Solo sumar jornada si no estaba ya
+                if (!f.jornadaYaSumada && f.ptosJornada > 0) {
                     batch.update(doc(db, "pronosticos", ultimaJornada.id, "jugadores", f.userId), {
                         puntosObtenidos: f.ptosJornada,
                         puntosResultadoExacto: f.ptosExacto,
                         puntosGoleador: f.ptosGol,
                     });
                 }
+
+                // Construir desglose de extras (Camino + Anual) para guardar
+                if (!f.caminoYaSumado && f.ptsCamino > 0) nuevosDesgloses.push(`+${f.ptsCamino} El Camino`);
+                if (!f.anualYaSumado && f.ptsAnual > 0) nuevosDesgloses.push(f.motivoAnual);
+
+                // Actualizar clasificación: sumar lo que falta al total actual
+                const updateData = { puntosTotales: f.totalFinal };
+                if (nuevosDesgloses.length > 0) {
+                    updateData.desgloseExtra = nuevosDesgloses.join(' | ');
+                    updateData.puntosExtraSumados = (f.ptsCamino || 0) + (f.ptsAnual || 0);
+                }
+                batch.update(clasifRef, updateData);
             }
 
-            // Marcar la última jornada como calculada si no lo estaba
             if (ultimaJornada) {
                 batch.update(doc(db, "jornadas", ultimaJornada.id), { puntosCalculados: true });
             }
 
             await batch.commit();
-            setCierreEjecutado(true);
-            // Recargar diagnóstico para mostrar estado actualizado
-            await handleDiagnostico();
-            alert("✅ ¡CIERRE COMPLETADO! Todos los puntos han sido sumados en Firebase.");
+            await handleDiagnostico(); // Recargar para confirmar
+            alert("✅ ¡CIERRE COMPLETADO! Todos los puntos han sido guardados en Firebase.\n\nRecarga el diagnóstico para confirmar que todo está en '✓ ya sumado'.");
         } catch(e) {
             console.error(e);
             alert("Error al aplicar el cierre: " + e.message);
@@ -1463,7 +1514,7 @@ const AdminCierreTemporada = () => {
 
     // ── RESET TOTAL ───────────────────────────────────────────────────────────
     const handleResetTotal = async () => {
-        if (!window.confirm("⚠️ PELIGRO TOTAL: Esto pondrá a 0 los puntosExtraSumados y restará esos puntos del total de TODOS los jugadores, y pondrá a 0 los puntos de la última jornada en los pronósticos. Úsalo solo si el cierre se aplicó con datos incorrectos.")) return;
+        if (!window.confirm("⚠️ PELIGRO: Esto borrará desgloseExtra y puntosExtraSumados de la clasificación, y pondrá a 0 los puntos de la última jornada en los pronósticos. Úsalo solo si algo salió mal.")) return;
         setProcesando(true);
         try {
             const batch = writeBatch(db);
@@ -1471,7 +1522,7 @@ const AdminCierreTemporada = () => {
             clasifSnap.forEach(d => {
                 const data = d.data();
                 const extra = data.puntosExtraSumados || 0;
-                if (extra > 0) {
+                if (extra > 0 || data.desgloseExtra) {
                     batch.update(doc(db, "clasificacion", d.id), {
                         puntosTotales: Math.max(0, (data.puntosTotales || 0) - extra),
                         puntosExtraSumados: 0,
@@ -1479,7 +1530,6 @@ const AdminCierreTemporada = () => {
                     });
                 }
             });
-            // Resetear puntos de la última jornada en pronósticos
             if (diagnostico?.ultimaJornada) {
                 const pSnap = await getDocs(collection(db, "pronosticos", diagnostico.ultimaJornada.id, "jugadores"));
                 pSnap.forEach(d => {
@@ -1490,9 +1540,8 @@ const AdminCierreTemporada = () => {
                 batch.update(doc(db, "jornadas", diagnostico.ultimaJornada.id), { puntosCalculados: false });
             }
             await batch.commit();
-            setCierreEjecutado(false);
             setDiagnostico(null);
-            alert("✅ Reset completo. Puedes volver a cargar el diagnóstico y aplicar el cierre.");
+            alert("✅ Reset completo. Recarga el diagnóstico para empezar de cero.");
         } catch(e) {
             console.error(e);
             alert("Error al resetear: " + e.message);
