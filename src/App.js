@@ -1263,62 +1263,64 @@ const CalendarioScreen = ({ teamLogos }) => {
 // --- ADMINISTRADOR Y CIERRE ---
 // ============================================================================
 const AdminCierreTemporada = () => {
-    // Datos reales fijos de la temporada
-    const UDLP_ASCIENDE = 'No';
-    const UDLP_POSICION = '5';
-    const EQUIPO_ASCENDIDO_PLAYOFF = 'Málaga CF';
+    // ─── DATOS REALES DE FIREBASE (confirmados en las capturas) ───────────────
+    // Colección pronósticos anuales: "porraAnualPronosticos"  (NO "porraAnual")
+    // Campo ascenso en cada doc:     "ascenso" con valor "NO"/"SI" (NO "asciende"/"Sí")
+    // Campo posición en cada doc:    "posicion" con valor string "15" etc.
+    // Equipo ascendido en playoff:   "MALAGA" en configuracion/playoff.ascendido (NO "Málaga CF")
+    // Colección apuestas extra:      "apuestasExtra" ← este sí es correcto
+    // ─────────────────────────────────────────────────────────────────────────
+    const UDLP_ASCIENDE_REAL = 'NO';      // valor exacto en Firebase (mayúsculas)
+    const UDLP_POSICION_REAL = '5';       // posición final real de UDLP
+    const EQUIPO_ASCENDIDO_REAL = 'MALAGA'; // valor exacto en configuracion/playoff.ascendido
 
     const [procesando, setProcesando] = useState(false);
-    const [diagnostico, setDiagnostico] = useState(null); // null = sin cargar, [] = cargado
+    const [diagnostico, setDiagnostico] = useState(null);
     const [cargandoDiag, setCargandoDiag] = useState(false);
-    const [cierreEjecutado, setCierreEjecutado] = useState(false);
 
     // ── PASO 1: DIAGNÓSTICO ───────────────────────────────────────────────────
-    // Lee Firebase y calcula cuántos puntos le faltan a cada jugador SIN escribir nada
     const handleDiagnostico = async () => {
         setCargandoDiag(true);
         try {
-            // 1a. Leer clasificación actual
+            // 1a. Clasificación actual
             const clasifSnap = await getDocs(collection(db, "clasificacion"));
             const clasifActual = {};
             clasifSnap.forEach(d => { clasifActual[d.id] = d.data(); });
 
-            // 1b. Buscar la última jornada finalizada (la del Málaga) y sus pronósticos
+            // 1b. Última jornada finalizada y sus pronósticos
             const jornadasSnap = await getDocs(query(
                 collection(db, "jornadas"),
                 where("estado", "==", "Finalizada"),
                 orderBy("numeroJornada", "desc"),
                 limit(1)
             ));
-
             let ultimaJornada = null;
             let pronosticosUltima = {};
             if (!jornadasSnap.empty) {
                 ultimaJornada = { id: jornadasSnap.docs[0].id, ...jornadasSnap.docs[0].data() };
-                // Leer pronósticos de esa jornada
                 const pSnap = await getDocs(collection(db, "pronosticos", ultimaJornada.id, "jugadores"));
                 pSnap.forEach(d => { pronosticosUltima[d.id] = d.data(); });
             }
 
-            // 1c. Porra anual y apuestas extra
-            const anualSnap = await getDocs(collection(db, "porraAnual"));
-            const extraSnap = await getDocs(collection(db, "apuestasExtra"));
+            // 1c. Pronósticos anuales — colección real: "porraAnualPronosticos"
+            const anualSnap = await getDocs(collection(db, "porraAnualPronosticos"));
             const apuestasAnuales = {};
             anualSnap.forEach(d => { apuestasAnuales[d.id] = d.data(); });
+
+            // 1d. Apuestas extra El Camino — colección: "apuestasExtra"
+            const extraSnap = await getDocs(collection(db, "apuestasExtra"));
             const apuestasExtra = {};
             extraSnap.forEach(d => { apuestasExtra[d.id] = d.data(); });
-            // Inyección para jugadores que no apostaron en El Camino pero sabemos su equipo
+            // Inyección para jugadores que apostaron Málaga pero no tienen doc
             ['Carlos', 'Carmelo', 'José'].forEach(n => {
-                if (!apuestasExtra[n]) apuestasExtra[n] = { equipo: 'Málaga CF' };
+                if (!apuestasExtra[n]) apuestasExtra[n] = { equipo: EQUIPO_ASCENDIDO_REAL };
             });
 
-            // 1d. Calcular puntos de la última jornada que NO se sumaron
-            // Una jornada con puntosCalculados=true pero puntos a 0 en clasificación = bug conocido
+            // 1e. Calcular puntos de la última jornada pendientes
             const resL = parseInt(ultimaJornada?.resultadoLocal);
             const resV = parseInt(ultimaJornada?.resultadoVisitante);
             const golReal = (ultimaJornada?.goleador || '').trim().toLowerCase();
             const esVipU = ultimaJornada?.esVip || false;
-
             let rReal = '';
             if (ultimaJornada) {
                 if (ultimaJornada.equipoLocal === "UD Las Palmas") rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
@@ -1326,7 +1328,7 @@ const AdminCierreTemporada = () => {
                 else rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
             }
 
-            // 1e. Construir el diagnóstico por jugador
+            // 1f. Construir tabla de diagnóstico por jugador
             const filas = JUGADORES.map(userId => {
                 const clasif = clasifActual[userId] || {};
                 const totalActual = clasif.puntosTotales || 0;
@@ -1334,13 +1336,12 @@ const AdminCierreTemporada = () => {
                 let ptsAñadir = 0;
                 let desglose = [];
 
-                // ── Puntos de la última jornada (si no se sumaron) ──
+                // ── Puntos última jornada (si puntosObtenidos === 0 en el pronóstico) ──
                 let ptosJornada = 0; let ptosExacto = 0; let ptosGol = 0;
                 const pronU = pronosticosUltima[userId];
-                const ptosEnClasif = pronU?.puntosObtenidos || 0;
+                const ptosEnPron = Number(pronU?.puntosObtenidos) || 0;
 
-                if (ultimaJornada && pronU && ptosEnClasif === 0) {
-                    // El pronóstico existe pero tiene 0 puntos guardados → calcular
+                if (ultimaJornada && pronU && ptosEnPron === 0) {
                     if (parseInt(pronU.golesLocal) === resL && parseInt(pronU.golesVisitante) === resV) {
                         ptosExacto = esVipU ? 6 : 3;
                     } else if (pronU.jokerActivo && pronU.jokerPronosticos) {
@@ -1360,43 +1361,43 @@ const AdminCierreTemporada = () => {
                         else if (!pronU.sinGoleador && golAp !== '' && golAp === golReal && golReal !== 'sg') ptosGol += esVipU ? 4 : 2;
                     }
                     ptosJornada += ptosGol;
-                    if (ptosJornada > 0) {
-                        ptsAñadir += ptosJornada;
-                        desglose.push(`+${ptosJornada} (Última jornada)`);
+                    if (ptosJornada > 0) { ptsAñadir += ptosJornada; desglose.push(`+${ptosJornada} (Última jornada)`); }
+                }
+
+                // ── El Camino (+5): comparar con valor real de Firebase "MALAGA" ──
+                if (!extraYaSumado) {
+                    const equipoApuestado = (apuestasExtra[userId]?.equipo || '').toUpperCase().trim();
+                    if (equipoApuestado === EQUIPO_ASCENDIDO_REAL || equipoApuestado === 'MÁLAGA CF' || equipoApuestado === 'MALAGA CF' || equipoApuestado === 'MÁLAGA') {
+                        ptsAñadir += 5;
+                        desglose.push(`+5 (El Camino: ${apuestasExtra[userId]?.equipo})`);
                     }
                 }
 
-                // ── El Camino (+5) ──
-                if (!extraYaSumado && apuestasExtra[userId]?.equipo === EQUIPO_ASCENDIDO_PLAYOFF) {
-                    ptsAñadir += 5;
-                    desglose.push(`+5 (El Camino: ${EQUIPO_ASCENDIDO_PLAYOFF})`);
-                }
-
-                // ── Porra Anual ──
+                // ── Porra Anual: colección porraAnualPronosticos, campo "ascenso" (NO/SI) ──
                 if (!extraYaSumado && apuestasAnuales[userId]) {
                     const ap = apuestasAnuales[userId];
-                    const apAsciende = (ap.asciende === 'Sí' || ap.asciende === true) ? 'Sí' : 'No';
-                    const aciertoAsciende = apAsciende === UDLP_ASCIENDE;
-                    const aciertoPosicion = String(ap.posicion).trim() === UDLP_POSICION;
+                    // "ascenso" puede ser "NO", "SI", "Sí", true, false — normalizamos
+                    const ascRaw = String(ap.ascenso || ap.asciende || '').toUpperCase().trim();
+                    const apAscendio = ascRaw === 'SI' || ascRaw === 'SÍ' || ascRaw === 'TRUE';
+                    const udlpAscendio = UDLP_ASCIENDE_REAL === 'SI';
+                    const aciertoAsciende = apAscendio === udlpAscendio; // ambos No → correcto
+                    const posRaw = String(ap.posicion || '').trim();
+                    const aciertoPosicion = posRaw === UDLP_POSICION_REAL;
+
                     if (aciertoAsciende && aciertoPosicion) {
-                        ptsAñadir += 20; desglose.push(`+20 (Pleno Anual: pos.${ap.posicion} + No asciende)`);
+                        ptsAñadir += 20; desglose.push(`+20 (Pleno Anual: pos.${posRaw} + No asciende ✓)`);
                     } else if (aciertoPosicion) {
-                        ptsAñadir += 10; desglose.push(`+10 (Posición ${ap.posicion}ª)`);
+                        ptsAñadir += 10; desglose.push(`+10 (Posición ${posRaw}ª exacta ✓)`);
                     } else if (aciertoAsciende) {
-                        ptsAñadir += 5; desglose.push(`+5 (Ascenso: apostó ${apAsciende})`);
+                        ptsAñadir += 5; desglose.push(`+5 (Ascenso anual: apostó ${ascRaw === 'SI' || ascRaw === 'SÍ' ? 'Sí' : 'No'} ✓)`);
                     }
                 }
 
                 return {
-                    userId,
-                    totalActual,
-                    ptsAñadir,
+                    userId, totalActual, ptsAñadir,
                     totalFinal: totalActual + ptsAñadir,
-                    desglose,
-                    extraYaSumado,
-                    ptosJornada,
-                    ptosExacto,
-                    ptosGol,
+                    desglose, extraYaSumado,
+                    ptosJornada, ptosExacto, ptosGol,
                     apuestaAnual: apuestasAnuales[userId] || null,
                     apuestaExtra: apuestasExtra[userId] || null,
                     pronU,
@@ -1544,7 +1545,7 @@ const AdminCierreTemporada = () => {
                                         <td style={{...styles.td, fontSize:'0.75rem', color: styles.colors.silver}}>
                                             {f.desglose.length > 0 ? f.desglose.join(' · ') : (f.extraYaSumado > 0 ? '✅ Ya sumado' : 'Sin puntos extra')}
                                             {f.apuestaAnual && <span style={{display:'block', color:'rgba(255,255,255,0.4)', marginTop:'3px'}}>
-                                                Anuales: pos.{f.apuestaAnual.posicion} / {f.apuestaAnual.asciende === true || f.apuestaAnual.asciende === 'Sí' ? 'Sí asciende' : 'No asciende'}
+                                                Anuales: pos.{f.apuestaAnual.posicion} / ascenso: {String(f.apuestaAnual.ascenso || f.apuestaAnual.asciende || '?')}
                                             </span>}
                                             {f.apuestaExtra && <span style={{display:'block', color:'rgba(255,255,255,0.4)', marginTop:'2px'}}>
                                                 Camino: {f.apuestaExtra.equipo}
