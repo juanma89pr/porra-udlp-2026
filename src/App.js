@@ -2174,49 +2174,105 @@ const GalaFinTemporada = ({ currentUser, userProfiles, onClose }) => {
                 <p style={bigTitle}>Clasificación</p>
                 <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'1rem',color:'rgba(255,255,255,0.4)',letterSpacing:'3px',marginBottom:'4px'}}>FIN DE TEMPORADA</p>
                 <div style={divider}/>
-                <div style={{width:'100%',marginBottom:'8px'}}>
-                    {data?.clasif && [...data.clasif].reverse().map((j,i)=>{
-                        const pos = data.clasif.length - i;
-                        const revealed = pos > (data.clasif.length - clasifRevealed);
-                        const maxPts = data.clasif[0]?.puntosTotales || 1;
+
+                {/* Lista: empieza en orden alfabético, cada toque coloca al siguiente desde el último */}
+                {(() => {
+                    if(!data?.clasif) return null;
+                    const total = data.clasif.length;
+                    const maxPts = data.clasif[0]?.puntosTotales || 1;
+
+                    // Orden alfabético inicial (todos los jugadores mezclados)
+                    const alfaOrder = [...data.clasif].sort((a,b)=>a.id.localeCompare(b.id));
+
+                    // Los revelados son los últimos `clasifRevealed` de la clasificación real (peores primero)
+                    // revealedIds = set de ids ya revelados con su posición real
+                    const revealedMap = {}; // id → posición real (1=primero)
+                    for(let i = 0; i < clasifRevealed && i < total; i++) {
+                        const posReal = total - i; // empieza por el último
+                        revealedMap[data.clasif[posReal - 1].id] = posReal;
+                    }
+
+                    // Los revelados se muestran en orden de posición real (peor arriba, mejor abajo)
+                    // Los no revelados se muestran en orden alfabético debajo de los revelados
+                    // En realidad mostramos la lista de posiciones ya asignadas arriba,
+                    // y los pendientes en espera abajo
+                    const revealed = data.clasif
+                        .map((j,i)=>({...j, posReal: i+1}))
+                        .filter(j=>revealedMap[j.id] !== undefined)
+                        .sort((a,b)=>b.posReal-a.posReal); // peor posición arriba
+
+                    const pending = alfaOrder.filter(j=>revealedMap[j.id] === undefined);
+
+                    const renderRevealed = (j) => {
+                        const pos = j.posReal;
                         const pct = Math.round(((j.puntosTotales||0)/maxPts)*100);
                         const isTop = pos<=3;
                         const posLabel = pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':`${pos}º`;
-                        const nameColor = pos===1?G.golden:pos===2?G.silver:pos===3?'#CD7F32':'rgba(255,255,255,0.8)';
-                        const barColor = pos===1?G.goldenDark:pos===2?G.silver:pos===3?'#CD7F32':'rgba(255,215,0,0.4)';
+                        const nameColor = pos===1?G.golden:pos===2?G.silver:pos===3?'#CD7F32':'rgba(255,255,255,0.85)';
+                        const barColor = pos===1?G.goldenDark:pos===2?G.silver:pos===3?'#CD7F32':'rgba(255,215,0,0.45)';
                         return (
-                            <div key={j.id} className={revealed?'gala-reveal':''} style={{
-                                display:'flex',alignItems:'center',gap:'10px',padding:`${isTop?'12px':'8px'} 8px`,
-                                marginBottom:'6px',borderRadius:'12px',
-                                background: revealed ? (pos===1?'rgba(212,175,55,0.12)':pos===2?'rgba(192,192,192,0.06)':pos===3?'rgba(205,127,50,0.06)':'rgba(0,0,0,0.25)') : 'rgba(0,0,0,0.15)',
-                                border: revealed&&isTop ? `1px solid ${barColor}44` : '1px solid rgba(255,255,255,0.04)',
-                                opacity: revealed ? 1 : 0.15,
-                                transition:'all .4s ease',
-                                animationDelay:`${i*0.05}s`
+                            <div key={j.id} className="gala-reveal" style={{
+                                display:'flex',alignItems:'center',gap:'10px',
+                                padding:`${isTop?'13px':'9px'} 10px`,
+                                marginBottom:'5px',borderRadius:'12px',
+                                background: pos===1?'rgba(212,175,55,0.13)':pos===2?'rgba(192,192,192,0.07)':pos===3?'rgba(205,127,50,0.07)':'rgba(0,0,0,0.3)',
+                                border:`1px solid ${isTop?barColor+'55':'rgba(255,255,255,0.05)'}`,
+                                boxShadow: isTop ? `0 0 16px ${barColor}22` : 'none',
                             }}>
-                                <div style={{fontFamily:"'Oswald',sans-serif",fontSize:isTop?'1.3rem':'1rem',minWidth:'36px',textAlign:'center',color:nameColor}}>{posLabel}</div>
+                                <div style={{fontFamily:"'Oswald',sans-serif",fontSize:isTop?'1.35rem':'1rem',minWidth:'38px',textAlign:'center',color:nameColor,fontWeight:700}}>{posLabel}</div>
                                 <div style={{flex:1,textAlign:'left'}}>
-                                    <div style={{fontSize:isTop?'14px':'12px',fontWeight:700,color:nameColor}}>
-                                        {userProfiles[j.id]?.icon || ''} {j.id}
+                                    <div style={{fontSize:isTop?'15px':'12px',fontWeight:700,color:nameColor,letterSpacing:'0.5px'}}>
+                                        {userProfiles[j.id]?.icon || '⭐'} {j.id}
                                     </div>
-                                    <div style={{height:'4px',background:'rgba(255,255,255,0.08)',borderRadius:'2px',marginTop:'4px',overflow:'hidden'}}>
-                                        <div style={{height:'100%',width:revealed?`${pct}%`:'0%',background:barColor,borderRadius:'2px',transition:'width .8s ease .2s'}}/>
+                                    <div style={{height:'4px',background:'rgba(255,255,255,0.07)',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
+                                        <div style={{height:'100%',width:`${pct}%`,background:barColor,borderRadius:'2px',transition:'width .9s ease .1s'}}/>
                                     </div>
                                 </div>
-                                <div style={{fontFamily:"'Oswald',sans-serif",fontSize:isTop?'1.3rem':'1rem',fontWeight:700,color:nameColor,minWidth:'36px',textAlign:'right'}}>{revealed?j.puntosTotales||0:'?'}</div>
+                                <div style={{fontFamily:"'Oswald',sans-serif",fontSize:isTop?'1.35rem':'1rem',fontWeight:700,color:nameColor,minWidth:'42px',textAlign:'right'}}>{j.puntosTotales||0} <span style={{fontSize:'10px',color:`${nameColor}88`}}>pts</span></div>
                             </div>
                         );
-                    })}
-                </div>
+                    };
+
+                    const renderPending = (j) => (
+                        <div key={j.id} style={{
+                            display:'flex',alignItems:'center',gap:'10px',
+                            padding:'9px 10px',marginBottom:'5px',borderRadius:'12px',
+                            background:'rgba(255,255,255,0.03)',
+                            border:'1px solid rgba(255,255,255,0.07)',
+                            opacity:0.5,
+                        }}>
+                            <div style={{fontFamily:"'Oswald',sans-serif",fontSize:'1rem',minWidth:'38px',textAlign:'center',color:'rgba(255,255,255,0.25)'}}>—</div>
+                            <div style={{flex:1,textAlign:'left',fontSize:'12px',fontWeight:600,color:'rgba(255,255,255,0.4)',letterSpacing:'0.5px'}}>
+                                {userProfiles[j.id]?.icon || '⭐'} {j.id}
+                            </div>
+                            <div style={{fontFamily:"'Oswald',sans-serif",fontSize:'1rem',fontWeight:700,color:'rgba(255,255,255,0.2)',minWidth:'42px',textAlign:'right'}}>?</div>
+                        </div>
+                    );
+
+                    return (
+                        <div style={{width:'100%',marginBottom:'8px'}}>
+                            {revealed.map(renderRevealed)}
+                            {revealed.length > 0 && pending.length > 0 && (
+                                <div style={{borderTop:'1px dashed rgba(255,255,255,0.08)',margin:'8px 0 8px'}}/>
+                            )}
+                            {pending.map(renderPending)}
+                        </div>
+                    );
+                })()}
+
                 {!showPodium && (
                     <button style={btn} onClick={revealNext}>
-                        {clasifRevealed === 0 ? '▶ Revelar clasificación' : clasifRevealed >= (data?.clasif?.length||99) ? '🎉 Ver podio final' : `▶ Siguiente (${(data?.clasif?.length||0)-clasifRevealed} restantes)`}
+                        {clasifRevealed === 0
+                            ? '▶ Revelar clasificación'
+                            : clasifRevealed >= (data?.clasif?.length||99)
+                                ? '🎉 Ver podio final'
+                                : `▶ Siguiente — ${(data?.clasif?.length||0) - clasifRevealed} restantes`}
                     </button>
                 )}
                 {showPodium && (
-                    <div style={{width:'100%',padding:'20px',background:`linear-gradient(135deg,rgba(212,175,55,0.15),rgba(0,0,0,0.5))`,border:`1px solid ${G.goldenDark}`,borderRadius:'16px',marginTop:'8px',animation:'slideIn .5s ease'}}>
-                        <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'1.6rem',color:G.golden,letterSpacing:'2px',marginBottom:'8px',textShadow:`0 0 20px rgba(255,215,0,0.5)`}}>🎉 FIN DE TEMPORADA</p>
-                        <p style={{fontSize:'12px',color:'rgba(255,255,255,0.5)',marginBottom:'16px'}}>Los tres primeros se llevan el premio. ¡Enhorabuena a todos!</p>
+                    <div style={{width:'100%',padding:'22px',background:`linear-gradient(135deg,rgba(212,175,55,0.15),rgba(0,0,0,0.5))`,border:`1px solid ${G.goldenDark}`,borderRadius:'16px',marginTop:'8px',animation:'slideIn .5s ease',textAlign:'center'}}>
+                        <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'1.8rem',color:G.golden,letterSpacing:'2px',marginBottom:'6px',textShadow:`0 0 25px rgba(255,215,0,0.6)`}}>🎉 FIN DE TEMPORADA</p>
+                        <p style={{fontSize:'12px',color:'rgba(255,255,255,0.5)',marginBottom:'18px',lineHeight:1.6}}>Los tres primeros se llevan el premio.<br/>¡Enhorabuena a toda la peña!</p>
                         <button style={btn} onClick={onClose}>Entrar a la app →</button>
                     </div>
                 )}
