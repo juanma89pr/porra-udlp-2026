@@ -1922,6 +1922,311 @@ const AdminPanelScreen = ({ plantilla }) => {
 };
 
 // ============================================================================
+// --- GALA FIN DE TEMPORADA ---
+// ============================================================================
+const GalaFinTemporada = ({ currentUser, userProfiles, onClose }) => {
+    const [slide, setSlide] = useState(0);
+    const [data, setData] = useState(null);
+    const [clasifRevealed, setClasifRevealed] = useState(0);
+    const [showPodium, setShowPodium] = useState(false);
+    const TOTAL = 4;
+    const esMalaga = eq => (eq||'').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes('MALAGA');
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                // Última jornada finalizada
+                const jornadasSnap = await getDocs(query(collection(db,"jornadas"),where("estado","==","Finalizada"),orderBy("numeroJornada","desc"),limit(1)));
+                let ultimaJ = null; let pronosticos = [];
+                if(!jornadasSnap.empty){
+                    ultimaJ = {id:jornadasSnap.docs[0].id,...jornadasSnap.docs[0].data()};
+                    const pSnap = await getDocs(collection(db,"pronosticos",ultimaJ.id,"jugadores"));
+                    pronosticos = pSnap.docs.map(d=>({id:d.id,...d.data()}));
+                }
+                // Calcular premio jornada
+                let ganadores = ultimaJ?.ganadores || [];
+                const coste = ultimaJ?.esVip ? 2 : 1;
+                let rec = 0;
+                pronosticos.forEach(p=>{ rec+=coste; if(p.jokerActivo&&p.jokerPronosticos){ rec+=p.jokerPronosticos.filter(jp=>jp.local!==''&&jp.visitante!=='').length*coste; }});
+                const bote = parseFloat(ultimaJ?.bote||0);
+                const totalBote = bote + rec;
+                const premioPorGanador = ganadores.length > 0 ? (totalBote/ganadores.length).toFixed(2) : 0;
+
+                // El Camino
+                const playoffSnap = await getDoc(doc(db,"configuracion","playoff"));
+                const playoff = playoffSnap.exists() ? playoffSnap.data() : {};
+                const extraSnap = await getDocs(collection(db,"apuestasExtra"));
+                const apuestasExtra = {};
+                extraSnap.forEach(d=>{apuestasExtra[d.id]=d.data();});
+                ['Carlos','Carmelo','José'].forEach(n=>{if(!apuestasExtra[n])apuestasExtra[n]={equipo:'Málaga CF'};});
+                const caminoGanadores = Object.entries(apuestasExtra).filter(([,v])=>esMalaga(v.equipo||'')).map(([k])=>k);
+
+                // Porra anual
+                const anualSnap = await getDocs(collection(db,"porraAnualPronosticos"));
+                const apuestasAnuales = {};
+                anualSnap.forEach(d=>{apuestasAnuales[d.id]=d.data();});
+                const g5=[],g10=[],g20=[];
+                Object.entries(apuestasAnuales).forEach(([userId,ap])=>{
+                    const ascRaw = String(ap.ascenso||ap.asciende||'').toUpperCase().trim();
+                    const dijoSube = ascRaw==='SI'||ascRaw==='SÍ'||ascRaw==='TRUE';
+                    const aciertoAsc = dijoSube===false;
+                    const posRaw = String(ap.posicion||'').trim();
+                    const aciertoPosicion = posRaw==='5';
+                    if(aciertoAsc&&aciertoPosicion) g20.push(userId);
+                    else if(aciertoPosicion) g10.push(userId);
+                    else if(aciertoAsc) g5.push(userId);
+                });
+
+                // Clasificación
+                const clasifSnap = await getDocs(collection(db,"clasificacion"));
+                const clasif = clasifSnap.docs.map(d=>({id:d.id,...d.data()}))
+                    .filter(d=>d.puntosTotales!==undefined)
+                    .sort((a,b)=>(b.puntosTotales||0)-(a.puntosTotales||0));
+
+                setData({ ultimaJ, ganadores, totalBote, premioPorGanador, playoff, caminoGanadores, g5, g10, g20, clasif });
+                setSlide(1);
+            } catch(e){ console.error(e); setSlide(1); }
+        };
+        load();
+    }, []);
+
+    const goNext = () => { if(slide < TOTAL) setSlide(s=>s+1); };
+    const goPrev = () => { if(slide > 1) setSlide(s=>s-1); };
+
+    const revealNext = () => {
+        if(!data) return;
+        const total = data.clasif.length;
+        if(clasifRevealed < total){ setClasifRevealed(r=>r+1); }
+        else { setShowPodium(true); }
+    };
+
+    const G = colors;
+
+    const slideStyle = (n) => ({
+        display: slide === n ? 'flex' : 'none',
+        flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        minHeight: '100vh', padding: '30px 20px', textAlign: 'center',
+        animation: 'slideIn 0.5s ease',
+    });
+
+    const bigTitle = { fontFamily:"'Oswald',sans-serif", fontSize:'clamp(2rem,7vw,3rem)', fontWeight:700, color:G.golden, letterSpacing:'2px', lineHeight:1.1, textTransform:'uppercase', textShadow:`0 0 30px rgba(255,215,0,0.4)` };
+    const subTitle = { fontFamily:"'Montserrat',sans-serif", fontSize:'11px', letterSpacing:'4px', color:'rgba(255,255,255,0.5)', textTransform:'uppercase', marginBottom:'12px' };
+    const divider = { width:'50px', height:'2px', background:`linear-gradient(90deg,transparent,${G.goldenDark},transparent)`, margin:'16px auto' };
+    const btn = { fontFamily:"'Oswald',sans-serif", background:`linear-gradient(135deg,${G.goldenDark},${G.golden},#FFF7A1,${G.golden})`, color:'#000', border:'none', borderRadius:'30px', padding:'13px 36px', fontSize:'1rem', fontWeight:700, cursor:'pointer', letterSpacing:'2px', textTransform:'uppercase', boxShadow:`0 8px 25px rgba(212,175,55,0.4)`, width:'100%', maxWidth:'300px', marginTop:'20px' };
+    const btnSecondary = { ...btn, background:'transparent', color:G.golden, border:`1px solid ${G.goldenDark}`, boxShadow:'none', maxWidth:'140px', fontSize:'0.8rem', padding:'10px 20px' };
+    const card = { background:'rgba(0,0,0,0.4)', border:`1px solid rgba(255,215,0,0.2)`, borderRadius:'16px', padding:'20px', width:'100%', marginBottom:'12px' };
+    const progressDots = (
+        <div style={{display:'flex',gap:'6px',marginBottom:'24px'}}>
+            {[1,2,3,4].map(i=>(
+                <div key={i} style={{flex:1,height:'3px',borderRadius:'2px',background: i<=slide ? G.goldenDark : 'rgba(255,255,255,0.12)',transition:'background .3s'}}/>
+            ))}
+        </div>
+    );
+    const winnerPill = (name, pts) => (
+        <span key={name} style={{display:'inline-flex',alignItems:'center',gap:'6px',background:'rgba(16,185,129,0.15)',border:`1px solid ${G.success}`,color:G.success,borderRadius:'20px',padding:'5px 14px',fontSize:'12px',fontWeight:700,margin:'4px',letterSpacing:'1px'}}>
+            {userProfiles[name]?.icon || '⭐'} {name} {pts && <span style={{background:G.success,color:'#000',borderRadius:'10px',padding:'1px 7px',fontSize:'10px',fontWeight:700,marginLeft:'4px'}}>{pts}</span>}
+        </span>
+    );
+    const playerChip = (name, color='rgba(255,215,0,0.7)', pts=null) => (
+        <span key={name} style={{display:'inline-flex',alignItems:'center',gap:'5px',background:'rgba(0,0,0,0.4)',border:`1px solid ${color}55`,color,borderRadius:'20px',padding:'5px 14px',fontSize:'12px',fontWeight:700,margin:'4px'}}>
+            {userProfiles[name]?.icon || '⭐'} {name} {pts && <span style={{background:color,color:'#000',borderRadius:'10px',padding:'1px 8px',fontSize:'10px',fontWeight:800,marginLeft:'2px'}}>{pts}</span>}
+        </span>
+    );
+
+    const overallStyle = { position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:9000, background:`linear-gradient(160deg,#000510 0%,#001230 50%,#000 100%)`, color:'#fdfbf7', overflowY:'auto', fontFamily:"'Montserrat',sans-serif" };
+
+    if(!data && slide === 0) return (
+        <div style={{...overallStyle,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+            <div style={{...bigTitle,fontSize:'1.5rem',animation:'pulse 1.5s infinite alternate'}}>⚡ CARGANDO GALA...</div>
+        </div>
+    );
+
+    return (
+        <div style={overallStyle}>
+            <style>{`
+                @keyframes slideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+                @keyframes shimmer { 0%,100% { text-shadow: 0 0 20px rgba(255,215,0,0.3); } 50% { text-shadow: 0 0 40px rgba(255,215,0,0.8), 0 0 80px rgba(255,215,0,0.3); } }
+                @keyframes floatUp { from { opacity:0; transform:translateY(30px) scale(.9); } to { opacity:1; transform:translateY(0) scale(1); } }
+                @keyframes pulse { 0% { transform:scale(1); } 100% { transform:scale(1.05); } }
+                .gala-reveal { animation: floatUp .5s ease both; }
+            `}</style>
+
+            {/* SLIDE 1: JORNADA FINAL */}
+            <div style={slideStyle(1)}>
+                {progressDots}
+                <p style={subTitle}>Jornada Final del Playoff · 1 / 4</p>
+                <p style={{...bigTitle,fontSize:'clamp(1.6rem,5vw,2.2rem)',marginBottom:'4px'}}>UDLP vs Málaga CF</p>
+                <p style={{...bigTitle,fontSize:'clamp(.85rem,2.5vw,1rem)',color:'rgba(255,255,255,0.5)',letterSpacing:'3px'}}>VUELTA · PLAYOFF ASCENSO</p>
+                <div style={divider}/>
+
+                {/* Marcador */}
+                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'20px',margin:'20px 0'}}>
+                    <div style={{textAlign:'center'}}>
+                        <div style={{fontSize:'clamp(3rem,10vw,4.5rem)',fontFamily:"'Oswald',sans-serif",fontWeight:700,color:G.golden,background:'rgba(0,0,0,0.5)',border:`2px solid ${G.goldenDark}`,borderRadius:'16px',width:'80px',height:'80px',display:'flex',alignItems:'center',justifyContent:'center',textShadow:`0 0 20px rgba(255,215,0,0.5)`}}>
+                            {data?.ultimaJ?.resultadoLocal ?? '?'}
+                        </div>
+                        <p style={{fontSize:'11px',color:'rgba(255,255,255,0.5)',marginTop:'8px',letterSpacing:'1px'}}>UDLP</p>
+                    </div>
+                    <div style={{fontFamily:"'Oswald',sans-serif",fontSize:'1.8rem',color:'rgba(255,255,255,0.3)'}}>—</div>
+                    <div style={{textAlign:'center'}}>
+                        <div style={{fontSize:'clamp(3rem,10vw,4.5rem)',fontFamily:"'Oswald',sans-serif",fontWeight:700,color:G.silver,background:'rgba(0,0,0,0.5)',border:`2px solid rgba(192,192,192,0.3)`,borderRadius:'16px',width:'80px',height:'80px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                            {data?.ultimaJ?.resultadoVisitante ?? '?'}
+                        </div>
+                        <p style={{fontSize:'11px',color:'rgba(255,255,255,0.5)',marginTop:'8px',letterSpacing:'1px'}}>MÁL</p>
+                    </div>
+                </div>
+
+                <div style={{...card,textAlign:'left'}}>
+                    {[
+                        ['⚽ Goleador UDLP', data?.ultimaJ?.goleador || 'Sin Goleador', G.golden],
+                        ['💰 Total en juego', data ? `${data.totalBote.toFixed(2)}€` : '—', G.golden],
+                        ['🏆 Premio por ganador', data?.ganadores?.length > 0 ? `${data.premioPorGanador}€` : 'Sin ganadores', G.success],
+                    ].map(([label, val, col]) => (
+                        <div key={label} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid rgba(255,255,255,0.06)`}}>
+                            <span style={{fontSize:'12px',color:'rgba(255,255,255,0.5)'}}>{label}</span>
+                            <span style={{fontFamily:"'Oswald',sans-serif",fontSize:'1.05rem',color:col,fontWeight:700}}>{val}</span>
+                        </div>
+                    ))}
+                    <div style={{paddingTop:'14px'}}>
+                        <p style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',letterSpacing:'1px',textTransform:'uppercase',marginBottom:'8px'}}>Ganadores del exacto</p>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:'6px'}}>
+                            {data?.ganadores?.length > 0 ? data.ganadores.map(g=>winnerPill(g)) : <span style={{color:'rgba(255,255,255,0.4)',fontSize:'13px',fontStyle:'italic'}}>Nadie acertó el exacto</span>}
+                        </div>
+                    </div>
+                </div>
+                <button style={btn} onClick={goNext}>El Camino →</button>
+                <button style={{...btnSecondary,marginTop:'12px',fontSize:'0.75rem'}} onClick={onClose}>Saltar presentación</button>
+            </div>
+
+            {/* SLIDE 2: EL CAMINO */}
+            <div style={slideStyle(2)}>
+                {progressDots}
+                <p style={subTitle}>El Camino al Ascenso · 2 / 4</p>
+                <div style={{fontSize:'3rem',marginBottom:'8px',animation:'shimmer 2s infinite'}}>🏆</div>
+                <p style={bigTitle}>El Camino</p>
+                <div style={divider}/>
+                <div style={{display:'flex',gap:'10px',width:'100%',margin:'16px 0'}}>
+                    {['UD Almería','Málaga CF'].map(eq=>(
+                        <div key={eq} style={{flex:1,padding:'14px 8px',background:esMalaga(eq)?'rgba(212,175,55,0.12)':'rgba(0,0,0,0.4)',border:`1px solid ${esMalaga(eq)?G.goldenDark:'rgba(255,255,255,0.1)'}`,borderRadius:'12px',fontSize:'13px',fontWeight:700,color:esMalaga(eq)?G.golden:G.silver,textAlign:'center',boxShadow:esMalaga(eq)?`0 0 20px rgba(212,175,55,0.15)`:''}}>{eq}</div>
+                    ))}
+                </div>
+                <div style={{padding:'20px',background:`linear-gradient(135deg,rgba(212,175,55,0.1),rgba(0,0,0,0.4))`,border:`1px solid ${G.goldenDark}`,borderRadius:'16px',width:'100%',marginBottom:'20px'}}>
+                    <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'clamp(1.5rem,5vw,2rem)',color:G.success,letterSpacing:'2px',textShadow:`0 0 20px rgba(16,185,129,0.5)`}}>
+                        🎉 Asciende: {data?.playoff?.ascendido || 'Málaga CF'}
+                    </p>
+                </div>
+                <p style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',letterSpacing:'2px',textTransform:'uppercase',marginBottom:'10px'}}>+5 puntos para</p>
+                <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:'6px',marginBottom:'8px'}}>
+                    {data?.caminoGanadores?.length > 0 ? data.caminoGanadores.map(n=>playerChip(n,G.golden,'+5')) : <span style={{color:'rgba(255,255,255,0.4)',fontSize:'13px'}}>Nadie acertó</span>}
+                </div>
+                <div style={{display:'flex',gap:'10px',marginTop:'20px',justifyContent:'center',width:'100%',maxWidth:'300px'}}>
+                    <button style={btnSecondary} onClick={goPrev}>← Atrás</button>
+                    <button style={{...btn,maxWidth:'none',flex:1}} onClick={goNext}>Porra Anual →</button>
+                </div>
+            </div>
+
+            {/* SLIDE 3: PORRA ANUAL */}
+            <div style={slideStyle(3)}>
+                {progressDots}
+                <p style={subTitle}>Porra Anual · 3 / 4</p>
+                <div style={{fontSize:'3rem',marginBottom:'8px'}}>📅</div>
+                <p style={bigTitle}>Porra Anual</p>
+                <div style={divider}/>
+                <div style={{...card,textAlign:'left'}}>
+                    {[['📍 Posición final UDLP','5ª',G.golden],['⬆️ ¿Ascendió?','No',colors.danger]].map(([l,v,c])=>(
+                        <div key={l} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid rgba(255,255,255,0.06)`}}>
+                            <span style={{fontSize:'12px',color:'rgba(255,255,255,0.5)'}}>{l}</span>
+                            <span style={{fontFamily:"'Oswald',sans-serif",fontSize:'1.1rem',color:c,fontWeight:700}}>{v}</span>
+                        </div>
+                    ))}
+                </div>
+                {data?.g20?.length > 0 && (
+                    <div style={{width:'100%',marginBottom:'12px'}}>
+                        <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'0.75rem',letterSpacing:'3px',color:'rgba(255,215,0,0.6)',textTransform:'uppercase',marginBottom:'8px'}}>Pleno — +20 puntos</p>
+                        <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center'}}>{data.g20.map(n=>playerChip(n,G.golden,'+20'))}</div>
+                    </div>
+                )}
+                {data?.g10?.length > 0 && (
+                    <div style={{width:'100%',marginBottom:'12px'}}>
+                        <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'0.75rem',letterSpacing:'3px',color:'rgba(192,192,192,0.6)',textTransform:'uppercase',marginBottom:'8px'}}>Posición exacta — +10 puntos</p>
+                        <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center'}}>{data.g10.map(n=>playerChip(n,G.silver,'+10'))}</div>
+                    </div>
+                )}
+                {data?.g5?.length > 0 && (
+                    <div style={{width:'100%',marginBottom:'12px'}}>
+                        <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'0.75rem',letterSpacing:'3px',color:'rgba(205,127,50,0.7)',textTransform:'uppercase',marginBottom:'8px'}}>Ascenso — +5 puntos</p>
+                        <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center'}}>{data.g5.map(n=>playerChip(n,'#CD7F32','+5'))}</div>
+                    </div>
+                )}
+                {!data?.g5?.length && !data?.g10?.length && !data?.g20?.length && (
+                    <p style={{color:'rgba(255,255,255,0.4)',fontSize:'13px',fontStyle:'italic'}}>Nadie acertó posición ni ascenso</p>
+                )}
+                <div style={{display:'flex',gap:'10px',marginTop:'20px',justifyContent:'center',width:'100%',maxWidth:'300px'}}>
+                    <button style={btnSecondary} onClick={goPrev}>← Atrás</button>
+                    <button style={{...btn,maxWidth:'none',flex:1}} onClick={()=>{ setSlide(4); setClasifRevealed(0); setShowPodium(false); }}>Clasificación →</button>
+                </div>
+            </div>
+
+            {/* SLIDE 4: CLASIFICACIÓN */}
+            <div style={slideStyle(4)}>
+                {progressDots}
+                <p style={subTitle}>Clasificación Final · 4 / 4</p>
+                <p style={bigTitle}>Clasificación</p>
+                <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'1rem',color:'rgba(255,255,255,0.4)',letterSpacing:'3px',marginBottom:'4px'}}>FIN DE TEMPORADA</p>
+                <div style={divider}/>
+                <div style={{width:'100%',marginBottom:'8px'}}>
+                    {data?.clasif && [...data.clasif].reverse().map((j,i)=>{
+                        const pos = data.clasif.length - i;
+                        const revealed = pos > (data.clasif.length - clasifRevealed);
+                        const maxPts = data.clasif[0]?.puntosTotales || 1;
+                        const pct = Math.round(((j.puntosTotales||0)/maxPts)*100);
+                        const isTop = pos<=3;
+                        const posLabel = pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':`${pos}º`;
+                        const nameColor = pos===1?G.golden:pos===2?G.silver:pos===3?'#CD7F32':'rgba(255,255,255,0.8)';
+                        const barColor = pos===1?G.goldenDark:pos===2?G.silver:pos===3?'#CD7F32':'rgba(255,215,0,0.4)';
+                        return (
+                            <div key={j.id} className={revealed?'gala-reveal':''} style={{
+                                display:'flex',alignItems:'center',gap:'10px',padding:`${isTop?'12px':'8px'} 8px`,
+                                marginBottom:'6px',borderRadius:'12px',
+                                background: revealed ? (pos===1?'rgba(212,175,55,0.12)':pos===2?'rgba(192,192,192,0.06)':pos===3?'rgba(205,127,50,0.06)':'rgba(0,0,0,0.25)') : 'rgba(0,0,0,0.15)',
+                                border: revealed&&isTop ? `1px solid ${barColor}44` : '1px solid rgba(255,255,255,0.04)',
+                                opacity: revealed ? 1 : 0.15,
+                                transition:'all .4s ease',
+                                animationDelay:`${i*0.05}s`
+                            }}>
+                                <div style={{fontFamily:"'Oswald',sans-serif",fontSize:isTop?'1.3rem':'1rem',minWidth:'36px',textAlign:'center',color:nameColor}}>{posLabel}</div>
+                                <div style={{flex:1,textAlign:'left'}}>
+                                    <div style={{fontSize:isTop?'14px':'12px',fontWeight:700,color:nameColor}}>
+                                        {userProfiles[j.id]?.icon || ''} {j.id}
+                                    </div>
+                                    <div style={{height:'4px',background:'rgba(255,255,255,0.08)',borderRadius:'2px',marginTop:'4px',overflow:'hidden'}}>
+                                        <div style={{height:'100%',width:revealed?`${pct}%`:'0%',background:barColor,borderRadius:'2px',transition:'width .8s ease .2s'}}/>
+                                    </div>
+                                </div>
+                                <div style={{fontFamily:"'Oswald',sans-serif",fontSize:isTop?'1.3rem':'1rem',fontWeight:700,color:nameColor,minWidth:'36px',textAlign:'right'}}>{revealed?j.puntosTotales||0:'?'}</div>
+                            </div>
+                        );
+                    })}
+                </div>
+                {!showPodium && (
+                    <button style={btn} onClick={revealNext}>
+                        {clasifRevealed === 0 ? '▶ Revelar clasificación' : clasifRevealed >= (data?.clasif?.length||99) ? '🎉 Ver podio final' : `▶ Siguiente (${(data?.clasif?.length||0)-clasifRevealed} restantes)`}
+                    </button>
+                )}
+                {showPodium && (
+                    <div style={{width:'100%',padding:'20px',background:`linear-gradient(135deg,rgba(212,175,55,0.15),rgba(0,0,0,0.5))`,border:`1px solid ${G.goldenDark}`,borderRadius:'16px',marginTop:'8px',animation:'slideIn .5s ease'}}>
+                        <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'1.6rem',color:G.golden,letterSpacing:'2px',marginBottom:'8px',textShadow:`0 0 20px rgba(255,215,0,0.5)`}}>🎉 FIN DE TEMPORADA</p>
+                        <p style={{fontSize:'12px',color:'rgba(255,255,255,0.5)',marginBottom:'16px'}}>Los tres primeros se llevan el premio. ¡Enhorabuena a todos!</p>
+                        <button style={btn} onClick={onClose}>Entrar a la app →</button>
+                    </div>
+                )}
+                <button style={{...btnSecondary,marginTop:'12px',fontSize:'0.75rem'}} onClick={goPrev}>← Atrás</button>
+            </div>
+        </div>
+    );
+};
+
+// ============================================================================
 // --- COMPONENTE PRINCIPAL APP ---
 // ============================================================================
 function App() {
@@ -1934,6 +2239,7 @@ function App() {
     const [onlineUsers, setOnlineUsers] = useState({});
     const [clasificacionData, setClasificacionData] = useState([]);
     const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+    const [showGala, setShowGala] = useState(false);
 
     useEffect(() => {
         document.title = "🏆 PLAYOFF 2026";
@@ -1980,8 +2286,9 @@ function App() {
             setCurrentUser(user);
             set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
             setScreen('app');
-            // MODAL V13: Saltará automáticamente al hacer login
-            if (!localStorage.getItem('playoffWelcomeSeenV13')) { setShowWelcomeModal(true); }
+            // Mostrar gala de fin de temporada si no la ha visto ya
+            const galaKey = 'galaFinTemporada2026_' + user;
+            if (!localStorage.getItem(galaKey)) { setShowGala(true); }
         } catch (error) { alert("Error al iniciar sesión."); }
     };
 
@@ -2008,6 +2315,16 @@ function App() {
 
     return (
         <>
+            {showGala && currentUser && (
+                <GalaFinTemporada 
+                    currentUser={currentUser}
+                    userProfiles={userProfiles}
+                    onClose={() => {
+                        setShowGala(false);
+                        localStorage.setItem('galaFinTemporada2026_' + currentUser, '1');
+                    }}
+                />
+            )}
             {showWelcomeModal && <PlayoffWelcomeModal onClose={() => setShowWelcomeModal(false)} />}
             <div style={styles.container}>
                 <div style={styles.card}>
