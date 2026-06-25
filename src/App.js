@@ -1264,15 +1264,28 @@ const CalendarioScreen = ({ teamLogos }) => {
 // ============================================================================
 const AdminCierreTemporada = () => {
     const [udlpAsciende, setUdlpAsciende] = useState('No');
-    const [udlpPosicion, setUdlpPosicion] = useState('');
-    const [equipoAscendidoPlayoff, setEquipoAscendidoPlayoff] = useState('');
+    const [udlpPosicion, setUdlpPosicion] = useState('5');
+    const [equipoAscendidoPlayoff, setEquipoAscendidoPlayoff] = useState('Málaga CF');
     const [procesando, setProcesando] = useState(false);
+    const [yaEjecutado, setYaEjecutado] = useState(false);
+
+    // Comprobar si ya se ejecutó el cierre (si algún jugador tiene puntosExtraSumados)
+    useEffect(() => {
+        getDocs(collection(db, "clasificacion")).then(snap => {
+            const alguno = snap.docs.some(d => d.data().puntosExtraSumados > 0);
+            setYaEjecutado(alguno);
+        });
+    }, []);
 
     const handleFinalizarTemporada = async () => {
         if (!udlpPosicion || !equipoAscendidoPlayoff) {
             alert('Por favor, rellena todos los campos antes de finalizar.'); return;
         }
-        if(!window.confirm("¡ATENCIÓN! Esto calculará todos los puntos extra (+20, +10, +5) de la Porra Anual y El Camino, y los sumará a la Clasificación Global. ¿Seguro que los datos son correctos?")) return;
+        if (yaEjecutado) {
+            if (!window.confirm("⚠️ ATENCIÓN: Parece que el cierre ya se ejecutó antes (hay jugadores con puntos extra). Si lo vuelves a ejecutar se DUPLICARÁN los puntos. ¿Seguro que quieres continuar?")) return;
+        } else {
+            if (!window.confirm(`¡ATENCIÓN! Esto calculará todos los puntos extra de la Porra Anual y El Camino y los sumará a la Clasificación Global.\n\nDatos: UDLP ${udlpAsciende === 'Sí' ? 'ASCENDIÓ' : 'NO ascendió'}, posición ${udlpPosicion}ª. Campeón playoff: ${equipoAscendidoPlayoff}.\n\n¿Son correctos estos datos?`)) return;
+        }
         
         setProcesando(true);
         try {
@@ -1292,17 +1305,20 @@ const AdminCierreTemporada = () => {
             });
 
             const batch = writeBatch(db);
+            let resumen = [];
 
             clasifSnap.forEach(docSnap => {
                 const userId = docSnap.id;
                 let ptsSumar = 0;
                 let desglose = [];
 
+                // +5 por acertar el equipo que asciende en El Camino
                 if(apuestasExtra[userId] && apuestasExtra[userId].equipo === equipoAscendidoPlayoff) {
                     ptsSumar += 5;
-                    desglose.push('+5 (El Camino)');
+                    desglose.push('+5 (El Camino: acertó ' + equipoAscendidoPlayoff + ')');
                 }
 
+                // Porra Anual: posición final y ascenso de UDLP
                 if(apuestasAnuales[userId]) {
                     const ap = apuestasAnuales[userId];
                     const apAsciende = (ap.asciende === 'Sí' || ap.asciende === true) ? 'Sí' : 'No';
@@ -1310,15 +1326,16 @@ const AdminCierreTemporada = () => {
                     const aciertoPosicion = (String(ap.posicion).trim() === String(udlpPosicion).trim());
 
                     if (aciertoAsciende && aciertoPosicion) {
-                        ptsSumar += 20; desglose.push('+20 (Pleno Anual)');
+                        ptsSumar += 20; desglose.push('+20 (Pleno Anual: posición ' + ap.posicion + 'ª + ascenso)');
                     } else if (aciertoPosicion) {
-                        ptsSumar += 10; desglose.push('+10 (Posición Anual)');
+                        ptsSumar += 10; desglose.push('+10 (Posición Anual: ' + ap.posicion + 'ª)');
                     } else if (aciertoAsciende) {
-                        ptsSumar += 5; desglose.push('+5 (Ascenso Anual)');
+                        ptsSumar += 5; desglose.push('+5 (Ascenso Anual: apostó ' + (apAsciende === 'Sí' ? 'Sí' : 'No') + ')');
                     }
                 }
 
                 if (ptsSumar > 0) {
+                    resumen.push(`${userId}: ${desglose.join(', ')}`);
                     const currentTotal = docSnap.data().puntosTotales || 0;
                     batch.update(doc(db, "clasificacion", userId), {
                         puntosTotales: currentTotal + ptsSumar,
@@ -1329,9 +1346,36 @@ const AdminCierreTemporada = () => {
             });
 
             await batch.commit();
-            alert("¡Puntos extra repartidos! La Clasificación Global ha sido actualizada.");
+            setYaEjecutado(true);
+            alert("✅ ¡TEMPORADA CERRADA! Puntos extra repartidos.\n\n" + (resumen.length > 0 ? resumen.join('\n') : 'Ningún jugador sumó puntos extra.'));
         } catch (error) {
-            console.error(error); alert("Error al procesar el cierre de temporada.");
+            console.error(error); alert("Error al procesar el cierre de temporada: " + error.message);
+        }
+        setProcesando(false);
+    };
+
+    const handleResetCierre = async () => {
+        if (!window.confirm("⚠️ PELIGRO: Esto eliminará los puntos extra (puntosExtraSumados y desgloseExtra) de todos los jugadores y restará esos puntos del total. Úsalo solo si ejecutaste el cierre con datos incorrectos. ¿Continuar?")) return;
+        setProcesando(true);
+        try {
+            const clasifSnap = await getDocs(collection(db, "clasificacion"));
+            const batch = writeBatch(db);
+            clasifSnap.forEach(docSnap => {
+                const data = docSnap.data();
+                const extra = data.puntosExtraSumados || 0;
+                if (extra > 0) {
+                    batch.update(doc(db, "clasificacion", docSnap.id), {
+                        puntosTotales: Math.max(0, (data.puntosTotales || 0) - extra),
+                        puntosExtraSumados: 0,
+                        desgloseExtra: ''
+                    });
+                }
+            });
+            await batch.commit();
+            setYaEjecutado(false);
+            alert("✅ Puntos extra eliminados de la clasificación. Puedes volver a ejecutar el cierre con los datos correctos.");
+        } catch(e) {
+            console.error(e); alert("Error al resetear: " + e.message);
         }
         setProcesando(false);
     };
@@ -1339,7 +1383,16 @@ const AdminCierreTemporada = () => {
     return (
         <div style={{padding: '25px', backgroundColor: 'rgba(230,57,70,0.1)', border: `1px solid ${styles.colors.danger}`, borderRadius: '16px', marginBottom: '30px'}}>
             <h3 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.danger, marginBottom: '15px'}}>🚨 CIERRE DE TEMPORADA DEFINITIVO</h3>
-            <p style={{color: styles.colors.silver, fontSize: '0.9rem', marginBottom: '20px'}}>Usa esto SOLO cuando la liga haya terminado. Sumará automáticamente los puntos extra de la Porra Anual y El Camino.</p>
+            <p style={{color: styles.colors.silver, fontSize: '0.9rem', marginBottom: '20px'}}>Sumará los puntos de la Porra Anual (posición UDLP + ascenso) y de El Camino (equipo ascendido) a la Clasificación Global.</p>
+            
+            {yaEjecutado && (
+                <div style={{marginBottom: '20px', padding: '12px', backgroundColor: 'rgba(16,185,129,0.1)', border: `1px solid ${styles.colors.success}`, borderRadius: '12px'}}>
+                    <p style={{color: styles.colors.success, fontWeight: 'bold', fontSize: '0.9rem'}}>✅ El cierre ya fue ejecutado. Los puntos extra están sumados en la clasificación.</p>
+                    <button onClick={handleResetCierre} disabled={procesando} style={{...styles.secondaryButton, marginTop: '10px', borderColor: styles.colors.danger, color: styles.colors.danger, fontSize: '0.8rem'}}>
+                        ↩ DESHACER CIERRE (si los datos eran incorrectos)
+                    </button>
+                </div>
+            )}
             
             <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
                 <div>
@@ -1351,7 +1404,7 @@ const AdminCierreTemporada = () => {
                 </div>
                 <div>
                     <label style={styles.label}>Posición Final Real UDLP:</label>
-                    <input type="number" value={udlpPosicion} onChange={e=>setUdlpPosicion(e.target.value)} placeholder="Ej: 3" style={styles.input} />
+                    <input type="number" value={udlpPosicion} onChange={e=>setUdlpPosicion(e.target.value)} placeholder="Ej: 5" style={styles.input} />
                 </div>
                 <div style={{gridColumn: '1 / -1'}}>
                     <label style={styles.label}>Equipo Campeón Playoff (Sube):</label>
@@ -1364,8 +1417,8 @@ const AdminCierreTemporada = () => {
                     </select>
                 </div>
             </div>
-            <button onClick={handleFinalizarTemporada} disabled={procesando} style={{...styles.mainButton, width: '100%', backgroundColor: styles.colors.danger, color: '#fff', border: 'none', background: 'none'}}>
-                {procesando ? 'PROCESANDO...' : 'FINALIZAR TEMPORADA Y REPARTIR PUNTOS'}
+            <button onClick={handleFinalizarTemporada} disabled={procesando} style={{...styles.mainButton, width: '100%', marginTop: '20px', backgroundColor: styles.colors.danger, color: '#fff', border: 'none', background: styles.colors.danger}}>
+                {procesando ? 'PROCESANDO...' : (yaEjecutado ? '⚠️ VOLVER A EJECUTAR CIERRE' : 'FINALIZAR TEMPORADA Y REPARTIR PUNTOS')}
             </button>
         </div>
     );
@@ -1381,6 +1434,8 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     const [goleador, setGoleador] = useState(jornada.goleador || '');
     const [bote, setBote] = useState(jornada.bote || 0);
     const [desenlace, setDesenlace] = useState(jornada.desenlace || '');
+    // FIX: estado local para puntosCalculados, se actualiza correctamente tras reset y tras guardar
+    const [puntosYaCalculados, setPuntosYaCalculados] = useState(jornada.puntosCalculados || false);
     
     const toInputFormat = (date) => { if (!date || !date.seconds) return ''; const d = new Date(date.seconds * 1000); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
     
@@ -1395,7 +1450,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
     // --- NUEVO: FUNCIÓN PARA DESHACER EL CÁLCULO DE PUNTOS DE LA JORNADA ---
     const handleResetPuntos = async () => {
-        if (!jornada.puntosCalculados) { alert("Esta jornada no ha sumado puntos en la clasificación, no hay nada que resetear."); return; }
+        if (!puntosYaCalculados) { alert("Esta jornada no ha sumado puntos en la clasificación, no hay nada que resetear."); return; }
         if (!window.confirm("⚠️ PELIGRO: Esto RESTARÁ a la Clasificación General los puntos exactos que se dieron en esta jornada y la abrirá de nuevo. ¿Continuar?")) return;
         
         try {
@@ -1426,6 +1481,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
             batch.update(doc(db, "jornadas", jornada.id), { puntosCalculados: false });
             await batch.commit();
+            setPuntosYaCalculados(false); // FIX: actualizar estado local para que handleSaveChanges funcione bien
             alert("✅ PUNTOS BORRADOS DE LA GENERAL. La jornada ya no está calculada. Modifica lo que necesites y vuelve a 'Guardar Todos Los Cambios'.");
             setIsUnlocked(true);
         } catch(error) { console.error(error); alert("Error al resetear."); }
@@ -1456,7 +1512,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
         
         if (estado === 'Finalizada' && resultadoLocal !== '' && resultadoVisitante !== '') {
             
-            if (jornada.puntosCalculados) {
+            if (puntosYaCalculados) {
                 if (!window.confirm("Los puntos de esta jornada ya fueron repartidos. Si vas a corregir algo, pulsa 'CANCELAR', dale al botón rojo de 'RESETEAR PUNTOS' y luego vuelve a guardar.")) return;
             }
 
@@ -1507,7 +1563,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 }
                 ptosJornada += ptosGol;
 
-                if (!jornada.puntosCalculados) {
+                if (!puntosYaCalculados) {
                     batch.update(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: ptosJornada, puntosResultadoExacto: ptosExacto, puntosGoleador: ptosGol });
                     const cTotal = clasifActual[userId]?.puntosTotales || 0;
                     const cExactos = clasifActual[userId]?.puntosResultadoExacto || 0;
@@ -1523,12 +1579,12 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
         if (estado === 'Finalizada') {
             updateData.ganadores = ganadoresArray;
-            if (!jornada.puntosCalculados) updateData.puntosCalculados = true;
+            if (!puntosYaCalculados) { updateData.puntosCalculados = true; setPuntosYaCalculados(true); } // FIX: actualizar estado local
         }
 
         batch.update(jornadaRef, updateData);
         await batch.commit();
-        if (estado === 'Finalizada' && !jornada.puntosCalculados) alert('¡JORNADA FINALIZADA! Puntos sumados.'); else alert('Jornada guardada.');
+        if (estado === 'Finalizada' && !puntosYaCalculados) alert('¡JORNADA FINALIZADA! Puntos sumados.'); else alert('Jornada guardada.');
     };
 
     const handleUpdateLiveState = async () => {
