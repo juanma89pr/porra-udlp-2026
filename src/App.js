@@ -59,44 +59,44 @@ const PLANTILLA_ACTUALIZADA = [
 // --- ESTILOS PREMIUM ---
 // ============================================================================
 const colors = {
-    deepBlue: '#001d3d', blue: '#003366', golden: '#FFD700', goldenDark: '#d4af37', yellow: '#FFD700', gold: '#FFD700', silver: '#C0C0C0', 
-    lightText: '#fdfbf7', darkText: '#0a0a0a', danger: '#e63946', success: '#10b981', warning: '#fca311', 
-    darkUI: 'rgba(0, 29, 61, 0.65)', darkUIAlt: 'rgba(0, 51, 102, 0.45)',
-    status: { 'Próximamente': '#6c757d', 'Pre-apertura': '#fca311', 'Abierta': '#10b981', 'Cerrada': '#e63946', 'En vivo': '#dc3545', 'Finalizada': '#d4af37' }
+    deepBlue: '#001F6B', blue: '#001F6B', golden: '#FFD700', goldenDark: '#d4af37', yellow: '#FFD700', gold: '#FFD700', silver: '#555555',
+    lightText: '#0a0a0a', darkText: '#0a0a0a', danger: '#e63946', success: '#10b981', warning: '#d4af37',
+    darkUI: '#ffffff', darkUIAlt: '#f5f5f5',
+    status: { 'Próximamente': '#6c757d', 'Pre-apertura': '#d4af37', 'Abierta': '#10b981', 'Cerrada': '#e63946', 'En vivo': '#dc3545', 'Finalizada': '#d4af37' }
 };
 
 const styles = {
     colors,
-    container: { display: 'flex', justifyContent: 'center', alignItems: 'flex-start', width: '100%', minHeight: '100dvh', background: `linear-gradient(145deg, ${colors.deepBlue} 0%, #000 100%)`, padding: '15px', fontFamily: "'Montserrat', sans-serif" },
-    card: { width: '100%', maxWidth: '900px', backgroundColor: colors.darkUI, color: colors.lightText, padding: '25px', borderRadius: '20px', boxShadow: `0 20px 50px rgba(0, 0, 0, 0.5)`, minHeight: 'calc(100dvh - 30px)', border: `1px solid rgba(255,215,0,0.15)`, backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' },
-    title: { fontFamily: "'Oswald', sans-serif", color: colors.golden, textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', borderBottom: `1px solid rgba(255,215,0,0.3)`, paddingBottom: '15px', marginBottom: '25px', textShadow: `0 4px 15px rgba(255,215,0,0.3)`, fontSize: 'clamp(1.5rem, 5vw, 2rem)' },
-    mainButton: { fontFamily: "'Oswald', sans-serif", padding: '14px 28px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', border: 'none', borderRadius: '30px', background: `linear-gradient(135deg, ${colors.goldenDark}, ${colors.golden}, #FFF7A1, ${colors.golden})`, color: colors.darkText, marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: `0 8px 20px rgba(212,175,55,0.4)` },
-    secondaryButton: { fontFamily: "'Montserrat', sans-serif", padding: '10px 20px', fontSize: '0.9rem', cursor: 'pointer', border: `1px solid ${colors.goldenDark}`, borderRadius: '20px', backgroundColor: 'rgba(212,175,55,0.05)', color: colors.golden, transition: 'all 0.3s ease', textTransform: 'uppercase', fontWeight: 'bold', backdropFilter: 'blur(5px)' },
-    placeholder: { padding: '40px 20px', backgroundColor: 'rgba(0,0,0,0.2)', border: `1px dashed ${colors.goldenDark}`, borderRadius: '16px', textAlign: 'center', color: colors.lightText },
-    epicSplashContainer: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: `radial-gradient(circle at center, ${colors.blue} 0%, #000 100%)`, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 9999, animation: 'fadeOut 0.5s ease 2.5s forwards' },
-    epicSplashSubtitle: { fontFamily: "'Montserrat', sans-serif", fontSize: 'clamp(1rem, 4vw, 1.5rem)', fontWeight: '600', color: colors.silver, letterSpacing: '5px', marginBottom: '10px', textTransform: 'uppercase' },
-    epicSplashTitle: { fontFamily: "'Oswald', sans-serif", fontSize: 'clamp(3rem, 10vw, 5.5rem)', fontWeight: 'bold', color: colors.silver, textShadow: `0 0 30px rgba(255,255,255,0.3)`, textTransform: 'uppercase', textAlign: 'center', animation: 'pulse 1.5s infinite alternate', lineHeight: 1.1 },
-    navbar: { display: 'flex', flexWrap: 'wrap', gap: '8px', borderBottom: `1px solid rgba(255,215,0,0.2)`, paddingBottom: '15px', marginBottom: '25px', alignItems: 'center', justifyContent: 'center' },
-    navButton: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: 'none', borderRadius: '8px', backgroundColor: 'transparent', color: colors.silver, cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
-    navButtonActive: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: `1px solid ${colors.goldenDark}`, borderRadius: '8px', backgroundColor: 'rgba(212, 175, 55, 0.1)', color: colors.golden, cursor: 'pointer', textTransform: 'uppercase', fontWeight: 'bold', boxShadow: `0 4px 10px rgba(0,0,0,0.3)` },
-    logoutButton: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'rgba(230,57,70,0.1)', color: colors.danger, cursor: 'pointer', marginLeft: '10px', textTransform: 'uppercase', fontWeight: '600' },
-    form: { backgroundColor: 'rgba(0,0,0,0.25)', padding: '30px', borderRadius: '20px', marginTop: '20px', border: `1px solid rgba(255,215,0,0.1)`, boxShadow: `inset 0 0 40px rgba(0,0,0,0.3)` },
-    formSectionTitle: { fontFamily: "'Oswald', sans-serif", color: colors.golden, fontSize: '1.4rem', textAlign: 'center', marginBottom: '20px', textTransform: 'uppercase', letterSpacing: '1px' },
-    formGroup: { marginBottom: '25px', backgroundColor: 'rgba(0,0,0,0.3)', padding: '20px', borderRadius: '16px', border: `1px solid rgba(255,215,0,0.05)`, boxShadow: 'inset 0 4px 15px rgba(0,0,0,0.2)' },
-    label: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginBottom: '15px', color: colors.silver, fontWeight: '600', textTransform: 'uppercase', fontSize: '0.85rem', letterSpacing: '1px' },
-    oddsBadge: { backgroundColor: colors.goldenDark, color: colors.darkText, padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 'bold', fontFamily: "'Montserrat', sans-serif", boxShadow: '0 2px 5px rgba(0,0,0,0.5)' },
-    input: { width: 'calc(100% - 24px)', padding: '14px', border: `1px solid rgba(255,215,0,0.3)`, borderRadius: '12px', backgroundColor: 'rgba(0,0,0,0.5)', color: colors.lightText, fontSize: '1rem', fontFamily: "'Montserrat', sans-serif", transition: 'border 0.3s' },
-    jokerInput: { width: '45px', textAlign: 'center', padding: '10px', border: `1px solid ${colors.warning}`, borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.6)', color: colors.warning, fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif" },
+    container: { display: 'flex', justifyContent: 'center', alignItems: 'flex-start', width: '100%', minHeight: '100dvh', background: '#f0f0f0', padding: '15px', fontFamily: "'Montserrat', sans-serif" },
+    card: { width: '100%', maxWidth: '900px', backgroundColor: '#ffffff', color: '#0a0a0a', padding: '25px', borderRadius: '20px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', minHeight: 'calc(100dvh - 30px)', border: '1px solid rgba(0,0,0,0.08)' },
+    title: { fontFamily: "'Oswald', sans-serif", color: colors.deepBlue, textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', borderBottom: `2px solid ${colors.golden}`, paddingBottom: '15px', marginBottom: '25px', fontSize: 'clamp(1.5rem, 5vw, 2rem)' },
+    mainButton: { fontFamily: "'Oswald', sans-serif", padding: '14px 28px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', border: 'none', borderRadius: '30px', background: `linear-gradient(135deg, ${colors.goldenDark}, ${colors.golden})`, color: '#000', marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: '0 4px 12px rgba(212,175,55,0.35)' },
+    secondaryButton: { fontFamily: "'Montserrat', sans-serif", padding: '10px 20px', fontSize: '0.9rem', cursor: 'pointer', border: `1px solid ${colors.deepBlue}`, borderRadius: '20px', backgroundColor: 'rgba(0,31,107,0.05)', color: colors.deepBlue, transition: 'all 0.3s ease', textTransform: 'uppercase', fontWeight: 'bold' },
+    placeholder: { padding: '40px 20px', backgroundColor: '#f9f9f9', border: `1px dashed ${colors.goldenDark}`, borderRadius: '16px', textAlign: 'center', color: '#555' },
+    epicSplashContainer: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: '#001F6B', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 9999, animation: 'fadeOut 0.5s ease 2.5s forwards' },
+    epicSplashSubtitle: { fontFamily: "'Montserrat', sans-serif", fontSize: 'clamp(1rem, 4vw, 1.5rem)', fontWeight: '600', color: '#FFD700', letterSpacing: '5px', marginBottom: '10px', textTransform: 'uppercase' },
+    epicSplashTitle: { fontFamily: "'Oswald', sans-serif", fontSize: 'clamp(3rem, 10vw, 5.5rem)', fontWeight: 'bold', color: '#ffffff', textTransform: 'uppercase', textAlign: 'center', animation: 'pulse 1.5s infinite alternate', lineHeight: 1.1 },
+    navbar: { display: 'flex', flexWrap: 'wrap', gap: '8px', borderBottom: `2px solid ${colors.golden}`, paddingBottom: '15px', marginBottom: '25px', alignItems: 'center', justifyContent: 'center' },
+    navButton: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: 'none', borderRadius: '8px', backgroundColor: 'transparent', color: '#555', cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
+    navButtonActive: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: `1px solid ${colors.deepBlue}`, borderRadius: '8px', backgroundColor: colors.deepBlue, color: '#FFD700', cursor: 'pointer', textTransform: 'uppercase', fontWeight: 'bold' },
+    logoutButton: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'rgba(230,57,70,0.08)', color: colors.danger, cursor: 'pointer', marginLeft: '10px', textTransform: 'uppercase', fontWeight: '600' },
+    form: { backgroundColor: '#f9f9f9', padding: '30px', borderRadius: '20px', marginTop: '20px', border: '1px solid rgba(0,0,0,0.08)' },
+    formSectionTitle: { fontFamily: "'Oswald', sans-serif", color: colors.deepBlue, fontSize: '1.4rem', textAlign: 'center', marginBottom: '20px', textTransform: 'uppercase', letterSpacing: '1px' },
+    formGroup: { marginBottom: '25px', backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' },
+    label: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginBottom: '15px', color: '#555', fontWeight: '600', textTransform: 'uppercase', fontSize: '0.85rem', letterSpacing: '1px' },
+    oddsBadge: { backgroundColor: colors.goldenDark, color: '#000', padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 'bold', fontFamily: "'Montserrat', sans-serif" },
+    input: { width: 'calc(100% - 24px)', padding: '14px', border: '1px solid rgba(0,0,0,0.15)', borderRadius: '12px', backgroundColor: '#ffffff', color: '#0a0a0a', fontSize: '1rem', fontFamily: "'Montserrat', sans-serif", transition: 'border 0.3s' },
+    jokerInput: { width: '45px', textAlign: 'center', padding: '10px', border: `1px solid ${colors.golden}`, borderRadius: '8px', backgroundColor: '#fff', color: '#0a0a0a', fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif" },
     miJornadaMatchInfo: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', width: '100%', margin: '25px 0', flexWrap: 'nowrap' },
     miJornadaScoreInputs: { display: 'flex', alignItems: 'center', gap: '10px', flex: '0 0 auto' },
-    miJornadaTeamLogo: { width: 'clamp(60px, 18vw, 90px)', height: 'clamp(60px, 18vw, 90px)', objectFit: 'contain', filter: 'drop-shadow(0 10px 15px rgba(0,0,0,0.5))' },
-    resultInput: { width: '65px', height: '65px', textAlign: 'center', padding: '10px', border: `1px solid ${colors.goldenDark}`, borderRadius: '16px', backgroundColor: 'rgba(0,0,0,0.6)', color: colors.golden, fontSize: '2rem', fontFamily: "'Oswald', sans-serif", fontWeight: 'bold', boxShadow: `inset 0 5px 15px rgba(0,0,0,0.8)`},
-    separator: { fontSize: '1.5rem', fontWeight: 'bold', color: colors.silver },
+    miJornadaTeamLogo: { width: 'clamp(60px, 18vw, 90px)', height: 'clamp(60px, 18vw, 90px)', objectFit: 'contain', filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' },
+    resultInput: { width: '65px', height: '65px', textAlign: 'center', padding: '10px', border: `2px solid ${colors.goldenDark}`, borderRadius: '16px', backgroundColor: '#f9f9f9', color: colors.deepBlue, fontSize: '2rem', fontFamily: "'Oswald', sans-serif", fontWeight: 'bold' },
+    separator: { fontSize: '1.5rem', fontWeight: 'bold', color: '#555' },
     checkbox: { width: '22px', height: '22px', accentColor: colors.golden, cursor: 'pointer' },
-    message: { marginTop: '20px', padding: '15px', borderRadius: '12px', backgroundColor: colors.success, color: colors.darkText, textAlign: 'center', fontWeight: 'bold', fontFamily: "'Montserrat', sans-serif" },
-    table: { width: '100%', marginTop: '20px', borderCollapse: 'separate', borderSpacing: '0 8px', color: colors.lightText },
-    th: { backgroundColor: 'transparent', color: colors.silver, padding: '12px', borderBottom: `1px solid rgba(255,215,0,0.2)`, textAlign: 'left', textTransform: 'uppercase', fontFamily: "'Oswald', sans-serif", fontSize: '0.9rem', letterSpacing: '1px' },
-    tr: { backgroundColor: 'rgba(0,0,0,0.3)', transition: 'transform 0.2s ease', borderRadius: '12px' },
+    message: { marginTop: '20px', padding: '15px', borderRadius: '12px', backgroundColor: colors.success, color: '#fff', textAlign: 'center', fontWeight: 'bold', fontFamily: "'Montserrat', sans-serif" },
+    table: { width: '100%', marginTop: '20px', borderCollapse: 'separate', borderSpacing: '0 8px', color: '#0a0a0a' },
+    th: { backgroundColor: 'transparent', color: '#555', padding: '12px', borderBottom: `2px solid ${colors.golden}`, textAlign: 'left', textTransform: 'uppercase', fontFamily: "'Oswald', sans-serif", fontSize: '0.9rem', letterSpacing: '1px' },
+    tr: { backgroundColor: '#f9f9f9', transition: 'transform 0.2s ease', borderRadius: '12px' },
     td: { padding: '15px', border: 'none', fontSize: '0.95rem' },
     tdRank: { padding: '15px', border: 'none', fontFamily: "'Oswald', sans-serif", fontWeight: 'bold', fontSize: '1.1rem', textAlign: 'center', color: colors.golden },
     tdTotalPoints: { padding: '15px', border: 'none', fontFamily: "'Oswald', sans-serif", fontWeight: 'bold', fontSize: '1.3rem', textAlign: 'center', color: colors.golden },
@@ -2540,8 +2540,8 @@ function App() {
 
     const handleLogout = async () => { if (currentUser) set(ref(rtdb, 'status/' + currentUser), false); setCurrentUser(null); setScreen('login'); };
 
-    if (screen === 'splash') return <EpicSplashScreen />;
     if (APP_EN_CONSTRUCCION) return <ModoConstruccion />;
+    if (screen === 'splash') return <EpicSplashScreen />;
     if (screen === 'login') return <div style={styles.container}><div style={styles.card}><div style={{textAlign: 'center'}}><h2 style={styles.title}>ACCESO PLAYOFF</h2><div style={styles.userList}>{JUGADORES.map(j => <button key={j} onClick={() => handleLogin(j)} style={styles.userButton}><div style={{position: 'relative'}}><div style={styles.loginProfileIconCircle}>{userProfiles[j]?.icon || '❓'}</div>{onlineUsers[j] && <div style={{position: 'absolute', bottom: '0', right: '-5px', width: '14px', height: '14px', backgroundColor: styles.colors.success, borderRadius: '50%', border: `2px solid ${styles.colors.deepBlue}`, boxShadow: `0 0 8px ${styles.colors.success}`}}></div>}</div> {j}</button>)}</div></div></div></div>;
 
     const renderContent = () => {
