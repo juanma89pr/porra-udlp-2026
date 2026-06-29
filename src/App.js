@@ -227,7 +227,11 @@ const LoadingSkeleton = () => (<div style={{padding:'60px', textAlign:'center', 
 const APP_EN_CONSTRUCCION = true;
 
 const ModoConstruccion = () => {
-    const [fase, setFase] = useState(0); // 0=azul, 1=presentacion, 2=pizarra
+    const [fase, setFase] = useState(0);
+    const [showForm, setShowForm] = useState(false);
+    const [nombre, setNombre] = useState('');
+    const [enviado, setEnviado] = useState(false);
+    const [enviando, setEnviando] = useState(false);
 
     const irFase1 = () => {
         setFase(1);
@@ -240,6 +244,22 @@ const ModoConstruccion = () => {
             }, delays[i]);
         });
         setTimeout(() => setFase(2), 12000);
+    };
+
+    const handlePreinscripcion = async () => {
+        if(!nombre.trim()) return;
+        setEnviando(true);
+        try {
+            await addDoc(collection(db, 'preinscripciones'), {
+                nombre: nombre.trim(),
+                fecha: serverTimestamp(),
+            });
+            setEnviado(true);
+        } catch(e) {
+            console.error(e);
+            alert('Error al guardar. Inténtalo de nuevo.');
+        }
+        setEnviando(false);
     };
 
     const campoStyle = {position:'absolute',inset:0,width:'100%',height:'100%',overflow:'visible'};
@@ -444,9 +464,77 @@ const ModoConstruccion = () => {
                         <div style={{flex:1,height:1,background:'linear-gradient(90deg,rgba(10,10,10,.18),transparent)'}}/>
                     </div>
                     <div className="mcfi3" style={{fontFamily:"'Inter',sans-serif",fontSize:9,fontWeight:300,letterSpacing:6,color:'#0a0a0a',textTransform:'uppercase',marginBottom:26}}>Creando algo grande</div>
-                    <div className="mcfi4" style={{display:'flex',gap:6}}>
+                    <div className="mcfi4" style={{display:'flex',gap:6,marginBottom:28}}>
                         {[0,1,2].map(i=>(<div key={i} className="mcd" style={{width:4,height:4,borderRadius:'50%',background:'#001F6B',animationDelay:`${i*0.25}s`}}/>))}
                     </div>
+
+                    {/* PREINSCRIPCIÓN */}
+                    {!showForm && !enviado && (
+                        <button onClick={()=>setShowForm(true)} style={{
+                            fontFamily:"'Bebas Neue',sans-serif",
+                            fontSize:'1rem',letterSpacing:'3px',
+                            background:'#001F6B',color:'#FFD700',
+                            border:'none',borderRadius:'30px',
+                            padding:'12px 28px',cursor:'pointer',
+                            boxShadow:'0 4px 16px rgba(0,31,107,0.2)',
+                            transition:'transform .2s, box-shadow .2s',
+                            animation:'mcfi2 .5s ease 1.5s both'
+                        }}>PREINSCRÍBETE AQUÍ →</button>
+                    )}
+
+                    {showForm && !enviado && (
+                        <div style={{
+                            width:'100%',maxWidth:280,
+                            animation:'mcfi2 .4s ease both'
+                        }}>
+                            <p style={{
+                                fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:300,
+                                letterSpacing:4,color:'#0a0a0a',opacity:.5,
+                                textTransform:'uppercase',marginBottom:12,textAlign:'center'
+                            }}>Tu nombre para la lista</p>
+                            <input
+                                type="text"
+                                value={nombre}
+                                onChange={e=>setNombre(e.target.value)}
+                                onKeyDown={e=>e.key==='Enter'&&handlePreinscripcion()}
+                                placeholder="Escribe tu nombre..."
+                                maxLength={40}
+                                style={{
+                                    width:'100%',padding:'12px 16px',
+                                    border:'1.5px solid rgba(0,31,107,0.2)',
+                                    borderRadius:'12px',
+                                    fontFamily:"'Inter',sans-serif",fontSize:'0.95rem',
+                                    color:'#0a0a0a',background:'#f8f8f8',
+                                    outline:'none',marginBottom:10,
+                                    textAlign:'center',letterSpacing:'1px'
+                                }}
+                                autoFocus
+                            />
+                            <button onClick={handlePreinscripcion} disabled={enviando||!nombre.trim()} style={{
+                                width:'100%',
+                                fontFamily:"'Bebas Neue',sans-serif",
+                                fontSize:'1rem',letterSpacing:'3px',
+                                background: nombre.trim() ? '#001F6B' : 'rgba(0,31,107,0.3)',
+                                color:'#FFD700',border:'none',borderRadius:'30px',
+                                padding:'12px',cursor: nombre.trim() ? 'pointer' : 'not-allowed',
+                                transition:'all .2s'
+                            }}>{enviando ? 'GUARDANDO...' : 'APUNTAR MI NOMBRE'}</button>
+                        </div>
+                    )}
+
+                    {enviado && (
+                        <div style={{textAlign:'center',animation:'mcfi2 .5s ease both'}}>
+                            <div style={{fontSize:'2rem',marginBottom:8}}>✅</div>
+                            <p style={{
+                                fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.2rem',
+                                letterSpacing:'2px',color:'#001F6B',marginBottom:4
+                            }}>¡{nombre}, ya estás en la lista!</p>
+                            <p style={{
+                                fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:300,
+                                letterSpacing:3,color:'#0a0a0a',opacity:.4,textTransform:'uppercase'
+                            }}>Te avisaremos cuando empiece la temporada</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -2529,7 +2617,7 @@ function App() {
     const [showGala, setShowGala] = useState(false);
 
     useEffect(() => {
-        document.title = "🏆 PLAYOFF 2026";
+        document.title = "PORRA UDLP 26/27";
         let link = document.querySelector("link[rel~='icon']");
         if (!link) {
             link = document.createElement('link');
@@ -2583,7 +2671,7 @@ function App() {
 
     if (APP_EN_CONSTRUCCION) return <ModoConstruccion />;
     if (screen === 'splash') return <EpicSplashScreen />;
-    if (screen === 'login') return <div style={styles.container}><div style={styles.card}><div style={{textAlign: 'center'}}><h2 style={styles.title}>ACCESO PLAYOFF</h2><div style={styles.userList}>{JUGADORES.map(j => <button key={j} onClick={() => handleLogin(j)} style={styles.userButton}><div style={{position: 'relative'}}><div style={styles.loginProfileIconCircle}>{userProfiles[j]?.icon || '❓'}</div>{onlineUsers[j] && <div style={{position: 'absolute', bottom: '0', right: '-5px', width: '14px', height: '14px', backgroundColor: styles.colors.success, borderRadius: '50%', border: `2px solid ${styles.colors.deepBlue}`, boxShadow: `0 0 8px ${styles.colors.success}`}}></div>}</div> {j}</button>)}</div></div></div></div>;
+    if (screen === 'login') return <div style={styles.container}><div style={styles.card}><div style={{textAlign: 'center'}}><h2 style={styles.title}>PORRA UDLP 26/27</h2><div style={styles.userList}>{JUGADORES.map(j => <button key={j} onClick={() => handleLogin(j)} style={styles.userButton}><div style={{position: 'relative'}}><div style={styles.loginProfileIconCircle}>{userProfiles[j]?.icon || '❓'}</div>{onlineUsers[j] && <div style={{position: 'absolute', bottom: '0', right: '-5px', width: '14px', height: '14px', backgroundColor: styles.colors.success, borderRadius: '50%', border: `2px solid ${styles.colors.deepBlue}`, boxShadow: `0 0 8px ${styles.colors.success}`}}></div>}</div> {j}</button>)}</div></div></div></div>;
 
     const renderContent = () => {
         switch (activeTab) {
