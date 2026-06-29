@@ -222,6 +222,196 @@ const TeamDisplay = ({ teamLogos, teamName, shortName = false, imgStyle }) => (<
 
 const LoadingSkeleton = () => (<div style={{padding:'60px', textAlign:'center', color:styles.colors.golden, fontFamily:"'Oswald', sans-serif", fontSize:'1.2rem', letterSpacing:'2px'}}>CARGANDO DATOS...</div>);
 
+// ─── MODO CONSTRUCCIÓN ────────────────────────────────────────────────────────
+// Cambia a false para desbloquear la app cuando esté lista
+const APP_EN_CONSTRUCCION = true;
+
+const ModoConstruccion = () => (
+    <div style={{
+        position:'fixed',inset:0,background:'#fff',
+        display:'flex',alignItems:'center',justifyContent:'center',
+        fontFamily:"'Inter',sans-serif",overflow:'hidden',zIndex:9999
+    }}>
+        <style>{`
+            @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400&display=swap');
+            .mc-f1{animation:mcfc 10s ease-in-out infinite 0s}
+            .mc-f2{animation:mcfc 10s ease-in-out infinite 3.3s}
+            .mc-f3{animation:mcfc 10s ease-in-out infinite 6.6s}
+            .mc-f4{animation:mcfc 8s ease-in-out infinite 1.5s}
+            .mc-f5{animation:mcfc 12s ease-in-out infinite 4s}
+            .mc-f6{animation:mcfc 9s ease-in-out infinite 7s}
+            @keyframes mcfc{0%{opacity:0}12%{opacity:1}80%{opacity:1}100%{opacity:0}}
+            .mc-s1{stroke-dasharray:320;stroke-dashoffset:320;animation:mcstela 6s ease-in-out 2s infinite}
+            .mc-s2{stroke-dasharray:280;stroke-dashoffset:280;animation:mcstela 6s ease-in-out 10s infinite}
+            .mc-s3{stroke-dasharray:300;stroke-dashoffset:300;animation:mcstela 6s ease-in-out 18s infinite}
+            .mc-s4{stroke-dasharray:260;stroke-dashoffset:260;animation:mcstela 6s ease-in-out 26s infinite}
+            @keyframes mcstela{
+                0%{stroke-dashoffset:320;opacity:0}8%{opacity:0.11}
+                55%{stroke-dashoffset:0;opacity:0.11}85%{stroke-dashoffset:0;opacity:0}
+                100%{stroke-dashoffset:320;opacity:0}
+            }
+            .mc-j{animation:mcjug ease-in-out infinite}
+            .mc-j1{animation-duration:5s;animation-delay:0s}.mc-j2{animation-duration:6s;animation-delay:1.4s}
+            .mc-j3{animation-duration:5.5s;animation-delay:2.8s}.mc-j4{animation-duration:7s;animation-delay:0.7s}
+            .mc-j5{animation-duration:6.5s;animation-delay:3.2s}.mc-j6{animation-duration:5.2s;animation-delay:1.9s}
+            .mc-j7{animation-duration:8s;animation-delay:2.5s}.mc-j8{animation-duration:6s;animation-delay:0.3s}
+            .mc-j9{animation-duration:5.5s;animation-delay:3.8s}.mc-j10{animation-duration:7s;animation-delay:1.1s}
+            .mc-j11{animation-duration:6s;animation-delay:4.2s}
+            @keyframes mcjug{0%{opacity:0}18%{opacity:1}72%{opacity:1}100%{opacity:0}}
+            .mc-shield{animation:mcflt 3.5s ease-in-out infinite}
+            @keyframes mcflt{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+            .mc-title{animation:mcup .5s ease .1s both}
+            @keyframes mcup{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+            .mc-season{animation:mcfi .6s ease .6s both}
+            .mc-sep{animation:mcfi2 .5s ease .8s both}
+            .mc-phrase{animation:mcfi .5s ease 1s both}
+            .mc-dots{animation:mcfi2 .4s ease 1.2s both}
+            @keyframes mcfi{from{opacity:0}to{opacity:.32}}
+            @keyframes mcfi2{from{opacity:0}to{opacity:1}}
+            .mc-dot-b{animation:mcdp 1.6s ease-in-out infinite}
+            .mc-dot-b:nth-child(2){animation-delay:.25s}.mc-dot-b:nth-child(3){animation-delay:.5s}
+            @keyframes mcdp{0%,100%{opacity:.15;transform:scale(1)}50%{opacity:.6;transform:scale(1.5)}}
+        `}</style>
+
+        {/* SVG PIZARRA FONDO */}
+        <svg style={{position:'absolute',inset:0,width:'100%',height:'100%',overflow:'visible'}}
+            viewBox="0 0 400 600" xmlns="http://www.w3.org/2000/svg" fill="none" preserveAspectRatio="xMidYMid slice">
+
+            {/* CAMPOS QUE ROTAN Y MUTAN */}
+            <g className="mc-f1" opacity="0">
+                <rect x="55" y="55" width="290" height="490" stroke="#001F6B" strokeWidth="0.8" opacity="0.07"/>
+                <line x1="55" y1="300" x2="345" y2="300" stroke="#001F6B" strokeWidth="0.7" opacity="0.07"/>
+                <circle cx="200" cy="300" r="46" stroke="#001F6B" strokeWidth="0.7" opacity="0.06"/>
+                <rect x="113" y="55" width="174" height="96" stroke="#001F6B" strokeWidth="0.7" opacity="0.06"/>
+                <rect x="113" y="449" width="174" height="96" stroke="#001F6B" strokeWidth="0.7" opacity="0.06"/>
+                <rect x="152" y="55" width="96" height="46" stroke="#001F6B" strokeWidth="0.6" opacity="0.05"/>
+                <rect x="152" y="499" width="96" height="46" stroke="#001F6B" strokeWidth="0.6" opacity="0.05"/>
+                <path d="M138 151 Q200 176 262 151" stroke="#001F6B" strokeWidth="0.6" opacity="0.05"/>
+                <path d="M138 449 Q200 424 262 449" stroke="#001F6B" strokeWidth="0.6" opacity="0.05"/>
+                <circle cx="200" cy="300" r="2.5" fill="#FFD700" opacity="0.3"/>
+            </g>
+            <g className="mc-f2" opacity="0" transform="rotate(90,200,300)">
+                <rect x="55" y="110" width="290" height="380" stroke="#001F6B" strokeWidth="0.8" opacity="0.07"/>
+                <line x1="200" y1="110" x2="200" y2="490" stroke="#001F6B" strokeWidth="0.7" opacity="0.07"/>
+                <circle cx="200" cy="300" r="46" stroke="#001F6B" strokeWidth="0.7" opacity="0.06"/>
+                <rect x="55" y="192" width="88" height="216" stroke="#001F6B" strokeWidth="0.6" opacity="0.06"/>
+                <rect x="257" y="192" width="88" height="216" stroke="#001F6B" strokeWidth="0.6" opacity="0.06"/>
+            </g>
+            <g className="mc-f3" opacity="0" transform="rotate(45,200,300)">
+                <rect x="75" y="130" width="250" height="340" stroke="#001F6B" strokeWidth="0.8" opacity="0.06"/>
+                <line x1="75" y1="300" x2="325" y2="300" stroke="#001F6B" strokeWidth="0.6" opacity="0.06"/>
+                <circle cx="200" cy="300" r="40" stroke="#001F6B" strokeWidth="0.6" opacity="0.06"/>
+                <rect x="115" y="130" width="170" height="78" stroke="#001F6B" strokeWidth="0.6" opacity="0.05"/>
+                <rect x="115" y="392" width="170" height="78" stroke="#001F6B" strokeWidth="0.6" opacity="0.05"/>
+            </g>
+            <g className="mc-f4" opacity="0">
+                <rect x="75" y="70" width="250" height="120" stroke="#FFD700" strokeWidth="0.8" opacity="0.12"/>
+                <rect x="140" y="70" width="120" height="56" stroke="#FFD700" strokeWidth="0.7" opacity="0.1"/>
+                <path d="M144 190 Q200 218 256 190" stroke="#FFD700" strokeWidth="0.6" opacity="0.1"/>
+                <circle cx="200" cy="150" r="2.5" fill="#FFD700" opacity="0.3"/>
+                <rect x="75" y="410" width="250" height="120" stroke="#FFD700" strokeWidth="0.8" opacity="0.12"/>
+                <rect x="140" y="474" width="120" height="56" stroke="#FFD700" strokeWidth="0.7" opacity="0.1"/>
+                <path d="M144 410 Q200 382 256 410" stroke="#FFD700" strokeWidth="0.6" opacity="0.1"/>
+            </g>
+            <g className="mc-f5" opacity="0" transform="rotate(-25,200,300)">
+                <rect x="65" y="115" width="270" height="370" stroke="#001F6B" strokeWidth="0.7" opacity="0.06"/>
+                <line x1="65" y1="300" x2="335" y2="300" stroke="#001F6B" strokeWidth="0.6" opacity="0.06"/>
+                <circle cx="200" cy="300" r="50" stroke="#FFD700" strokeWidth="0.6" opacity="0.08" strokeDasharray="5 7"/>
+                <rect x="108" y="115" width="184" height="82" stroke="#001F6B" strokeWidth="0.6" opacity="0.05"/>
+                <rect x="108" y="403" width="184" height="82" stroke="#001F6B" strokeWidth="0.6" opacity="0.05"/>
+            </g>
+            <g className="mc-f6" opacity="0" transform="rotate(60,200,300)">
+                <rect x="105" y="175" width="190" height="250" stroke="#001F6B" strokeWidth="0.8" opacity="0.07"/>
+                <line x1="105" y1="300" x2="295" y2="300" stroke="#001F6B" strokeWidth="0.6" opacity="0.06"/>
+                <circle cx="200" cy="300" r="32" stroke="#001F6B" strokeWidth="0.6" opacity="0.06"/>
+                <rect x="136" y="175" width="128" height="60" stroke="#001F6B" strokeWidth="0.5" opacity="0.05"/>
+                <rect x="136" y="365" width="128" height="60" stroke="#001F6B" strokeWidth="0.5" opacity="0.05"/>
+            </g>
+
+            {/* JUGADORES — círculos garabato */}
+            <circle className="mc-j mc-j1"  cx="200" cy="530" r="10" stroke="#001F6B" strokeWidth="0.8" opacity="0.08" fill="none"/>
+            <circle className="mc-j mc-j2"  cx="110" cy="445" r="9"  stroke="#001F6B" strokeWidth="0.8" opacity="0.08" fill="none"/>
+            <circle className="mc-j mc-j3"  cx="200" cy="448" r="9"  stroke="#001F6B" strokeWidth="0.8" opacity="0.08" fill="none"/>
+            <circle className="mc-j mc-j4"  cx="290" cy="445" r="9"  stroke="#001F6B" strokeWidth="0.8" opacity="0.08" fill="none"/>
+            <circle className="mc-j mc-j5"  cx="130" cy="355" r="8"  stroke="#FFD700" strokeWidth="0.7" opacity="0.15" fill="none"/>
+            <circle className="mc-j mc-j6"  cx="200" cy="348" r="8"  stroke="#FFD700" strokeWidth="0.7" opacity="0.15" fill="none"/>
+            <circle className="mc-j mc-j7"  cx="270" cy="355" r="8"  stroke="#FFD700" strokeWidth="0.7" opacity="0.15" fill="none"/>
+            <circle className="mc-j mc-j8"  cx="100" cy="255" r="8"  stroke="#001F6B" strokeWidth="0.7" opacity="0.07" fill="none"/>
+            <circle className="mc-j mc-j9"  cx="200" cy="245" r="8"  stroke="#001F6B" strokeWidth="0.7" opacity="0.07" fill="none"/>
+            <circle className="mc-j mc-j10" cx="300" cy="255" r="8"  stroke="#001F6B" strokeWidth="0.7" opacity="0.07" fill="none"/>
+            <circle className="mc-j mc-j11" cx="200" cy="158" r="8"  stroke="#FFD700" strokeWidth="0.7" opacity="0.12" fill="none"/>
+            <circle className="mc-j mc-j1"  cx="200" cy="530" r="2" fill="#001F6B" opacity="0.07"/>
+            <circle className="mc-j mc-j6"  cx="200" cy="348" r="2" fill="#FFD700" opacity="0.2"/>
+            <circle className="mc-j mc-j11" cx="200" cy="158" r="2" fill="#FFD700" opacity="0.18"/>
+
+            {/* ESTELAS — una a la vez */}
+            <path className="mc-s1" d="M148 505 Q182 355 212 108" stroke="#001F6B" strokeWidth="0.9" fill="none" strokeLinecap="round"/>
+            <path className="mc-s2" d="M298 472 Q238 328 158 92"  stroke="#001F6B" strokeWidth="0.9" fill="none" strokeLinecap="round"/>
+            <path className="mc-s3" d="M68 392 Q158 298 338 182"  stroke="#FFD700" strokeWidth="0.8" fill="none" strokeLinecap="round" strokeDasharray="6 9"/>
+            <path className="mc-s4" d="M338 488 Q208 372 72 208"  stroke="#001F6B" strokeWidth="0.8" fill="none" strokeLinecap="round"/>
+        </svg>
+
+        {/* UI CENTRAL */}
+        <div style={{position:'relative',zIndex:10,display:'flex',flexDirection:'column',alignItems:'center',textAlign:'center',padding:'0 28px'}}>
+
+            {/* ESCUDO */}
+            <div className="mc-shield" style={{width:50,height:60,marginBottom:22}}>
+                <img src="/escudo.png" alt="UD Las Palmas"
+                    style={{width:'100%',height:'100%',objectFit:'contain',filter:'drop-shadow(0 2px 10px rgba(0,20,80,.15))'}}
+                    onError={e=>e.target.style.display='none'}/>
+            </div>
+
+            {/* TÍTULO: PORRA sólido + UDLP outline — misma línea */}
+            <div className="mc-title" style={{display:'flex',alignItems:'baseline',gap:0,marginBottom:14,lineHeight:1}}>
+                <span style={{
+                    fontFamily:"'Bebas Neue',sans-serif",
+                    fontSize:'clamp(3.2rem,12vw,4.2rem)',
+                    color:'#0a0a0a',
+                    letterSpacing:2,
+                    lineHeight:1,
+                }}>PORRA&nbsp;</span>
+                <span style={{
+                    fontFamily:"'Bebas Neue',sans-serif",
+                    fontSize:'clamp(3.2rem,12vw,4.2rem)',
+                    color:'transparent',
+                    WebkitTextStroke:'1.8px #0a0a0a',
+                    letterSpacing:2,
+                    lineHeight:1,
+                }}>UDLP</span>
+            </div>
+
+            {/* AÑOS */}
+            <div className="mc-season" style={{
+                fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:300,
+                letterSpacing:7,color:'#0a0a0a',textTransform:'uppercase',marginBottom:18
+            }}>2 0 2 6 &nbsp;—&nbsp; 2 0 2 7</div>
+
+            {/* SEPARADOR */}
+            <div className="mc-sep" style={{display:'flex',alignItems:'center',gap:10,width:150,marginBottom:16}}>
+                <div style={{flex:1,height:1,background:'linear-gradient(90deg,transparent,rgba(10,10,10,.18),transparent)'}}/>
+                <div style={{width:4,height:4,borderRadius:'50%',background:'#FFD700'}}/>
+                <div style={{flex:1,height:1,background:'linear-gradient(90deg,rgba(10,10,10,.18),transparent)'}}/>
+            </div>
+
+            {/* FRASE */}
+            <div className="mc-phrase" style={{
+                fontFamily:"'Inter',sans-serif",fontSize:9,fontWeight:300,
+                letterSpacing:6,color:'#0a0a0a',textTransform:'uppercase',marginBottom:26
+            }}>Creando algo grande</div>
+
+            {/* DOTS */}
+            <div className="mc-dots" style={{display:'flex',gap:6}}>
+                {[0,1,2].map(i=>(
+                    <div key={i} className="mc-dot-b" style={{
+                        width:4,height:4,borderRadius:'50%',background:'#001F6B',
+                        animationDelay:`${i*0.25}s`
+                    }}/>
+                ))}
+            </div>
+        </div>
+    </div>
+);
+
 const EpicSplashScreen = () => (
     <div style={styles.epicSplashContainer}>
         <p style={styles.epicSplashSubtitle}>PORRA UDLP 2026</p>
@@ -2351,6 +2541,7 @@ function App() {
     const handleLogout = async () => { if (currentUser) set(ref(rtdb, 'status/' + currentUser), false); setCurrentUser(null); setScreen('login'); };
 
     if (screen === 'splash') return <EpicSplashScreen />;
+    if (APP_EN_CONSTRUCCION) return <ModoConstruccion />;
     if (screen === 'login') return <div style={styles.container}><div style={styles.card}><div style={{textAlign: 'center'}}><h2 style={styles.title}>ACCESO PLAYOFF</h2><div style={styles.userList}>{JUGADORES.map(j => <button key={j} onClick={() => handleLogin(j)} style={styles.userButton}><div style={{position: 'relative'}}><div style={styles.loginProfileIconCircle}>{userProfiles[j]?.icon || '❓'}</div>{onlineUsers[j] && <div style={{position: 'absolute', bottom: '0', right: '-5px', width: '14px', height: '14px', backgroundColor: styles.colors.success, borderRadius: '50%', border: `2px solid ${styles.colors.deepBlue}`, boxShadow: `0 0 8px ${styles.colors.success}`}}></div>}</div> {j}</button>)}</div></div></div></div>;
 
     const renderContent = () => {
