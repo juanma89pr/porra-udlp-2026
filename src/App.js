@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signInWithCustomToken, signOut } from "firebase/auth";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction, serverTimestamp, addDoc } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
@@ -24,7 +24,7 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 const messaging = getMessaging(app);
 const rtdb = getDatabase(app);
-const functions = getFunctions(app);
+const functions = getFunctions(app, "europe-west1");
 
 // --- DATOS DE LA APLICACIÓN ---
 const JUGADORES = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
@@ -2604,6 +2604,282 @@ const GalaFinTemporada = ({ currentUser, userProfiles, onClose }) => {
 // ============================================================================
 // --- COMPONENTE PRINCIPAL APP ---
 // ============================================================================
+// ============================================================================
+// --- LOGIN SCREEN — NOMBRE + PIN (sustituye el login simple anterior) ---
+// ============================================================================
+const loginConPinCallable = httpsCallable(functions, "loginConPin");
+
+const LoginScreen = ({ onLoginSuccess }) => {
+    const [nombre, setNombre] = useState('');
+    const [showPinModal, setShowPinModal] = useState(false);
+    const [pin, setPin] = useState('');
+    const [cargando, setCargando] = useState(false);
+    const [error, setError] = useState('');
+    const [esNuevoPin, setEsNuevoPin] = useState(false);
+    const [pinConfirmacion, setPinConfirmacion] = useState('');
+    const [pasoNuevoPin, setPasoNuevoPin] = useState(1); // 1 = elegir, 2 = confirmar
+
+    const G = colors;
+
+    const abrirModalPin = () => {
+        if (!nombre.trim()) { setError('Escribe tu nombre primero.'); return; }
+        setError('');
+        setPin('');
+        setPinConfirmacion('');
+        setPasoNuevoPin(1);
+        setEsNuevoPin(false);
+        setShowPinModal(true);
+    };
+
+    const cerrarModal = () => {
+        setShowPinModal(false);
+        setPin('');
+        setPinConfirmacion('');
+        setError('');
+    };
+
+    const pulsarDigito = (d) => {
+        if (cargando) return;
+        const pinActivo = (esNuevoPin && pasoNuevoPin === 2) ? pinConfirmacion : pin;
+        if (pinActivo.length >= 4) return;
+        const nuevoValor = pinActivo + d;
+        if (esNuevoPin && pasoNuevoPin === 2) {
+            setPinConfirmacion(nuevoValor);
+            if (nuevoValor.length === 4) confirmarNuevoPin(nuevoValor);
+        } else {
+            setPin(nuevoValor);
+            if (nuevoValor.length === 4) {
+                if (esNuevoPin) {
+                    // Ya eligió su PIN nuevo, ahora hay que confirmarlo
+                    setPasoNuevoPin(2);
+                } else {
+                    intentarLogin(nuevoValor);
+                }
+            }
+        }
+    };
+
+    const borrarDigito = () => {
+        if (esNuevoPin && pasoNuevoPin === 2) {
+            setPinConfirmacion(p => p.slice(0, -1));
+        } else {
+            setPin(p => p.slice(0, -1));
+        }
+    };
+
+    const intentarLogin = async (pinIntento) => {
+        setCargando(true);
+        setError('');
+        try {
+            const result = await loginConPinCallable({ nombre: nombre.trim(), pin: pinIntento });
+            const { token, esNuevoPin: nuevo } = result.data;
+
+            if (nuevo) {
+                // Era la primera vez de este nombre — la función ya registró
+                // este PIN como definitivo. Pero como aún no sabíamos que era
+                // "nuevo" hasta después de la llamada, completamos sesión
+                // directamente (el registro ya ocurrió en el servidor).
+                await signInWithCustomToken(auth, token);
+                onLoginSuccess(nombre.trim());
+                return;
+            }
+
+            await signInWithCustomToken(auth, token);
+            onLoginSuccess(nombre.trim());
+        } catch (e) {
+            console.error(e);
+            const code = e?.code || '';
+            if (code.includes('permission-denied')) {
+                setError('PIN incorrecto. Inténtalo de nuevo.');
+                setPin('');
+            } else if (code.includes('resource-exhausted')) {
+                setError('Demasiados intentos. Espera un poco o contacta con el admin.');
+            } else {
+                setError('Error al iniciar sesión. Inténtalo de nuevo.');
+            }
+            setCargando(false);
+        }
+    };
+
+    const confirmarNuevoPin = async (pinConfirmado) => {
+        if (pinConfirmado !== pin) {
+            setError('Los PIN no coinciden. Vuelve a intentarlo.');
+            setPasoNuevoPin(1);
+            setPin('');
+            setPinConfirmacion('');
+            return;
+        }
+        // Confirmado: registramos definitivamente con este PIN
+        await intentarLogin(pin);
+    };
+
+    // Detectar si "nombre" parece nuevo: lo sabremos realmente solo cuando
+    // el backend responda esNuevoPin=true. Pero para dar buena UX, si el
+    // primer intento de pin (4 dígitos) fallara como "nuevo", lo gestionamos
+    // dentro de intentarLogin. Para simplificar el flujo visual, ofrecemos
+    // un toggle manual "¿Es la primera vez que entras?" antes de pulsar PIN.
+
+    const pinMostrado = (esNuevoPin && pasoNuevoPin === 2) ? pinConfirmacion : pin;
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, background: '#fff',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            fontFamily: "'Montserrat', sans-serif", overflow: 'hidden', padding: '24px'
+        }}>
+            <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;600&display=swap');
+                .login-field { transition: border-color .2s ease; }
+                .login-field:focus { border-color: ${G.golden} !important; outline: none; }
+                .pin-key { transition: transform .12s ease, background .12s ease; }
+                .pin-key:active { transform: scale(0.93); background: rgba(0,31,107,0.08); }
+                .pin-dot { transition: all .2s ease; }
+                @keyframes shakeErr { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+                .shake { animation: shakeErr .35s ease; }
+                @keyframes modalIn { from { opacity:0; transform: translateY(16px) scale(.97); } to { opacity:1; transform: translateY(0) scale(1); } }
+                .modal-in { animation: modalIn .3s ease both; }
+            `}</style>
+
+            {/* Pizarra de fondo sutil */}
+            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }}
+                viewBox="0 0 400 600" xmlns="http://www.w3.org/2000/svg" fill="none" preserveAspectRatio="xMidYMid slice">
+                <rect x="55" y="55" width="290" height="490" stroke="#001F6B" strokeWidth="0.7" opacity="0.04" />
+                <line x1="55" y1="300" x2="345" y2="300" stroke="#001F6B" strokeWidth="0.6" opacity="0.04" />
+                <circle cx="200" cy="300" r="46" stroke="#001F6B" strokeWidth="0.6" opacity="0.04" />
+                <rect x="113" y="55" width="174" height="96" stroke="#001F6B" strokeWidth="0.6" opacity="0.04" />
+                <rect x="113" y="449" width="174" height="96" stroke="#001F6B" strokeWidth="0.6" opacity="0.04" />
+            </svg>
+
+            {/* Escudo */}
+            <div style={{ width: 56, height: 67, marginBottom: 20, position: 'relative', zIndex: 5 }}>
+                <img src="/escudo.png" alt="UD Las Palmas"
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 2px 10px rgba(0,20,80,.15))' }}
+                    onError={e => e.target.style.display = 'none'} />
+            </div>
+
+            {/* Título */}
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', marginBottom: 6, position: 'relative', zIndex: 5 }}>
+                <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 'clamp(2.4rem,9vw,3.2rem)', color: '#0a0a0a', letterSpacing: 2, lineHeight: 1 }}>PORRA&nbsp;</span>
+                <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 'clamp(2.4rem,9vw,3.2rem)', color: 'transparent', WebkitTextStroke: '1.5px #0a0a0a', letterSpacing: 2, lineHeight: 1 }}>UDLP</span>
+            </div>
+            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, fontWeight: 300, letterSpacing: 6, color: '#0a0a0a', opacity: 0.35, textTransform: 'uppercase', marginBottom: 36, position: 'relative', zIndex: 5 }}>
+                Inicia sesión
+            </p>
+
+            {/* Formulario de nombre */}
+            <div style={{ width: '100%', maxWidth: 300, position: 'relative', zIndex: 5 }}>
+                <label style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 600, color: G.deepBlue, letterSpacing: 1, textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                    Tu nombre
+                </label>
+                <input
+                    className="login-field"
+                    type="text"
+                    value={nombre}
+                    onChange={e => { setNombre(e.target.value); setError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && abrirModalPin()}
+                    placeholder="Ej: Juanma"
+                    maxLength={30}
+                    style={{
+                        width: '100%', padding: '14px 16px', border: '1.5px solid rgba(0,31,107,0.2)',
+                        borderRadius: 12, fontFamily: "'Inter',sans-serif", fontSize: '1rem',
+                        color: '#0a0a0a', background: '#f8f8f8', textAlign: 'center', letterSpacing: '0.5px',
+                        marginBottom: 16,
+                    }}
+                    autoFocus
+                />
+
+                {error && !showPinModal && (
+                    <p style={{ color: G.danger, fontSize: 12, textAlign: 'center', marginBottom: 12, fontFamily: "'Inter',sans-serif" }}>{error}</p>
+                )}
+
+                <button onClick={abrirModalPin} style={{
+                    width: '100%', fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.1rem', letterSpacing: 2,
+                    background: G.deepBlue, color: G.golden, border: 'none', borderRadius: 30,
+                    padding: '14px', cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,31,107,0.25)',
+                }}>CONTINUAR →</button>
+
+                <button onClick={() => { setEsNuevoPin(true); abrirModalPin(); }} style={{
+                    width: '100%', marginTop: 12, fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 600,
+                    background: 'transparent', color: G.deepBlue, opacity: 0.55, border: 'none',
+                    letterSpacing: 1, textTransform: 'uppercase', cursor: 'pointer', textDecoration: 'underline',
+                }}>Es la primera vez que entro</button>
+            </div>
+
+            {/* MODAL PIN */}
+            {showPinModal && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,10,40,0.55)', backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
+                }} onClick={(e) => { if (e.target === e.currentTarget && !cargando) cerrarModal(); }}>
+                    <div className="modal-in" style={{
+                        background: '#fff', borderRadius: 24, padding: '32px 28px', width: '100%', maxWidth: 320,
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.3)', textAlign: 'center', position: 'relative',
+                    }}>
+                        {!cargando && (
+                            <button onClick={cerrarModal} style={{
+                                position: 'absolute', top: 14, right: 14, background: 'none', border: 'none',
+                                fontSize: 18, color: 'rgba(0,0,0,0.3)', cursor: 'pointer', lineHeight: 1,
+                            }}>✕</button>
+                        )}
+
+                        <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 600, color: G.deepBlue, opacity: 0.5, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>
+                            {nombre}
+                        </p>
+                        <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', color: '#0a0a0a', letterSpacing: 1, marginBottom: 24 }}>
+                            {esNuevoPin
+                                ? (pasoNuevoPin === 1 ? 'Crea tu PIN' : 'Confírmalo')
+                                : 'Introduce tu PIN'}
+                        </p>
+
+                        {/* Puntos del PIN */}
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginBottom: 24 }} className={error ? 'shake' : ''}>
+                            {[0, 1, 2, 3].map(i => (
+                                <div key={i} className="pin-dot" style={{
+                                    width: 16, height: 16, borderRadius: '50%',
+                                    background: pinMostrado.length > i ? G.deepBlue : 'transparent',
+                                    border: `2px solid ${pinMostrado.length > i ? G.deepBlue : 'rgba(0,31,107,0.25)'}`,
+                                }} />
+                            ))}
+                        </div>
+
+                        {error && (
+                            <p style={{ color: G.danger, fontSize: 12, marginBottom: 16, fontFamily: "'Inter',sans-serif" }}>{error}</p>
+                        )}
+
+                        {cargando ? (
+                            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: G.deepBlue, opacity: 0.6, padding: '20px 0' }}>Verificando...</p>
+                        ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+                                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => {
+                                    if (k === '') return <div key={i} />;
+                                    if (k === '⌫') return (
+                                        <button key={i} onClick={borrarDigito} className="pin-key" style={{
+                                            padding: '16px 0', borderRadius: 14, border: 'none', background: '#f5f5f5',
+                                            fontSize: '1.1rem', color: G.deepBlue, cursor: 'pointer',
+                                        }}>⌫</button>
+                                    );
+                                    return (
+                                        <button key={i} onClick={() => pulsarDigito(k)} className="pin-key" style={{
+                                            padding: '16px 0', borderRadius: 14, border: 'none', background: '#f5f5f5',
+                                            fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.4rem', color: '#0a0a0a', cursor: 'pointer',
+                                        }}>{k}</button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {esNuevoPin && !cargando && (
+                            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, color: G.deepBlue, opacity: 0.4, marginTop: 16, lineHeight: 1.5 }}>
+                                Elige 4 dígitos fáciles de recordar.<br />Los necesitarás cada vez que entres.
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 function App() {
     const [screen, setScreen] = useState('splash');
     const [activeTab, setActiveTab] = useState('miJornada');
@@ -2641,7 +2917,9 @@ function App() {
         `;
         document.head.appendChild(styleSheet);
         
-        signInAnonymously(auth);
+        // El login anónimo automático se elimina: ahora la sesión se inicia
+        // explícitamente con signInWithCustomToken tras validar nombre+PIN
+        // en LoginScreen (ver componente LoginScreen y handleLoginSuccess).
         
         const unsubEscudos = onSnapshot(doc(db, "configuracion", "escudos"), (docSnap) => { if (docSnap.exists()) setTeamLogos(docSnap.data()); });
         const unsubClasificacion = onSnapshot(collection(db, "clasificacion"), (snapshot) => { 
@@ -2656,7 +2934,10 @@ function App() {
         return () => { document.head.removeChild(styleSheet); unsubEscudos(); unsubClasificacion(); unsubStatus(); clearTimeout(splashTimer); }
     }, []);
 
-    const handleLogin = async (user) => {
+    // handleLoginSuccess se ejecuta DESPUÉS de que LoginScreen ya validó
+    // nombre+PIN y completó signInWithCustomToken — aquí solo gestionamos
+    // estado local de la app (currentUser, presencia online, gala, etc.)
+    const handleLoginSuccess = async (user) => {
         try {
             setCurrentUser(user);
             set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
@@ -2667,11 +2948,16 @@ function App() {
         } catch (error) { alert("Error al iniciar sesión."); }
     };
 
-    const handleLogout = async () => { if (currentUser) set(ref(rtdb, 'status/' + currentUser), false); setCurrentUser(null); setScreen('login'); };
+    const handleLogout = async () => {
+        if (currentUser) set(ref(rtdb, 'status/' + currentUser), false);
+        setCurrentUser(null);
+        setScreen('login');
+        try { await signOut(auth); } catch (e) { console.error('Error al cerrar sesión:', e); }
+    };
 
     if (APP_EN_CONSTRUCCION) return <ModoConstruccion />;
     if (screen === 'splash') return <EpicSplashScreen />;
-    if (screen === 'login') return <div style={styles.container}><div style={styles.card}><div style={{textAlign: 'center'}}><h2 style={styles.title}>PORRA UDLP 26/27</h2><div style={styles.userList}>{JUGADORES.map(j => <button key={j} onClick={() => handleLogin(j)} style={styles.userButton}><div style={{position: 'relative'}}><div style={styles.loginProfileIconCircle}>{userProfiles[j]?.icon || '❓'}</div>{onlineUsers[j] && <div style={{position: 'absolute', bottom: '0', right: '-5px', width: '14px', height: '14px', backgroundColor: styles.colors.success, borderRadius: '50%', border: `2px solid ${styles.colors.deepBlue}`, boxShadow: `0 0 8px ${styles.colors.success}`}}></div>}</div> {j}</button>)}</div></div></div></div>;
+    if (screen === 'login') return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
 
     const renderContent = () => {
         switch (activeTab) {
