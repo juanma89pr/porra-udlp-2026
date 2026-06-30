@@ -1,207 +1,257 @@
-// Importa los módulos necesarios de Firebase Functions v2
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
-const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, Timestamp } = require("firebase-admin/firestore");
-const { getMessaging } = require("firebase-admin/messaging");
-const logger = require("firebase-functions/logger");
- 
-// Inicializa Firebase Admin SDK (esto es rápido y se puede quedar aquí)
-initializeApp();
- 
-// ===============================================================
-// AUTENTICACIÓN HÍBRIDA NOMBRE + PIN — exporta loginConPin y cambiarPin
-// ===============================================================
-const authPin = require("./auth-pin");
-exports.loginConPin = authPin.loginConPin;
-exports.cambiarPin = authPin.cambiarPin;
- 
-// ===============================================================
-// FUNCIÓN MANUAL
-// ===============================================================
-exports.sendGlobalNotification = onCall(async (request) => {
-  const db = getFirestore();
-  const messaging = getMessaging();
- 
-  // La verificación de admin sigue comentada como la tenías
-  /*
-  if (request.auth?.token?.name !== "Juanma") {
-    logger.warn("Intento de envío de notificación no autorizado.", { auth: request.auth });
-    throw new HttpsError("permission-denied", "Solo el administrador puede enviar notificaciones.");
+rules_version = '2';
+
+// ============================================================================
+// REGLAS DE SEGURIDAD — PORRA UDLP 26/27 — ARQUITECTURA MULTI-LIGA
+// ============================================================================
+// Principios:
+// 1. Nadie puede tocar su propio saldo directamente. Solo Cloud Functions
+//    (vía Admin SDK, que se salta estas reglas) pueden escribir en /saldos.
+// 2. Un jugador solo ve/edita sus propios pronósticos.
+// 3. Los datos de una liga secundaria solo son visibles para sus participantes
+//    o para el admin general.
+// 4. Jornadas, plantilla y configuración global: lectura libre, escritura
+//    solo admin.
+// 5. El admin general se identifica por un documento en /admins/{uid}.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── HELPERS ──────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    // Comprueba si el usuario autenticado es participante de la liga {ligaId}
+    function esParticipanteDeLiga(ligaId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/ligas/$(ligaId)) &&
+        uid() in get(/databases/$(database)/documents/ligas/$(ligaId)).data.participantes;
+    }
+
+    // Comprueba si el usuario autenticado es el creador de la liga {ligaId}
+    function esCreadorDeLiga(ligaId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/ligas/$(ligaId)) &&
+        get(/databases/$(database)/documents/ligas/$(ligaId)).data.creadorId == uid();
+    }
+
+    // ── CREDENCIALES PIN — INTOCABLE DESDE EL CLIENTE ───────────────────
+    // Solo Cloud Functions (Admin SDK) leen/escriben aquí. El cliente nunca
+    // accede directamente a hashes ni salts.
+    match /credenciales_pin/{uid} {
+      allow read, write: if false;
+    }
+
+    // ── ADMINS ───────────────────────────────────────────────────────────
+    // Lista de UIDs con rol de admin general. Solo gestionable manualmente
+    // desde la consola de Firebase, nunca desde la app.
+    match /admins/{adminUid} {
+      allow read: if isSignedIn();
+      // Solo Cloud Functions (loginConPin) puede crear/actualizar este
+      // documento, comparando el nombre normalizado contra NOMBRE_ADMIN.
+      // El cliente nunca escribe aquí directamente.
+      allow write: if false;
+    }
+
+    // ── LIGAS ────────────────────────────────────────────────────────────
+    match /ligas/{ligaId} {
+      // Lectura: cualquier usuario autenticado puede ver el listado de ligas
+      // (necesario para que la liga padre vea ligas secundarias disponibles)
+      allow read: if isSignedIn();
+
+      // Creación: cualquier usuario autenticado puede crear una PETICIÓN de
+      // liga (queda en estado "pendiente"); el documento debe crearse con
+      // estado pendiente y sin participantes aún confirmados por el admin
+      allow create: if isSignedIn() &&
+        request.resource.data.estado == 'pendiente' &&
+        request.resource.data.creadorId == uid();
+
+      // Actualización: SOLO el admin general puede aprobar (cambiar estado a
+      // "activa"), o el creador de la liga puede gestionar invitaciones de
+      // SU propia liga ya activa (nunca cambiar su propio estado ni tocar
+      // reparto de premios fuera de los campos permitidos)
+      allow update: if isAdmin() ||
+        (esCreadorDeLiga(ligaId) &&
+         request.resource.data.estado == resource.data.estado &&
+         request.resource.data.tipo == resource.data.tipo &&
+         request.resource.data.creadorId == resource.data.creadorId);
+
+      allow delete: if isAdmin();
+    }
+
+    // ── JORNADAS (GLOBAL — calendario único de UDLP) ───────────────────
+    match /jornadas/{jornadaId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── PRONÓSTICOS (por jornada, por liga, por jugador) ───────────────
+    // Estructura: pronosticos/{jornadaId}/{ligaId}/jugadores/{userId}
+    match /pronosticos/{jornadaId}/{ligaId}/jugadores/{userId} {
+      // Lectura: el propio jugador, cualquier participante de esa liga
+      // (para ver "quién ha apostado"), o el admin
+      allow read: if isAdmin() || esParticipanteDeLiga(ligaId);
+
+      // Escritura: SOLO el propio jugador puede crear/editar su pronóstico,
+      // y solo si es participante de esa liga. El cálculo de puntos
+      // (puntosObtenidos) se reserva al admin/Cloud Function: un jugador
+      // normal no puede escribir ese campo directamente.
+      allow create: if isSignedIn() && uid() == userId &&
+        esParticipanteDeLiga(ligaId) &&
+        !("puntosObtenidos" in request.resource.data);
+
+      allow update: if (isSignedIn() && uid() == userId &&
+        esParticipanteDeLiga(ligaId) &&
+        request.resource.data.puntosObtenidos == resource.data.puntosObtenidos) ||
+        isAdmin();
+
+      allow delete: if isAdmin();
+    }
+
+    // ── CLASIFICACIÓN (por liga) ────────────────────────────────────────
+    match /clasificacion/{ligaId}/jugadores/{userId} {
+      allow read: if isAdmin() || esParticipanteDeLiga(ligaId);
+      // Solo el admin (o Cloud Functions vía Admin SDK) escribe puntos/saldo
+      allow write: if isAdmin();
+    }
+
+    // ── SALDOS (por liga, por jugador) — INTOCABLE POR EL JUGADOR ──────
+    match /saldos/{ligaId}/jugadores/{userId} {
+      // El jugador puede ver SU propio saldo; el admin/creador ven todos
+      // los de su liga
+      allow read: if isAdmin() ||
+        (isSignedIn() && uid() == userId && esParticipanteDeLiga(ligaId)) ||
+        esCreadorDeLiga(ligaId);
+
+      // Nadie escribe directamente. Todo movimiento de saldo pasa por
+      // Cloud Functions (Admin SDK), que se saltan estas reglas.
+      allow write: if false;
+    }
+
+    // ── COMPROBANTES DE PAGO ────────────────────────────────────────────
+    match /comprobantes_pago/{comprobanteId} {
+      // El jugador sube su propio comprobante; admin/creador de la liga
+      // implicada pueden leer y actualizar el estado (confirmar/rechazar)
+      allow read: if isAdmin() ||
+        (isSignedIn() && resource.data.userId == uid()) ||
+        (isSignedIn() && esCreadorDeLiga(resource.data.ligaId));
+
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == uid() &&
+        request.resource.data.estado == 'pendiente';
+
+      // Solo admin o creador de esa liga pueden cambiar el estado
+      // (confirmar/rechazar) — el jugador NUNCA puede auto-confirmarse
+      allow update: if isAdmin() || esCreadorDeLiga(resource.data.ligaId);
+
+      allow delete: if isAdmin();
+    }
+
+    // ── REGISTRO DE AUDITORÍA (solo acciones de dinero) ────────────────
+    match /auditoria_pagos/{registroId} {
+      allow read: if isAdmin();
+      allow write: if false; // solo Cloud Functions (Admin SDK) escriben aquí
+    }
+
+    // ── FANTASY — GLOBAL ─────────────────────────────────────────────────
+    match /fantasy_clasificacion/{userId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /fantasy_clasificacion_por_liga/{ligaId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /fantasy_plantilla/{jugadorUdlpId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /fantasy_elecciones/{jornadaId}/jugadores/{userId} {
+      allow read: if isAdmin() || isSignedIn();
+      // El jugador elige su 11 una sola vez por jornada; no puede tocar
+      // puntosObtenidos (lo calcula el admin/Cloud Function)
+      allow create: if isSignedIn() && uid() == userId &&
+        !("puntosObtenidos" in request.resource.data);
+      allow update: if (isSignedIn() && uid() == userId &&
+        request.resource.data.puntosObtenidos == resource.data.puntosObtenidos) ||
+        isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── EL OTRO — GLOBAL, atributo del jugador ──────────────────────────
+    match /elOtro/{userId} {
+      allow read: if true;
+      // El jugador elige su equipo una vez; no puede tocar el multiplicador
+      // (lo calcula el admin/Cloud Function con datos de la API)
+      allow create: if isSignedIn() && uid() == userId &&
+        !("multiplicadorActual" in request.resource.data);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── REPARTO CON CREADORES (Segunda Liga, 50/50) ────────────────────
+    match /reparto_creadores/{ligaId}/creadores/{creadorId} {
+      allow read: if isAdmin() || (isSignedIn() && uid() == creadorId);
+      allow write: if false; // solo Cloud Functions
+    }
+
+    // ── PREINSCRIPCIONES (pantalla modo construcción) ──────────────────
+    match /preinscripciones/{preinscripcionId} {
+      allow read: if isAdmin();
+      allow create: if true; // cualquiera puede preinscribirse, incluso sin login
+      allow update, delete: if isAdmin();
+    }
+
+    // ── PERFILES DE JUGADOR (foto, @apodo) ──────────────────────────────
+    match /perfiles/{userId} {
+      allow read: if true;
+      allow write: if isSignedIn() && uid() == userId;
+    }
+
+    // ── CONFIGURACIÓN GLOBAL (no relacionada con dinero) ────────────────
+    match /configuracion/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── COLECCIONES LEGADAS DE LA TEMPORADA 25/26 (solo lectura admin) ─
+    // Mantener accesibles solo para consulta histórica, sin escritura.
+    match /porraAnualPronosticos/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /apuestasExtra/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /activity_log/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ── NOTIFICACIONES (igual que ya existía) ───────────────────────────
+    match /notification_tokens/{token} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ── REGLA DE CIERRE: cualquier colección no contemplada arriba
+    //    queda bloqueada por defecto (en vez de abierta como antes) ────
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
   }
-  */
- 
-  const messageText = request.data.message;
-  if (!messageText) {
-    throw new HttpsError("invalid-argument", "El mensaje no puede estar vacío.");
-  }
- 
-  const tokensSnapshot = await db.collection("notification_tokens").get();
-  if (tokensSnapshot.empty) {
-    logger.info("No hay tokens a los que enviar notificación.");
-    return { success: true, message: "No hay usuarios para notificar." };
-  }
-  const tokens = tokensSnapshot.docs.map((doc) => doc.id);
- 
-  const payload = {
-    notification: {
-      title: "Porra UDLP 2026 🐥",
-      body: messageText,
-      icon: "/favicon.ico",
-    },
-  };
- 
-  try {
-    const response = await messaging.sendToDevice(tokens, payload);
-    logger.info("Notificación enviada con éxito:", response);
-    
-    const tokensToDelete = [];
-    response.results.forEach((result, index) => {
-      const error = result.error;
-      if (error) {
-        logger.error("Fallo al enviar al token:", tokens[index], error);
-        if (
-          error.code === "messaging/invalid-registration-token" ||
-          error.code === "messaging/registration-token-not-registered"
-        ) {
-          tokensToDelete.push(db.collection("notification_tokens").doc(tokens[index]).delete());
-        }
-      }
-    });
-    await Promise.all(tokensToDelete);
- 
-    return { success: true, message: `Notificación enviada a ${response.successCount} dispositivos.` };
-  } catch (error) {
-    logger.error("Error al enviar la notificación:", error);
-    throw new HttpsError("internal", "No se pudo enviar la notificación.");
-  }
-});
- 
-// ===============================================================
-// FUNCIONES AUTOMÁTICAS
-// ===============================================================
- 
-// Función auxiliar para enviar notificaciones
-const sendNotificationToAll = async (messageBody) => {
-    const db = getFirestore();
-    const messaging = getMessaging();
-    const tokensSnapshot = await db.collection("notification_tokens").get();
-    if (tokensSnapshot.empty) {
-        logger.info("No hay tokens para notificar.");
-        return;
-    }
-    const tokens = tokensSnapshot.docs.map(doc => doc.id);
-    const payload = {
-        notification: {
-            title: "Porra UDLP 2026 🐥",
-            body: messageBody,
-            icon: "/favicon.ico",
-        },
-    };
-    await messaging.sendToDevice(tokens, payload);
-    logger.info(`Notificación automática enviada: "${messageBody}"`);
-};
- 
-exports.onJornadaStateChange = onDocumentUpdated("jornadas/{jornadaId}", async (event) => {
-    const dataAntes = event.data.before.data();
-    const dataDespues = event.data.after.data();
- 
-    if (dataAntes.estado !== "Abierta" && dataDespues.estado === "Abierta") {
-      const message = `¡Ya está abierta la Jornada ${dataDespues.numeroJornada}! Haz tu pronóstico para el ${dataDespues.equipoLocal} vs ${dataDespues.equipoVisitante}.`;
-      await sendNotificationToAll(message);
-    }
- 
-    if (dataAntes.estado !== "Finalizada" && dataDespues.estado === "Finalizada") {
-      let message = `¡Jornada ${dataDespues.numeroJornada} finalizada! Resultado: ${dataDespues.resultadoLocal} - ${dataDespues.resultadoVisitante}.`;
-      
-      if (dataDespues.ganadores && dataDespues.ganadores.length > 0) {
-        const ganadoresStr = dataDespues.ganadores.join(", ");
-        message += ` ¡Felicidades a los ganadores: ${ganadoresStr}! 🏆`;
-      } else {
-        message += " ¡El bote se acumula! 💰";
-      }
-      await sendNotificationToAll(message);
-    }
- 
-    return null;
-});
- 
-exports.checkJornadaClosingSoon = onSchedule("every 1 minutes", async (event) => {
-    const db = getFirestore();
-    const ahora = Timestamp.now();
-    const unaHoraDespues = Timestamp.fromMillis(ahora.toMillis() + 60 * 60 * 1000);
- 
-    const q = db.collection("jornadas")
-      .where("estado", "==", "Abierta")
-      .where("fechaCierre", ">=", ahora)
-      .where("fechaCierre", "<=", unaHoraDespues);
-      
-    const jornadasACerrarSnap = await q.get();
- 
-    if (jornadasACerrarSnap.empty) {
-      logger.info("No hay jornadas cerrando en la próxima hora.");
-      return null;
-    }
- 
-    for (const doc of jornadasACerrarSnap.docs) {
-      const jornada = doc.data();
-      
-      if (jornada.notificacionCierreEnviada) {
-        continue;
-      }
- 
-      const message = `⏳ ¡ÚLTIMA HORA para la Jornada ${jornada.numeroJornada}! Las apuestas para el ${jornada.equipoLocal} vs ${jornada.equipoVisitante} cierran pronto.`;
-      await sendNotificationToAll(message);
- 
-      await doc.ref.update({ notificacionCierreEnviada: true });
-    }
- 
-    return null;
-});
- 
-exports.cerrarJornadasAutomaticamente = onSchedule({
-    schedule: "every 5 minutes",
-    region: "europe-west1",
-  }, async (event) => {
-    const db = getFirestore();
-    const ahora = Timestamp.now();
-    const jornadasRef = db.collection("jornadas");
- 
-    logger.info("Iniciando tarea programada: Verificando jornadas para cerrar.");
- 
-    try {
-      const consulta = jornadasRef.where("estado", "==", "Abierta");
-      const snapshot = await consulta.get();
- 
-      if (snapshot.empty) {
-        logger.info("No se encontraron jornadas abiertas. Tarea finalizada.");
-        return null;
-      }
- 
-      const batch = db.batch();
-      let jornadasACerrar = 0;
- 
-      snapshot.forEach(doc => {
-        const jornada = doc.data();
-        if (jornada.fechaCierre && jornada.fechaCierre.toDate() < ahora.toDate()) {
-          logger.info(`La jornada ${doc.id} (${jornada.equipoLocal} vs ${jornada.equipoVisitante}) ha caducado. Cerrando...`);
-          const jornadaParaActualizarRef = jornadasRef.doc(doc.id);
-          batch.update(jornadaParaActualizarRef, { estado: "Cerrada" });
-          jornadasACerrar++;
-        }
-      });
- 
-      if (jornadasACerrar > 0) {
-        await batch.commit();
-        logger.info(`¡Éxito! Se han cerrado ${jornadasACerrar} jornada(s) automáticamente.`);
-      } else {
-        logger.info("Ninguna jornada abierta ha alcanzado su fecha de cierre. Tarea finalizada.");
-      }
-    } catch (error) {
-      logger.error("Error al ejecutar la función de cierre automático:", error);
-    }
-    
-    return null;
-});
- 
+}
