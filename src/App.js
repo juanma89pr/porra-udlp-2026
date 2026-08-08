@@ -26,33 +26,72 @@ const messaging = getMessaging(app);
 const rtdb = getDatabase(app);
 const functions = getFunctions(app, "europe-west1");
 
-// --- DATOS DE LA APLICACIÓN ---
-const JUGADORES = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
+// --- DATOS DE LA APLICACIÓN 26/27 ---
+// Lista de jugadores base de la liga padre (los 15 originales)
+// Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
+const JUGADORES_BASE = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
 const APUESTA_NORMAL = 1;
 const APUESTA_VIP = 2;
+const MAX_JUGADORES = 20;
+const JORNADAS_CUARENTENA = 5; // nuevos jugadores en período de prueba
+const MIN_ACTIVACIONES_EL_OTRO = 3; // mínimo de activaciones durante la temporada
+const PENALIZACION_EL_OTRO = 5; // puntos a restar si no se activa mínimo 3 veces
 
-const EQUIPOS_LIGA = ["UD Las Palmas", "UD Almería", "Málaga CF", "CD Castellón", "Burgos CF", "Real Zaragoza", "SD Eibar", "Real Sporting de Gijón", "Real Racing Club"];
+// 20 equipos de Primera División 26/27 para El Otro
+// (se cargan dinámicamente de la API, esto es el fallback)
+const EQUIPOS_PRIMERA_DIVISION = [
+    "Real Madrid", "FC Barcelona", "Atlético de Madrid", "Athletic Club",
+    "Real Sociedad", "Villarreal CF", "Real Betis", "Valencia CF",
+    "Sevilla FC", "Getafe CF", "RC Celta", "Rayo Vallecano",
+    "UD Las Palmas", "CA Osasuna", "RCD Mallorca", "Deportivo Alavés",
+    "RCD Espanyol", "Leganés", "Real Valladolid", "Girona FC"
+];
 
-const PLANTILLA_ACTUALIZADA = [
-    { dorsal: "1", nombre: "Dinko Horkas", imageUrl: "" }, { dorsal: "13", nombre: "José Antonio Caro", imageUrl: "" },
-    { dorsal: "30", nombre: "Álvaro Killane", imageUrl: "" }, { dorsal: "35", nombre: "Adri Suárez", imageUrl: "" },
-    { dorsal: "2", nombre: "Marvin Park", imageUrl: "" }, { dorsal: "3", nombre: "Mika Mármol", imageUrl: "" },
-    { dorsal: "4", nombre: "Álex Suárez", imageUrl: "" }, { dorsal: "5", nombre: "Enrique Clemente", imageUrl: "" },
-    { dorsal: "6", nombre: "Sergio Barcia", imageUrl: "" }, { dorsal: "15", nombre: "Juanma Herzog", imageUrl: "" },
-    { dorsal: "23", nombre: "Cristian Gutiérrez", imageUrl: "" }, { dorsal: "27", nombre: "Valentín Pezzolesi", imageUrl: "" },
-    { dorsal: "31", nombre: "Carlos Navarro", imageUrl: "" }, { dorsal: "42", nombre: "Víctor Villote", imageUrl: "" },
-    { dorsal: "7", nombre: "Nicolás Benedetti", imageUrl: "" }, { dorsal: "8", nombre: "Iván Gil", imageUrl: "" },
-    { dorsal: "9", nombre: "Jeremía Recoba", imageUrl: "" }, { dorsal: "12", nombre: "Enzo Loiodice", imageUrl: "" },
-    { dorsal: "14", nombre: "Manu Fuster", imageUrl: "" }, { dorsal: "16", nombre: "Lorenzo Amatucci", imageUrl: "" },
-    { dorsal: "17", nombre: "Viti Rozada", imageUrl: "" }, { dorsal: "20", nombre: "Kirian Rodríguez", imageUrl: "" },
-    { dorsal: "21", nombre: "Jonathan Viera", imageUrl: "" }, { dorsal: "22", nombre: "Ale García", imageUrl: "" },
-    { dorsal: "26", nombre: "Iñaki González", imageUrl: "" }, { dorsal: "36", nombre: "José Carlos González", imageUrl: "" },
-    { dorsal: "10", nombre: "Jesé", imageUrl: "" }, { dorsal: "18", nombre: "Taisei Miyashiro", imageUrl: "" },
-    { dorsal: "19", nombre: "Sandro Ramírez", imageUrl: "" }, { dorsal: "24", nombre: "Pejiño", imageUrl: "" },
-    { dorsal: "34", nombre: "Diego Martín", imageUrl: "" }, { dorsal: "37", nombre: "Arturo Rodríguez", imageUrl: "" },
-    { dorsal: "38", nombre: "Iván Medina", imageUrl: "" }, { dorsal: "39", nombre: "Estanis Pedrola", imageUrl: "" },
-    { dorsal: "41", nombre: "Elías Romero", imageUrl: "" }, { dorsal: "44", nombre: "Rafa Cruz", imageUrl: "" },
-    { dorsal: "49", nombre: "Iker Bravo", imageUrl: "" }
+// API Football config
+const API_FOOTBALL_KEY = process.env.REACT_APP_API_FOOTBALL_KEY || "";
+const LEAGUE_ID_SEGUNDA = 141;
+const LEAGUE_ID_PRIMERA = 140;
+const SEASON = 2025; // temporada 2025-26 en API-Football = 26/27 real
+
+// Tabla de puntuación Mis 5 Estrellas (calculada vía API)
+const PUNTOS_ESTRELLAS = {
+    titular: 2,
+    suplente: 1,
+    gol_portero_defensa: 8,
+    gol_centrocampista: 6,
+    gol_delantero: 5,
+    asistencia: 3,
+    porteria_cero_portero: 4,
+    porteria_cero_defensa: 2,
+    amarilla: -1,
+    roja: -3,
+    penalti_fallado: -2,
+    gol_propia: -2,
+};
+
+// Plantilla de fallback (usada si la API no está disponible)
+// Se actualiza automáticamente desde API-Football al cargar la app
+const PLANTILLA_FALLBACK = [
+    { dorsal: "1", nombre: "Dinko Horkas", posicion: "Portero", imageUrl: "" },
+    { dorsal: "13", nombre: "José Antonio Caro", posicion: "Portero", imageUrl: "" },
+    { dorsal: "2", nombre: "Marvin Park", posicion: "Defensa", imageUrl: "" },
+    { dorsal: "3", nombre: "Mika Mármol", posicion: "Defensa", imageUrl: "" },
+    { dorsal: "4", nombre: "Álex Suárez", posicion: "Defensa", imageUrl: "" },
+    { dorsal: "5", nombre: "Enrique Clemente", posicion: "Defensa", imageUrl: "" },
+    { dorsal: "6", nombre: "Sergio Barcia", posicion: "Defensa", imageUrl: "" },
+    { dorsal: "15", nombre: "Juanma Herzog", posicion: "Defensa", imageUrl: "" },
+    { dorsal: "7", nombre: "Nicolás Benedetti", posicion: "Centrocampista", imageUrl: "" },
+    { dorsal: "8", nombre: "Iván Gil", posicion: "Centrocampista", imageUrl: "" },
+    { dorsal: "12", nombre: "Enzo Loiodice", posicion: "Centrocampista", imageUrl: "" },
+    { dorsal: "14", nombre: "Manu Fuster", posicion: "Centrocampista", imageUrl: "" },
+    { dorsal: "16", nombre: "Lorenzo Amatucci", posicion: "Centrocampista", imageUrl: "" },
+    { dorsal: "20", nombre: "Kirian Rodríguez", posicion: "Centrocampista", imageUrl: "" },
+    { dorsal: "21", nombre: "Jonathan Viera", posicion: "Centrocampista", imageUrl: "" },
+    { dorsal: "9", nombre: "Jeremía Recoba", posicion: "Delantero", imageUrl: "" },
+    { dorsal: "10", nombre: "Jesé", posicion: "Delantero", imageUrl: "" },
+    { dorsal: "18", nombre: "Taisei Miyashiro", posicion: "Delantero", imageUrl: "" },
+    { dorsal: "19", nombre: "Sandro Ramírez", posicion: "Delantero", imageUrl: "" },
+    { dorsal: "24", nombre: "Pejiño", posicion: "Delantero", imageUrl: "" },
 ];
 
 // ============================================================================
@@ -541,62 +580,6 @@ const ModoConstruccion = () => {
     );
 };
 
-const EpicSplashScreen = () => (
-    <div style={styles.epicSplashContainer}>
-        <p style={styles.epicSplashSubtitle}>PORRA UDLP 2026</p>
-        <h1 style={styles.epicSplashTitle}>FIN DE LA<br/>HAZAÑA</h1>
-    </div>
-);
-
-// --- MODAL ÉPICO DE BIENVENIDA V13 (MENSAJE FINAL Y CORRECCIONES) ---
-const PlayoffWelcomeModal = ({ onClose }) => {
-    const [step, setStep] = useState(1);
-
-    return (
-        <div style={styles.modalOverlay}>
-            <div style={styles.modalContent}>
-                <h2 style={{...styles.title, fontSize: '1.8rem', marginBottom: '0', borderBottom: 'none', letterSpacing: '2px', lineHeight: 1.2}}>
-                    {step === 1 && "🏁 HASTA AQUÍ HEMOS LLEGADO"}{step === 2 && "🔄 PUNTOS CORREGIDOS"}{step === 3 && "📅 PORRA ANUAL"}
-                </h2>
-                <div style={styles.modalDots}>
-                    <div style={step === 1 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 2 ? styles.modalDotActive : styles.modalDotInactive} /><div style={step === 3 ? styles.modalDotActive : styles.modalDotInactive} />
-                </div>
-                
-                <div style={{minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', fontFamily: "'Montserrat', sans-serif"}}>
-                    {step === 1 && (
-                        <>
-                            <p style={{fontSize: '1.1rem', marginBottom: '15px', color: styles.colors.lightText, lineHeight: 1.5, fontWeight: '600'}}>La UD Las Palmas se ha quedado a las puertas.</p>
-                            <p style={{color: styles.colors.silver, fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '10px'}}>La temporada se ha terminado, pero la competición por los premios sigue viva. Ya solo nos queda saber qué equipo ascenderá a Primera.</p>
-                        </>
-                    )}
-                    {step === 2 && (
-                        <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.success, fontWeight: 'bold'}}>ERRORES SOLUCIONADOS:</span> Se ha corregido el error matemático que no sumaba los puntos de "No Pasa" o "Pierde". Además, hemos inyectado automáticamente la apuesta de Claudio para que conste en el marcador de la jornada de vuelta.</p>
-                        </div>
-                    )}
-                    {step === 3 && (
-                        <div style={{textAlign: 'left', lineHeight: 1.6, color: styles.colors.silver}}>
-                            <p style={{marginBottom: '15px'}}><span style={{color: styles.colors.golden, fontWeight: 'bold'}}>PORRA ANUAL Y REPARTO FINAL:</span> Ya pueden consultar la pestaña "Porra Anual" en el menú para ver qué apostaron en agosto.</p>
-                            <div style={{backgroundColor: 'rgba(212,175,55,0.05)', padding: '15px', borderRadius: '12px', border: `1px solid rgba(212,175,55,0.3)`}}>
-                                <p style={{color: styles.colors.golden, fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '5px'}}>PUNTOS EXTRA A REPARTIR AL FINAL:</p>
-                                <ul style={{fontSize: '0.8rem', marginLeft: '20px'}}>
-                                    <li>Ascenso o No: <strong>+5 Pts</strong></li>
-                                    <li>Posición Exacta: <strong>+10 Pts</strong></li>
-                                    <li>Pleno (Ambas): <strong>+20 Pts</strong></li>
-                                </ul>
-                            </div>
-                        </div>
-                    )}
-                </div>
-                
-                <div style={{display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: '30px'}}>
-                    {step > 1 ? <button onClick={() => setStep(prev => prev - 1)} style={styles.secondaryButton}>Atrás</button> : <div></div>}
-                    {step < 3 ? <button onClick={() => setStep(prev => prev + 1)} style={{...styles.mainButton, marginTop: 0}}>Siguiente</button> : <button onClick={() => { localStorage.setItem('playoffWelcomeSeenV13', 'true'); onClose(); }} style={{...styles.mainButton, marginTop: 0}}>¡ENTENDIDO!</button>}
-                </div>
-            </div>
-        </div>
-    );
-};
 // ============================================================================
 // --- PANTALLAS DE USUARIO ---
 // ============================================================================
@@ -2182,58 +2165,19 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     );
 };
 
-const AdminPlayoffPanel = () => {
-    const [config, setConfig] = useState({ semi1_ganador: '', semi2_ganador: '', ascendido: '', bloqueado: false, fechaCierreApuestaExtra: '' });
-    
-    useEffect(() => { 
-        onSnapshot(doc(db, "configuracion", "playoff"), d => { 
-            if(d.exists()) {
-                const data = d.data();
-                if(data.fechaCierreApuestaExtra && data.fechaCierreApuestaExtra.seconds) {
-                    const date = new Date(data.fechaCierreApuestaExtra.seconds * 1000);
-                    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-                    data.fechaCierreApuestaExtra = date.toISOString().slice(0, 16);
-                }
-                setConfig(data); 
-            }
-        }); 
-    }, []);
-
-    const handleSave = async () => { 
-        const saveConfig = {...config};
-        if(saveConfig.fechaCierreApuestaExtra) saveConfig.fechaCierreApuestaExtra = new Date(saveConfig.fechaCierreApuestaExtra);
-        else saveConfig.fechaCierreApuestaExtra = null;
-        await setDoc(doc(db, "configuracion", "playoff"), saveConfig); 
-        alert("Configuración Guardada"); 
-    };
-
-    return (
-        <div style={styles.adminJornadaItem}>
-            <h3 style={{...styles.formSectionTitle, fontSize: '1.2rem', borderBottom: `1px solid rgba(255,215,0,0.2)`, paddingBottom: '10px'}}>⚙️ Gestión "El Camino"</h3>
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginTop: '20px'}}>
-                <div><label style={styles.label}>Ganador Semi 1:</label><select value={config.semi1_ganador} onChange={e=>setConfig({...config, semi1_ganador: e.target.value})} style={styles.adminSelect}><option value="">--</option><option value="UD Almería">Almería</option><option value="CD Castellón">Castellón</option></select></div>
-                <div><label style={styles.label}>Ganador Semi 2:</label><select value={config.semi2_ganador} onChange={e=>setConfig({...config, semi2_ganador: e.target.value})} style={styles.adminSelect}><option value="">--</option><option value="Málaga CF">Málaga</option><option value="UD Las Palmas">UDLP</option></select></div>
-                <div><label style={styles.label}>¡EQUIPO ASCENDIDO!:</label><input type="text" value={config.ascendido || ''} onChange={e=>setConfig({...config, ascendido: e.target.value})} style={styles.input} /></div>
-                <div><label style={styles.label}>Cierre Apuestas Extras (+5):</label><input type="datetime-local" value={config.fechaCierreApuestaExtra || ''} onChange={e=>setConfig({...config, fechaCierreApuestaExtra: e.target.value})} style={styles.input} /></div>
-            </div>
-            <div style={{marginTop: '25px', padding: '15px', backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: '10px', display: 'flex', alignItems: 'center'}}><input type="checkbox" checked={config.bloqueado} onChange={e=>setConfig({...config, bloqueado: e.target.checked})} style={styles.checkbox} /> <span style={{color:styles.colors.lightText, marginLeft:'12px', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase'}}>Bloquear Apuestas Extra (Botones)</span></div>
-            <button onClick={handleSave} style={{...styles.saveButton, marginTop:'20px', width: '100%'}}>GUARDAR CUADRO PLAYOFF</button>
-        </div>
-    );
-};
-
-const AdminPanelScreen = ({ plantilla }) => {
+const AdminPanelScreen = ({ plantilla, jugadores }) => {
     const [jornadas, setJornadas] = useState([]);
 
     useEffect(() => { 
-        const unsub = onSnapshot(query(collection(db, "jornadas"), orderBy("numeroJornada", "desc")), (snap) => { setJornadas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))); }); 
+        const unsub = onSnapshot(query(collection(db, "jornadas"), orderBy("numeroJornada", "desc")), (snap) => { 
+            setJornadas(snap.docs.map(d => ({ id: d.id, ...d.data() }))); 
+        }); 
         return () => unsub(); 
     }, []);
 
     return (
         <div>
-            <h2 style={styles.title}>PANEL DE CONTROL</h2>
-            <AdminPlayoffPanel />
+            <h2 style={styles.title}>PANEL DE CONTROL 26/27</h2>
             <AdminCierreTemporada />
             {jornadas.map(j => (<JornadaAdminItem key={j.id} jornada={j} plantilla={plantilla} />))}
         </div>
@@ -2241,9 +2185,287 @@ const AdminPanelScreen = ({ plantilla }) => {
 };
 
 // ============================================================================
-// --- GALA FIN DE TEMPORADA ---
+// --- EL OTRO — Pantalla de selección y gestión del equipo de Primera ---
 // ============================================================================
-const GalaFinTemporada = ({ currentUser, userProfiles, onClose }) => {
+const ElOtroScreen = ({ currentUser, userProfiles }) => {
+    const G = styles.colors;
+    const [elOtroData, setElOtroData] = useState(null);
+    const [equiposDisponibles, setEquiposDisponibles] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [guardando, setGuardando] = useState(false);
+
+    useEffect(() => {
+        if (!currentUser) return;
+        // Cargar El Otro del usuario actual
+        const unsubElOtro = onSnapshot(doc(db, "elOtro", currentUser), (snap) => {
+            if (snap.exists()) setElOtroData(snap.data());
+            else setElOtroData(null);
+            setLoading(false);
+        });
+        // Calcular equipos disponibles (los que ya no han sido tomados)
+        const unsubTodos = onSnapshot(collection(db, "elOtro"), (snap) => {
+            const tomados = snap.docs.map(d => d.data().equipo).filter(Boolean);
+            setEquiposDisponibles(EQUIPOS_PRIMERA_DIVISION.filter(e => !tomados.includes(e) || (elOtroData && e === elOtroData.equipo)));
+        });
+        return () => { unsubElOtro(); unsubTodos(); };
+    }, [currentUser]);
+
+    const elegirEquipo = async (equipo) => {
+        if (elOtroData?.equipo) return; // ya eligió, no puede cambiar
+        setGuardando(true);
+        try {
+            await setDoc(doc(db, "elOtro", currentUser), {
+                equipo, activaciones: 0, historial: [], elegidoEn: serverTimestamp()
+            }, { merge: true });
+        } catch (e) { console.error(e); }
+        setGuardando(false);
+    };
+
+    if (loading) return <div style={{padding:40,textAlign:'center',color:G.deepBlue}}>Cargando...</div>;
+
+    return (
+        <div style={{padding:'20px 16px'}}>
+            <h2 style={styles.title}>EL OTRO</h2>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,opacity:.6,textAlign:'center',marginBottom:24,lineHeight:1.6}}>
+                Tu equipo de Primera División para toda la temporada.<br/>
+                Si activas el modo y tu equipo <strong>gana</strong> → ×2 tus puntos.<br/>
+                Si <strong>empata</strong> → sin efecto. Si <strong>pierde</strong> → ÷2 (redondeando a la baja).<br/>
+                Mínimo 3 activaciones durante la temporada.
+            </p>
+
+            {elOtroData?.equipo ? (
+                <div style={{background:'#f8f8f8',borderRadius:16,padding:24,textAlign:'center',border:`2px solid ${G.golden}`,marginBottom:24}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,letterSpacing:3,color:G.deepBlue,opacity:.5,textTransform:'uppercase',marginBottom:8}}>Tu equipo</p>
+                    <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'2rem',color:G.deepBlue,letterSpacing:2}}>{elOtroData.equipo}</p>
+                    <div style={{display:'flex',justifyContent:'center',gap:24,marginTop:16}}>
+                        <div style={{textAlign:'center'}}>
+                            <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.8rem',color:G.golden}}>{elOtroData.activaciones || 0}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:G.deepBlue,opacity:.5,letterSpacing:2,textTransform:'uppercase'}}>Activaciones</p>
+                        </div>
+                        <div style={{textAlign:'center'}}>
+                            <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.8rem',color:elOtroData.activaciones >= MIN_ACTIVACIONES_EL_OTRO ? G.golden : G.danger}}>
+                                {MIN_ACTIVACIONES_EL_OTRO - (elOtroData.activaciones || 0) > 0 ? MIN_ACTIVACIONES_EL_OTRO - (elOtroData.activaciones || 0) : 0}
+                            </p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:G.deepBlue,opacity:.5,letterSpacing:2,textTransform:'uppercase'}}>Restantes</p>
+                        </div>
+                    </div>
+                    {(elOtroData.activaciones || 0) < MIN_ACTIVACIONES_EL_OTRO && (
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.danger,marginTop:12,opacity:.8}}>
+                            ⚠️ Necesitas activarlo {MIN_ACTIVACIONES_EL_OTRO - (elOtroData.activaciones || 0)} veces más para evitar la penalización de {PENALIZACION_EL_OTRO} pts.
+                        </p>
+                    )}
+                </div>
+            ) : (
+                <div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,color:G.deepBlue,textAlign:'center',marginBottom:16,letterSpacing:1}}>
+                        Elige tu equipo — una vez elegido no se puede cambiar
+                    </p>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10}}>
+                        {equiposDisponibles.map(equipo => (
+                            <button key={equipo} onClick={() => elegirEquipo(equipo)} disabled={guardando}
+                                style={{padding:'12px 8px',borderRadius:12,border:`1.5px solid rgba(0,31,107,0.15)`,
+                                    background:'#f8f8f8',fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
+                                    color:G.deepBlue,cursor:'pointer',textAlign:'center',transition:'all .2s'}}>
+                                {equipo}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ============================================================================
+// --- MIS 5 ESTRELLAS — Selección de jugadores UDLP por jornada ---
+// ============================================================================
+const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles }) => {
+    const G = styles.colors;
+    const [jornadaActual, setJornadaActual] = useState(null);
+    const [seleccion, setSeleccion] = useState([]);
+    const [miBeneficio, setMiBeneficio] = useState(null);
+    const [clasificacionEstrellas, setClasificacionEstrellas] = useState([]);
+    const [guardando, setGuardando] = useState(false);
+    const [yaGuardado, setYaGuardado] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [posicionFiltro, setPosicionFiltro] = useState('Todos');
+
+    useEffect(() => {
+        if (!currentUser) return;
+        const unsubJornada = onSnapshot(
+            query(collection(db, "jornadas"), where("estado", "in", ["Abierta","En vivo"]), limit(1)),
+            (snap) => {
+                if (!snap.empty) setJornadaActual({ id: snap.docs[0].id, ...snap.docs[0].data() });
+                setLoading(false);
+            }
+        );
+        // Clasificación de estrellas
+        const unsubClasif = onSnapshot(collection(db, "clasificacion_estrellas"), (snap) => {
+            const datos = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.puntosEstrellas||0)-(a.puntosEstrellas||0));
+            setClasificacionEstrellas(datos);
+            // Beneficio del jugador actual según su posición
+            const miPos = datos.findIndex(d => d.id === currentUser);
+            if (miPos === 0) setMiBeneficio('ver_apuestas');
+            else if (miPos === 1) setMiBeneficio('bloquear');
+            else if (miPos === 2) setMiBeneficio('sexta_estrella');
+            else setMiBeneficio(null);
+        });
+        return () => { unsubJornada(); unsubClasif(); };
+    }, [currentUser]);
+
+    useEffect(() => {
+        if (!jornadaActual || !currentUser) return;
+        const unsubSel = onSnapshot(doc(db, "estrellas_seleccion", jornadaActual.id, "jugadores", currentUser), (snap) => {
+            if (snap.exists()) { setSeleccion(snap.data().jugadores || []); setYaGuardado(true); }
+            else { setSeleccion([]); setYaGuardado(false); }
+        });
+        return () => unsubSel();
+    }, [jornadaActual, currentUser]);
+
+    const toggleJugador = (jugador) => {
+        if (yaGuardado) return;
+        const maxEstrellas = miBeneficio === 'sexta_estrella' ? 6 : 5;
+        if (seleccion.find(j => j.nombre === jugador.nombre)) {
+            setSeleccion(seleccion.filter(j => j.nombre !== jugador.nombre));
+        } else if (seleccion.length < maxEstrellas) {
+            setSeleccion([...seleccion, jugador]);
+        }
+    };
+
+    const guardarSeleccion = async () => {
+        if (!jornadaActual || seleccion.length === 0) return;
+        setGuardando(true);
+        try {
+            await setDoc(doc(db, "estrellas_seleccion", jornadaActual.id, "jugadores", currentUser), {
+                jugadores: seleccion, guardadoEn: serverTimestamp(), usuario: currentUser
+            }, { merge: true });
+            setYaGuardado(true);
+        } catch (e) { console.error(e); alert('Error al guardar. Inténtalo de nuevo.'); }
+        setGuardando(false);
+    };
+
+    const posiciones = ['Todos', 'Portero', 'Defensa', 'Centrocampista', 'Delantero'];
+    const plantillaFiltrada = posicionFiltro === 'Todos' ? plantilla : plantilla.filter(j => j.posicion === posicionFiltro);
+    const maxEstrellas = miBeneficio === 'sexta_estrella' ? 6 : 5;
+
+    if (loading) return <div style={{padding:40,textAlign:'center',color:G.deepBlue}}>Cargando...</div>;
+
+    return (
+        <div style={{padding:'20px 16px'}}>
+            <h2 style={styles.title}>MIS 5 ESTRELLAS</h2>
+
+            {/* Beneficio activo */}
+            {miBeneficio && (
+                <div style={{background:`linear-gradient(135deg,${G.deepBlue},#0035b8)`,borderRadius:14,padding:14,marginBottom:20,textAlign:'center'}}>
+                    <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'0.9rem',color:G.golden,letterSpacing:3}}>
+                        {miBeneficio === 'ver_apuestas' && '👁 PUEDES VER LAS APUESTAS DEL RESTO ANTES DEL CIERRE'}
+                        {miBeneficio === 'bloquear' && '🔒 PUEDES BLOQUEAR A UN JUGADOR EN EL OTRO O EN ESTRELLAS'}
+                        {miBeneficio === 'sexta_estrella' && '⭐ PUEDES ELEGIR UNA 6ª ESTRELLA COMODÍN ESTA JORNADA'}
+                    </p>
+                </div>
+            )}
+
+            {!jornadaActual ? (
+                <p style={{textAlign:'center',color:G.deepBlue,opacity:.5,fontFamily:"'Inter',sans-serif",padding:40}}>
+                    No hay jornada activa en este momento.
+                </p>
+            ) : (
+                <>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6,textAlign:'center',marginBottom:16}}>
+                        Jornada {jornadaActual.numeroJornada} — Elige entre 1 y {maxEstrellas} jugadores
+                    </p>
+
+                    {/* Selección actual */}
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:20,minHeight:44}}>
+                        {seleccion.map((j,i) => (
+                            <span key={i} onClick={() => toggleJugador(j)} style={{
+                                background:G.golden,color:'#0a0a0a',borderRadius:20,padding:'6px 14px',
+                                fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,cursor:yaGuardado?'default':'pointer'
+                            }}>⭐ {j.nombre}</span>
+                        ))}
+                        {seleccion.length === 0 && (
+                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.4}}>Ningún jugador seleccionado</span>
+                        )}
+                    </div>
+
+                    {/* Filtro de posición */}
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:16}}>
+                        {posiciones.map(p => (
+                            <button key={p} onClick={() => setPosicionFiltro(p)} style={{
+                                padding:'6px 14px',borderRadius:20,border:'none',cursor:'pointer',
+                                fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,
+                                background: posicionFiltro===p ? G.deepBlue : '#f0f0f0',
+                                color: posicionFiltro===p ? G.golden : G.deepBlue,
+                            }}>{p}</button>
+                        ))}
+                    </div>
+
+                    {/* Lista de jugadores */}
+                    {!yaGuardado && (
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:8,marginBottom:20}}>
+                            {plantillaFiltrada.map((j,i) => {
+                                const seleccionado = seleccion.find(s => s.nombre === j.nombre);
+                                const lleno = seleccion.length >= maxEstrellas && !seleccionado;
+                                return (
+                                    <button key={i} onClick={() => toggleJugador(j)} disabled={lleno}
+                                        style={{
+                                            padding:'10px 8px',borderRadius:12,cursor:lleno?'not-allowed':'pointer',
+                                            border:`2px solid ${seleccionado?G.golden:'rgba(0,31,107,0.12)'}`,
+                                            background: seleccionado?'rgba(255,215,0,0.1)':'#f8f8f8',
+                                            fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,
+                                            color:seleccionado?G.deepBlue:'rgba(0,31,107,0.6)',
+                                            opacity:lleno?0.4:1,textAlign:'center'
+                                        }}>
+                                        <span style={{fontSize:9,display:'block',opacity:.5,marginBottom:2}}>{j.posicion}</span>
+                                        {j.nombre}
+                                        {seleccionado && <span style={{display:'block',fontSize:14,marginTop:2}}>⭐</span>}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {yaGuardado ? (
+                        <div style={{background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.3)',borderRadius:12,padding:16,textAlign:'center'}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.success,fontWeight:600}}>✅ Selección guardada para esta jornada</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Los puntos se calcularán automáticamente tras el partido</p>
+                        </div>
+                    ) : seleccion.length > 0 && (
+                        <button onClick={guardarSeleccion} disabled={guardando} style={{
+                            width:'100%',fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.1rem',letterSpacing:2,
+                            background:G.deepBlue,color:G.golden,border:'none',borderRadius:30,
+                            padding:14,cursor:'pointer',boxShadow:'0 6px 20px rgba(0,31,107,0.25)'
+                        }}>{guardando ? 'GUARDANDO...' : `CONFIRMAR ${seleccion.length} ESTRELLA${seleccion.length>1?'S':''}`}</button>
+                    )}
+                </>
+            )}
+
+            {/* Clasificación de estrellas */}
+            <div style={{marginTop:32}}>
+                <h3 style={{...styles.title,fontSize:'1.1rem',marginBottom:16}}>CLASIFICACIÓN ESTRELLAS</h3>
+                {clasificacionEstrellas.map((j,i) => (
+                    <div key={j.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.06)'}}>
+                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.2rem',color:i<3?G.golden:G.deepBlue,width:24,textAlign:'center'}}>{i+1}</span>
+                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:600,color:G.deepBlue}}>{j.id}</span>
+                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.1rem',color:G.deepBlue}}>{j.puntosEstrellas||0} pts</span>
+                        {i===0&&<span style={{fontSize:16}}>👁</span>}
+                        {i===1&&<span style={{fontSize:16}}>🔒</span>}
+                        {i===2&&<span style={{fontSize:16}}>⭐</span>}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// ============================================================================
+// --- COMPONENTE PRINCIPAL APP ---
+// ============================================================================
+// --- LOGIN SCREEN — NOMBRE + PIN ---
+// ============================================================================
+const loginConPinCallable = httpsCallable(functions, "loginConPin");
+
+const LoginScreen = ({ onLoginSuccess }) => {
     const [slide, setSlide] = useState(0);
     const [data, setData] = useState(null);
     const [clasifRevealed, setClasifRevealed] = useState(0);
@@ -2881,131 +3103,114 @@ const LoginScreen = ({ onLoginSuccess }) => {
 };
 
 function App() {
-    const [screen, setScreen] = useState('splash');
+    const [screen, setScreen] = useState('login');
     const [activeTab, setActiveTab] = useState('miJornada');
     const [currentUser, setCurrentUser] = useState(null);
+    const [isAdmin, setIsAdmin] = useState(false);
     const [teamLogos, setTeamLogos] = useState({});
-    const [plantilla, setPlantilla] = useState(PLANTILLA_ACTUALIZADA);
+    const [plantilla, setPlantilla] = useState(PLANTILLA_FALLBACK);
     const [userProfiles, setUserProfiles] = useState({});
     const [onlineUsers, setOnlineUsers] = useState({});
     const [clasificacionData, setClasificacionData] = useState([]);
-    const [showWelcomeModal, setShowWelcomeModal] = useState(false);
-    const [showGala, setShowGala] = useState(false);
 
+    // ── Estilos globales y estado RTDB público al arrancar ──────────────
     useEffect(() => {
         document.title = "PORRA UDLP 26/27";
-        let link = document.querySelector("link[rel~='icon']");
-        if (!link) {
-            link = document.createElement('link');
-            link.rel = 'icon';
-            document.head.appendChild(link);
-        }
-        link.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⭐</text></svg>';
-
-        const styleSheet = document.createElement("style"); 
+        const styleSheet = document.createElement("style");
         styleSheet.innerText = `
-            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600;700&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600;700&family=Inter:wght@300;400;600&display=swap');
             * { margin: 0; padding: 0; box-sizing: border-box; }
             html { font-size: 16px !important; -webkit-text-size-adjust: 100%; }
-            body, #root { width: 100%; min-width: 100%; overflow-x: hidden; background-color: ${colors.deepBlue}; }
+            body, #root { width: 100%; min-width: 100%; overflow-x: hidden; background-color: #f0f0f0; }
             @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-            @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
             @keyframes slideInFromRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
-            @keyframes pulse { 0% { transform: scale(1); } 100% { transform: scale(1.05); } }
             .content-enter-active { animation: slideInFromRight 0.4s ease-out; }
             @keyframes blink-live { 50% { background-color: #5a0000; } }
         `;
         document.head.appendChild(styleSheet);
-        
-        // El login anónimo automático se elimina: ahora la sesión se inicia
-        // explícitamente con signInWithCustomToken tras validar nombre+PIN
-        // en LoginScreen (ver componente LoginScreen y handleLoginSuccess).
-        
-        const unsubEscudos = onSnapshot(doc(db, "configuracion", "escudos"), (docSnap) => { if (docSnap.exists()) setTeamLogos(docSnap.data()); });
-        const unsubClasificacion = onSnapshot(collection(db, "clasificacion"), (snapshot) => { 
-            const profiles = {}; const clasificacion = []; 
-            snapshot.forEach(doc => { const data = doc.data(); profiles[doc.id] = data; clasificacion.push({id: doc.id, ...data}); }); 
-            setUserProfiles(profiles); setClasificacionData(clasificacion);
-        });
-        const unsubStatus = onValue(ref(rtdb, 'status/'), (snapshot) => { setOnlineUsers(snapshot.val() || {}); });
-
-        const splashTimer = setTimeout(() => { setScreen('login'); }, 2500);
-
-        return () => { document.head.removeChild(styleSheet); unsubEscudos(); unsubClasificacion(); unsubStatus(); clearTimeout(splashTimer); }
+        const unsubStatus = onValue(ref(rtdb, 'status/'), (snap) => { setOnlineUsers(snap.val() || {}); });
+        return () => { document.head.removeChild(styleSheet); unsubStatus(); };
     }, []);
 
-    // handleLoginSuccess se ejecuta DESPUÉS de que LoginScreen ya validó
-    // nombre+PIN y completó signInWithCustomToken — aquí solo gestionamos
-    // estado local de la app (currentUser, presencia online, gala, etc.)
+    // ── Tras login: cargar datos privados y plantilla vía API ───────────
     const handleLoginSuccess = async (user) => {
         try {
             setCurrentUser(user);
-            set(ref(rtdb, 'status/' + user), true); onDisconnect(ref(rtdb, 'status/' + user)).set(false);
+            set(ref(rtdb, 'status/' + user), true);
+            onDisconnect(ref(rtdb, 'status/' + user)).set(false);
+
+            // Verificar si es admin
+            const adminSnap = await getDoc(doc(db, "admins", auth.currentUser?.uid || ''));
+            setIsAdmin(adminSnap.exists());
+
+            // Escudos y clasificación — requieren auth
+            onSnapshot(doc(db, "configuracion", "escudos"), (snap) => { if (snap.exists()) setTeamLogos(snap.data()); });
+            onSnapshot(collection(db, "clasificacion"), (snap) => {
+                const profiles = {}; const clasif = [];
+                snap.forEach(d => { profiles[d.id] = d.data(); clasif.push({ id: d.id, ...d.data() }); });
+                setUserProfiles(profiles); setClasificacionData(clasif);
+            });
+
+            // Cargar plantilla desde Firestore (actualizada por Cloud Function vía API)
+            const plantillaSnap = await getDoc(doc(db, "configuracion", "plantilla_udlp"));
+            if (plantillaSnap.exists() && plantillaSnap.data().jugadores?.length > 0) {
+                setPlantilla(plantillaSnap.data().jugadores);
+            }
+            // Si no hay plantilla en Firestore, usamos el fallback hardcodeado
+
             setScreen('app');
-            // Mostrar gala de fin de temporada si no la ha visto ya
-            const galaKey = 'galaFinTemporada2026_' + user;
-            if (!localStorage.getItem(galaKey)) { setShowGala(true); }
-        } catch (error) { alert("Error al iniciar sesión."); }
+        } catch (error) {
+            console.error('Error en handleLoginSuccess:', error);
+            alert("Error al iniciar sesión. Inténtalo de nuevo.");
+        }
     };
 
     const handleLogout = async () => {
         if (currentUser) set(ref(rtdb, 'status/' + currentUser), false);
         setCurrentUser(null);
+        setIsAdmin(false);
         setScreen('login');
-        try { await signOut(auth); } catch (e) { console.error('Error al cerrar sesión:', e); }
+        try { await signOut(auth); } catch (e) { console.error(e); }
     };
 
     if (APP_EN_CONSTRUCCION) return <ModoConstruccion />;
-    if (screen === 'splash') return <EpicSplashScreen />;
     if (screen === 'login') return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'miJornada': return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
-            case 'elCamino': return <ElCaminoScreen user={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
-            case 'laJornada': return <LaJornadaScreen userProfiles={userProfiles} onlineUsers={onlineUsers} teamLogos={teamLogos} />;
+            case 'miJornada':    return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
+            case 'laJornada':   return <LaJornadaScreen userProfiles={userProfiles} onlineUsers={onlineUsers} teamLogos={teamLogos} />;
+            case 'elOtro':      return <ElOtroScreen currentUser={currentUser} userProfiles={userProfiles} />;
+            case 'estrellas':   return <MisEstrellasScreen currentUser={currentUser} plantilla={plantilla} userProfiles={userProfiles} />;
             case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
-            case 'ligaRegular': return <LigaRegularScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
+            case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
-            case 'pagos': return <PagosScreen />;
-            case 'calendario': return <CalendarioScreen teamLogos={teamLogos} />;
-            case 'porraAnual': return <PorraAnualScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
-            case 'admin': return currentUser === 'Juanma' ? <AdminPanelScreen plantilla={plantilla} /> : null;
-            default: return null;
+            case 'pagos':       return <PagosScreen />;
+            case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantilla} /> : null;
+            default:            return null;
         }
     };
 
     return (
-        <>
-            {showGala && currentUser && (
-                <GalaFinTemporada 
-                    currentUser={currentUser}
-                    userProfiles={userProfiles}
-                    onClose={() => {
-                        setShowGala(false);
-                        localStorage.setItem('galaFinTemporada2026_' + currentUser, '1');
-                    }}
-                />
-            )}
-            {showWelcomeModal && <PlayoffWelcomeModal onClose={() => setShowWelcomeModal(false)} />}
-            <div style={styles.container}>
-                <div style={styles.card}>
-                    <nav style={styles.navbar}>
-                        <button onClick={() => setActiveTab('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>⭐ Mi Jornada</button>
-                        <button onClick={() => setActiveTab('elCamino')} style={activeTab === 'elCamino' ? styles.navButtonActive : styles.navButton}>🏆 El Camino</button>
-                        <button onClick={() => setActiveTab('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button>
-                        <button onClick={() => setActiveTab('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button>
-                        <button onClick={() => setActiveTab('ligaRegular')} style={activeTab === 'ligaRegular' ? styles.navButtonActive : styles.navButton}>Liga Reg.</button>
-                        <button onClick={() => setActiveTab('estadisticas')} style={activeTab === 'estadisticas' ? styles.navButtonActive : styles.navButton}>Estadísticas</button>
-                        <button onClick={() => setActiveTab('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>
-                        <button onClick={() => setActiveTab('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button>
-                        <button onClick={() => setActiveTab('porraAnual')} style={activeTab === 'porraAnual' ? styles.navButtonActive : styles.navButton}>📅 Porra Anual</button>
-                        {currentUser === 'Juanma' && (<button onClick={() => setActiveTab('admin')} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>)}
-                        <button onClick={handleLogout} style={styles.logoutButton}>Salir</button>
-                    </nav>
-                    <div key={activeTab} className="content-enter-active" style={{paddingTop: '15px'}}>{renderContent()}</div>
+        <div style={styles.container}>
+            <div style={styles.card}>
+                <nav style={styles.navbar}>
+                    <button onClick={() => setActiveTab('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button>
+                    <button onClick={() => setActiveTab('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button>
+                    <button onClick={() => setActiveTab('elOtro')} style={activeTab === 'elOtro' ? styles.navButtonActive : styles.navButton}>El Otro</button>
+                    <button onClick={() => setActiveTab('estrellas')} style={activeTab === 'estrellas' ? styles.navButtonActive : styles.navButton}>5 Estrellas</button>
+                    <button onClick={() => setActiveTab('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button>
+                    <button onClick={() => setActiveTab('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button>
+                    <button onClick={() => setActiveTab('estadisticas')} style={activeTab === 'estadisticas' ? styles.navButtonActive : styles.navButton}>Estadísticas</button>
+                    <button onClick={() => setActiveTab('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>
+                    {isAdmin && <button onClick={() => setActiveTab('admin')} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>}
+                    <button onClick={handleLogout} style={styles.logoutButton}>Salir</button>
+                </nav>
+                <div key={activeTab} className="content-enter-active" style={{paddingTop: '15px'}}>
+                    {renderContent()}
                 </div>
             </div>
+        </div>
         </>
     );
 }
