@@ -895,7 +895,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         sincronizar(); // Primera vez inmediata
         var intervalo = setInterval(sincronizar, 5 * 60 * 1000); // Cada 5 min
         return function() { clearInterval(intervalo); };
-    }, [jornada && jornada.id, jornada && jornada.estado]);
+    }, [jornada]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Cargar jornada activa
     useEffect(function() {
@@ -1233,7 +1233,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
             setEscudoActivo(function(v) { return (v + 1) % EQUIPOS_PRIMERA.length; });
         }, 160);
         return function() { clearInterval(t); };
-    }, [slide]);
+    }, [slide]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Animación jugadores en slide 11
     useEffect(function() {
@@ -1242,7 +1242,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
             setJugadorActivo(function(v) { return (v + 1) % Math.max(1, JUGADORES_TUTORIAL.length); });
         }, 700);
         return function() { clearInterval(t); };
-    }, [slide]);
+    }, [slide]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Demo multiplicador en slide 10
     useEffect(function() {
@@ -1379,7 +1379,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
             <div style={{textAlign:'center'}}>
                 <p style={S.eyebrow}>Tu apuesta semanal</p>
                 <h1 style={S.titulo}>¿CÓMO SE<br/>APUESTA?</h1>
-                <p style={S.cuerpo} style={{fontSize:14}}>Cada jornada rellenas el marcador y el 1X2 por separado — puedes contradecirte, eso es estrategia.</p>
+                <p style={{...S.cuerpo, fontSize:14}}>Cada jornada rellenas el marcador y el 1X2 por separado — puedes contradecirte, eso es estrategia.</p>
                 <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',maxWidth:360}}>
                     <div style={{...S.cardGold,display:'flex',alignItems:'center',gap:14,padding:'16px 18px',textAlign:'left'}}>
                         <span style={{fontSize:32,flexShrink:0}}>⚽</span>
@@ -1751,7 +1751,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,color:'rgba(255,215,0,0.4)',textTransform:'uppercase',marginBottom:16}}>
                     15/20 plazas · quedan 5
                 </p>
-                <p style={S.cuerpo} style={{fontSize:14}}>
+                <p style={{...S.cuerpo, fontSize:14}}>
                     La liga admite hasta <strong style={{color:'#FFD700'}}>20 jugadores</strong>, uno por cada equipo de Primera División.
                     Si traes a alguien, <strong style={{color:'#FFD700'}}>la próxima temporada tendrás tu propia liga</strong>.
                 </p>
@@ -3562,18 +3562,20 @@ const AdminPanelScreen = ({ plantilla, jugadores }) => {
         var unsub = onSnapshot(
             query(collection(db, "jornadas"), orderBy("numeroJornada", "asc")), // J1 primero
             function(snap) { 
-                setJornadas(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
-                // Auto-expandir la primera jornada abierta o en vivo
-                snap.docs.forEach(function(d) {
-                    var data = d.data();
-                    if ((data.estado === 'Abierta' || data.estado === 'En vivo') && expandida === null) {
-                        setExpandida(d.id);
-                    }
+                var jornadasData = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+                setJornadas(jornadasData);
+                // Auto-expandir la primera jornada abierta o en vivo (solo si no hay ninguna expandida)
+                setExpandida(function(actual) {
+                    if (actual !== null) return actual;
+                    var activa = snap.docs.find(function(d) {
+                        return d.data().estado === 'Abierta' || d.data().estado === 'En vivo';
+                    });
+                    return activa ? activa.id : null;
                 });
             }
         ); 
         return function() { unsub(); }; 
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sincronizar resultado en directo desde API-Football
     var sincronizarConAPI = async function(jornada) {
