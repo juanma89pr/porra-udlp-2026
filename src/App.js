@@ -483,6 +483,51 @@ const PerfilScreen = ({ currentUser }) => {
 
 
 
+
+// ============================================================================
+// HELPER — Comprobar si un jugador tiene la inscripción pagada
+// ============================================================================
+var jugadorHaPagado = function(nombre, pagosArr) {
+    return pagosArr.some(function(p) {
+        return p.jugador === nombre &&
+               p.tipo === 'inscripcion' &&
+               p.estado !== 'fallido' &&
+               p.estado !== 'rechazado';
+    });
+};
+
+// Banner de pago pendiente — se muestra en lugar del contenido bloqueado
+var BannerPagoPendiente = function({ onIrAPagos }) {
+    return (
+        <div style={{
+            background:'linear-gradient(135deg,#001F6B 0%,#0035b8 100%)',
+            borderRadius:20, padding:32, textAlign:'center', margin:'20px 0',
+        }}>
+            <div style={{fontSize:52,marginBottom:12}}>🔒</div>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,
+                color:'#FFD700',textTransform:'uppercase',marginBottom:8}}>
+                Inscripción pendiente
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:14,
+                color:'rgba(255,255,255,0.65)',lineHeight:1.75,marginBottom:24,maxWidth:280,margin:'0 auto 24px'}}>
+                Para apostar, elegir tu equipo o participar en las estrellas necesitas confirmar tu inscripción de <strong style={{color:'#FFD700'}}>5€</strong>.
+            </p>
+            <button onClick={onIrAPagos} style={{
+                fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,
+                background:'#FFD700',color:'#001F6B',border:'none',borderRadius:30,
+                padding:'14px 32px',cursor:'pointer',textTransform:'uppercase',
+                boxShadow:'0 6px 24px rgba(255,215,0,0.35)',fontWeight:700,
+            }}>
+                Pagar inscripción — 5€ →
+            </button>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,
+                color:'rgba(255,255,255,0.3)',marginTop:16,lineHeight:1.5}}>
+                Si alguien va a pagar por ti, díselo — puede hacerlo desde su cuenta.
+            </p>
+        </div>
+    );
+};
+
 // ============================================================================
 // LOGOS DE EQUIPOS — URLs públicas de Wikipedia (sin API key, sin seed)
 // Funcionan siempre desde cualquier dispositivo
@@ -964,7 +1009,7 @@ const ModoConstruccion = () => {
 // --- PANTALLAS DE USUARIO ---
 // ============================================================================
 
-const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers }) => {
+const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers, pagos, onIrAPagos }) => {
     var G = styles.colors;
     var [jornada, setJornada] = useState(null);
     var [loading, setLoading] = useState(true);
@@ -1084,6 +1129,16 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     };
 
     if (loading) return <LoadingSkeleton />;
+
+    // Bloqueo hasta que pague la inscripción
+    if (!jugadorHaPagado(user, pagos || [])) {
+        return (
+            <div style={{paddingBottom:40}}>
+                <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>MI JORNADA</h2>
+                <BannerPagoPendiente onIrAPagos={onIrAPagos} />
+            </div>
+        );
+    }
 
     var cerrado = jornada && jornada.estado !== 'Abierta';
     var finalizada = jornada && jornada.estado === 'Finalizada';
@@ -1326,7 +1381,21 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
     var [escudoActivo, setEscudoActivo] = useState(0);
     var [jugadorActivo, setJugadorActivo] = useState(0);
     var [jugadoresElegidos, setJugadoresElegidos] = useState([]);
-    var [multDemo, setMultDemo] = useState(0); // 0=×2, 1=×2.5, 2=×3
+    var [multDemo, setMultDemo] = useState(0);
+    var audioRef = { current: null };
+
+    // Música épica de fondo — volumen bajo
+    useEffect(function() {
+        var audio = new Audio('/intro.mp3');
+        audio.volume = 0.18;
+        audio.loop = true;
+        audio.play().catch(function() {}); // silencia el error si el navegador bloquea autoplay
+        audioRef.current = audio;
+        return function() {
+            audio.pause();
+            audio.currentTime = 0;
+        };
+    }, []);
 
     var EQUIPOS_PRIMERA = [
         "FC Barcelona","Real Madrid","Atlético de Madrid","Villarreal CF",
@@ -1336,361 +1405,259 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
         "Real Valladolid","Racing Santander","RC Deportivo","Málaga CF"
     ];
 
-    var JUGADORES_TUTORIAL = (plantilla || []).filter(function(j) { return j.apiId > 0; }).slice(0, 8);
-
-    // Cascada de escudos en slide 9
-    useEffect(function() {
-        if (slide !== 9) return;
-        var t = setInterval(function() {
-            setEscudoActivo(function(v) { return (v + 1) % EQUIPOS_PRIMERA.length; });
-        }, 160);
-        return function() { clearInterval(t); };
-    }, [slide]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Animación jugadores en slide 11
-    useEffect(function() {
-        if (slide !== 11) return;
-        var t = setInterval(function() {
-            setJugadorActivo(function(v) { return (v + 1) % Math.max(1, JUGADORES_TUTORIAL.length); });
-        }, 700);
-        return function() { clearInterval(t); };
-    }, [slide]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Demo multiplicador en slide 10
-    useEffect(function() {
-        if (slide !== 10) return;
-        var t = setInterval(function() {
-            setMultDemo(function(v) { return (v + 1) % 3; });
-        }, 1800);
-        return function() { clearInterval(t); };
-    }, [slide]);
-
-    // 16 slides en total
+    var JUGADORES_TUTORIAL = (plantilla || []).filter(function(j) { return j.apiId > 0; }).slice(0,8);
     var TOTAL_SLIDES = 17;
 
+    useEffect(function() {
+        if (slide !== 11) return;
+        var t = setInterval(function() { setEscudoActivo(function(v){return(v+1)%EQUIPOS_PRIMERA.length;}); }, 160);
+        return function(){clearInterval(t);};
+    }, [slide]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(function() {
+        if (slide !== 9) return;
+        var t = setInterval(function() { setJugadorActivo(function(v){return(v+1)%Math.max(1,JUGADORES_TUTORIAL.length);}); }, 700);
+        return function(){clearInterval(t);};
+    }, [slide]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(function() {
+        if (slide !== 12) return;
+        var t = setInterval(function() { setMultDemo(function(v){return(v+1)%3;}); }, 1800);
+        return function(){clearInterval(t);};
+    }, [slide]);
+
     var siguiente = function() {
-        if (slide < TOTAL_SLIDES - 1) setSlide(function(v) { return v + 1; });
+        if (slide < TOTAL_SLIDES-1) setSlide(function(v){return v+1;});
         else cerrar();
     };
 
     var cerrar = function() {
         setSaliendo(true);
         setTimeout(function() {
-            localStorage.setItem('tutorial_2627_' + user, '1');
+            localStorage.setItem('tutorial_2627_'+user, '1');
             onClose();
         }, 400);
     };
 
     var toggleJugador = function(j) {
-        var ya = jugadoresElegidos.find(function(x) { return x.nombre === j.nombre; });
-        if (ya) { setJugadoresElegidos(jugadoresElegidos.filter(function(x) { return x.nombre !== j.nombre; })); }
-        else if (jugadoresElegidos.length < 5) { setJugadoresElegidos([...jugadoresElegidos, j]); }
+        var ya = jugadoresElegidos.find(function(x){return x.nombre===j.nombre;});
+        if (ya) setJugadoresElegidos(jugadoresElegidos.filter(function(x){return x.nombre!==j.nombre;}));
+        else if (jugadoresElegidos.length < 5) setJugadoresElegidos([...jugadoresElegidos, j]);
     };
 
-    // Estilos base reutilizables
+    // ── ESTILOS PIZARRA TÁCTICA ──────────────────────────────────────────────
+    var fondos = Array(TOTAL_SLIDES).fill('#fafaf8');
+
+    // SVG del campo de fútbol como fondo del tutorial
+    var CampoSVG = (
+        <svg style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:0}}
+            viewBox="0 0 400 700" fill="none" preserveAspectRatio="xMidYMid slice">
+            <rect x="38" y="58" width="324" height="584" stroke="#001F6B" strokeWidth="0.9" opacity="0.04" rx="2"/>
+            <line x1="38" y1="350" x2="362" y2="350" stroke="#001F6B" strokeWidth="0.7" opacity="0.04"/>
+            <circle cx="200" cy="350" r="52" stroke="#001F6B" strokeWidth="0.7" opacity="0.04"/>
+            <circle cx="200" cy="350" r="2.5" fill="#FFD700" opacity="0.2"/>
+            <rect x="108" y="58" width="184" height="100" stroke="#001F6B" strokeWidth="0.7" opacity="0.04"/>
+            <rect x="148" y="58" width="104" height="54" stroke="#001F6B" strokeWidth="0.5" opacity="0.03"/>
+            <rect x="108" y="542" width="184" height="100" stroke="#001F6B" strokeWidth="0.7" opacity="0.04"/>
+            <rect x="148" y="588" width="104" height="54" stroke="#001F6B" strokeWidth="0.5" opacity="0.03"/>
+            <path d="M138 158 Q200 184 262 158" stroke="#001F6B" strokeWidth="0.5" opacity="0.03"/>
+            <path d="M138 542 Q200 516 262 542" stroke="#001F6B" strokeWidth="0.5" opacity="0.03"/>
+            <circle cx="200" cy="118" r="2" fill="#001F6B" opacity="0.05"/>
+            <circle cx="200" cy="582" r="2" fill="#001F6B" opacity="0.05"/>
+        </svg>
+    );
+
     var S = {
-        eyebrow: { fontFamily:"'Teko',sans-serif", fontSize:11, letterSpacing:5, color:'rgba(255,215,0,0.5)', textTransform:'uppercase', marginBottom:10 },
-        titulo: { fontFamily:"'Teko',sans-serif", fontWeight:700, color:'#FFD700', letterSpacing:3, lineHeight:1, textAlign:'center', marginBottom:18, fontSize:'clamp(2.6rem,11vw,4rem)' },
-        tituloMega: { fontFamily:"'Teko',sans-serif", fontWeight:700, color:'#FFD700', letterSpacing:3, lineHeight:1, textAlign:'center', marginBottom:18, fontSize:'clamp(3.2rem,13vw,5rem)' },
-        cuerpo: { fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,4vw,16px)', color:'rgba(255,255,255,0.65)', lineHeight:1.8, textAlign:'center', maxWidth:340, margin:'0 auto 20px' },
-        infoBox: { background:'rgba(255,215,0,0.08)', border:'1px solid rgba(255,215,0,0.2)', borderRadius:14, padding:'14px 20px', maxWidth:360, width:'100%' },
-        card: { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:14, padding:'14px 12px' },
-        cardGold: { background:'rgba(255,215,0,0.07)', border:'1px solid rgba(255,215,0,0.2)', borderRadius:14, padding:'14px 12px' },
-        tag: { display:'inline-block', background:'rgba(255,215,0,0.1)', border:'1px solid rgba(255,215,0,0.25)', borderRadius:20, padding:'8px 22px', marginBottom:18 },
-        sep: { width:40, height:2, background:'rgba(255,215,0,0.25)', borderRadius:1, margin:'14px auto' },
-        iconBig: { fontSize:'clamp(58px,14vw,78px)', display:'block', marginBottom:18, animation:'floatIcon 3s ease-in-out infinite' },
-        ptoRow: { display:'flex', alignItems:'center', gap:12, background:'rgba(255,255,255,0.04)', borderRadius:10, padding:'10px 14px', width:'100%', maxWidth:360 },
+        eyebrow: {fontFamily:"'Inter',sans-serif",fontSize:10,letterSpacing:6,color:'rgba(0,31,107,0.4)',textTransform:'uppercase',marginBottom:8,textAlign:'center'},
+        titulo: {fontFamily:"'Bebas Neue',sans-serif",fontWeight:400,color:'#001F6B',letterSpacing:3,lineHeight:1,textAlign:'center',marginBottom:16,fontSize:'clamp(2.6rem,11vw,3.8rem)'},
+        tituloMega: {fontFamily:"'Bebas Neue',sans-serif",fontWeight:400,color:'#001F6B',letterSpacing:3,lineHeight:1,textAlign:'center',marginBottom:16,fontSize:'clamp(3.2rem,13vw,5rem)'},
+        cuerpo: {fontFamily:"'Inter',sans-serif",fontSize:'clamp(13px,3.5vw,15px)',color:'rgba(0,0,0,0.55)',lineHeight:1.8,textAlign:'center',maxWidth:340,margin:'0 auto 18px'},
+        sep: {width:'100%',maxWidth:160,height:1,margin:'12px auto',background:'linear-gradient(90deg,transparent,rgba(0,31,107,0.12),transparent)'},
+        sepDot: {display:'flex',alignItems:'center',gap:10,justifyContent:'center',margin:'12px 0'},
+        card: {background:'rgba(255,255,255,0.9)',border:'1px solid rgba(0,31,107,0.1)',borderRadius:14,padding:'13px 14px'},
+        cardAzul: {background:'rgba(0,31,107,0.03)',border:'1px solid rgba(0,31,107,0.12)',borderRadius:14,padding:'13px 14px'},
+        cardDorado: {background:'rgba(255,215,0,0.06)',border:'1px solid rgba(255,215,0,0.35)',borderRadius:14,padding:'13px 14px'},
+        infoBox: {background:'rgba(0,31,107,0.04)',border:'1px solid rgba(0,31,107,0.1)',borderRadius:14,padding:'13px 16px',width:'100%',maxWidth:360},
+        badge: {display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,215,0,0.12)',border:'1.5px solid rgba(255,215,0,0.45)',borderRadius:20,padding:'4px 14px',marginBottom:10},
+        ptoRow: {display:'flex',alignItems:'center',gap:10,background:'rgba(255,255,255,0.9)',border:'1px solid rgba(0,31,107,0.08)',borderRadius:10,padding:'10px 14px',width:'100%',maxWidth:360},
+        statRow: {display:'flex',width:'100%',maxWidth:360,border:'1px solid rgba(0,31,107,0.08)',borderRadius:14,overflow:'hidden',background:'rgba(255,255,255,0.85)'},
+        iconBig: {fontSize:'clamp(56px,13vw,72px)',display:'block',marginBottom:16,animation:'floatIcon 3s ease-in-out infinite',textAlign:'center'},
     };
 
     var renderSlide = function() {
         switch(slide) {
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 0: PORTADA
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 0: return (
             <div style={{textAlign:'center'}}>
-                <div style={{width:90,height:108,margin:'0 auto 24px',position:'relative'}}>
-                    <img src="/escudo.png" alt="UDLP"
-                        style={{width:'100%',height:'100%',objectFit:'contain',
-                            filter:'drop-shadow(0 0 40px rgba(255,215,0,0.45))',
-                            animation:'floatIcon 3s ease-in-out infinite'}}
-                        onError={function(e){e.target.style.display='none';}} />
-                </div>
-                <p style={S.eyebrow}>Temporada 26/27</p>
-                <h1 style={S.tituloMega}>BIENVENIDO{user ? <>,<br/>{user.toUpperCase()}</> : ''}</h1>
-                <p style={S.cuerpo}>
-                    La porra más épica de la familia arranca una nueva temporada.
-                    Nuevas reglas, nuevo sistema, misma pasión por los colores.
-                </p>
-                <div style={S.tag}><span style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:3,color:'#FFD700',textTransform:'uppercase'}}>
-                    Desliza para descubrir las novedades
-                </span></div>
+                <img src="/escudo.png" alt="UDLP"
+                    style={{width:80,height:96,objectFit:'contain',marginBottom:20,
+                        filter:'drop-shadow(0 4px 18px rgba(0,31,107,0.18))',
+                        animation:'floatIcon 3s ease-in-out infinite'}}
+                    onError={function(e){e.target.style.display='none';}} />
+                <div style={S.eyebrow}>Temporada 26/27</div>
+                <h1 style={S.tituloMega}>BIENVENIDO{user?<>,<br/>{user.toUpperCase()}</>:''}</h1>
+                <div style={S.sepDot}><div style={{flex:1,maxWidth:80,height:1,background:'linear-gradient(90deg,transparent,rgba(0,31,107,0.1))'}}/>
+                <div style={{width:4,height:4,borderRadius:'50%',background:'#FFD700'}}/><div style={{flex:1,maxWidth:80,height:1,background:'linear-gradient(90deg,rgba(0,31,107,0.1),transparent)'}}/></div>
+                <p style={S.cuerpo}>La porra más épica de la familia arranca una nueva temporada. Nuevas reglas, misma pasión por los colores.</p>
+                <div style={{...S.badge}}><span style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'#001F6B',textTransform:'uppercase'}}>Desliza para descubrir las novedades</span></div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 1: LA UDLP
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 1: return (
             <div style={{textAlign:'center'}}>
                 <span style={S.iconBig}>🏟️</span>
-                <p style={S.eyebrow}>UD Las Palmas · 2º año en Segunda</p>
+                <div style={S.eyebrow}>UD Las Palmas · 2º año en Segunda</div>
                 <h1 style={S.titulo}>EL AÑO<br/>DEL ASCENSO</h1>
-                <p style={S.cuerpo}>
-                    El año pasado estuvimos <strong style={{color:'#FFD700'}}>a las puertas del ascenso</strong>.
-                    El playoff nos dejó a un paso. Esta temporada la UDLP va a por todas con Rubén de la Barrera al mando —
-                    y ustedes estarán en cada partido.
-                </p>
-                <div style={{display:'flex',justifyContent:'center',gap:0,background:'rgba(255,255,255,0.04)',borderRadius:14,overflow:'hidden',maxWidth:340,width:'100%'}}>
-                    {[['42','Jornadas'],['15 AGO','Primer partido'],['20','Jugadores']].map(function(s,i) {
-                        return (
-                            <div key={i} style={{flex:1,padding:'16px 8px',textAlign:'center',borderRight:i<2?'1px solid rgba(255,255,255,0.06)':'none'}}>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:26,fontWeight:700,color:'#FFD700'}}>{s[0]}</p>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginTop:2}}>{s[1]}</p>
-                            </div>
-                        );
-                    })}
+                <p style={S.cuerpo}>El año pasado estuvimos <strong style={{color:'#001F6B'}}>a un paso del ascenso</strong>. El playoff nos dejó a las puertas. Esta temporada la UDLP va a por todas — y ustedes estarán en cada partido.</p>
+                <div style={S.statRow}>
+                    {[['42','Jornadas'],['15 AGO','Primer partido'],['20','Jugadores']].map(function(s,i){return(
+                        <div key={i} style={{flex:1,padding:'14px 8px',textAlign:'center',borderRight:i<2?'1px solid rgba(0,31,107,0.06)':'none'}}>
+                            <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:'#001F6B',letterSpacing:1}}>{s[0]}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,0,0,0.35)',letterSpacing:2,textTransform:'uppercase',marginTop:2}}>{s[1]}</p>
+                        </div>
+                    );})}
                 </div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 2: LA PORRA — QUÉ ES
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 2: return (
             <div style={{textAlign:'center'}}>
                 <span style={S.iconBig}>⚽</span>
-                <p style={S.eyebrow}>El juego central de siempre</p>
+                <div style={S.eyebrow}>El juego central de siempre</div>
                 <h1 style={S.titulo}>LA PORRA</h1>
-                <p style={S.cuerpo}>
-                    Cada semana, antes del partido de la UDLP, haces tu apuesta.
-                    Adivinas el <strong style={{color:'#FFD700'}}>marcador exacto</strong> y, si aciertas,
-                    te llevas el <strong style={{color:'#FFD700'}}>bote de la jornada</strong>.
-                    Si nadie acierta, el bote se acumula para la siguiente semana.
-                </p>
-                <div style={{display:'flex',gap:10,justifyContent:'center',maxWidth:360,width:'100%'}}>
-                    <div style={{...S.cardGold,flex:1,textAlign:'center'}}>
-                        <div style={{fontSize:28,marginBottom:8}}>🎯</div>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(255,215,0,0.7)',marginBottom:4,textTransform:'uppercase'}}>Marcador exacto</p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.4)',lineHeight:1.5}}>Ganas el bote acumulado</p>
+                <p style={S.cuerpo}>Cada semana, antes del partido de la UDLP, haces tu apuesta. Adivinas el <strong style={{color:'#001F6B'}}>marcador exacto</strong> y, si aciertas, te llevas el <strong style={{color:'#001F6B'}}>bote acumulado</strong>.</p>
+                <div style={{display:'flex',gap:10,width:'100%',maxWidth:360}}>
+                    <div style={{...S.cardDorado,flex:1,textAlign:'center'}}>
+                        <div style={{fontSize:24,marginBottom:6}}>🎯</div>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:3}}>Exacto</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',lineHeight:1.5}}>Ganas el bote</p>
                     </div>
                     <div style={{...S.card,flex:1,textAlign:'center'}}>
-                        <div style={{fontSize:28,marginBottom:8}}>💰</div>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(255,255,255,0.5)',marginBottom:4,textTransform:'uppercase'}}>Bote acumulado</p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.35)',lineHeight:1.5}}>Si nadie acierta, crece</p>
+                        <div style={{fontSize:24,marginBottom:6}}>💰</div>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:3}}>Nadie acierta</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.35)',lineHeight:1.5}}>El bote crece</p>
                     </div>
                 </div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 3: LA PORRA — CÓMO SE APUESTA
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 3: return (
             <div style={{textAlign:'center'}}>
-                <p style={S.eyebrow}>Tu apuesta semanal</p>
+                <div style={S.eyebrow}>Tu apuesta semanal</div>
                 <h1 style={S.titulo}>¿CÓMO SE<br/>APUESTA?</h1>
-                <p style={{...S.cuerpo, fontSize:14}}>Cada jornada rellenas el marcador y el 1X2 por separado — puedes contradecirte, eso es estrategia.</p>
-                <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',maxWidth:360}}>
-                    <div style={{...S.cardGold,display:'flex',alignItems:'center',gap:14,padding:'16px 18px',textAlign:'left'}}>
-                        <span style={{fontSize:32,flexShrink:0}}>⚽</span>
-                        <div>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:1,color:'#FFD700',marginBottom:3}}>Marcador exacto</p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.5)',lineHeight:1.5}}>Eliges el resultado: 2-1, 0-0, 3-2...{'\n'}Si aciertas, ganas el bote + puntos</p>
-                        </div>
+                <p style={{...S.cuerpo,fontSize:13}}>Rellenas el marcador y el 1X2 por separado. Pueden contradecirse — eso es estrategia.</p>
+                <div style={{display:'flex',flexDirection:'column',gap:9,width:'100%',maxWidth:360}}>
+                    <div style={{...S.cardAzul,display:'flex',alignItems:'center',gap:14,padding:'14px 16px',textAlign:'left'}}>
+                        <span style={{fontSize:28,flexShrink:0}}>⚽</span>
+                        <div><p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Marcador exacto</p><p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',lineHeight:1.5}}>Eliges el resultado: 2-1, 0-0, 3-0...</p></div>
                     </div>
-                    <div style={{...S.card,display:'flex',alignItems:'center',gap:14,padding:'16px 18px',textAlign:'left'}}>
-                        <span style={{fontSize:32,flexShrink:0}}>1️⃣</span>
-                        <div>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:1,color:'#FFD700',marginBottom:3}}>1X2 — Independiente</p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.5)',lineHeight:1.5}}>Eliges: Gana / Empata / Pierde{'\n'}Puede diferir del marcador — tu estrategia</p>
-                        </div>
+                    <div style={{...S.card,display:'flex',alignItems:'center',gap:14,padding:'14px 16px',textAlign:'left'}}>
+                        <span style={{fontSize:28,flexShrink:0}}>1️⃣</span>
+                        <div><p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:1,color:'#001F6B',marginBottom:2}}>1X2 — Independiente</p><p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',lineHeight:1.5}}>¿Gana, empata o pierde? Tu estrategia.</p></div>
                     </div>
                 </div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 4: PUNTOS RESULTADO Y 1X2
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 4: return (
             <div style={{textAlign:'center'}}>
-                <p style={S.eyebrow}>¿Cuánto vale acertar?</p>
+                <div style={S.eyebrow}>¿Cuánto vale acertar?</div>
                 <h1 style={S.titulo}>RESULTADO<br/>Y 1X2</h1>
-                <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:360,marginBottom:16}}>
-                    <div style={S.ptoRow}>
-                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.65)',flex:1}}>⚽ Resultado exacto</span>
-                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#FFD700',minWidth:50,textAlign:'right'}}>3 pts</span>
-                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'rgba(255,215,0,0.45)',minWidth:56,textAlign:'right'}}>6 VIP</span>
-                    </div>
-                    <div style={S.ptoRow}>
-                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.65)',flex:1}}>1️⃣ 1X2 acertado</span>
-                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#FFD700',minWidth:50,textAlign:'right'}}>2 pts</span>
-                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'rgba(255,215,0,0.45)',minWidth:56,textAlign:'right'}}>4 VIP</span>
-                    </div>
+                <div style={{display:'flex',flexDirection:'column',gap:7,width:'100%',maxWidth:360,marginBottom:14}}>
+                    <div style={S.ptoRow}><span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,0,0,0.6)'}}>⚽ Resultado exacto</span><span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:'#001F6B',minWidth:40,textAlign:'right'}}>3</span><span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.35)',minWidth:48,textAlign:'right'}}>6 VIP</span></div>
+                    <div style={S.ptoRow}><span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,0,0,0.6)'}}>1️⃣ 1X2 acertado</span><span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:'#001F6B',minWidth:40,textAlign:'right'}}>2</span><span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.35)',minWidth:48,textAlign:'right'}}>4 VIP</span></div>
                 </div>
-                <div style={S.infoBox}>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,215,0,0.8)',lineHeight:1.7,textAlign:'center'}}>
-                        🏆 Las jornadas <strong>VIP</strong> doblan los puntos de resultado y 1X2, y cuestan <strong>2€</strong> en vez de 1€.<br/>
-                        El bote solo lo gana quien acierta el <strong>marcador exacto</strong>.
-                    </p>
-                </div>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',lineHeight:1.7,textAlign:'center'}}>🏆 Las jornadas <strong>VIP</strong> doblan los puntos y cuestan <strong>2€</strong>.<br/>El bote solo lo gana quien acierta el <strong>marcador exacto</strong>.</p></div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 5: NORMAS GENERALES
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 5: return (
             <div style={{textAlign:'center'}}>
                 <span style={S.iconBig}>📋</span>
-                <p style={S.eyebrow}>Las reglas del juego</p>
+                <div style={S.eyebrow}>Las reglas del juego</div>
                 <h1 style={S.titulo}>NORMAS<br/>BÁSICAS</h1>
                 <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:360}}>
-                    {[
-                        ['⏰','Plazo de apuesta','Hasta 1 hora antes del partido — hora canaria siempre'],
-                        ['🔒','Apuestas secretas','Nadie ve el pronóstico de los demás hasta que cierra la jornada'],
-                        ['✏️','Editable','Puedes cambiar tu apuesta hasta que cierre el plazo'],
-                        ['💸','Coste','1€ por jornada normal · 2€ jornada VIP'],
-                        ['🏆','Porra Anual','¿Asciende la UDLP? ¿En qué puesto? Hasta 20 pts extra (J1-J5)'],
-                    ].map(function(r,i) {
-                        return (
-                            <div key={i} style={{...S.card,display:'flex',alignItems:'flex-start',gap:12,padding:'12px 16px',textAlign:'left'}}>
-                                <span style={{fontSize:20,flexShrink:0}}>{r[0]}</span>
-                                <div>
-                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#FFD700',marginBottom:2}}>{r[1]}</p>
-                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.45)',lineHeight:1.5}}>{r[2]}</p>
-                                </div>
-                            </div>
-                        );
-                    })}
+                    {[['⏰','Plazo de apuesta','Hasta 1 hora antes del partido — hora canaria'],
+                      ['🔒','Apuestas secretas','Nadie ve el pronóstico hasta que cierra la jornada'],
+                      ['💸','Coste','1€ jornada normal · 2€ jornada VIP'],
+                      ['🏆','Porra Anual','¿Asciende la UDLP? ¿En qué puesto? Hasta 20 pts extra (J1-J5)'],
+                    ].map(function(r,i){return(
+                        <div key={i} style={{...S.card,display:'flex',alignItems:'flex-start',gap:12,padding:'11px 14px',textAlign:'left'}}>
+                            <span style={{fontSize:18,flexShrink:0}}>{r[0]}</span>
+                            <div><p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>{r[1]}</p><p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',lineHeight:1.5}}>{r[2]}</p></div>
+                        </div>
+                    );})}
                 </div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 6: CLASIFICACIÓN GENERAL
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 6: return (
             <div style={{textAlign:'center'}}>
                 <span style={S.iconBig}>📊</span>
-                <p style={S.eyebrow}>A lo largo de la temporada</p>
+                <div style={S.eyebrow}>A lo largo de la temporada</div>
                 <h1 style={S.titulo}>LA CLASIFICACIÓN<br/>GENERAL</h1>
-                <p style={S.cuerpo}>
-                    Todos los puntos de cada jornada — resultado, 1X2, estrellas y el multiplicador —
-                    se acumulan en una <strong style={{color:'#FFD700'}}>clasificación general</strong> durante las 42 jornadas.
-                    Al final de temporada, el que más puntos tenga, gana.
-                </p>
-                <div style={{display:'flex',gap:8,width:'100%',maxWidth:360}}>
-                    <div style={{...S.cardGold,flex:1,textAlign:'center'}}>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,215,0,0.5)',letterSpacing:2,textTransform:'uppercase',marginBottom:6}}>Jornada</p>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:36,fontWeight:700,color:'#FFD700',lineHeight:1}}>10</p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:4}}>puntos máx/j</p>
-                    </div>
-                    <div style={{...S.card,flex:1,textAlign:'center'}}>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:6}}>Temporada</p>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:36,fontWeight:700,color:'rgba(255,215,0,0.6)',lineHeight:1}}>42</p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>jornadas</p>
-                    </div>
-                    <div style={{...S.card,flex:1,textAlign:'center'}}>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:6}}>Extra anual</p>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:36,fontWeight:700,color:'rgba(255,215,0,0.6)',lineHeight:1}}>+20</p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>porra anual</p>
-                    </div>
+                <p style={S.cuerpo}>Todos los puntos — resultado, 1X2, estrellas y multiplicador — se acumulan durante las 42 jornadas. Al final, el que más puntos tenga, <strong style={{color:'#001F6B'}}>gana</strong>.</p>
+                <div style={S.statRow}>
+                    {[['10','pts máx/jornada'],['42','jornadas'],['+ 20','porra anual']].map(function(s,i){return(
+                        <div key={i} style={{flex:1,padding:'14px 8px',textAlign:'center',borderRight:i<2?'1px solid rgba(0,31,107,0.06)':'none'}}>
+                            <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:'#001F6B',letterSpacing:1}}>{s[0]}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,0,0,0.35)',letterSpacing:2,textTransform:'uppercase',marginTop:2}}>{s[1]}</p>
+                        </div>
+                    );})}
                 </div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 7: ESTRELLAS — INTRO
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 7: return (
             <div style={{textAlign:'center'}}>
                 <span style={S.iconBig}>⭐</span>
-                <p style={S.eyebrow}>Novedad 26/27</p>
+                <div style={{...S.badge}}><span style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'#001F6B',textTransform:'uppercase'}}>⚡ NOVEDAD 26/27 ⚡</span></div>
                 <h1 style={S.titulo}>LAS ESTRELLAS<br/>DE TU EQUIPO</h1>
-                <p style={S.cuerpo}>
-                    Antes de cada partido, eliges hasta <strong style={{color:'#FFD700'}}>5 jugadores de la UDLP</strong>.
-                    Durante el partido, la API oficial registra sus actuaciones —
-                    goles, asistencias, paradas, tarjetas...
-                    Cada acción genera <strong style={{color:'#FFD700'}}>estrellas</strong>.
-                </p>
-                <div style={S.infoBox}>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,215,0,0.8)',lineHeight:1.7,textAlign:'center'}}>
-                        El que mejor elija sus jugadores cada semana acumula más estrellas y sube en la <strong>clasificación de estrellas</strong> — una liga paralela con sus propios premios al final de temporada.
-                    </p>
-                </div>
+                <p style={S.cuerpo}>Antes de cada partido, eliges hasta <strong style={{color:'#001F6B'}}>5 jugadores de la UDLP</strong>. La API registra sus actuaciones en tiempo real. Cada acción genera <strong style={{color:'#001F6B'}}>estrellas</strong>.</p>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',lineHeight:1.7,textAlign:'center'}}>El que mejor elija cada semana acumula más estrellas y sube en la <strong>liga paralela de estrellas</strong> — con sus propios premios al final de temporada.</p></div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 8: ESTRELLAS — CÓMO SE PUNTÚA
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 8: return (
             <div style={{textAlign:'center'}}>
-                <p style={S.eyebrow}>Qué acciones valen estrellas</p>
+                <div style={S.eyebrow}>Qué acciones valen estrellas</div>
                 <h1 style={S.titulo}>TABLA DE<br/>ESTRELLAS</h1>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,width:'100%',maxWidth:360,marginBottom:14}}>
-                    {[
-                        ['⚽ Gol delantero','+5⭐','#FFD700'],
-                        ['⚽ Gol centrocampista','+6⭐','#FFD700'],
-                        ['⚽ Gol portero/defensa','+8⭐','#FFD700'],
-                        ['🅰️ Asistencia','+3⭐','#FFD700'],
-                        ['🧤 Portería a 0 (portero)','+4⭐','#FFD700'],
-                        ['🧤 Portería a 0 (defensa)','+2⭐','#FFD700'],
-                        ['👟 Titular (>60 min)','+2⭐','rgba(255,215,0,0.6)'],
-                        ['👟 Suplente','+1⭐','rgba(255,215,0,0.5)'],
-                        ['🟨 Tarjeta amarilla','-1⭐','#e63946'],
-                        ['🟥 Tarjeta roja','-3⭐','#e63946'],
-                        ['❌ Penalti fallado','-2⭐','#e63946'],
-                        ['🤦 Gol en propia','-2⭐','#e63946'],
-                    ].map(function(r,i) {
-                        return (
-                            <div key={i} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 12px'}}>
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.5)'}}>{r[0]}</span>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color:r[2],flexShrink:0,marginLeft:6}}>{r[1]}</span>
-                            </div>
-                        );
-                    })}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,width:'100%',maxWidth:360,marginBottom:12}}>
+                    {[['⚽ Gol delantero','+5⭐',false],['⚽ Gol centrocampista','+6⭐',false],['⚽ Gol portero/defensa','+8⭐',false],['🅰️ Asistencia','+3⭐',false],['🧤 Portería a 0 (portero)','+4⭐',false],['👟 Titular (+60 min)','+2⭐',false],['🟨 Tarjeta amarilla','-1⭐',true],['🟥 Tarjeta roja','-3⭐',true]].map(function(r,i){return(
+                        <div key={i} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 11px'}}>
+                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,0,0,0.5)'}}>{r[0]}</span>
+                            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:r[2]?'#b91c1c':'#001F6B',flexShrink:0,marginLeft:4}}>{r[1]}</span>
+                        </div>
+                    );})}
                 </div>
-                <div style={S.infoBox}>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,215,0,0.7)',textAlign:'center',lineHeight:1.6}}>
-                        La clave está en <strong>saber elegir</strong> — un delantero con muchos partidos jugados vale más que una estrella que no sale del banquillo
-                    </p>
-                </div>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.6}}>La clave está en <strong>saber elegir</strong> — un titular habitual vale más que una estrella que no juega</p></div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 9: ESTRELLAS — ELEGIR JUGADORES (con fotos)
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 9: return (
             <div style={{textAlign:'center'}}>
-                <p style={S.eyebrow}>Así se juega cada semana</p>
+                <div style={S.eyebrow}>Así se juega cada semana</div>
                 <h1 style={S.titulo}>ELIGE TUS<br/>5 ESTRELLAS</h1>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.5)',marginBottom:16,maxWidth:320,margin:'0 auto 16px',lineHeight:1.6}}>
-                    Antes de cada partido seleccionas hasta 5 jugadores. Sus estrellas se suman —
-                    quien consiga más en la jornada se lleva los puntos extra para la clasificación general.
-                </p>
-                <div style={{display:'flex',flexWrap:'wrap',gap:12,justifyContent:'center',maxWidth:340,margin:'0 auto 16px'}}>
-                    {JUGADORES_TUTORIAL.map(function(j,i) {
-                        var sel = !!jugadoresElegidos.find(function(x) { return x.nombre===j.nombre; });
-                        var dest = i === jugadorActivo;
-                        return (
+                <p style={{...S.cuerpo,fontSize:13,marginBottom:14}}>Seleccionas hasta 5 jugadores antes del partido. Sus estrellas se suman — el mejor de la jornada suma puntos para la clasificación.</p>
+                <div style={{display:'flex',flexWrap:'wrap',gap:12,justifyContent:'center',maxWidth:340,margin:'0 auto 14px'}}>
+                    {JUGADORES_TUTORIAL.map(function(j,i){
+                        var sel = !!jugadoresElegidos.find(function(x){return x.nombre===j.nombre;});
+                        var dest = i===jugadorActivo;
+                        return(
                             <div key={j.nombre} onClick={function(){toggleJugador(j);}}
                                 style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5,cursor:'pointer',
                                     transition:'all .3s ease',
-                                    transform: dest?'scale(1.18) translateY(-5px)':sel?'scale(1.05)':'scale(1)',
-                                    opacity: dest||sel?1:0.55}}>
+                                    transform:dest?'scale(1.18) translateY(-4px)':sel?'scale(1.05)':'scale(1)',
+                                    opacity:dest||sel?1:0.5}}>
                                 <div style={{width:52,height:52,borderRadius:'50%',overflow:'hidden',
-                                    border: sel?'2.5px solid #FFD700':dest?'2px solid rgba(255,215,0,0.5)':'2px solid rgba(255,255,255,0.12)',
-                                    background:'rgba(255,255,255,0.08)',transition:'all .3s ease'}}>
-                                    <img src={j.imageUrl} alt={j.nombre}
-                                        style={{width:'100%',height:'100%',objectFit:'cover'}}
-                                        onError={function(e){e.target.outerHTML='<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-family:Teko,sans-serif;font-size:16px;color:rgba(255,255,255,0.5)">'+j.dorsal+'</div>';}} />
+                                    border:sel?'2px solid #001F6B':dest?'1.5px solid rgba(0,31,107,0.4)':'1.5px solid rgba(0,31,107,0.12)',
+                                    background:'rgba(0,31,107,0.04)',transition:'all .3s ease',
+                                    display:'flex',alignItems:'center',justifyContent:'center',
+                                    fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:'rgba(0,31,107,0.4)'}}>
+                                    <img src={j.imageUrl} alt={j.nombre} style={{width:'100%',height:'100%',objectFit:'cover'}}
+                                        onError={function(e){e.target.outerHTML='<span style="font-family:\'Bebas Neue\',sans-serif;font-size:16px;color:rgba(0,31,107,0.4)">'+j.dorsal+'</span>';}} />
                                 </div>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:sel?'#FFD700':dest?'rgba(255,215,0,0.6)':'rgba(255,255,255,0.3)',maxWidth:56,textAlign:'center',lineHeight:1.2}}>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:sel?'#001F6B':dest?'rgba(0,31,107,0.6)':'rgba(0,0,0,0.3)',maxWidth:56,textAlign:'center',lineHeight:1.2,fontWeight:sel?600:400}}>
                                     {j.nombre.split(' ')[0]}
                                 </p>
                                 {sel && <span style={{fontSize:10}}>⭐</span>}
@@ -1698,254 +1665,161 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                         );
                     })}
                 </div>
-                <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:8}}>
-                    {[['1º','5 pts'],['2º','4 pts'],['3º','3 pts'],['4º','2 pts'],['5º','1 pt']].map(function(r,i) {
-                        return (
-                            <div key={i} style={{...S.cardGold,textAlign:'center',padding:'8px 8px',minWidth:50}}>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(255,215,0,0.6)'}}>{r[0]}</p>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color:'#FFD700'}}>{r[1]}</p>
-                            </div>
-                        );
-                    })}
+                <div style={{display:'flex',gap:7,justifyContent:'center'}}>
+                    {[['1º','5 pts'],['2º','4 pts'],['3º','3 pts'],['4º','2 pts'],['5º','1 pt']].map(function(r,i){return(
+                        <div key={i} style={{...S.cardDorado,textAlign:'center',padding:'7px 7px',minWidth:48}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>{r[0]}</p>
+                            <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:'#001F6B'}}>{r[1]}</p>
+                        </div>
+                    );})}
                 </div>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.2)'}}>Toca los jugadores · {jugadoresElegidos.length}/5 seleccionados</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,0,0,0.2)',marginTop:10}}>Toca los jugadores · {jugadoresElegidos.length}/5</p>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 10: EL OTRO EQUIPO — INTRO (sin revelar el nombre)
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 10: return (
             <div style={{textAlign:'center'}}>
-                <div style={{width:80,height:80,borderRadius:'50%',background:'rgba(255,215,0,0.1)',
-                    border:'2px solid rgba(255,215,0,0.3)',display:'flex',alignItems:'center',
-                    justifyContent:'center',margin:'0 auto 20px',animation:'floatIcon 3s ease-in-out infinite',
-                    fontSize:40}}>🛡️</div>
-                <p style={S.eyebrow}>La novedad más grande de 26/27</p>
+                <div style={{width:76,height:76,borderRadius:'50%',border:'1.5px solid rgba(0,31,107,0.15)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',animation:'floatIcon 3s ease-in-out infinite',fontSize:36,background:'rgba(0,31,107,0.03)'}}>🛡️</div>
+                <div style={{...S.badge}}><span style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'#001F6B',textTransform:'uppercase'}}>🆕 GRAN NOVEDAD 26/27 🆕</span></div>
                 <h1 style={S.titulo}>EL OTRO<br/>EQUIPO</h1>
-                <p style={S.cuerpo}>
-                    Cada jugador tiene asignado <strong style={{color:'#FFD700'}}>un equipo de Primera División</strong> para toda la temporada.
-                    Un equipo que convive con la UDLP durante las 42 jornadas.
-                </p>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:14,color:'rgba(255,255,255,0.45)',lineHeight:1.7,maxWidth:320,margin:'0 auto 20px',textAlign:'center'}}>
-                    Cada jornada decides si activarlo o no. Esa decisión puede
-                    <strong style={{color:'#FFD700'}}> multiplicar tus puntos</strong> o hacerte perder la mitad.
-                    El riesgo es parte del juego.
-                </p>
-                <div style={{display:'flex',justifyContent:'center',gap:12,maxWidth:360,width:'100%'}}>
-                    {[['Tu equipo gana','×2 tus puntos','#10b981'],['Tu equipo empata','×1 sin efecto','rgba(255,255,255,0.4)'],['Tu equipo pierde','÷2 tus puntos','#e63946']].map(function(r,i) {
-                        return (
-                            <div key={i} style={{...S.card,flex:1,textAlign:'center',padding:'12px 8px'}}>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.4)',marginBottom:6,lineHeight:1.3}}>{r[0]}</p>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:r[2]}}>{r[1]}</p>
-                            </div>
-                        );
-                    })}
+                <p style={S.cuerpo}>Cada jugador tiene asignado <strong style={{color:'#001F6B'}}>un equipo de Primera División</strong> para toda la temporada. Cada jornada decides si activarlo — puede <strong style={{color:'#001F6B'}}>multiplicar tus puntos</strong> o reducirlos a la mitad.</p>
+                <div style={{display:'flex',gap:10,width:'100%',maxWidth:360}}>
+                    {[['Gana','×2-3','#15803d'],['Empata','×1','rgba(0,0,0,0.3)'],['Pierde','÷2','#b91c1c']].map(function(r,i){return(
+                        <div key={i} style={{...S.card,flex:1,textAlign:'center',padding:'12px 8px'}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,0,0,0.4)',marginBottom:6,letterSpacing:1}}>{r[0]}</p>
+                            <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:r[2],letterSpacing:1}}>{r[1]}</p>
+                        </div>
+                    );})}
                 </div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 11: LOS 20 EQUIPOS — CASCADA
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 11: return (
             <div style={{textAlign:'center'}}>
-                <p style={S.eyebrow}>Primera División 26/27</p>
+                <div style={S.eyebrow}>Primera División 26/27</div>
                 <h1 style={S.titulo}>20 EQUIPOS<br/>20 JUGADORES</h1>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.5)',marginBottom:16,lineHeight:1.6,maxWidth:320,margin:'0 auto 16px'}}>
-                    Uno por jugador. Sin repetición. Elegidos por orden según la clasificación del año pasado.
-                    Pedrito eligió primero. Sarito después. Y así hasta llegar al último.
-                </p>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,width:'100%',maxWidth:340,margin:'0 auto 16px'}}>
-                    {EQUIPOS_PRIMERA.map(function(eq,i) {
+                <p style={{...S.cuerpo,fontSize:13,marginBottom:14}}>Uno por jugador. El orden de elección sigue la clasificación del año pasado. Pedrito elige primero.</p>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:5,width:'100%',maxWidth:360,margin:'0 auto 14px'}}>
+                    {EQUIPOS_PRIMERA.map(function(eq,i){
                         var activo = i===escudoActivo;
-                        return (
-                            <div key={eq} style={{background:activo?'rgba(255,215,0,0.15)':'rgba(255,255,255,0.04)',
-                                border:activo?'1px solid rgba(255,215,0,0.5)':'1px solid rgba(255,255,255,0.06)',
-                                borderRadius:8,padding:'8px 4px',textAlign:'center',
-                                transition:'all .18s ease',transform:activo?'scale(1.1)':'scale(1)'}}>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:9,color:activo?'#FFD700':'rgba(255,255,255,0.3)',letterSpacing:0.5,lineHeight:1.2}}>
+                        return(
+                            <div key={eq} style={{background:activo?'rgba(0,31,107,0.06)':'rgba(255,255,255,0.85)',
+                                border:activo?'1px solid rgba(0,31,107,0.3)':'1px solid rgba(0,31,107,0.07)',
+                                borderRadius:8,padding:'7px 4px',textAlign:'center',
+                                transition:'all .18s ease',transform:activo?'scale(1.09)':'scale(1)'}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:9,color:activo?'#001F6B':'rgba(0,0,0,0.35)',letterSpacing:0.5,lineHeight:1.2}}>
                                     {eq.replace(/FC |CD |SD |CF |RCD |RC |CA |UD /g,'').split(' ')[0]}
                                 </p>
                             </div>
                         );
                     })}
                 </div>
-                <div style={S.infoBox}>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,215,0,0.7)',textAlign:'center',lineHeight:1.6}}>
-                        📅 El plazo de elección es del <strong>11 de agosto a las 12:00</strong> al <strong>14 de agosto a las 18:00</strong> (hora canaria)<br/>
-                        ⏱️ Cada jugador tiene <strong>60 minutos</strong> desde que le toca — si no elige, pasa al final
-                    </p>
-                </div>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.7}}>
+                    📅 Plazo: <strong>11 ago 12:00</strong> → <strong>14 ago 18:00</strong> (hora canaria)<br/>
+                    ⏱️ 60 min por turno — si no eliges, pasas al final<br/>
+                    <span style={{color:'rgba(0,0,0,0.35)',fontSize:11}}>🪑 Si no vas a jugar de verdad... alguien más merece esa silla</span>
+                </p></div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 12: EL MULTIPLICADOR
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 12: return (
             <div style={{textAlign:'center'}}>
                 <span style={S.iconBig}>⚡</span>
-                <p style={S.eyebrow}>Cuanto más lo usas, más potente</p>
+                <div style={S.eyebrow}>Cuanto más lo usas, más potente</div>
                 <h1 style={S.titulo}>EL<br/>MULTIPLICADOR</h1>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:14,color:'rgba(255,255,255,0.55)',lineHeight:1.7,maxWidth:320,margin:'0 auto 20px',textAlign:'center'}}>
-                    El multiplicador <strong style={{color:'#FFD700'}}>crece con el uso</strong>. Empieza en ×2 y puede llegar a ×3 si lo activas con constancia.
-                    Recuerda: también puede dividir tus puntos si tu equipo pierde.
-                </p>
-                <div style={{display:'flex',gap:10,width:'100%',maxWidth:360,marginBottom:16}}>
-                    {[['1ª-2ª\nactivación','×2',multDemo===0],['3ª-4ª\nactivación','×2.5',multDemo===1],['5ª+\nactivación','×3',multDemo===2]].map(function(r,i) {
-                        return (
-                            <div key={i} style={{flex:1,background:r[2]?'rgba(255,215,0,0.15)':'rgba(255,215,0,0.06)',
-                                border:r[2]?'1.5px solid rgba(255,215,0,0.5)':'1px solid rgba(255,215,0,0.15)',
-                                borderRadius:14,padding:'16px 8px',textAlign:'center',
-                                transition:'all .4s ease',transform:r[2]?'scale(1.06)':'scale(1)'}}>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.35)',marginBottom:8,lineHeight:1.4}}>{r[0]}</p>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:r[2]?'#FFD700':'rgba(255,215,0,0.4)',transition:'color .4s'}}>{r[1]}</p>
+                <p style={{...S.cuerpo,fontSize:13}}>Empieza en ×2 y puede llegar a ×3 si lo activas con constancia durante la temporada.</p>
+                <div style={{display:'flex',gap:10,width:'100%',maxWidth:360,marginBottom:14}}>
+                    {[['1ª-2ª\nactivación','×2',0],['3ª-4ª\nactivación','×2.5',1],['5ª+\nactivación','×3',2]].map(function(r,i){
+                        var hl = multDemo===i;
+                        return(
+                            <div key={i} style={{flex:1,background:hl?'rgba(0,31,107,0.05)':'rgba(255,255,255,0.85)',
+                                border:hl?'1.5px solid #001F6B':'1px solid rgba(0,31,107,0.1)',
+                                borderRadius:14,padding:'14px 8px',textAlign:'center',
+                                transition:'all .4s ease',transform:hl?'scale(1.04)':'scale(1)'}}>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,0,0,0.4)',marginBottom:8,lineHeight:1.4}}>{r[0]}</p>
+                                <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:32,color:hl?'#001F6B':'rgba(0,31,107,0.25)',letterSpacing:1,transition:'color .4s'}}>{r[1]}</p>
                             </div>
                         );
                     })}
                 </div>
-                <div style={S.infoBox}>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,215,0,0.7)',textAlign:'center',lineHeight:1.6}}>
-                        ⚠️ Mínimo <strong>3 activaciones</strong> durante la temporada para mantener el multiplicador máximo.<br/>
-                        🔍 El equipo de cada jugador es <strong>público y visible</strong> para todos desde el principio.
-                    </p>
-                </div>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.6}}>⚠️ Mínimo <strong>3 activaciones</strong> para mantener el multiplicador máximo.<br/>🔍 El equipo de cada jugador es <strong>visible para todos</strong>.</p></div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 13: RESUMEN DE PUNTOS TOTAL
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 13: return (
             <div style={{textAlign:'center'}}>
-                <p style={S.eyebrow}>Todo junto</p>
-                <h1 style={S.titulo}>RESUMEN DE<br/>PUNTOS</h1>
-                <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:360,marginBottom:14}}>
-                    {[
-                        ['⚽','Resultado exacto','3 pts','6 VIP'],
-                        ['1️⃣','1X2 acertado','2 pts','4 VIP'],
-                        ['⭐','1º en Estrellas','5 pts','5 VIP'],
-                        ['⭐','2º en Estrellas','4 pts','4 VIP'],
-                        ['⭐','3º / 4º / 5º','3-1 pts','igual'],
-                        ['🛡️','El Otro Equipo gana','×2-3','todo'],
-                        ['🛡️','El Otro Equipo pierde','÷2','todo'],
-                        ['📅','Porra Anual (bonus)','hasta 20 pts','una vez'],
-                    ].map(function(r,i) {
-                        return (
-                            <div key={i} style={S.ptoRow}>
-                                <span style={{fontSize:16,flexShrink:0}}>{r[0]}</span>
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.65)',flex:1}}>{r[1]}</span>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:'#FFD700',minWidth:50,textAlign:'right'}}>{r[2]}</span>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(255,215,0,0.4)',minWidth:46,textAlign:'right'}}>{r[3]}</span>
-                            </div>
-                        );
-                    })}
+                <div style={S.eyebrow}>Todo junto</div>
+                <h1 style={S.titulo}>RESUMEN<br/>DE PUNTOS</h1>
+                <div style={{display:'flex',flexDirection:'column',gap:7,width:'100%',maxWidth:360}}>
+                    {[['⚽','Resultado exacto','3','6 VIP'],['1️⃣','1X2 acertado','2','4 VIP'],['⭐','1º en Estrellas','5','5 VIP'],['⭐','2º / 3º / 4º / 5º','4-1','igual'],['🛡️','El Otro Equipo gana','×2-3','todo'],['🛡️','El Otro Equipo pierde','÷2','todo'],['📅','Porra Anual (J1-J5)','+20','una vez']].map(function(r,i){return(
+                        <div key={i} style={S.ptoRow}>
+                            <span style={{fontSize:14,flexShrink:0}}>{r[0]}</span>
+                            <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)'}}>{r[1]}</span>
+                            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:'#001F6B',minWidth:40,textAlign:'right'}}>{r[2]}</span>
+                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.35)',minWidth:44,textAlign:'right'}}>{r[3]}</span>
+                        </div>
+                    );})}
                 </div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 14: INVITA A AMIGOS
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 14: return (
             <div style={{textAlign:'center'}}>
-                <span style={S.iconBig}>👥</span>
-                <p style={S.eyebrow}>Quedan 5 huecos libres</p>
-                <h1 style={S.titulo}>INVITA A<br/>UN AMIGO</h1>
-                <div style={{display:'flex',gap:5,flexWrap:'wrap',justifyContent:'center',maxWidth:320,margin:'0 auto 16px'}}>
-                    {Array.from({length:20},function(_,i) {
-                        return <div key={i} style={{width:16,height:16,borderRadius:'50%',
-                            background:i<15?'rgba(255,215,0,0.65)':'transparent',
-                            border:i<15?'1.5px solid rgba(255,215,0,0.4)':'1.5px dashed rgba(255,215,0,0.25)'}}/>;
-                    })}
+                <span style={S.iconBig}>💳</span>
+                <div style={S.eyebrow}>Antes de empezar</div>
+                <h1 style={S.titulo}>INSCRIPCIÓN<br/>5€</h1>
+                <p style={S.cuerpo}>Un único pago para toda la temporada — 42 jornadas. <strong style={{color:'#001F6B'}}>Sin pago confirmado, no hay acceso a las apuestas ni a El Otro Equipo.</strong></p>
+                <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:360,marginBottom:14}}>
+                    <div style={{...S.cardDorado,display:'flex',alignItems:'center',gap:12,padding:'12px 14px',textAlign:'left'}}>
+                        <span style={{fontSize:20,flexShrink:0}}>💸</span>
+                        <div><p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Pago con tarjeta en la app</p><p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)'}}>Pago seguro procesado por Stripe</p></div>
+                    </div>
+                    <div style={{...S.card,display:'flex',alignItems:'center',gap:12,padding:'12px 14px',textAlign:'left'}}>
+                        <span style={{fontSize:20,flexShrink:0}}>👥</span>
+                        <div><p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Pago grupal</p><p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)'}}>Laura puede pagar por Vicky, Carmelo y Pepe en un solo cobro</p></div>
+                    </div>
                 </div>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,color:'rgba(255,215,0,0.4)',textTransform:'uppercase',marginBottom:16}}>
-                    15/20 plazas · quedan 5
-                </p>
-                <p style={{...S.cuerpo, fontSize:14}}>
-                    La liga admite hasta <strong style={{color:'#FFD700'}}>20 jugadores</strong>, uno por cada equipo de Primera División.
-                    Si traes a alguien, <strong style={{color:'#FFD700'}}>la próxima temporada tendrás tu propia liga</strong>.
-                </p>
-                <div style={S.infoBox}>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,215,0,0.7)',textAlign:'center',lineHeight:1.7}}>
-                        🏆 Más jugadores = más bote semanal<br/>
-                        🚀 Quien llene plazas, <strong>gestiona su propia liga</strong> la próxima temporada<br/>
-                        📲 Usa el botón de invitar en el menú de la app
-                    </p>
-                </div>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',lineHeight:1.7,textAlign:'center'}}>🏆 <strong>Todo el dinero va a premios</strong> — entre 75€ y 100€ para el top 3.<br/>Además: experiencias, merchandising UDLP y sorpresas.</p></div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 15: PRECIO E INSCRIPCIÓN
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 15: return (
             <div style={{textAlign:'center'}}>
-                <div style={{fontSize:70,marginBottom:18,animation:'floatIcon 3s ease-in-out infinite'}}>💰</div>
-                <p style={S.eyebrow}>Antes de empezar</p>
-                <h1 style={S.titulo}>INSCRIPCIÓN<br/>5€ ESTA TEMPORADA</h1>
-                <p style={S.cuerpo}>
-                    Este año la porra tiene un precio de entrada de <strong style={{color:'#FFD700'}}>5€ por jugador</strong>.
-                    Un único pago para toda la temporada — 42 jornadas, sin cuotas adicionales.
-                </p>
-                <div style={{...S.infoBox,marginBottom:16}}>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,215,0,0.8)',lineHeight:1.7,textAlign:'center'}}>
-                        🏆 Todo el dinero va a premios — <strong>entre 75€ y 100€</strong> para el top 3, dependiendo de cuántos jugadores participen.<br/>
-                        🎁 A lo largo de la temporada: experiencias, merchandising UDLP y muchas sorpresas más.
-                    </p>
+                <span style={S.iconBig}>👥</span>
+                <div style={S.eyebrow}>Quedan 5 huecos libres</div>
+                <h1 style={S.titulo}>INVITA A<br/>UN AMIGO</h1>
+                <div style={{display:'flex',gap:5,flexWrap:'wrap',justifyContent:'center',maxWidth:320,margin:'0 auto 10px'}}>
+                    {Array.from({length:20},function(_,i){return(
+                        <div key={i} style={{width:15,height:15,borderRadius:'50%',
+                            background:i<15?'rgba(0,31,107,0.65)':'transparent',
+                            border:i<15?'1.5px solid rgba(0,31,107,0.4)':'1.5px dashed rgba(0,31,107,0.2)'}} />
+                    );})}
                 </div>
-                <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:360}}>
-                    {[
-                        ['💸','Pago','5€ único · gestión por Splitwise o Bizum'],
-                        ['📅','Cuándo','Antes del primer partido — 15 de agosto'],
-                        ['🚫','Norma','Sin pago confirmado, no hay acceso a la app'],
-                        ['👥','Nuevos','Los jugadores invitados también pagan 5€'],
-                    ].map(function(r,i) {
-                        return (
-                            <div key={i} style={{...S.card,display:'flex',alignItems:'flex-start',gap:12,padding:'11px 14px',textAlign:'left'}}>
-                                <span style={{fontSize:18,flexShrink:0}}>{r[0]}</span>
-                                <div>
-                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:1,color:'#FFD700',marginBottom:2}}>{r[1]}</p>
-                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.45)',lineHeight:1.5}}>{r[2]}</p>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,color:'rgba(0,31,107,0.4)',textTransform:'uppercase',marginBottom:14}}>15/20 plazas · quedan 5</p>
+                <p style={{...S.cuerpo,fontSize:13}}>La liga admite hasta <strong style={{color:'#001F6B'}}>20 jugadores</strong>. Si traes a alguien, <strong style={{color:'#001F6B'}}>la próxima temporada tendrás tu propia liga</strong>.</p>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.7}}>🏆 Más jugadores = más bote<br/>🚀 Quien llene plazas, <strong>gestiona su propia liga</strong> la próxima temporada<br/>📲 Botón de invitar en el menú de la app</p></div>
             </div>
         );
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 16: CIERRE ÉPICO
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 16: return (
             <div style={{textAlign:'center'}}>
                 <img src="/escudo.png" alt="UDLP"
-                    style={{width:86,height:103,objectFit:'contain',marginBottom:20,
-                        filter:'drop-shadow(0 0 40px rgba(255,215,0,0.55))',
+                    style={{width:80,height:96,objectFit:'contain',marginBottom:18,
+                        filter:'drop-shadow(0 4px 18px rgba(0,31,107,0.2))',
                         animation:'floatIcon 3s ease-in-out infinite'}}
                     onError={function(e){e.target.style.display='none';}} />
-                <p style={S.eyebrow}>Todo listo</p>
+                <div style={S.eyebrow}>Todo listo</div>
                 <h1 style={S.tituloMega}>¿ESTÁN<br/>LISTOS?</h1>
-                <p style={S.cuerpo}>
-                    La liga empieza el <strong style={{color:'#FFD700'}}>15 de agosto</strong>.
-                    El Otro Equipo se elige antes del <strong style={{color:'#FFD700'}}>14 de agosto a las 18:00</strong> (hora canaria).
-                </p>
-                <div style={{display:'flex',gap:10,width:'100%',maxWidth:360,marginBottom:20}}>
-                    {[['⚽','Porra','42 jornadas'],['🛡️','El Otro Equipo','×2 hasta ×3'],['⭐','Estrellas','Liga paralela'],['👥','Amigos','5 plazas']].map(function(r,i) {
-                        return (
-                            <div key={i} style={{...S.cardGold,flex:1,textAlign:'center',padding:'12px 6px'}}>
-                                <span style={{fontSize:20,display:'block',marginBottom:6}}>{r[0]}</span>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'#FFD700',letterSpacing:1,textTransform:'uppercase',lineHeight:1.2}}>{r[1]}</p>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:4}}>{r[2]}</p>
-                            </div>
-                        );
-                    })}
+                <p style={S.cuerpo}>La liga empieza el <strong style={{color:'#001F6B'}}>15 de agosto</strong>.<br/>El Otro Equipo se elige del <strong style={{color:'#001F6B'}}>11 al 14 de agosto</strong>.<br/>A continuación crearás tu perfil.</p>
+                <div style={{display:'flex',gap:8,width:'100%',maxWidth:360,marginBottom:16}}>
+                    {[['⚽','Porra','42 jornadas'],['🛡️','El Otro','×2 hasta ×3'],['⭐','Estrellas','Liga paralela'],['💳','5€','Inscripción']].map(function(r,i){return(
+                        <div key={i} style={{...S.cardDorado,flex:1,textAlign:'center',padding:'12px 5px'}}>
+                            <span style={{fontSize:18,display:'block',marginBottom:5}}>{r[0]}</span>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,color:'#001F6B',letterSpacing:1,textTransform:'uppercase',lineHeight:1.2}}>{r[1]}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,0,0,0.35)',marginTop:3}}>{r[2]}</p>
+                        </div>
+                    );})}
                 </div>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.4)',lineHeight:1.7,maxWidth:300,margin:'0 auto'}}>
-                    A continuación crearás tu perfil con tu emoji personal. Solo un momento — y ya estarás dentro.
-                </p>
             </div>
         );
 
@@ -1953,97 +1827,93 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
         }
     };
 
-    var fondos = [
-        '#001F6B','#0a0a0a','#001F6B','#0a0a0a','#001F6B',
-        '#0a0a0a','#001F6B','#0a0a0a','#001F6B','#0a0a0a',
-        '#001F6B','#0a0a0a','#001F6B','#0a0a0a','#001F6B','#0a0a0a'
-    ];
-
     return (
         <div style={{
-            position:'fixed', inset:0, zIndex:500,
-            background: fondos[slide] || '#001F6B',
-            display:'flex', flexDirection:'column',
-            transition:'background .5s ease',
-            animation: saliendo ? 'fadeOut .4s ease forwards' : 'fadeIn .4s ease',
+            position:'fixed',inset:0,zIndex:500,
+            background:'#fafaf8',
+            display:'flex',flexDirection:'column',
+            transition:'opacity .4s ease',
+            animation: saliendo ? 'fadeOut .4s ease forwards' : 'fadeIn .3s ease',
             overflow:'hidden',
         }}>
             <style>{`
-                @keyframes fadeOut{to{opacity:0;transform:scale(.96)}}
-                @keyframes floatIcon{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-                @keyframes slideUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+                @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap');
+                @keyframes fadeOut{to{opacity:0;transform:scale(.98)}}
+                @keyframes floatIcon{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+                @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
                 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
             `}</style>
 
-            {/* Decoración */}
-            <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none'}}>
-                <div style={{position:'absolute',top:'-20%',right:'-20%',width:'60vw',height:'60vw',
-                    borderRadius:'50%',background:'rgba(255,215,0,0.03)'}} />
-                <svg style={{position:'absolute',inset:0,width:'100%',height:'100%'}} viewBox="0 0 400 700" fill="none" preserveAspectRatio="xMidYMid slice">
-                    <rect x="40" y="40" width="320" height="620" stroke="#FFD700" strokeWidth="0.4" opacity="0.05" rx="2"/>
-                    <line x1="40" y1="350" x2="360" y2="350" stroke="#FFD700" strokeWidth="0.4" opacity="0.04"/>
-                    <circle cx="200" cy="350" r="60" stroke="#FFD700" strokeWidth="0.4" opacity="0.04"/>
-                </svg>
-            </div>
+            {/* Campo de fútbol — fondo permanente */}
+            <svg style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:0}}
+                viewBox="0 0 400 700" fill="none" preserveAspectRatio="xMidYMid slice">
+                <rect x="38" y="58" width="324" height="584" stroke="#001F6B" strokeWidth="0.9" opacity="0.04" rx="2"/>
+                <line x1="38" y1="350" x2="362" y2="350" stroke="#001F6B" strokeWidth="0.7" opacity="0.04"/>
+                <circle cx="200" cy="350" r="52" stroke="#001F6B" strokeWidth="0.7" opacity="0.04"/>
+                <circle cx="200" cy="350" r="2.5" fill="#FFD700" opacity="0.2"/>
+                <rect x="108" y="58" width="184" height="100" stroke="#001F6B" strokeWidth="0.7" opacity="0.04"/>
+                <rect x="108" y="542" width="184" height="100" stroke="#001F6B" strokeWidth="0.7" opacity="0.04"/>
+                <path d="M138 158 Q200 184 262 158" stroke="#001F6B" strokeWidth="0.5" opacity="0.03"/>
+                <path d="M138 542 Q200 516 262 542" stroke="#001F6B" strokeWidth="0.5" opacity="0.03"/>
+            </svg>
 
             {/* Contenido scrollable */}
             <div key={slide} style={{
-                flex:1, overflowY:'auto', display:'flex', flexDirection:'column',
-                alignItems:'center', justifyContent:'center',
-                padding:'24px 28px 100px', position:'relative', zIndex:2,
-                animation:'slideUp .35s ease both',
+                flex:1,overflowY:'auto',display:'flex',flexDirection:'column',
+                alignItems:'center',justifyContent:'center',
+                padding:'24px 28px 100px',position:'relative',zIndex:2,
+                animation:'slideUp .3s ease both',
             }}>
                 {renderSlide()}
             </div>
 
-            {/* Barra inferior fija */}
+            {/* Barra inferior */}
             <div style={{
-                position:'absolute', bottom:0, left:0, right:0, zIndex:10,
-                display:'flex', alignItems:'center', justifyContent:'space-between',
-                padding:'14px 20px 28px',
-                background:'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)',
+                position:'absolute',bottom:0,left:0,right:0,zIndex:10,
+                display:'flex',alignItems:'center',justifyContent:'space-between',
+                padding:'12px 18px 26px',
+                background:'linear-gradient(to top,rgba(250,250,248,0.96) 60%,transparent)',
             }}>
-                <button onClick={function() { if(slide>0) setSlide(function(v){return v-1;}); }}
-                    style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,
-                        background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.5)',
-                        border:'none',borderRadius:24,padding:'11px 20px',cursor:'pointer',
+                <button onClick={function(){if(slide>0)setSlide(function(v){return v-1;});}}
+                    style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,letterSpacing:2,
+                        background:'rgba(0,31,107,0.06)',color:'rgba(0,31,107,0.5)',
+                        border:'1px solid rgba(0,31,107,0.1)',borderRadius:24,padding:'10px 18px',cursor:'pointer',
                         opacity:slide===0?0.2:1,textTransform:'uppercase'}}>← Atrás</button>
 
-                {/* Dots */}
                 <div style={{display:'flex',gap:5,alignItems:'center'}}>
-                    {Array.from({length:TOTAL_SLIDES},function(_,i) {
-                        return <div key={i} onClick={function(){setSlide(i);}}
+                    {Array.from({length:TOTAL_SLIDES},function(_,i){return(
+                        <div key={i} onClick={function(){setSlide(i);}}
                             style={{width:i===slide?18:5,height:5,borderRadius:3,cursor:'pointer',
-                                background:i===slide?'#FFD700':'rgba(255,215,0,0.2)',
-                                transition:'all .3s ease'}} />;
-                    })}
+                                background:i===slide?'#001F6B':'rgba(0,31,107,0.15)',
+                                transition:'all .3s ease'}} />
+                    );})}
                 </div>
 
                 <button onClick={siguiente}
-                    style={{fontFamily:"'Teko',sans-serif",fontSize:slide===TOTAL_SLIDES-1?13:15,letterSpacing:2,
-                        background:slide===TOTAL_SLIDES-1?'#FFD700':'rgba(255,215,0,0.15)',
-                        color:slide===TOTAL_SLIDES-1?'#001F6B':'#FFD700',
-                        border:slide===TOTAL_SLIDES-1?'none':'1px solid rgba(255,215,0,0.3)',
-                        borderRadius:24,padding:'11px 20px',cursor:'pointer',textTransform:'uppercase',
-                        boxShadow:slide===TOTAL_SLIDES-1?'0 6px 28px rgba(255,215,0,0.35)':'none'}}>
+                    style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:slide===TOTAL_SLIDES-1?12:15,letterSpacing:2,
+                        background:slide===TOTAL_SLIDES-1?'#001F6B':'rgba(0,31,107,0.06)',
+                        color:slide===TOTAL_SLIDES-1?'#FFD700':'rgba(0,31,107,0.7)',
+                        border:slide===TOTAL_SLIDES-1?'none':'1px solid rgba(0,31,107,0.12)',
+                        borderRadius:24,padding:'10px 18px',cursor:'pointer',textTransform:'uppercase',
+                        boxShadow:slide===TOTAL_SLIDES-1?'0 4px 18px rgba(0,31,107,0.2)':'none'}}>
                     {slide===TOTAL_SLIDES-1?'¡CREAR MI PERFIL!':'Siguiente →'}
                 </button>
             </div>
 
-            {/* Botón saltar */}
+            {/* Saltar */}
             {slide < TOTAL_SLIDES-1 && (
                 <button onClick={cerrar}
-                    style={{position:'absolute',top:16,right:16,zIndex:20,
+                    style={{position:'absolute',top:14,right:14,zIndex:20,
                         background:'none',border:'none',fontFamily:"'Inter',sans-serif",
-                        fontSize:11,color:'rgba(255,255,255,0.2)',cursor:'pointer',letterSpacing:1}}>
+                        fontSize:10,color:'rgba(0,0,0,0.2)',cursor:'pointer',letterSpacing:1}}>
                     Saltar
                 </button>
             )}
 
             {/* Contador */}
-            <div style={{position:'absolute',top:16,left:16,zIndex:20,
+            <div style={{position:'absolute',top:14,left:14,zIndex:20,
                 fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,
-                color:'rgba(255,215,0,0.25)',textTransform:'uppercase'}}>
+                color:'rgba(0,31,107,0.2)',textTransform:'uppercase'}}>
                 {slide+1} / {TOTAL_SLIDES}
             </div>
         </div>
@@ -2820,153 +2690,181 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers }) => {
 const PagosScreen = ({ currentUser }) => {
     var G = styles.colors;
     var JUGADORES_LISTA = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
-    var [paso, setPaso] = useState('inicio'); // inicio | formulario | procesando | ok | error
-    var [jugadorPago, setJugadorPago] = useState(currentUser || '');
-    var [pagoBy, setPagoBy] = useState(currentUser || '');
-    var [tipoPago, setTipoPago] = useState('inscripcion');
-    var [jornadas, setJornadas] = useState([]);
-    var [jornadaSel, setJornadaSel] = useState('');
+    var [paso, setPaso] = useState('inicio');
     var [pagos, setPagos] = useState([]);
+    var [jornadas, setJornadas] = useState([]);
+    var [tipoPago, setTipoPago] = useState('inscripcion');
+    var [jornadaSel, setJornadaSel] = useState('');
+    var [jugadoresPagando, setJugadoresPagando] = useState([currentUser]);
+    var [jugadoresPendientes, setJugadoresPendientes] = useState([]);
     var [error, setError] = useState('');
-    var stripe = null;
-    var cardElement = null;
+    var [stripe, setStripe] = useState(null);
+    var [cardMounted, setCardMounted] = useState(false);
+    var cardRef = { current: null };
 
     useEffect(function() {
-        var unsub = onSnapshot(
-            query(collection(db, 'jornadas'), orderBy('numeroJornada','asc')),
-            function(snap) { setJornadas(snap.docs.map(function(d){return{id:d.id,...d.data()};})); }
-        );
-        return function(){unsub();};
-    }, []);
-
-    useEffect(function() {
-        var unsub = onSnapshot(
-            query(collection(db, 'pagos'), orderBy('creadoEn','desc')),
+        var unsub = onSnapshot(query(collection(db, 'pagos'), orderBy('creadoEn','desc')),
             function(snap) { setPagos(snap.docs.map(function(d){return{id:d.id,...d.data()};})); }
         );
         return function(){unsub();};
     }, []);
 
-    // Cargar Stripe.js dinámicamente al abrir el formulario
-    var iniciarFormularioPago = function() {
-        if (!window.Stripe) {
-            var script = document.createElement('script');
-            script.src = 'https://js.stripe.com/v3/';
-            script.onload = function() { montarStripe(); };
-            document.head.appendChild(script);
-        } else {
-            montarStripe();
+    useEffect(function() {
+        var unsub = onSnapshot(query(collection(db,'jornadas'),orderBy('numeroJornada','asc')),
+            function(snap){setJornadas(snap.docs.map(function(d){return{id:d.id,...d.data()};}));}
+        );
+        return function(){unsub();};
+    }, []);
+
+    // Calcular jugadores con apuesta sin pagar (para que Laura pueda pagarles)
+    useEffect(function() {
+        if (tipoPago === 'inscripcion') {
+            var sinInscripcion = JUGADORES_LISTA.filter(function(j) {
+                return !pagos.some(function(p){ return p.jugador===j && p.tipo==='inscripcion' && p.estado!=='fallido'; });
+            });
+            setJugadoresPendientes(sinInscripcion);
+        } else if (jornadaSel) {
+            var sinJornada = JUGADORES_LISTA.filter(function(j) {
+                return !pagos.some(function(p){ return p.jugador===j && p.jornada===jornadaSel && p.estado!=='fallido'; });
+            });
+            setJugadoresPendientes(sinJornada);
         }
-        setPaso('formulario');
+    }, [pagos, tipoPago, jornadaSel]);
+
+    var toggleJugadorPagando = function(j) {
+        setJugadoresPagando(function(prev) {
+            var ya = prev.indexOf(j) > -1;
+            if (ya) return prev.filter(function(x){return x!==j;});
+            return prev.concat([j]);
+        });
     };
+
+    var precioUnitario = tipoPago==='inscripcion' ? 5 : tipoPago==='jornada_normal' ? 1 : 2;
+    var total = jugadoresPagando.length * precioUnitario;
+
+    var iniciarPago = function() {
+        if (jugadoresPagando.length === 0) { setError('Selecciona al menos un jugador'); return; }
+        if (tipoPago !== 'inscripcion' && !jornadaSel) { setError('Selecciona la jornada'); return; }
+        setError('');
+        setPaso('tarjeta');
+        setTimeout(function() {
+            if (window.Stripe) { montarStripe(); return; }
+            var s = document.createElement('script');
+            s.src = 'https://js.stripe.com/v3/';
+            s.onload = function(){ montarStripe(); };
+            document.head.appendChild(s);
+        }, 200);
+    };
+
+    var stripeInst = null;
+    var cardInst = null;
 
     var montarStripe = function() {
-        setTimeout(function() {
-            stripe = window.Stripe(STRIPE_PK);
-            var elements = stripe.elements();
-            cardElement = elements.create('card', {
-                style: {
-                    base: { fontFamily:"'Inter',sans-serif", fontSize:'16px', color:'#001F6B', '::placeholder':{ color:'rgba(0,31,107,0.3)' } },
-                    invalid: { color:'#e63946' }
-                },
-                hidePostalCode: true,
-            });
-            var mount = document.getElementById('stripe-card-element');
-            if (mount) cardElement.mount('#stripe-card-element');
-        }, 100);
+        stripeInst = window.Stripe(STRIPE_PK);
+        setStripe(stripeInst);
+        var elements = stripeInst.elements();
+        cardInst = elements.create('card', {
+            style:{ base:{ fontFamily:"'Inter',sans-serif", fontSize:'16px', color:'#001F6B', '::placeholder':{ color:'rgba(0,31,107,0.3)' } }, invalid:{color:'#e63946'} },
+            hidePostalCode:true,
+        });
+        cardRef.current = cardInst;
+        var el = document.getElementById('stripe-card-el');
+        if (el) { cardInst.mount('#stripe-card-el'); setCardMounted(true); }
     };
 
-    var importe = tipoPago === 'inscripcion' ? 5 : tipoPago === 'jornada_normal' ? 1 : 2;
-    var descripcion = tipoPago === 'inscripcion' ? 'Inscripción temporada 26/27' : tipoPago === 'jornada_normal' ? 'Jornada ' + jornadaSel : 'Jornada VIP ' + jornadaSel;
-
     var procesarPago = async function() {
-        if (!stripe || !cardElement) { setError('Error al cargar el formulario de pago. Recarga la página.'); return; }
-        if (tipoPago !== 'inscripcion' && !jornadaSel) { setError('Selecciona la jornada que quieres pagar.'); return; }
-        setPaso('procesando'); setError('');
+        if (!cardRef.current) { setError('Error al cargar el formulario. Recarga.'); return; }
+        setPaso('procesando');
         try {
-            // Crear PaymentMethod con los datos de tarjeta
-            var result = await stripe.createPaymentMethod({ type:'card', card:cardElement });
-            if (result.error) { setError(result.error.message); setPaso('formulario'); return; }
-
-            // Registrar el pago en Firestore (en producción esto debería pasar por tu backend)
-            await addDoc(collection(db, 'pagos'), {
-                jugador: jugadorPago,
-                pagoBy: pagoBy,
-                tipo: tipoPago,
-                jornada: jornadaSel || null,
-                importe: importe,
-                descripcion: descripcion,
-                paymentMethodId: result.paymentMethod.id,
-                estado: 'pendiente_confirmacion',
-                creadoEn: serverTimestamp(),
+            var result = await window._stripeInst.createPaymentMethod({ type:'card', card:cardRef.current });
+            if (result.error) { setError(result.error.message); setPaso('tarjeta'); return; }
+            // Registrar un pago por cada jugador seleccionado
+            var batch = jugadoresPagando.map(function(j) {
+                return addDoc(collection(db,'pagos'), {
+                    jugador: j,
+                    pagoBy: currentUser,
+                    tipo: tipoPago,
+                    jornada: jornadaSel || null,
+                    importe: precioUnitario,
+                    descripcion: tipoPago==='inscripcion' ? 'Inscripción 26/27' : ('Jornada '+(tipoPago==='jornada_vip'?'VIP ':'')+ jornadaSel),
+                    paymentMethodId: result.paymentMethod.id,
+                    estado: 'pendiente_confirmacion',
+                    creadoEn: serverTimestamp(),
+                });
             });
-
+            await Promise.all(batch);
             setPaso('ok');
         } catch(e) {
             setError('Error: ' + e.message);
-            setPaso('formulario');
+            setPaso('tarjeta');
         }
     };
 
-    var misPagos = pagos.filter(function(p) { return p.jugador === currentUser || p.pagoBy === currentUser; });
-    var inscripcionPagada = pagos.some(function(p) { return p.jugador === currentUser && p.tipo === 'inscripcion' && p.estado !== 'fallido'; });
+    // Guardar referencia global para acceder desde procesarPago
+    useEffect(function() {
+        if (stripe) window._stripeInst = stripe;
+    }, [stripe]);
 
+    var misPagos = pagos.filter(function(p){return p.jugador===currentUser||p.pagoBy===currentUser;});
+    var inscripcionPagada = jugadorHaPagado(currentUser, pagos);
     var S = {
-        card: { background:'#fff', border:'1px solid rgba(0,31,107,0.1)', borderRadius:16, padding:18, marginBottom:14 },
-        label: { fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:2, color:'rgba(0,31,107,0.5)', textTransform:'uppercase', display:'block', marginBottom:6 },
-        select: { width:'100%', padding:'11px 14px', border:'1.5px solid rgba(0,31,107,0.15)', borderRadius:12, fontFamily:"'Inter',sans-serif", fontSize:14, color:'#001F6B', outline:'none', marginBottom:14, background:'#f8f9ff', cursor:'pointer' },
-        btnPay: { width:'100%', fontFamily:"'Teko',sans-serif", fontSize:'1.15rem', letterSpacing:3, background:'#001F6B', color:'#FFD700', border:'none', borderRadius:30, padding:'15px', cursor:'pointer', textTransform:'uppercase', boxShadow:'0 6px 24px rgba(0,31,107,0.25)' },
-        btnSec: { width:'100%', fontFamily:"'Teko',sans-serif", fontSize:14, letterSpacing:2, background:'rgba(0,31,107,0.06)', color:'#001F6B', border:'1px solid rgba(0,31,107,0.12)', borderRadius:12, padding:'11px', cursor:'pointer', textTransform:'uppercase', marginTop:10 },
-        tag: function(c) { return { background:c+'20', color:c, border:'1px solid '+c+'40', borderRadius:8, padding:'3px 10px', fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600 }; },
+        card: {background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,padding:18,marginBottom:14},
+        label: {fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',display:'block',marginBottom:6},
+        select: {width:'100%',padding:'11px 14px',border:'1.5px solid rgba(0,31,107,0.15)',borderRadius:12,fontFamily:"'Inter',sans-serif",fontSize:14,color:'#001F6B',outline:'none',marginBottom:14,background:'#f8f9ff'},
+        btnPrimary: {width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.1rem',letterSpacing:3,background:'#001F6B',color:'#FFD700',border:'none',borderRadius:30,padding:'14px',cursor:'pointer',textTransform:'uppercase',boxShadow:'0 6px 24px rgba(0,31,107,0.2)'},
+        btnSec: {width:'100%',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'rgba(0,31,107,0.06)',color:'#001F6B',border:'1px solid rgba(0,31,107,0.12)',borderRadius:12,padding:'11px',cursor:'pointer',textTransform:'uppercase',marginTop:10},
+        tag: function(c){return{background:c+'20',color:c,border:'1px solid '+c+'40',borderRadius:8,padding:'3px 10px',fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600};},
+        jugBtn: function(sel){return{padding:'8px 14px',borderRadius:10,border:'none',cursor:'pointer',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,background:sel?'#001F6B':'rgba(0,31,107,0.06)',color:sel?'#FFD700':'#001F6B',transition:'all .15s',fontWeight:sel?700:400};},
     };
 
-    // ── PANTALLA DE INICIO ────────────────────────────────────────────────────
+    // ── INICIO ─────────────────────────────────────────────────────────────
     if (paso === 'inicio') return (
         <div style={{paddingBottom:40}}>
             <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>💳 PAGOS</h2>
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.5)',marginBottom:20,lineHeight:1.6}}>
-                Paga tu inscripción y las jornadas con tarjeta. El dinero queda reservado hasta el reparto de premios.
+                Paga tu inscripción y las jornadas. Puedes pagar por otros jugadores en un solo cobro.
             </p>
 
-            {/* Estado de inscripción */}
-            <div style={{...S.card, border: inscripcionPagada ? '1.5px solid #10b981' : '1.5px solid rgba(255,215,0,0.5)', background: inscripcionPagada ? 'rgba(16,185,129,0.04)' : 'rgba(255,215,0,0.04)'}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            {/* Estado inscripción propia */}
+            <div style={{...S.card,border:inscripcionPagada?'1.5px solid #10b981':'1.5px solid rgba(255,215,0,0.5)',background:inscripcionPagada?'rgba(16,185,129,0.04)':'rgba(255,215,0,0.04)'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:inscripcionPagada?0:14}}>
                     <div>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Inscripción 26/27</p>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Tu inscripción 26/27</p>
                         <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)'}}>5€ · Pago único para toda la temporada</p>
                     </div>
                     {inscripcionPagada
                         ? <span style={S.tag('#10b981')}>✅ Pagada</span>
-                        : <span style={S.tag('#FFD700')}>⚠️ Pendiente</span>
-                    }
+                        : <span style={S.tag('#FFD700')}>⚠️ Pendiente</span>}
                 </div>
                 {!inscripcionPagada && (
-                    <button onClick={function(){setTipoPago('inscripcion');setJugadorPago(currentUser);setPagoBy(currentUser);iniciarFormularioPago();}} style={{...S.btnPay,marginTop:14}}>
-                        Pagar inscripción — 5€ →
+                    <button onClick={function(){setTipoPago('inscripcion');setJugadoresPagando([currentUser]);setPaso('seleccion');}} style={S.btnPrimary}>
+                        Pagar mi inscripción — 5€ →
                     </button>
                 )}
             </div>
 
-            {/* Botón jornadas */}
+            {/* Pagar por otros */}
             <div style={S.card}>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:1,color:'#001F6B',marginBottom:4}}>Pagar una jornada</p>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14}}>Normal 1€ · VIP 2€. También puedes pagar por otro jugador.</p>
-                <button onClick={function(){setTipoPago('jornada_normal');iniciarFormularioPago();}} style={S.btnPay}>
-                    Seleccionar jornada →
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:1,color:'#001F6B',marginBottom:4}}>Pagar por alguien más</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14,lineHeight:1.5}}>
+                    ¿Quieres pagar la inscripción o una jornada de otro jugador? Selecciona aquí y se hace en un solo cobro.
+                </p>
+                <button onClick={function(){setTipoPago('inscripcion');setJugadoresPagando([]);setPaso('seleccion');}} style={S.btnPrimary}>
+                    Pagar por otros →
                 </button>
             </div>
 
             {/* Mis pagos */}
             {misPagos.length > 0 && (
                 <div>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10}}>Mis pagos</p>
-                    {misPagos.map(function(p) {
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'rgba(0,31,107,0.4)',textTransform:'uppercase',marginBottom:10}}>Mis pagos</p>
+                    {misPagos.slice(0,8).map(function(p) {
                         var color = p.estado==='completado'?'#10b981':p.estado==='fallido'?'#e63946':'rgba(0,31,107,0.4)';
                         return (
-                            <div key={p.id} style={{...S.card,display:'flex',alignItems:'center',gap:10,padding:'12px 16px'}}>
+                            <div key={p.id} style={{...S.card,display:'flex',alignItems:'center',gap:10,padding:'12px 16px',marginBottom:8}}>
                                 <div style={{flex:1}}>
-                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'#001F6B',letterSpacing:1}}>{p.descripcion}</p>
-                                    {p.pagoBy && p.pagoBy!==p.jugador && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)'}}>Pagado por {p.pagoBy}</p>}
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,color:'#001F6B',letterSpacing:1}}>{p.descripcion}</p>
+                                    {p.pagoBy && p.pagoBy!==p.jugador && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)'}}>Pagado por {p.pagoBy}</p>}
                                 </div>
                                 <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color:'#001F6B'}}>{p.importe}€</span>
                                 <span style={S.tag(color)}>{p.estado||'ok'}</span>
@@ -2978,61 +2876,104 @@ const PagosScreen = ({ currentUser }) => {
         </div>
     );
 
-    // ── FORMULARIO DE PAGO ────────────────────────────────────────────────────
-    if (paso === 'formulario') return (
+    // ── SELECCIÓN DE QUIÉN PAGA ─────────────────────────────────────────────
+    if (paso === 'seleccion') return (
         <div style={{paddingBottom:40}}>
-            <button onClick={function(){setPaso('inicio');}} style={{background:'none',border:'none',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'rgba(0,31,107,0.5)',cursor:'pointer',marginBottom:16,textTransform:'uppercase'}}>
-                ← Volver
-            </button>
-            <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:20,fontWeight:700}}>
-                💳 PAGAR {importe}€
-            </h2>
+            <button onClick={function(){setPaso('inicio');}} style={{background:'none',border:'none',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',cursor:'pointer',marginBottom:16,textTransform:'uppercase'}}>← Volver</button>
+            <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:20,fontWeight:700}}>¿Qué pagas?</h2>
 
             <div style={S.card}>
-                {/* Tipo de pago */}
                 <label style={S.label}>Tipo de pago</label>
-                <select style={S.select} value={tipoPago} onChange={function(e){setTipoPago(e.target.value);}}>
-                    <option value="inscripcion">Inscripción temporada — 5€</option>
-                    <option value="jornada_normal">Jornada normal — 1€</option>
-                    <option value="jornada_vip">Jornada VIP — 2€</option>
+                <select style={S.select} value={tipoPago} onChange={function(e){setTipoPago(e.target.value);setJugadoresPagando([currentUser]);}}>
+                    <option value="inscripcion">Inscripción temporada — 5€/persona</option>
+                    <option value="jornada_normal">Jornada normal — 1€/persona</option>
+                    <option value="jornada_vip">Jornada VIP — 2€/persona</option>
                 </select>
 
-                {/* Jornada (si no es inscripción) */}
                 {tipoPago !== 'inscripcion' && (
                     <div>
                         <label style={S.label}>Jornada</label>
                         <select style={S.select} value={jornadaSel} onChange={function(e){setJornadaSel(e.target.value);}}>
                             <option value="">Selecciona jornada...</option>
-                            {jornadas.map(function(j) {
+                            {jornadas.map(function(j){
                                 return <option key={j.id} value={'J'+j.numeroJornada}>J{j.numeroJornada} — {j.equipoLocal} vs {j.equipoVisitante}</option>;
                             })}
                         </select>
                     </div>
                 )}
 
-                {/* Jugador que va a pagar */}
-                <label style={S.label}>¿Por quién pagas?</label>
-                <select style={S.select} value={jugadorPago} onChange={function(e){setJugadorPago(e.target.value);}}>
-                    {JUGADORES_LISTA.map(function(j){return <option key={j} value={j}>{j}</option>;})}
-                </select>
+                <label style={S.label}>¿Por quién pagas? (Toca para seleccionar)</label>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',marginBottom:10,lineHeight:1.5}}>
+                    Solo aparecen los que aún no han pagado esto. Puedes pagar por varios en un solo cobro.
+                </p>
+                <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:16}}>
+                    {jugadoresPendientes.map(function(j) {
+                        var sel = jugadoresPagando.indexOf(j) > -1;
+                        return (
+                            <button key={j} onClick={function(){toggleJugadorPagando(j);}} style={S.jugBtn(sel)}>
+                                {sel ? '✓ ' : ''}{j}
+                            </button>
+                        );
+                    })}
+                    {jugadoresPendientes.length === 0 && (
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.4)'}}>
+                            Todos han pagado esto ✅
+                        </p>
+                    )}
+                </div>
 
-                {/* Pagador (si es diferente) */}
-                <label style={S.label}>¿Quién paga? (si es otra persona)</label>
-                <select style={S.select} value={pagoBy} onChange={function(e){setPagoBy(e.target.value);}}>
-                    {JUGADORES_LISTA.map(function(j){return <option key={j} value={j}>{j}</option>;})}
-                </select>
-
-                {/* Campo de tarjeta de Stripe */}
-                <label style={S.label}>Datos de tarjeta</label>
-                <div id="stripe-card-element" style={{border:'1.5px solid rgba(0,31,107,0.15)',borderRadius:12,padding:'13px 14px',background:'#f8f9ff',marginBottom:14}} />
+                {/* Resumen del total */}
+                {jugadoresPagando.length > 0 && (
+                    <div style={{background:'rgba(0,31,107,0.05)',borderRadius:12,padding:'12px 16px',marginBottom:16}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.7)'}}>
+                                {jugadoresPagando.join(', ')}
+                            </p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#001F6B'}}>
+                                {total}€
+                            </p>
+                        </div>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',marginTop:4}}>
+                            {jugadoresPagando.length} persona{jugadoresPagando.length>1?'s':''} × {precioUnitario}€
+                        </p>
+                    </div>
+                )}
 
                 {error && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginBottom:12,textAlign:'center'}}>{error}</p>}
 
-                <button onClick={procesarPago} style={S.btnPay}>
-                    Pagar {importe}€ →
+                <button onClick={iniciarPago} disabled={jugadoresPagando.length===0} style={{...S.btnPrimary,opacity:jugadoresPagando.length===0?0.5:1}}>
+                    Continuar — pagar {total}€ →
+                </button>
+            </div>
+        </div>
+    );
+
+    // ── TARJETA ─────────────────────────────────────────────────────────────
+    if (paso === 'tarjeta') return (
+        <div style={{paddingBottom:40}}>
+            <button onClick={function(){setPaso('seleccion');}} style={{background:'none',border:'none',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',cursor:'pointer',marginBottom:16,textTransform:'uppercase'}}>← Volver</button>
+            <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:20,fontWeight:700}}>Pagar {total}€</h2>
+
+            <div style={S.card}>
+                <div style={{background:'rgba(0,31,107,0.04)',borderRadius:10,padding:'10px 14px',marginBottom:16}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,color:'#001F6B',marginBottom:2}}>
+                        {tipoPago==='inscripcion'?'Inscripción 26/27':'Jornada '+(tipoPago==='jornada_vip'?'VIP ':'')+jornadaSel}
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>
+                        Para: {jugadoresPagando.join(', ')}
+                    </p>
+                </div>
+
+                <label style={S.label}>Datos de tarjeta</label>
+                <div id="stripe-card-el" style={{border:'1.5px solid rgba(0,31,107,0.15)',borderRadius:12,padding:'13px 14px',background:'#f8f9ff',marginBottom:14,minHeight:44}} />
+
+                {error && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginBottom:12,textAlign:'center'}}>{error}</p>}
+
+                <button onClick={procesarPago} style={S.btnPrimary}>
+                    Pagar {total}€ con tarjeta →
                 </button>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.35)',textAlign:'center',marginTop:10,lineHeight:1.5}}>
-                    🔒 Pago seguro procesado por Stripe. Tu tarjeta nunca se almacena en la app.
+                    🔒 Pago seguro por Stripe. Tu tarjeta nunca se almacena en la app.
                 </p>
             </div>
         </div>
@@ -3040,21 +2981,24 @@ const PagosScreen = ({ currentUser }) => {
 
     // ── PROCESANDO ────────────────────────────────────────────────────────────
     if (paso === 'procesando') return (
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:48,textAlign:'center'}}>
-            <div style={{fontSize:48,marginBottom:16,animation:'floatIcon 1s ease-in-out infinite'}}>⏳</div>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:60,textAlign:'center'}}>
+            <div style={{fontSize:52,marginBottom:16}}>⏳</div>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:3,color:'#001F6B',textTransform:'uppercase'}}>Procesando pago...</p>
         </div>
     );
 
-    // ── OK ────────────────────────────────────────────────────────────────────
+    // ── OK ─────────────────────────────────────────────────────────────────
     if (paso === 'ok') return (
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:48,textAlign:'center'}}>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,textAlign:'center'}}>
             <div style={{fontSize:64,marginBottom:16}}>✅</div>
-            <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:8}}>¡Pago registrado!</p>
-            <p style={{fontFamily:"'Inter',sans-serif",fontSize:14,color:'rgba(0,31,107,0.6)',marginBottom:24,lineHeight:1.6}}>
-                {descripcion} pagado por {pagoBy}{pagoBy!==jugadorPago?' (para '+jugadorPago+')':''}.
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:8}}>¡Pago confirmado!</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:14,color:'rgba(0,31,107,0.6)',marginBottom:8,lineHeight:1.7}}>
+                {total}€ pagados por {currentUser}
             </p>
-            <button onClick={function(){setPaso('inicio');}} style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,background:'#001F6B',color:'#FFD700',border:'none',borderRadius:12,padding:'12px 24px',cursor:'pointer',textTransform:'uppercase'}}>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.5)',marginBottom:24,lineHeight:1.6}}>
+                Para: <strong>{jugadoresPagando.join(', ')}</strong>
+            </p>
+            <button onClick={function(){setPaso('inicio');setJugadoresPagando([currentUser]);setJornadaSel('');}} style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,background:'#001F6B',color:'#FFD700',border:'none',borderRadius:12,padding:'12px 28px',cursor:'pointer',textTransform:'uppercase'}}>
                 Volver a pagos
             </button>
         </div>
@@ -3063,122 +3007,6 @@ const PagosScreen = ({ currentUser }) => {
     return null;
 };
 
-// ============================================================================
-// --- ESTADÍSTICAS — Clasificación general + histórico 25/26 ---
-// ============================================================================
-const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
-    var G = styles.colors;
-    var [clasificacion, setClasificacion] = useState([]);
-    var [jornadas, setJornadas] = useState([]);
-    var [historico, setHistorico] = useState(false);
-
-    useEffect(function() {
-        var unsub = onSnapshot(collection(db, 'clasificacion'), function(snap) {
-            var data = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
-            data.sort(function(a,b) { return (b.puntos||0) - (a.puntos||0); });
-            setClasificacion(data);
-        });
-        return function() { unsub(); };
-    }, []);
-
-    useEffect(function() {
-        var unsub = onSnapshot(
-            query(collection(db, 'jornadas'), orderBy('numeroJornada','asc')),
-            function(snap) { setJornadas(snap.docs.map(function(d){return{id:d.id,...d.data()};})); }
-        );
-        return function() { unsub(); };
-    }, []);
-
-    var medallaColor = ['#FFD700','#C0C0C0','#CD7F32'];
-
-    return (
-        <div style={{paddingBottom:40}}>
-            <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:G.deepBlue,textTransform:'uppercase',marginBottom:16,fontWeight:700}}>
-                📊 ESTADÍSTICAS
-            </h2>
-
-            {/* Clasificación general */}
-            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10}}>
-                Clasificación 26/27
-            </p>
-            <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,overflow:'hidden',marginBottom:20}}>
-                {clasificacion.length === 0 ? (
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.4)',padding:20,textAlign:'center'}}>
-                        La clasificación se actualizará al cerrar la primera jornada
-                    </p>
-                ) : clasificacion.map(function(j, idx) {
-                    var online = onlineUsers && onlineUsers[j.id];
-                    var perfil = userProfiles && userProfiles[j.id];
-                    return (
-                        <div key={j.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',
-                            borderBottom: idx < clasificacion.length-1 ? '1px solid rgba(0,31,107,0.06)' : 'none',
-                            background: idx === 0 ? 'rgba(255,215,0,0.04)' : '#fff'}}>
-                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,
-                                color: idx < 3 ? medallaColor[idx] : 'rgba(0,31,107,0.25)',
-                                minWidth:24, textAlign:'center'}}>
-                                {idx < 3 ? ['🥇','🥈','🥉'][idx] : idx+1}
-                            </span>
-                            <div style={{width:34,height:34,borderRadius:'50%',background:'rgba(0,31,107,0.08)',
-                                display:'flex',alignItems:'center',justifyContent:'center',
-                                fontFamily:"'Teko',sans-serif",fontSize:16,color:G.deepBlue,flexShrink:0,
-                                border: online ? '2px solid #10b981' : '2px solid transparent'}}>
-                                {perfil && perfil.emoji ? perfil.emoji : (j.id||'?')[0].toUpperCase()}
-                            </div>
-                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,color:G.deepBlue,letterSpacing:1,flex:1}}>
-                                {j.id}
-                            </span>
-                            <div style={{textAlign:'right'}}>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:G.deepBlue}}>
-                                    {j.puntos || 0}
-                                </span>
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)',marginLeft:4}}>pts</span>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-
-            {/* Botón histórico */}
-            <button onClick={function(){setHistorico(function(h){return !h;});}}
-                style={{width:'100%',background:'rgba(0,31,107,0.06)',border:'1px solid rgba(0,31,107,0.12)',
-                    borderRadius:12,padding:'11px',fontFamily:"'Teko',sans-serif",fontSize:14,
-                    letterSpacing:2,color:G.deepBlue,cursor:'pointer',textTransform:'uppercase',marginBottom:14}}>
-                {historico ? '▲ Ocultar' : '▼ Ver'} historial de jornadas
-            </button>
-
-            {/* Historial de jornadas */}
-            {historico && (
-                <div>
-                    {jornadas.filter(function(j){return j.estado==='Finalizada';}).map(function(j) {
-                        return (
-                            <div key={j.id} style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:14,padding:'14px 16px',marginBottom:8}}>
-                                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:4}}>
-                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:G.deepBlue,minWidth:28}}>J{j.numeroJornada}</span>
-                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,color:G.deepBlue,flex:1,textTransform:'uppercase'}}>{j.equipoLocal} {j.resultadoFinal||''} {j.equipoVisitante}</span>
-                                    {j.esVip && <span style={{background:'rgba(255,215,0,0.15)',color:'#001F6B',border:'1px solid rgba(255,215,0,0.3)',borderRadius:8,padding:'2px 8px',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1}}>VIP</span>}
-                                </div>
-                                {j.ganadorBote && (
-                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#10b981'}}>
-                                        🏆 Bote ganado por {j.ganadorBote}
-                                    </p>
-                                )}
-                            </div>
-                        );
-                    })}
-                    {jornadas.filter(function(j){return j.estado==='Finalizada';}).length === 0 && (
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.4)',textAlign:'center',padding:16}}>
-                            Aún no hay jornadas finalizadas
-                        </p>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-};
-
-// ============================================================================
-// --- CALENDARIO ─────────────────────────────────────────────────────────────
-// ============================================================================
 const CalendarioScreen = ({ teamLogos }) => {
     var G = styles.colors;
     var [jornadas, setJornadas] = useState([]);
@@ -4432,7 +4260,7 @@ const PLAZO_EL_OTRO = new Date('2026-08-14T17:00:00Z');
 // Tiempo máximo por turno antes de saltarlo: 60 minutos
 const TIMEOUT_TURNO_MINUTOS = 60;
 
-const ElOtroScreen = ({ currentUser, userProfiles }) => {
+const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
     var G = styles.colors;
     var [miElOtro, setMiElOtro] = useState(null);
     var [todosElOtro, setTodosElOtro] = useState({});
@@ -4533,6 +4361,16 @@ const ElOtroScreen = ({ currentUser, userProfiles }) => {
     var plazoSuperado = new Date() > PLAZO_EL_OTRO;
 
     if (loading) return <div style={{padding:40,textAlign:'center',color:G.deepBlue,fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:2}}>CARGANDO...</div>;
+
+    // Bloqueo hasta que pague
+    if (!jugadorHaPagado(currentUser, pagos || [])) {
+        return (
+            <div style={{paddingBottom:40}}>
+                <h2 style={styles.title}>EL OTRO EQUIPO</h2>
+                <BannerPagoPendiente onIrAPagos={onIrAPagos} />
+            </div>
+        );
+    }
 
     return (
         <div style={{padding:'16px 0'}}>
@@ -4649,7 +4487,7 @@ const ElOtroScreen = ({ currentUser, userProfiles }) => {
 // ============================================================================
 // --- MIS 5 ESTRELLAS — Selección de jugadores UDLP por jornada ---
 // ============================================================================
-const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles }) => {
+const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrAPagos }) => {
     const G = styles.colors;
     const [jornadaActual, setJornadaActual] = useState(null);
     const [seleccion, setSeleccion] = useState([]);
@@ -5073,6 +4911,7 @@ function App() {
     const [onlineUsers, setOnlineUsers] = useState({});
     const [clasificacionData, setClasificacionData] = useState([]);
     const [showTutorial, setShowTutorial] = useState(false);
+    const [pagosGlobal, setPagosGlobal] = useState([]);
 
     // ── Estilos globales y estado RTDB público al arrancar ──────────────
     useEffect(() => {
@@ -5104,6 +4943,9 @@ function App() {
             setIsAdmin(user === 'Juanma');
 
             // Listeners de Firestore post-login
+            onSnapshot(collection(db, 'pagos'), function(snap) {
+                setPagosGlobal(snap.docs.map(function(d){return{id:d.id,...d.data()};}));
+            });
             onSnapshot(doc(db, "configuracion", "escudos"), function(snap) {
                 if (snap.exists()) setTeamLogos(snap.data());
             });
@@ -5147,10 +4989,10 @@ function App() {
 
     var renderContent = function() {
         switch (activeTab) {
-            case 'miJornada':    return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
+            case 'miJornada':    return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'laJornada':   return <LaJornadaScreen userProfiles={userProfiles} onlineUsers={onlineUsers} teamLogos={teamLogos} />;
-            case 'elOtro':      return <ElOtroScreen currentUser={currentUser} userProfiles={userProfiles} />;
-            case 'estrellas':   return <MisEstrellasScreen currentUser={currentUser} plantilla={plantilla} userProfiles={userProfiles} />;
+            case 'elOtro':      return <ElOtroScreen currentUser={currentUser} userProfiles={userProfiles} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
+            case 'estrellas':   return <MisEstrellasScreen currentUser={currentUser} plantilla={plantilla} userProfiles={userProfiles} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
