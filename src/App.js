@@ -1156,60 +1156,68 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
 // ============================================================================
 // --- TUTORIAL ÉPICO — Presentación nueva temporada 26/27 ---
 // ============================================================================
-const TutorialEpico = ({ user, onClose }) => {
+const TutorialEpico = ({ user, plantilla, onClose }) => {
     var [slide, setSlide] = useState(0);
     var [saliendo, setSaliendo] = useState(false);
-    var SLIDES = [
-        {
-            bg: '#001F6B',
-            accent: '#FFD700',
-            icon: '🏟️',
-            titulo: 'TEMPORADA 26/27',
-            subtitulo: 'UD LAS PALMAS · SEGUNDA DIVISIÓN',
-            texto: 'El equipo vuelve al Estadio de Gran Canaria con un objetivo claro: el ascenso. Y vosotros, como siempre, estaréis en cada partido.',
-            tag: null,
-        },
-        {
-            bg: '#0a0a0a',
-            accent: '#FFD700',
-            icon: '⚡',
-            titulo: 'LA PORRA',
-            subtitulo: 'EL JUEGO CENTRAL',
-            texto: 'Cada jornada, tu apuesta. Adivina el marcador exacto y llévate el bote. Si nadie acierta, se acumula. Así funciona desde el principio, y así sigue.',
-            tag: '3 PTS por resultado exacto',
-        },
-        {
-            bg: '#001F6B',
-            accent: '#FFD700',
-            icon: '🛡️',
-            titulo: 'EL OTRO',
-            subtitulo: 'NOVEDAD 26/27',
-            texto: 'Cada jugador elige un equipo de Primera División en secreto. Cuando lo activas, tus puntos de esa jornada se multiplican. Si tu equipo gana, tú ganas más.',
-            tag: '×2 · ×2.5 · ×3 según el uso',
-        },
-        {
-            bg: '#0a0a0a',
-            accent: '#FFD700',
-            icon: '⭐',
-            titulo: 'MIS 5 ESTRELLAS',
-            subtitulo: 'NOVEDAD 26/27',
-            texto: 'Elige hasta 5 jugadores de la UDLP antes de cada partido. Sus actuaciones reales generan estrellas. El mejor de la jornada suma puntos para la clasificación general.',
-            tag: 'Hasta 5 pts extra por jornada',
-        },
-        {
-            bg: '#001F6B',
-            accent: '#FFD700',
-            icon: '🏆',
-            titulo: '¿ESTÁS LISTO?',
-            subtitulo: user ? 'BIENVENIDO, ' + user.toUpperCase() : 'BIENVENIDO',
-            texto: 'La liga empieza el 15 de agosto. Elige tu equipo de El Otro antes del jueves 13. Y recuerda: esto no va solo de fútbol. Va de vosotros.',
-            tag: null,
-            esUltimo: true,
-        },
+    var [escudoActivo, setEscudoActivo] = useState(0);
+    var [jugadorActivo, setJugadorActivo] = useState(0);
+    var [jugadoresElegidos, setJugadoresElegidos] = useState([]);
+
+    var EQUIPOS_PRIMERA = [
+        "FC Barcelona","Real Madrid","Atlético de Madrid","Villarreal CF",
+        "Real Betis","Celta de Vigo","Real Sociedad","Getafe CF",
+        "Athletic Club","Sevilla FC","Rayo Vallecano","Deportivo Alavés",
+        "RCD Espanyol","Valencia CF","Leganés","CA Osasuna",
+        "Real Valladolid","Racing de Santander","RC Deportivo","Málaga CF"
     ];
 
-    var s = SLIDES[slide];
+    var JUGADORES_TUTORIAL = (plantilla || []).slice(0,8);
+
+    // Animación de escudos en cascada
+    useEffect(function() {
+        if (slide !== 5) return;
+        var t = setInterval(function() {
+            setEscudoActivo(function(v) { return (v + 1) % EQUIPOS_PRIMERA.length; });
+        }, 180);
+        return function() { clearInterval(t); };
+    }, [slide]);
+
+    // Animación de jugadores
+    useEffect(function() {
+        if (slide !== 7) return;
+        var t = setInterval(function() {
+            setJugadorActivo(function(v) { return (v + 1) % JUGADORES_TUTORIAL.length; });
+        }, 600);
+        return function() { clearInterval(t); };
+    }, [slide]);
+
+    var SLIDES = [
+        // 0 — Bienvenida
+        { bg:'#001F6B', tipo:'bienvenida' },
+        // 1 — La UDLP vuelve
+        { bg:'#0a0a0a', tipo:'udlp' },
+        // 2 — La Porra: qué es
+        { bg:'#001F6B', tipo:'porra1' },
+        // 3 — La Porra: cómo puntúa
+        { bg:'#0a0a0a', tipo:'porra2' },
+        // 4 — El Otro: intro
+        { bg:'#001F6B', tipo:'otro1' },
+        // 5 — El Otro: elige equipo (escudos en cascada)
+        { bg:'#0a0a0a', tipo:'otro2' },
+        // 6 — El Otro: el multiplicador
+        { bg:'#001F6B', tipo:'otro3' },
+        // 7 — Mis 5 Estrellas: intro con jugadores
+        { bg:'#0a0a0a', tipo:'estrellas1' },
+        // 8 — Mis 5 Estrellas: cómo puntúan
+        { bg:'#001F6B', tipo:'estrellas2' },
+        // 9 — Invita a amigos
+        { bg:'#0a0a0a', tipo:'invita' },
+        // 10 — Último: empezar
+        { bg:'#001F6B', tipo:'fin' },
+    ];
+
     var total = SLIDES.length;
+    var s = SLIDES[slide];
 
     var siguiente = function() {
         if (slide < total - 1) setSlide(function(v) { return v + 1; });
@@ -1224,97 +1232,544 @@ const TutorialEpico = ({ user, onClose }) => {
         }, 400);
     };
 
+    var toggleJugador = function(j) {
+        var ya = jugadoresElegidos.find(function(x) { return x.nombre === j.nombre; });
+        if (ya) { setJugadoresElegidos(jugadoresElegidos.filter(function(x) { return x.nombre !== j.nombre; })); }
+        else if (jugadoresElegidos.length < 5) { setJugadoresElegidos([...jugadoresElegidos, j]); }
+    };
+
+    var renderSlide = function() {
+        switch(s.tipo) {
+            case 'bienvenida': return (
+                <div style={{textAlign:'center'}}>
+                    <img src="/escudo.png" alt="UDLP"
+                        style={{width:90,height:108,objectFit:'contain',marginBottom:24,
+                            filter:'drop-shadow(0 0 30px rgba(255,215,0,0.4))',
+                            animation:'floatIcon 3s ease-in-out infinite'}}
+                        onError={function(e){e.target.style.display='none';}} />
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:12}}>
+                        Temporada 26/27
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(3rem,12vw,4.5rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:4,lineHeight:1,marginBottom:20}}>
+                        BIENVENIDO{user ? ',\n' + user.toUpperCase() : ''}
+                    </h1>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:16,
+                        color:'rgba(255,255,255,0.65)',lineHeight:1.8,maxWidth:320,margin:'0 auto 24px'}}>
+                        La porra más épica de la historia de la familia arranca una nueva temporada.
+                        Nuevas reglas. Nuevas novedades. Mismo objetivo: vivir el fútbol juntos.
+                    </p>
+                    <div style={{display:'inline-block',background:'rgba(255,215,0,0.1)',
+                        border:'1px solid rgba(255,215,0,0.2)',borderRadius:20,padding:'8px 24px'}}>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,
+                            color:'rgba(255,215,0,0.7)',textTransform:'uppercase'}}>
+                            Desliza para descubrir las novedades
+                        </span>
+                    </div>
+                </div>
+            );
+
+            case 'udlp': return (
+                <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:80,marginBottom:20,animation:'floatIcon 3s ease-in-out infinite'}}>🏟️</div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>
+                        UD Las Palmas · Segunda División
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(2.5rem,10vw,3.8rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:20}}>
+                        EL EQUIPO<br/>VUELVE
+                    </h1>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:16,
+                        color:'rgba(255,255,255,0.65)',lineHeight:1.8,maxWidth:320,margin:'0 auto 20px'}}>
+                        Tras el descenso, la UDLP regresa a Segunda con un objetivo claro: <strong style={{color:'#FFD700'}}>volver a Primera División</strong>.
+                        42 jornadas, rivales como Tenerife, Girona o Mallorca, y vosotros en cada partido.
+                    </p>
+                    <div style={{display:'flex',justifyContent:'center',gap:16}}>
+                        <div style={{textAlign:'center'}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:'#FFD700'}}>42</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.35)',letterSpacing:2,textTransform:'uppercase'}}>Jornadas</p>
+                        </div>
+                        <div style={{width:1,background:'rgba(255,215,0,0.15)'}} />
+                        <div style={{textAlign:'center'}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:'#FFD700'}}>15 AGO</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.35)',letterSpacing:2,textTransform:'uppercase'}}>Primer partido</p>
+                        </div>
+                        <div style={{width:1,background:'rgba(255,215,0,0.15)'}} />
+                        <div style={{textAlign:'center'}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:'#FFD700'}}>20</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.35)',letterSpacing:2,textTransform:'uppercase'}}>Jugadores</p>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            case 'porra1': return (
+                <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:76,marginBottom:20,animation:'floatIcon 3s ease-in-out infinite'}}>⚽</div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>
+                        El juego central
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(2.8rem,11vw,4rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:20}}>
+                        LA PORRA
+                    </h1>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:16,
+                        color:'rgba(255,255,255,0.65)',lineHeight:1.8,maxWidth:340,margin:'0 auto 24px'}}>
+                        Cada semana, antes de que empiece el partido de la UDLP, haces tu apuesta.
+                        Adivinas el marcador exacto y, si aciertas, <strong style={{color:'#FFD700'}}>te llevas el bote</strong>.
+                        Si nadie acierta, el bote se acumula para la siguiente jornada.
+                    </p>
+                    <div style={{background:'rgba(255,215,0,0.08)',border:'1px solid rgba(255,215,0,0.2)',
+                        borderRadius:16,padding:16,maxWidth:280,margin:'0 auto'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,
+                            color:'rgba(255,215,0,0.6)',textTransform:'uppercase',marginBottom:8}}>Tu apuesta semanal incluye</p>
+                        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                            {[
+                                ['⚽','Marcador exacto','2-1, 0-0, 3-2...'],
+                                ['1️⃣','1X2','¿Gana, empata o pierde?'],
+                                ['🛡️','El Otro','Activas el multiplicador'],
+                                ['⭐','5 Estrellas','Tus jugadores UDLP'],
+                            ].map(function(item,i) {
+                                return (
+                                    <div key={i} style={{display:'flex',alignItems:'center',gap:10,textAlign:'left'}}>
+                                        <span style={{fontSize:18,flexShrink:0}}>{item[0]}</span>
+                                        <div>
+                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,color:'#FFD700',letterSpacing:1}}>{item[1]}</span>
+                                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.4)',marginLeft:8}}>{item[2]}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+
+            case 'porra2': return (
+                <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:72,marginBottom:20,animation:'floatIcon 3s ease-in-out infinite'}}>🏆</div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>
+                        El sistema de puntos
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(2.5rem,10vw,3.5rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:20}}>
+                        ¿CUÁNTO VALE<br/>CADA COSA?
+                    </h1>
+                    <div style={{display:'flex',flexDirection:'column',gap:10,maxWidth:320,margin:'0 auto 20px'}}>
+                        {[
+                            ['Resultado exacto','3 pts','6 pts en VIP','#FFD700'],
+                            ['1X2 (gana/empata/pierde)','2 pts','4 pts en VIP','rgba(255,215,0,0.7)'],
+                            ['1º en Mis 5 Estrellas','5 pts','5 pts (sin cambio)','rgba(255,215,0,0.6)'],
+                            ['2º en Mis 5 Estrellas','4 pts','4 pts','rgba(255,215,0,0.5)'],
+                            ['3º en Mis 5 Estrellas','3 pts','3 pts','rgba(255,215,0,0.4)'],
+                        ].map(function(r,i) {
+                            return (
+                                <div key={i} style={{display:'flex',alignItems:'center',gap:10,
+                                    background:'rgba(255,255,255,0.04)',borderRadius:10,padding:'10px 14px',textAlign:'left'}}>
+                                    <div style={{flex:1}}>
+                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:1,color:'rgba(255,255,255,0.7)'}}>{r[0]}</p>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{r[2]}</p>
+                                    </div>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:r[3]}}>{r[1]}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div style={{background:'rgba(255,215,0,0.08)',border:'1px solid rgba(255,215,0,0.2)',
+                        borderRadius:12,padding:'10px 20px',display:'inline-block'}}>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,215,0,0.8)'}}>
+                            El <strong>bote semanal</strong> solo lo gana quien acierta el marcador exacto
+                        </p>
+                    </div>
+                </div>
+            );
+
+            case 'otro1': return (
+                <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:76,marginBottom:20,animation:'floatIcon 3s ease-in-out infinite'}}>🛡️</div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>
+                        Novedad 26/27
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(2.8rem,11vw,4rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:20}}>
+                        EL OTRO
+                    </h1>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:16,
+                        color:'rgba(255,255,255,0.65)',lineHeight:1.8,maxWidth:340,margin:'0 auto 20px'}}>
+                        Cada jugador elige <strong style={{color:'#FFD700'}}>un equipo de Primera División</strong> que será suyo para toda la temporada, en <strong style={{color:'#FFD700'}}>secreto</strong>.
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:15,
+                        color:'rgba(255,255,255,0.5)',lineHeight:1.7,maxWidth:320,margin:'0 auto 20px'}}>
+                        Cada jornada decides si activarlo o no. Si lo activas y tu equipo <strong style={{color:'#FFD700'}}>gana</strong>, multiplicas todos tus puntos de esa jornada.
+                        Si <strong style={{color:'rgba(255,255,255,0.6)'}}>empata</strong>, sin efecto.
+                        Si <strong style={{color:'#e63946'}}>pierde</strong>, divides entre 2.
+                    </p>
+                    <div style={{display:'flex',justifyContent:'center',gap:12}}>
+                        {[['Gana','×2 · ×2.5 · ×3','#10b981'],['Empata','Sin efecto','rgba(255,255,255,0.4)'],['Pierde','÷2','#e63946']].map(function(r,i) {
+                            return (
+                                <div key={i} style={{textAlign:'center',background:'rgba(255,255,255,0.04)',
+                                    borderRadius:12,padding:'12px 14px',minWidth:80}}>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.5)',marginBottom:6}}>{r[0]}</p>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color:r[2]}}>{r[1]}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+
+            case 'otro2': return (
+                <div style={{textAlign:'center'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>
+                        20 equipos disponibles
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(2.2rem,9vw,3.2rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:16}}>
+                        ELIGE TU<br/>EQUIPO SECRETO
+                    </h1>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:14,
+                        color:'rgba(255,255,255,0.5)',lineHeight:1.6,marginBottom:20}}>
+                        Uno por jugador. El orden de elección sigue la clasificación del año pasado.
+                        Una vez elegido, no se puede cambiar.
+                    </p>
+                    {/* Grid de equipos en cascada */}
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,maxWidth:340,margin:'0 auto'}}>
+                        {EQUIPOS_PRIMERA.map(function(eq,i) {
+                            var activo = i === escudoActivo;
+                            return (
+                                <div key={eq} style={{
+                                    background: activo ? 'rgba(255,215,0,0.2)' : 'rgba(255,255,255,0.04)',
+                                    border: activo ? '1px solid rgba(255,215,0,0.5)' : '1px solid rgba(255,255,255,0.06)',
+                                    borderRadius:8,padding:'6px 4px',textAlign:'center',
+                                    transition:'all .2s ease',transform: activo ? 'scale(1.08)' : 'scale(1)',
+                                }}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:9,
+                                        color: activo ? '#FFD700' : 'rgba(255,255,255,0.3)',
+                                        letterSpacing:0.5,lineHeight:1.2}}>
+                                        {eq.replace('FC ','').replace('CD ','').replace('SD ','').replace('CF ','').replace('RCD ','').replace('RC ','').split(' ')[0]}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+
+            case 'otro3': return (
+                <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:72,marginBottom:20,animation:'floatIcon 3s ease-in-out infinite'}}>⚡</div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>
+                        El multiplicador sube
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(2.5rem,10vw,3.5rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:20}}>
+                        CUANTO MÁS<br/>LO USAS,<br/>MÁS GANAS
+                    </h1>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:15,
+                        color:'rgba(255,255,255,0.6)',lineHeight:1.7,maxWidth:320,margin:'0 auto 24px'}}>
+                        El multiplicador <strong style={{color:'#FFD700'}}>crece</strong> cada vez que activas El Otro.
+                        Empieza en ×2 y puede llegar a ×3 si lo usas con constancia durante la temporada.
+                    </p>
+                    <div style={{display:'flex',justifyContent:'center',gap:12,marginBottom:20}}>
+                        {[['1ª-2ª activación','×2','#FFD700'],['3ª-4ª activación','×2.5','#FFD700'],['5ª+ activación','×3','#FFD700']].map(function(r,i) {
+                            return (
+                                <div key={i} style={{textAlign:'center',background:'rgba(255,215,0,0.08)',
+                                    border:'1px solid rgba(255,215,0,0.2)',borderRadius:14,padding:'14px 10px',flex:1}}>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,lineHeight:1.3}}>{r[0]}</p>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:r[2]}}>{r[1]}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div style={{background:'rgba(255,215,0,0.06)',border:'1px solid rgba(255,215,0,0.15)',
+                        borderRadius:12,padding:'12px 20px'}}>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,215,0,0.7)',lineHeight:1.5}}>
+                            ⚠️ Mínimo <strong>3 activaciones</strong> durante la temporada o pierdes el acceso al multiplicador máximo
+                        </p>
+                    </div>
+                </div>
+            );
+
+            case 'estrellas1': return (
+                <div style={{textAlign:'center'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>
+                        Novedad 26/27
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(2.5rem,10vw,3.5rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:16}}>
+                        MIS 5<br/>ESTRELLAS
+                    </h1>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:15,
+                        color:'rgba(255,255,255,0.6)',lineHeight:1.7,maxWidth:320,margin:'0 auto 20px'}}>
+                        Antes de cada partido elige hasta <strong style={{color:'#FFD700'}}>5 jugadores de la UDLP</strong>.
+                        Sus actuaciones reales durante el partido generan <strong style={{color:'#FFD700'}}>estrellas</strong>.
+                    </p>
+                    {/* Jugadores con foto y animación */}
+                    <div style={{display:'flex',justifyContent:'center',gap:10,flexWrap:'wrap',maxWidth:340,margin:'0 auto'}}>
+                        {JUGADORES_TUTORIAL.map(function(j,i) {
+                            var seleccionado = !!jugadoresElegidos.find(function(x) { return x.nombre===j.nombre; });
+                            var destacado = i === jugadorActivo;
+                            return (
+                                <div key={j.nombre} onClick={function(){toggleJugador(j);}}
+                                    style={{
+                                        display:'flex',flexDirection:'column',alignItems:'center',gap:4,
+                                        cursor:'pointer',transition:'all .3s ease',
+                                        transform: destacado ? 'scale(1.15) translateY(-4px)' : seleccionado ? 'scale(1.05)' : 'scale(1)',
+                                        opacity: destacado || seleccionado ? 1 : 0.6,
+                                    }}>
+                                    <div style={{
+                                        width:48,height:48,borderRadius:'50%',overflow:'hidden',
+                                        border: seleccionado ? '2.5px solid #FFD700' : destacado ? '2px solid rgba(255,215,0,0.5)' : '2px solid rgba(255,255,255,0.1)',
+                                        background:'rgba(255,255,255,0.08)',
+                                    }}>
+                                        {j.imageUrl ? (
+                                            <img src={j.imageUrl} alt={j.nombre}
+                                                style={{width:'100%',height:'100%',objectFit:'cover'}}
+                                                onError={function(e){e.target.style.display='none';}} />
+                                        ) : (
+                                            <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',
+                                                justifyContent:'center',fontFamily:"'Teko',sans-serif",fontSize:18,
+                                                color:seleccionado?'#FFD700':'rgba(255,255,255,0.5)'}}>
+                                                {j.dorsal}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,
+                                        color:seleccionado?'#FFD700':destacado?'rgba(255,215,0,0.6)':'rgba(255,255,255,0.35)',
+                                        maxWidth:50,textAlign:'center',lineHeight:1.2}}>
+                                        {j.nombre.split(' ')[0]}
+                                    </p>
+                                    {seleccionado && <span style={{fontSize:10}}>⭐</span>}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.25)',
+                        marginTop:16}}>Toca los jugadores para practicar · {jugadoresElegidos.length}/5</p>
+                </div>
+            );
+
+            case 'estrellas2': return (
+                <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:72,marginBottom:20,animation:'floatIcon 3s ease-in-out infinite'}}>⭐</div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>
+                        La liga de estrellas
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(2.2rem,9vw,3.2rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:16}}>
+                        ¿CÓMO SE<br/>PUNTÚA?
+                    </h1>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:14,
+                        color:'rgba(255,255,255,0.55)',lineHeight:1.7,maxWidth:320,margin:'0 auto 16px'}}>
+                        Cada acción de tus jugadores elegidos genera estrellas según su rendimiento real.
+                        Al final de la jornada, <strong style={{color:'#FFD700'}}>el ranking de estrellas</strong> determina tus puntos extra.
+                    </p>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,maxWidth:320,margin:'0 auto 16px'}}>
+                        {[
+                            ['⚽ Gol delantero','+5 ⭐'],['⚽ Gol defensa','+8 ⭐'],
+                            ['🅰️ Asistencia','+3 ⭐'],['🧤 Portería a cero','+4 ⭐'],
+                            ['🟨 Amarilla','-1 ⭐'],['🟥 Roja','-3 ⭐'],
+                        ].map(function(r,i) {
+                            return (
+                                <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+                                    background:'rgba(255,255,255,0.04)',borderRadius:10,padding:'8px 12px'}}>
+                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.5)'}}>{r[0]}</span>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,
+                                        color: r[1].startsWith('-') ? '#e63946' : '#FFD700'}}>{r[1]}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div style={{display:'flex',justifyContent:'center',gap:10}}>
+                        {[['1º','5 pts'],['2º','4 pts'],['3º','3 pts'],['4º','2 pts'],['5º','1 pt']].map(function(r,i) {
+                            return (
+                                <div key={i} style={{textAlign:'center',background:'rgba(255,215,0,0.08)',
+                                    borderRadius:10,padding:'8px 8px',minWidth:46}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(255,215,0,0.6)'}}>{r[0]}</p>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color:'#FFD700'}}>{r[1]}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+
+            case 'invita': return (
+                <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:76,marginBottom:16,animation:'floatIcon 3s ease-in-out infinite'}}>👥</div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>
+                        Quedan plazas libres
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(2.5rem,10vw,3.5rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:16}}>
+                        INVITA A<br/>UN AMIGO
+                    </h1>
+                    <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:20}}>
+                        {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(function(n) {
+                            return <div key={n} style={{width:14,height:14,borderRadius:'50%',background:'rgba(255,215,0,0.6)',border:'1.5px solid rgba(255,215,0,0.3)'}} />;
+                        })}
+                        {[1,2,3,4,5].map(function(n) {
+                            return <div key={'v'+n} style={{width:14,height:14,borderRadius:'50%',background:'transparent',border:'1.5px dashed rgba(255,215,0,0.3)'}} />;
+                        })}
+                    </div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,215,0,0.5)',
+                        letterSpacing:2,textTransform:'uppercase',marginBottom:16}}>
+                        15/20 plazas ocupadas · Quedan 5
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:15,
+                        color:'rgba(255,255,255,0.6)',lineHeight:1.8,maxWidth:320,margin:'0 auto 20px'}}>
+                        La liga admite hasta <strong style={{color:'#FFD700'}}>20 jugadores</strong>, uno por equipo de Primera División.
+                        Quedan <strong style={{color:'#FFD700'}}>5 huecos libres</strong>. Si conoces a alguien que quiera jugar, tráelo.
+                    </p>
+                    <div style={{background:'rgba(255,215,0,0.08)',border:'1px solid rgba(255,215,0,0.2)',
+                        borderRadius:16,padding:16,maxWidth:300,margin:'0 auto'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,
+                            color:'rgba(255,215,0,0.8)',textTransform:'uppercase',marginBottom:8}}>
+                            ¿Por qué invitar?
+                        </p>
+                        <div style={{display:'flex',flexDirection:'column',gap:8,textAlign:'left'}}>
+                            {[
+                                '🏆 Más jugadores = más bote semanal',
+                                '⭐ Más rival en Mis 5 Estrellas',
+                                '🚀 Quien llene plazas tendrá su propia liga la próxima temporada',
+                            ].map(function(t,i) {
+                                return <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>{t}</p>;
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+
+            case 'fin': return (
+                <div style={{textAlign:'center'}}>
+                    <img src="/escudo.png" alt="UDLP"
+                        style={{width:80,height:96,objectFit:'contain',marginBottom:20,
+                            filter:'drop-shadow(0 0 30px rgba(255,215,0,0.5))',
+                            animation:'floatIcon 3s ease-in-out infinite'}}
+                        onError={function(e){e.target.style.display='none';}} />
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:6,
+                        color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>
+                        Todo listo
+                    </p>
+                    <h1 style={{fontFamily:"'Teko',sans-serif",
+                        fontSize:'clamp(2.5rem,10vw,3.8rem)',fontWeight:700,
+                        color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:20}}>
+                        ¿ESTÁS<br/>LISTO{user ? ',\n' + user.toUpperCase() + '?' : '?'}
+                    </h1>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:15,
+                        color:'rgba(255,255,255,0.6)',lineHeight:1.8,maxWidth:320,margin:'0 auto 16px'}}>
+                        La liga empieza el <strong style={{color:'#FFD700'}}>15 de agosto</strong>.
+                        Antes del <strong style={{color:'#FFD700'}}>jueves 13</strong> tienes que elegir tu equipo de El Otro.
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:14,
+                        color:'rgba(255,255,255,0.4)',lineHeight:1.7,maxWidth:300,margin:'0 auto 28px'}}>
+                        A continuación crearás tu perfil con tu emoji personal. Solo te llevará un momento.
+                    </p>
+                    <div style={{display:'flex',flexDirection:'column',gap:8,alignItems:'center'}}>
+                        <div style={{display:'flex',gap:16,justifyContent:'center',marginBottom:8}}>
+                            {['⚽','🛡️','⭐','👥'].map(function(e,i) {
+                                return <span key={i} style={{fontSize:28}}>{e}</span>;
+                            })}
+                        </div>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,
+                            color:'rgba(255,255,255,0.25)',letterSpacing:2,textTransform:'uppercase'}}>
+                            Porra · El Otro · Estrellas · Amigos
+                        </p>
+                    </div>
+                </div>
+            );
+
+            default: return null;
+        }
+    };
+
+    var s = SLIDES[slide];
+
     return (
         <div style={{
             position:'fixed', inset:0, zIndex:500,
             background: s.bg,
             display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-            padding:32, transition:'background .6s ease',
-            animation: saliendo ? 'fadeOut .4s ease forwards' : 'fadeIn .5s ease',
+            padding:'24px 28px', transition:'background .5s ease',
+            animation: saliendo ? 'fadeOut .4s ease forwards' : 'fadeIn .4s ease',
+            overflowY:'auto',
         }}>
             <style>{`
                 @keyframes fadeOut{to{opacity:0;transform:scale(.96)}}
                 @keyframes floatIcon{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-                @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-                .tutorial-icon{animation:floatIcon 3s ease-in-out infinite;}
-                .tutorial-content{animation:slideUp .4s ease both;}
+                @keyframes slideUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
             `}</style>
 
             {/* Fondo decorativo */}
             <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none'}}>
                 <div style={{position:'absolute',top:'-20%',right:'-20%',width:'60vw',height:'60vw',
-                    borderRadius:'50%',background:'rgba(255,215,0,0.04)'}} />
-                <div style={{position:'absolute',bottom:'-10%',left:'-15%',width:'40vw',height:'40vw',
                     borderRadius:'50%',background:'rgba(255,215,0,0.03)'}} />
-                {/* Líneas de pizarra */}
                 <svg style={{position:'absolute',inset:0,width:'100%',height:'100%'}} viewBox="0 0 400 700" fill="none" preserveAspectRatio="xMidYMid slice">
-                    <rect x="40" y="40" width="320" height="620" stroke="#FFD700" strokeWidth="0.4" opacity="0.06" rx="2"/>
-                    <line x1="40" y1="350" x2="360" y2="350" stroke="#FFD700" strokeWidth="0.4" opacity="0.05"/>
-                    <circle cx="200" cy="350" r="60" stroke="#FFD700" strokeWidth="0.4" opacity="0.05"/>
+                    <rect x="40" y="40" width="320" height="620" stroke="#FFD700" strokeWidth="0.4" opacity="0.05" rx="2"/>
+                    <line x1="40" y1="350" x2="360" y2="350" stroke="#FFD700" strokeWidth="0.4" opacity="0.04"/>
+                    <circle cx="200" cy="350" r="60" stroke="#FFD700" strokeWidth="0.4" opacity="0.04"/>
                 </svg>
             </div>
 
-            {/* Escudo UDLP arriba */}
-            <div style={{position:'relative',zIndex:2,marginBottom:32}}>
-                <img src="/escudo.png" alt="UDLP"
-                    style={{width:56,height:66,objectFit:'contain',filter:'brightness(0) invert(1)',opacity:.15}}
-                    onError={function(e){e.target.style.display='none';}} />
+            {/* Contenido del slide */}
+            <div key={slide} style={{position:'relative',zIndex:2,width:'100%',maxWidth:400,
+                animation:'slideUp .35s ease both'}}>
+                {renderSlide()}
             </div>
 
-            {/* Contenido */}
-            <div key={slide} className="tutorial-content" style={{position:'relative',zIndex:2,textAlign:'center',maxWidth:360}}>
-                <div className="tutorial-icon" style={{fontSize:72,marginBottom:20,lineHeight:1}}>{s.icon}</div>
-
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:5,color:'rgba(255,215,0,0.5)',
-                    textTransform:'uppercase',marginBottom:8}}>{s.subtitulo}</p>
-
-                <h1 style={{fontFamily:"'Teko',sans-serif",fontSize:'clamp(2.5rem,10vw,3.5rem)',fontWeight:700,
-                    color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:20}}>{s.titulo}</h1>
-
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:15,color:'rgba(255,255,255,0.7)',
-                    lineHeight:1.7,marginBottom:s.tag?20:32}}>{s.texto}</p>
-
-                {s.tag && (
-                    <div style={{display:'inline-block',background:'rgba(255,215,0,0.12)',border:'1px solid rgba(255,215,0,0.25)',
-                        borderRadius:20,padding:'8px 20px',marginBottom:32}}>
-                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#FFD700',textTransform:'uppercase'}}>
-                            {s.tag}
-                        </span>
-                    </div>
-                )}
-
-                {/* Dots de progreso */}
-                <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:32}}>
-                    {SLIDES.map(function(_,i) {
-                        return (
-                            <div key={i} style={{
-                                width: i===slide ? 24 : 8, height:8, borderRadius:4,
+            {/* Dots de progreso */}
+            <div style={{position:'relative',zIndex:2,display:'flex',justifyContent:'center',gap:6,marginTop:28}}>
+                {SLIDES.map(function(_,i) {
+                    return (
+                        <div key={i} onClick={function(){setSlide(i);}}
+                            style={{
+                                width: i===slide ? 20 : 6, height:6, borderRadius:3,
                                 background: i===slide ? '#FFD700' : 'rgba(255,215,0,0.2)',
-                                transition:'all .3s ease',
+                                transition:'all .3s ease', cursor:'pointer',
                             }} />
-                        );
-                    })}
-                </div>
+                    );
+                })}
+            </div>
 
-                {/* Botón */}
+            {/* Botones */}
+            <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',
+                alignItems:'center',gap:12,marginTop:20}}>
                 <button onClick={siguiente}
                     style={{
-                        fontFamily:"'Teko',sans-serif",fontSize:'1.2rem',letterSpacing:3,
-                        background: s.esUltimo ? '#FFD700' : 'transparent',
-                        color: s.esUltimo ? '#001F6B' : '#FFD700',
-                        border: s.esUltimo ? 'none' : '1.5px solid rgba(255,215,0,0.4)',
-                        borderRadius:30, padding:'16px 40px', cursor:'pointer',
+                        fontFamily:"'Teko',sans-serif",fontSize:'1.15rem',letterSpacing:3,
+                        background: s.tipo==='fin' ? '#FFD700' : 'transparent',
+                        color: s.tipo==='fin' ? '#001F6B' : '#FFD700',
+                        border: s.tipo==='fin' ? 'none' : '1.5px solid rgba(255,215,0,0.35)',
+                        borderRadius:30, padding:'15px 44px', cursor:'pointer',
                         textTransform:'uppercase',
-                        boxShadow: s.esUltimo ? '0 8px 32px rgba(255,215,0,0.3)' : 'none',
+                        boxShadow: s.tipo==='fin' ? '0 8px 32px rgba(255,215,0,0.35)' : 'none',
                     }}>
-                    {s.esUltimo ? '¡EMPEZAR LA TEMPORADA!' : 'SIGUIENTE →'}
+                    {s.tipo==='fin' ? '¡CREAR MI PERFIL!' : 'SIGUIENTE →'}
                 </button>
-
-                {!s.esUltimo && (
+                {s.tipo !== 'fin' && (
                     <button onClick={cerrar}
-                        style={{display:'block',margin:'16px auto 0',background:'none',border:'none',
-                            fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.25)',
-                            cursor:'pointer',textDecoration:'underline'}}>
+                        style={{background:'none',border:'none',fontFamily:"'Inter',sans-serif",
+                            fontSize:11,color:'rgba(255,255,255,0.2)',cursor:'pointer',textDecoration:'underline'}}>
                         Saltar tutorial
                     </button>
                 )}
@@ -1322,6 +1777,7 @@ const TutorialEpico = ({ user, onClose }) => {
         </div>
     );
 };
+
 
 // ============================================================================
 // --- MIS 5 ESTRELLAS MODAL — acceso flotante desde Mi Jornada ---
@@ -3870,7 +4326,7 @@ function App() {
         <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(160deg,#f8f9ff 0%,#eef1fa 100%)', overflow: 'hidden', fontFamily: "'Teko', sans-serif" }}>
 
             {/* Tutorial épico — primera vez en la temporada */}
-            {showTutorial && <TutorialEpico user={currentUser} onClose={function() { setShowTutorial(false); }} />}
+            {showTutorial && <TutorialEpico user={currentUser} plantilla={plantilla} onClose={function() { setShowTutorial(false); setActiveTab('perfil'); }} />}
 
             {/* ── TOPBAR ── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(10px)', borderBottom: '0.5px solid rgba(0,31,107,0.08)', position: 'relative', zIndex: 10 }}>
@@ -3944,6 +4400,24 @@ function App() {
                 </div>
 
                 <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    {/* Botón Invita a Amigos */}
+                    <button onClick={function() {
+                        var msg = '¡Únete a la Porra UDLP 26/27! Quedan 5 plazas. Escríbeme y te apunto 🐥⚽';
+                        if (navigator.share) {
+                            navigator.share({ title: 'Porra UDLP 26/27', text: msg });
+                        } else if (navigator.clipboard) {
+                            navigator.clipboard.writeText(msg);
+                            alert('Mensaje copiado — pégalo en WhatsApp');
+                        }
+                        setDrawerOpen(false);
+                    }}
+                        style={{width:'100%',background:'rgba(255,215,0,0.12)',border:'1px solid rgba(255,215,0,0.3)',
+                            borderRadius:12,padding:'11px 0',cursor:'pointer',marginBottom:10,
+                            fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,
+                            color:'#FFD700',textTransform:'uppercase',display:'flex',alignItems:'center',
+                            justifyContent:'center',gap:8}}>
+                        👥 INVITA A AMIGOS
+                    </button>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                         <div style={{ width: 34, height: 34, background: '#FFD700', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Teko',sans-serif", fontSize: 18, fontWeight: 700, color: '#001F6B' }}>
                             {(currentUser || 'U')[0].toUpperCase()}
