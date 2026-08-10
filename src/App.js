@@ -482,7 +482,127 @@ const PerfilScreen = ({ currentUser }) => {
 
 
 
-const TeamDisplay = ({ teamLogos, teamName, shortName = false, imgStyle }) => (<div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:'8px', flex: '0 0 auto'}}><img src={teamLogos[teamName] || 'https://placehold.co/80x80/1b263b/e0e1dd?text=?'} style={imgStyle} alt={teamName} /><span style={{fontSize:'clamp(0.85rem, 2.5vw, 1rem)', fontWeight:'600', color:styles.colors.lightText, fontFamily:"'Montserrat', sans-serif"}}>{shortName && teamName === "UD Las Palmas" ? "UDLP" : teamName}</span></div>);
+
+// ============================================================================
+// LOGOS DE EQUIPOS — fallback hardcoded con API-Sports
+// Se usan si Firestore (configuracion/escudos) está vacío
+// Los IDs son de API-Football v3 (api-sports.io)
+// ============================================================================
+var LOGOS_EQUIPOS = {
+    // UD Las Palmas
+    'UD Las Palmas':           'https://media.api-sports.io/football/teams/728.png',
+    'Las Palmas':              'https://media.api-sports.io/football/teams/728.png',
+    // Equipos Segunda División 26/27
+    'Albacete Balompié':       'https://media.api-sports.io/football/teams/724.png',
+    'Albacete':                'https://media.api-sports.io/football/teams/724.png',
+    'Córdoba CF':              'https://media.api-sports.io/football/teams/729.png',
+    'Córdoba':                 'https://media.api-sports.io/football/teams/729.png',
+    'Málaga CF':               'https://media.api-sports.io/football/teams/727.png',
+    'Málaga':                  'https://media.api-sports.io/football/teams/727.png',
+    'Burgos CF':               'https://media.api-sports.io/football/teams/10015.png',
+    'Burgos':                  'https://media.api-sports.io/football/teams/10015.png',
+    'Real Sociedad B':         'https://media.api-sports.io/football/teams/732.png',
+    "Real Sociedad 'B'":       'https://media.api-sports.io/football/teams/732.png',
+    'CD Leganés':              'https://media.api-sports.io/football/teams/107.png',
+    'Leganés':                 'https://media.api-sports.io/football/teams/107.png',
+    'UD Almería':              'https://media.api-sports.io/football/teams/232.png',
+    'Almería':                 'https://media.api-sports.io/football/teams/232.png',
+    'Cádiz CF':                'https://media.api-sports.io/football/teams/724.png',
+    'Cádiz':                   'https://media.api-sports.io/football/teams/443.png',
+    'Granada CF':              'https://media.api-sports.io/football/teams/715.png',
+    'Granada':                 'https://media.api-sports.io/football/teams/715.png',
+    'SD Eibar':                'https://media.api-sports.io/football/teams/716.png',
+    'Eibar':                   'https://media.api-sports.io/football/teams/716.png',
+    'SD Huesca':               'https://media.api-sports.io/football/teams/731.png',
+    'Huesca':                  'https://media.api-sports.io/football/teams/731.png',
+    'Sporting de Gijón':       'https://media.api-sports.io/football/teams/725.png',
+    'Sporting Gijón':          'https://media.api-sports.io/football/teams/725.png',
+    'Racing de Santander':     'https://media.api-sports.io/football/teams/728.png',
+    'Racing Santander':        'https://media.api-sports.io/football/teams/9815.png',
+    'Real Valladolid':         'https://media.api-sports.io/football/teams/720.png',
+    'Valladolid':              'https://media.api-sports.io/football/teams/720.png',
+    'CD Castellón':            'https://media.api-sports.io/football/teams/14733.png',
+    'Castellón':               'https://media.api-sports.io/football/teams/14733.png',
+    'CD Mirándés':             'https://media.api-sports.io/football/teams/726.png',
+    'Mirándés':                'https://media.api-sports.io/football/teams/726.png',
+    'AD Ceuta':                'https://media.api-sports.io/football/teams/11597.png',
+    'Ceuta':                   'https://media.api-sports.io/football/teams/11597.png',
+    'Cultural Leonesa':        'https://media.api-sports.io/football/teams/733.png',
+    'Real Zaragoza':           'https://media.api-sports.io/football/teams/723.png',
+    'Zaragoza':                'https://media.api-sports.io/football/teams/723.png',
+    'RC Deportivo':            'https://media.api-sports.io/football/teams/538.png',
+    'Deportivo de la Coruña':  'https://media.api-sports.io/football/teams/538.png',
+    'Deportivo':               'https://media.api-sports.io/football/teams/538.png',
+    'FC Andorra':              'https://media.api-sports.io/football/teams/10159.png',
+    'Andorra':                 'https://media.api-sports.io/football/teams/10159.png',
+    // Equipos Primera División (El Otro Equipo)
+    'FC Barcelona':            'https://media.api-sports.io/football/teams/529.png',
+    'Barcelona':               'https://media.api-sports.io/football/teams/529.png',
+    'Real Madrid':             'https://media.api-sports.io/football/teams/541.png',
+    'Atlético de Madrid':      'https://media.api-sports.io/football/teams/530.png',
+    'Atlético Madrid':         'https://media.api-sports.io/football/teams/530.png',
+    'Villarreal CF':           'https://media.api-sports.io/football/teams/533.png',
+    'Villarreal':              'https://media.api-sports.io/football/teams/533.png',
+    'Real Betis':              'https://media.api-sports.io/football/teams/543.png',
+    'Celta de Vigo':           'https://media.api-sports.io/football/teams/558.png',
+    'Celta':                   'https://media.api-sports.io/football/teams/558.png',
+    'Real Sociedad':           'https://media.api-sports.io/football/teams/548.png',
+    'Getafe CF':               'https://media.api-sports.io/football/teams/546.png',
+    'Getafe':                  'https://media.api-sports.io/football/teams/546.png',
+    'Athletic Club':           'https://media.api-sports.io/football/teams/531.png',
+    'Athletic':                'https://media.api-sports.io/football/teams/531.png',
+    'Sevilla FC':              'https://media.api-sports.io/football/teams/536.png',
+    'Sevilla':                 'https://media.api-sports.io/football/teams/536.png',
+    'Rayo Vallecano':          'https://media.api-sports.io/football/teams/728.png',
+    'Rayo':                    'https://media.api-sports.io/football/teams/728.png',
+    'Deportivo Alavés':        'https://media.api-sports.io/football/teams/542.png',
+    'Alavés':                  'https://media.api-sports.io/football/teams/542.png',
+    'RCD Espanyol':            'https://media.api-sports.io/football/teams/532.png',
+    'Espanyol':                'https://media.api-sports.io/football/teams/532.png',
+    'Valencia CF':             'https://media.api-sports.io/football/teams/532.png',
+    'Valencia':                'https://media.api-sports.io/football/teams/532.png',
+    'CA Osasuna':              'https://media.api-sports.io/football/teams/727.png',
+    'Osasuna':                 'https://media.api-sports.io/football/teams/727.png',
+    'Real Valladolid':         'https://media.api-sports.io/football/teams/720.png',
+    'Valladolid':              'https://media.api-sports.io/football/teams/720.png',
+    'Racing de Santander':     'https://media.api-sports.io/football/teams/9815.png',
+    'Racing':                  'https://media.api-sports.io/football/teams/9815.png',
+    'RC Deportivo':            'https://media.api-sports.io/football/teams/538.png',
+    'Deportivo':               'https://media.api-sports.io/football/teams/538.png',
+    'Málaga CF':               'https://media.api-sports.io/football/teams/727.png',
+};
+
+var getLogoEquipo = function(nombre, teamLogos) {
+    if (!nombre) return '';
+    // Primero buscar en Firestore (teamLogos del admin)
+    if (teamLogos && teamLogos[nombre]) return teamLogos[nombre];
+    // Luego en el mapa hardcoded (case-insensitive parcial)
+    if (LOGOS_EQUIPOS[nombre]) return LOGOS_EQUIPOS[nombre];
+    // Búsqueda parcial
+    var keys = Object.keys(LOGOS_EQUIPOS);
+    for (var i=0; i<keys.length; i++) {
+        if (nombre.toLowerCase().includes(keys[i].toLowerCase()) || 
+            keys[i].toLowerCase().includes(nombre.toLowerCase())) {
+            return LOGOS_EQUIPOS[keys[i]];
+        }
+    }
+    // Fallback: placehold con iniciales
+    var ini = nombre.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,3).toUpperCase();
+    return 'https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent(ini);
+};
+
+const TeamDisplay = ({ teamLogos, teamName, shortName = false, imgStyle }) => {
+    var logoSrc = getLogoEquipo(teamName, teamLogos);
+    return (
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'6px',flex:'0 0 auto'}}>
+            <img src={logoSrc} style={imgStyle} alt={teamName}
+                onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((teamName||'?').substring(0,3));}} />
+            <span style={{fontSize:'clamp(0.75rem,2.5vw,0.9rem)',fontWeight:600,color:styles.colors.lightText,fontFamily:"'Montserrat',sans-serif",textAlign:'center',maxWidth:90,lineHeight:1.2}}>
+                {shortName && teamName === 'UD Las Palmas' ? 'UDLP' : teamName}
+            </span>
+        </div>
+    );
+};
 
 const LoadingSkeleton = () => (<div style={{padding:'60px', textAlign:'center', color:styles.colors.golden, fontFamily:"'Oswald', sans-serif", fontSize:'1.2rem', letterSpacing:'2px'}}>CARGANDO DATOS...</div>);
 
@@ -1042,7 +1162,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                         </div>
                         <div style={{display:'flex',alignItems:'center',gap:12,justifyContent:'center'}}>
                             <div style={{textAlign:'center'}}>
-                                <img src={jornada.udlpEsLocal ? '/escudo.png' : 'https://placehold.co/40x40/f8f9ff/001F6B?text=' + encodeURIComponent(jornada.equipoLocal.substring(0,3))}
+                                <img src={getLogoEquipo(jornada.equipoLocal, teamLogos)}
                                     alt={jornada.equipoLocal} style={{width:36,height:36,objectFit:'contain',marginBottom:4}}
                                     onError={function(e){e.target.style.display='none';}} />
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoLocal.toUpperCase()}</p>
@@ -1053,7 +1173,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             </div>
                             <span style={{fontFamily:"'Teko',sans-serif",fontSize:28,color:'rgba(0,31,107,0.3)'}}>—</span>
                             <div style={{textAlign:'center'}}>
-                                <img src={!jornada.udlpEsLocal ? '/escudo.png' : 'https://placehold.co/40x40/f8f9ff/001F6B?text=' + encodeURIComponent(jornada.equipoVisitante.substring(0,3))}
+                                <img src={getLogoEquipo(jornada.equipoVisitante, teamLogos)}
                                     alt={jornada.equipoVisitante} style={{width:36,height:36,objectFit:'contain',marginBottom:4}}
                                     onError={function(e){e.target.style.display='none';}} />
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoVisitante.toUpperCase()}</p>
@@ -1254,7 +1374,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
     }, [slide]);
 
     // 16 slides en total
-    var TOTAL_SLIDES = 16;
+    var TOTAL_SLIDES = 17;
 
     var siguiente = function() {
         if (slide < TOTAL_SLIDES - 1) setSlide(function(v) { return v + 1; });
@@ -1766,9 +1886,48 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
         );
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLIDE 15: CIERRE ÉPICO
+        // SLIDE 15: PRECIO E INSCRIPCIÓN
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         case 15: return (
+            <div style={{textAlign:'center'}}>
+                <div style={{fontSize:70,marginBottom:18,animation:'floatIcon 3s ease-in-out infinite'}}>💰</div>
+                <p style={S.eyebrow}>Antes de empezar</p>
+                <h1 style={S.titulo}>INSCRIPCIÓN<br/>5€ ESTA TEMPORADA</h1>
+                <p style={S.cuerpo}>
+                    Este año la porra tiene un precio de entrada de <strong style={{color:'#FFD700'}}>5€ por jugador</strong>.
+                    Un único pago para toda la temporada — 42 jornadas, sin cuotas adicionales.
+                </p>
+                <div style={{...S.infoBox,marginBottom:16}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,215,0,0.8)',lineHeight:1.7,textAlign:'center'}}>
+                        🏆 Todo el dinero va a premios — <strong>entre 75€ y 100€</strong> para el top 3, dependiendo de cuántos jugadores participen.<br/>
+                        🎁 A lo largo de la temporada: experiencias, merchandising UDLP y muchas sorpresas más.
+                    </p>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:360}}>
+                    {[
+                        ['💸','Pago','5€ único · gestión por Splitwise o Bizum'],
+                        ['📅','Cuándo','Antes del primer partido — 15 de agosto'],
+                        ['🚫','Norma','Sin pago confirmado, no hay acceso a la app'],
+                        ['👥','Nuevos','Los jugadores invitados también pagan 5€'],
+                    ].map(function(r,i) {
+                        return (
+                            <div key={i} style={{...S.card,display:'flex',alignItems:'flex-start',gap:12,padding:'11px 14px',textAlign:'left'}}>
+                                <span style={{fontSize:18,flexShrink:0}}>{r[0]}</span>
+                                <div>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:1,color:'#FFD700',marginBottom:2}}>{r[1]}</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.45)',lineHeight:1.5}}>{r[2]}</p>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // SLIDE 16: CIERRE ÉPICO
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        case 16: return (
             <div style={{textAlign:'center'}}>
                 <img src="/escudo.png" alt="UDLP"
                     style={{width:86,height:103,objectFit:'contain',marginBottom:20,
