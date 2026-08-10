@@ -5312,11 +5312,10 @@ function debeMostrarIntro() {
     // Vista previa forzada: añade ?intro=1 a la URL para verla en cualquier momento.
     var params = new URLSearchParams(window.location.search);
     if (params.get('intro') === '1') return true;
-    // Quien entra con el código de prueba (udlp2027) ya salta la pantalla de
-    // "en construcción" — que vea también la intro ya, sin esperar a la fecha.
-    if (sessionStorage.getItem('porra_prueba') === '1') {
-        return !localStorage.getItem('intro_presentacion_2627_vista');
-    }
+    // Modo prueba (código udlp2027): siempre visible al entrar, tantas veces
+    // como quieran — NO se marca como "vista" para este grupo.
+    if (sessionStorage.getItem('porra_prueba') === '1') return true;
+    // Usuarios normales: solo a partir de la fecha de lanzamiento, y una sola vez.
     if (new Date() < FECHA_LANZAMIENTO_INTRO) return false;
     return !localStorage.getItem('intro_presentacion_2627_vista');
 }
@@ -5673,6 +5672,18 @@ function App() {
                 </div>
 
                 <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    {/* Ver presentación de nuevo — solo modo prueba */}
+                    {typeof window !== 'undefined' && sessionStorage.getItem('porra_prueba') === '1' && (
+                        <button onClick={function() { setDrawerOpen(false); setMostrarIntro(true); }}
+                            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                padding: '10px 14px', marginBottom: 10, border: '1px solid rgba(255,215,0,0.3)', borderRadius: 12,
+                                background: 'rgba(255,215,0,0.08)', color: '#FFD700', cursor: 'pointer' }}>
+                            <i className="ti ti-player-play" style={{ fontSize: 14 }} aria-hidden="true" />
+                            <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 13, letterSpacing: 1, textTransform: 'uppercase' }}>
+                                Ver presentación
+                            </span>
+                        </button>
+                    )}
                     {/* Botón Invita a Amigos */}
                     <button onClick={function() {
                         var baseUrl = window.location.origin + '/invitacion.html';
