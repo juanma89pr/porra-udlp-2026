@@ -108,14 +108,18 @@ const PLANTILLA_FALLBACK = [
     { dorsal:"7",  nombre:"Sandro Ramírez",     posicion:"Delantero",      apiId:18892,   wikiImg:'' },
     { dorsal:"41", nombre:"Elías Romero",       posicion:"Delantero",      apiId:0,       wikiImg:'' },
 ].map(function(j) {
-    var foto = '';
-    if (j.apiId > 0) {
-        // API-Football CDN — foto oficial del jugador
-        foto = 'https://media.api-sports.io/football/players/' + j.apiId + '.png';
-    } else {
-        // Fallback: avatar con iniciales en colores UDLP
-        foto = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(j.nombre) + '&background=001F6B&color=FFD700&size=120&bold=true&font-size=0.38&length=2';
-    }
+    // Mapa de IDs de Sofascore — CDN público, sin CORS, fotos reales
+    var sofascoreIds = {
+        'Dinko Horkas': 868411, 'Marvin Park': 942489, 'Álex Suárez': 889668,
+        'Juanma Herzog': 837459, 'Kirian Rodríguez': 964985, 'Enzo Loiodice': 1002088,
+        'Iñaki González': 1190406, 'Manu Fuster': 856321, 'Taisei Miyashiro': 1030799,
+        'Jeremía Recoba': 1640614, 'Jesé Rodríguez': 98637, 'Sandro Ramírez': 477615,
+        'Enrique Clemente': 872344, 'Viti Rozada': 921034,
+    };
+    var sofaId = sofascoreIds[j.nombre];
+    var foto = sofaId
+        ? 'https://img.sofascore.com/api/v1/player/' + sofaId + '/image'
+        : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(j.nombre) + '&background=001F6B&color=FFD700&size=120&bold=true&font-size=0.38&length=2';
     return { ...j, imageUrl: foto };
 });
 
@@ -1648,15 +1652,19 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                         ['⚽ Gol portero/defensa','+8⭐',false],
                         ['⚽ Gol centrocampista','+6⭐',false],
                         ['⚽ Gol delantero','+5⭐',false],
+                        ['🧤 Parada penalti','+5⭐',false],
                         ['🅰️ Asistencia','+3⭐',false],
+                        ['🛡️ Robado último hombre','+3⭐',false],
                         ['🧤 Portería a 0 (portero)','+4⭐',false],
                         ['🧤 Portería a 0 (defensa)','+2⭐',false],
-                        ['🧤 Parada penalti','+5⭐',false],
                         ['👟 Titular (+60 min)','+2⭐',false],
+                        ['🛡️ Recuperación balón','+1⭐',false],
+                        ['🛡️ Pase interceptado','+1⭐',false],
+                        ['🧤 Parada genérica','+1⭐',false],
                         ['👟 Suplente (entra)','+1⭐',false],
                         ['🟨 Tarjeta amarilla','-1⭐',true],
-                        ['🟥 Tarjeta roja','-3⭐',true],
                         ['❌ Penalti fallado','-2⭐',true],
+                        ['🟥 Tarjeta roja','-3⭐',true],
                     ].map(function(r,i){return(
                         <div key={i} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px'}}>
                             <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,0,0,0.5)'}}>{r[0]}</span>
@@ -1665,8 +1673,9 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                     );})}
                 </div>
                 <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.6}}>
-                    Un portero con portería a 0 y una parada de penalti suma <strong>+9⭐</strong> en un partido.<br/>
-                    La clave: elige jugadores que <strong>jueguen de titular</strong> en partidos con alto riesgo de gol.
+                    Un portero con portería a 0 + parada de penalti + 3 paradas normales suma <strong>+12⭐</strong>.<br/>
+                    Un defensa que roba el balón al último hombre + portería a 0 suma <strong>+5⭐</strong>.<br/>
+                    La clave: elige jugadores <strong>activos con balón</strong>, no solo atacantes.
                 </p></div>
             </div>
         );
@@ -4767,6 +4776,10 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                         ['🧤','Portería a 0 — defensa','+2⭐',false],
                         ['👟','Titular (+60 min)','+2⭐',false],
                         ['👟','Suplente (entra)','+1⭐',false],
+                        ['🛡️','Balón robado último hombre','+3⭐',false],
+                        ['🛡️','Recuperación de balón','+1⭐',false],
+                        ['🛡️','Pase interceptado','+1⭐',false],
+                        ['🧤','Parada genérica (portero)','+1⭐',false],
                         ['🟨','Tarjeta amarilla','-1⭐',true],
                         ['❌','Penalti fallado','-2⭐',true],
                         ['🟥','Tarjeta roja','-3⭐',true],
