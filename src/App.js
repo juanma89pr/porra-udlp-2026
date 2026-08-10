@@ -3703,126 +3703,524 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     );
 };
 
-const AdminPanelScreen = ({ plantilla, jugadores }) => {
+// ============================================================================
+// --- ADMIN PANEL SCREEN — Panel de control completo 26/27 ---
+// ============================================================================
+const STRIPE_PK = 'pk_test_REEMPLAZAR_CON_TU_CLAVE'; // ← Reemplaza con pk_test_... o pk_live_...
+
+const AdminPanelScreen = ({ plantilla }) => {
     var [jornadas, setJornadas] = useState([]);
-    var [expandida, setExpandida] = useState(null); // ID de la jornada expandida
+    var [expandida, setExpandida] = useState(null);
     var [sincronizando, setSincronizando] = useState(false);
     var [msgSync, setMsgSync] = useState('');
+    var [seccion, setSeccion] = useState('jornadas');
+    var [solicitudes, setSolicitudes] = useState([]);
+    var [pagos, setPagos] = useState([]);
+    var [msgAdmin, setMsgAdmin] = useState('');
+    var [rifas, setRifas] = useState([]);
+    var [nuevaRifa, setNuevaRifa] = useState({ titulo:'', descripcion:'', precio:'', fecha:'' });
 
-    useEffect(function() { 
+    var JUGADORES_LISTA = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+
+    useEffect(function() {
         var unsub = onSnapshot(
-            query(collection(db, "jornadas"), orderBy("numeroJornada", "asc")), // J1 primero
-            function(snap) { 
-                var jornadasData = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
-                setJornadas(jornadasData);
-                // Auto-expandir la primera jornada abierta o en vivo (solo si no hay ninguna expandida)
+            query(collection(db, "jornadas"), orderBy("numeroJornada", "asc")),
+            function(snap) {
+                var data = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+                setJornadas(data);
                 setExpandida(function(actual) {
                     if (actual !== null) return actual;
-                    var activa = snap.docs.find(function(d) {
-                        return d.data().estado === 'Abierta' || d.data().estado === 'En vivo';
-                    });
+                    var activa = snap.docs.find(function(d) { return d.data().estado === 'Abierta' || d.data().estado === 'En vivo'; });
                     return activa ? activa.id : null;
                 });
             }
-        ); 
-        return function() { unsub(); }; 
+        );
+        return function() { unsub(); };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Sincronizar resultado en directo desde API-Football
+    useEffect(function() {
+        if (seccion !== 'solicitudes') return;
+        var unsub = onSnapshot(
+            query(collection(db, 'solicitudes_ingreso'), orderBy('creadoEn', 'asc')),
+            function(snap) { setSolicitudes(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })); }
+        );
+        return function() { unsub(); };
+    }, [seccion]);
+
+    useEffect(function() {
+        if (seccion !== 'pagos') return;
+        var unsub = onSnapshot(
+            query(collection(db, 'pagos'), orderBy('creadoEn', 'desc')),
+            function(snap) { setPagos(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })); }
+        );
+        return function() { unsub(); };
+    }, [seccion]);
+
+    useEffect(function() {
+        if (seccion !== 'rifas') return;
+        var unsub = onSnapshot(
+            query(collection(db, 'rifas'), orderBy('creadoEn', 'desc')),
+            function(snap) { setRifas(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })); }
+        );
+        return function() { unsub(); };
+    }, [seccion]);
+
     var sincronizarConAPI = async function(jornada) {
         if (!API_FOOTBALL_KEY) { setMsgSync('⚠️ Configura REACT_APP_API_FOOTBALL_KEY en .env'); return; }
-        setSincronizando(true);
-        setMsgSync('Consultando API-Football...');
+        setSincronizando(true); setMsgSync('Consultando API-Football...');
         try {
-            var fecha = jornada.fecha; // formato YYYY-MM-DD
-            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2025&date=' + fecha + '&team=275';
+            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2025&date=' + jornada.fecha + '&team=275';
             var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
             var data = await res.json();
             if (data.response && data.response.length > 0) {
                 var fixture = data.response[0];
                 var golesLocal = fixture.goals.home;
                 var golesVisitante = fixture.goals.away;
-                var isLive = fixture.fixture.status.short === 'LIVE' || fixture.fixture.status.short === '1H' || fixture.fixture.status.short === '2H' || fixture.fixture.status.short === 'HT';
-                // Buscar primer goleador
-                var primerGoleador = '';
+                var isLive = ['LIVE','1H','2H','HT'].includes(fixture.fixture.status.short);
                 var eventos = fixture.events || [];
                 var primerGol = eventos.find(function(e) { return e.type === 'Goal' && e.detail !== 'Missed Penalty'; });
-                if (primerGol) primerGoleador = primerGol.player.name;
-
+                var primerGoleador = primerGol ? primerGol.player.name : '';
                 await setDoc(doc(db, "jornadas", jornada.id), {
                     liveData: { golesLocal, golesVisitante, primerGoleador, isLive, actualizadoEn: new Date().toISOString() }
                 }, { merge: true });
-                setMsgSync('✅ Datos actualizados: ' + golesLocal + '-' + golesVisitante + (isLive ? ' (EN VIVO)' : ''));
-            } else {
-                setMsgSync('ℹ️ No se encontró partido en esta fecha en la API.');
-            }
-        } catch(e) {
-            setMsgSync('❌ Error: ' + e.message);
-        }
+                setMsgSync('✅ ' + golesLocal + '-' + golesVisitante + (isLive ? ' (EN VIVO)' : ' (Final)'));
+            } else { setMsgSync('ℹ️ No se encontró partido.'); }
+        } catch(e) { setMsgSync('❌ Error: ' + e.message); }
         setSincronizando(false);
+    };
+
+    var resetearTutorial = async function(jugador) {
+        if (!jugador) { setMsgAdmin('Selecciona un jugador'); return; }
+        // El tutorial se guarda en localStorage del dispositivo del jugador
+        // Desde admin guardamos un flag en Firestore que la app lee al inicio
+        await setDoc(doc(db, 'perfiles', jugador), { resetTutorial: true }, { merge: true });
+        setMsgAdmin('✅ Tutorial de ' + jugador + ' se mostrará de nuevo la próxima vez que entre');
+    };
+
+    var aprobarSolicitud = async function(sol) {
+        await setDoc(doc(db, 'solicitudes_ingreso', sol.id), { estado: 'aprobada' }, { merge: true });
+    };
+
+    var rechazarSolicitud = async function(sol) {
+        await setDoc(doc(db, 'solicitudes_ingreso', sol.id), { estado: 'rechazada' }, { merge: true });
+    };
+
+    var crearRifa = async function() {
+        if (!nuevaRifa.titulo || !nuevaRifa.fecha) { setMsgAdmin('Rellena título y fecha de la rifa'); return; }
+        await addDoc(collection(db, 'rifas'), {
+            ...nuevaRifa,
+            estado: 'activa',
+            creadoEn: serverTimestamp(),
+        });
+        setNuevaRifa({ titulo:'', descripcion:'', precio:'', fecha:'' });
+        setMsgAdmin('✅ Rifa creada');
+    };
+
+    var abrirEnlaceStripe = function() {
+        window.open('https://dashboard.stripe.com', '_blank');
+    };
+
+    // ── ESTILOS INTERNOS DEL ADMIN ──────────────────────────────────────────
+    var A = {
+        secBtn: function(id) {
+            return {
+                padding:'10px 16px', borderRadius:10, border:'none', cursor:'pointer',
+                fontFamily:"'Teko',sans-serif", fontSize:14, letterSpacing:2, textTransform:'uppercase',
+                background: seccion===id ? '#001F6B' : 'rgba(0,31,107,0.06)',
+                color: seccion===id ? '#FFD700' : '#001F6B',
+                fontWeight: seccion===id ? 700 : 400,
+                flexShrink:0,
+            };
+        },
+        card: { background:'#fff', border:'1px solid rgba(0,31,107,0.1)', borderRadius:14, padding:16, marginBottom:12 },
+        label: { fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:2, color:'rgba(0,31,107,0.5)', textTransform:'uppercase', display:'block', marginBottom:4 },
+        input: { width:'100%', padding:'10px 12px', border:'1.5px solid rgba(0,31,107,0.15)', borderRadius:10, fontFamily:"'Inter',sans-serif", fontSize:14, color:'#001F6B', outline:'none', marginBottom:10, background:'#f8f9ff' },
+        btnPrimary: { background:'#001F6B', color:'#FFD700', border:'none', borderRadius:10, padding:'11px 20px', fontFamily:"'Teko',sans-serif", fontSize:14, letterSpacing:2, cursor:'pointer', textTransform:'uppercase' },
+        btnSuccess: { background:'#10b981', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
+        btnDanger: { background:'#e63946', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
+        tag: function(color) { return { background: color+'20', color: color, border:'1px solid '+color+'40', borderRadius:8, padding:'3px 10px', fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600 }; },
     };
 
     var jornadaActiva = jornadas.find(function(j) { return j.estado === 'Abierta' || j.estado === 'En vivo'; });
 
     return (
-        <div style={{paddingBottom: 40}}>
-            <h2 style={styles.title}>PANEL DE CONTROL 26/27</h2>
+        <div style={{paddingBottom:60}}>
+            <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:16,fontWeight:700}}>
+                ⚙️ PANEL DE CONTROL
+            </h2>
 
-            {/* Botón de sincronización con API */}
-            {jornadaActiva && (
-                <div style={{background:'rgba(0,31,107,0.05)',borderRadius:14,padding:16,marginBottom:20,border:'1px solid rgba(0,31,107,0.1)'}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:10,fontWeight:600}}>
-                        API-Football — J{jornadaActiva.numeroJornada}
-                    </p>
-                    <button onClick={function() { sincronizarConAPI(jornadaActiva); }} disabled={sincronizando}
-                        style={{background:'#001F6B',color:'#FFD700',border:'none',borderRadius:10,padding:'10px 20px',
-                            fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,cursor:'pointer',textTransform:'uppercase'}}>
-                        {sincronizando ? 'Sincronizando...' : '↻ Sincronizar resultado en directo'}
-                    </button>
-                    {msgSync && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginTop:8,opacity:.7}}>{msgSync}</p>}
+            {/* Mensaje de estado global */}
+            {msgAdmin && (
+                <div style={{background:'rgba(0,31,107,0.08)',border:'1px solid rgba(0,31,107,0.15)',borderRadius:10,padding:'10px 14px',marginBottom:14}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'#001F6B'}}>{msgAdmin}</p>
                 </div>
             )}
 
-            <AdminCierreTemporada />
-
-            {/* Lista de jornadas en acordeón — J1 primero */}
-            <div style={{marginTop:16}}>
-                {jornadas.map(function(j) {
-                    var abierta = expandida === j.id;
-                    var estadoColor = j.estado === 'Abierta' ? '#10b981' : j.estado === 'En vivo' ? '#e63946' : j.estado === 'Finalizada' ? '#001F6B' : 'rgba(0,31,107,0.3)';
-                    return (
-                        <div key={j.id} style={{marginBottom:6,border:'1px solid rgba(0,31,107,0.1)',borderRadius:12,overflow:'hidden'}}>
-                            {/* Cabecera colapsable */}
-                            <button onClick={function() { setExpandida(abierta ? null : j.id); }}
-                                style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'12px 16px',
-                                    background: abierta ? '#001F6B' : '#fff',border:'none',cursor:'pointer',textAlign:'left'}}>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: abierta ? '#FFD700' : '#001F6B',minWidth:28}}>
-                                    J{j.numeroJornada}
-                                </span>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:1,
-                                    color: abierta ? 'rgba(255,255,255,0.8)' : '#001F6B',flex:1,textTransform:'uppercase'}}>
-                                    {j.equipoLocal} vs {j.equipoVisitante}
-                                </span>
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,background: estadoColor + '20',
-                                    color: estadoColor, padding:'3px 10px',borderRadius:10,border:'1px solid ' + estadoColor + '40'}}>
-                                    {j.estado}
-                                </span>
-                                {j.derbi && <span style={{fontSize:14}}>🔥</span>}
-                                <span style={{color: abierta ? '#FFD700' : 'rgba(0,31,107,0.4)',fontSize:16}}>{abierta ? '▲' : '▼'}</span>
-                            </button>
-                            {/* Contenido expandido */}
-                            {abierta && (
-                                <div style={{padding:'0 0 8px'}}>
-                                    <JornadaAdminItem jornada={j} plantilla={plantilla} />
-                                </div>
-                            )}
-                        </div>
-                    );
+            {/* Navegación por secciones */}
+            <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:4,marginBottom:20}}>
+                {[
+                    ['jornadas','⚽ Jornadas'],
+                    ['pagos','💰 Pagos'],
+                    ['solicitudes','👥 Solicitudes'],
+                    ['clasificacion','🏆 Clasificación'],
+                    ['herramientas','🔧 Herramientas'],
+                    ['rifas','🎟️ Rifas'],
+                ].map(function(s) {
+                    return <button key={s[0]} onClick={function(){setSeccion(s[0]);setMsgAdmin('');}} style={A.secBtn(s[0])}>{s[1]}</button>;
                 })}
             </div>
+
+            {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                JORNADAS
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+            {seccion === 'jornadas' && (
+                <div>
+                    {/* Sync API */}
+                    {jornadaActiva && (
+                        <div style={A.card}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:10,fontWeight:600}}>
+                                API-Football — J{jornadaActiva.numeroJornada}
+                            </p>
+                            <button onClick={function(){sincronizarConAPI(jornadaActiva);}} disabled={sincronizando} style={A.btnPrimary}>
+                                {sincronizando ? 'Sincronizando...' : '↻ Sincronizar resultado en directo'}
+                            </button>
+                            {msgSync && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginTop:8,opacity:.7}}>{msgSync}</p>}
+                        </div>
+                    )}
+                    <AdminCierreTemporada />
+                    <div style={{marginTop:12}}>
+                        {jornadas.map(function(j) {
+                            var abierta = expandida === j.id;
+                            var estadoColor = j.estado==='Abierta'?'#10b981':j.estado==='En vivo'?'#e63946':j.estado==='Finalizada'?'#001F6B':'rgba(0,31,107,0.3)';
+                            return (
+                                <div key={j.id} style={{marginBottom:6,border:'1px solid rgba(0,31,107,0.1)',borderRadius:12,overflow:'hidden'}}>
+                                    <button onClick={function(){setExpandida(abierta?null:j.id);}}
+                                        style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'12px 16px',
+                                            background:abierta?'#001F6B':'#fff',border:'none',cursor:'pointer',textAlign:'left'}}>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color:abierta?'#FFD700':'#001F6B',minWidth:28}}>J{j.numeroJornada}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:1,color:abierta?'rgba(255,255,255,0.8)':'#001F6B',flex:1,textTransform:'uppercase'}}>{j.equipoLocal} vs {j.equipoVisitante}</span>
+                                        <span style={{...A.tag(estadoColor)}}>{j.estado}</span>
+                                        {j.derbi && <span style={{fontSize:14}}>🔥</span>}
+                                        <span style={{color:abierta?'#FFD700':'rgba(0,31,107,0.4)',fontSize:16}}>{abierta?'▲':'▼'}</span>
+                                    </button>
+                                    {abierta && <div style={{padding:'0 0 8px'}}><JornadaAdminItem jornada={j} plantilla={plantilla} /></div>}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                PAGOS
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+            {seccion === 'pagos' && (
+                <div>
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:12,fontWeight:600}}>
+                            💳 Dashboard de Stripe
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.6)',marginBottom:12,lineHeight:1.6}}>
+                            Todos los pagos con tarjeta llegan directamente a tu cuenta Stripe. Desde ahí puedes ver el detalle de cada cobro, emitir reembolsos y transferir el dinero a tu banco.
+                        </p>
+                        <button onClick={abrirEnlaceStripe} style={A.btnPrimary}>
+                            Abrir Dashboard Stripe →
+                        </button>
+                    </div>
+
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10}}>
+                        Registro de pagos en la app
+                    </p>
+
+                    {/* Resumen por jugador */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',marginBottom:12,textTransform:'uppercase'}}>Estado de inscripciones</p>
+                        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                            {JUGADORES_LISTA.map(function(j) {
+                                var pago = pagos.find(function(p) { return p.jugador === j && p.tipo === 'inscripcion'; });
+                                return (
+                                    <div key={j} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(0,31,107,0.06)'}}>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'#001F6B',flex:1,letterSpacing:1}}>{j}</span>
+                                        {pago ? (
+                                            <span style={A.tag('#10b981')}>✅ Pagado {pago.pagoBy && pago.pagoBy!==j ? '(por '+pago.pagoBy+')' : ''}</span>
+                                        ) : (
+                                            <span style={A.tag('rgba(0,31,107,0.4)')}>Pendiente</span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Historial de pagos */}
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10,marginTop:8}}>Historial de pagos</p>
+                    {pagos.length === 0 ? (
+                        <div style={{...A.card,textAlign:'center',color:'rgba(0,31,107,0.4)',fontFamily:"'Inter',sans-serif",fontSize:13}}>
+                            Aún no hay pagos registrados
+                        </div>
+                    ) : pagos.map(function(p) {
+                        return (
+                            <div key={p.id} style={{...A.card,display:'flex',alignItems:'center',gap:10}}>
+                                <div style={{flex:1}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'#001F6B',letterSpacing:1}}>{p.jugador}</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>{p.tipo} {p.pagoBy && p.pagoBy!==p.jugador ? '· pagado por '+p.pagoBy : ''}</p>
+                                </div>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color:'#10b981'}}>{p.importe}€</span>
+                                <span style={A.tag('#10b981')}>{p.estado || 'ok'}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                SOLICITUDES DE INGRESO
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+            {seccion === 'solicitudes' && (
+                <div>
+                    {solicitudes.length === 0 ? (
+                        <div style={{...A.card,textAlign:'center',color:'rgba(0,31,107,0.4)',fontFamily:"'Inter',sans-serif",fontSize:13,padding:24}}>
+                            No hay solicitudes de ingreso todavía
+                        </div>
+                    ) : solicitudes.map(function(s, idx) {
+                        var estadoColor = s.estado==='aprobada'?'#10b981':s.estado==='rechazada'?'#e63946':'#FFD700';
+                        return (
+                            <div key={s.id} style={A.card}>
+                                <div style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:8}}>
+                                    <div style={{width:28,height:28,borderRadius:'50%',background:'rgba(0,31,107,0.08)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Teko',sans-serif",fontSize:14,color:'#001F6B',flexShrink:0}}>
+                                        {idx+1}
+                                    </div>
+                                    <div style={{flex:1}}>
+                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:1,color:'#001F6B',marginBottom:2}}>{s.nombre}</p>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.6)'}}>{s.telefono}</p>
+                                        {s.invitadoPor && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',marginTop:2}}>Invitado por: {s.invitadoPor}</p>}
+                                    </div>
+                                    <span style={A.tag(estadoColor)}>{s.estado || 'pendiente'}</span>
+                                </div>
+                                {(!s.estado || s.estado === 'pendiente') && (
+                                    <div style={{display:'flex',gap:8}}>
+                                        <button onClick={function(){aprobarSolicitud(s);}} style={A.btnSuccess}>✅ Aprobar</button>
+                                        <button onClick={function(){rechazarSolicitud(s);}} style={A.btnDanger}>❌ Rechazar</button>
+                                        <a href={'https://wa.me/34'+s.telefono.replace(/\s/g,'')}
+                                            target="_blank" rel="noopener noreferrer"
+                                            style={{...A.btnPrimary,textDecoration:'none',display:'inline-block',padding:'6px 12px',fontSize:12}}>
+                                            WhatsApp →
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                CLASIFICACIÓN GENERAL
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+            {seccion === 'clasificacion' && (
+                <div>
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:12,fontWeight:600}}>
+                            Gestión de clasificación
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.6)',marginBottom:16,lineHeight:1.6}}>
+                            La clasificación se calcula automáticamente con cada jornada cerrada. Desde aquí puedes corregir puntos manualmente si hay algún error.
+                        </p>
+                        {JUGADORES_LISTA.map(function(j) {
+                            return (
+                                <div key={j} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(0,31,107,0.06)'}}>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'#001F6B',flex:1,letterSpacing:1}}>{j}</span>
+                                    <button onClick={async function() {
+                                        var pts = prompt('Puntos manuales para ' + j + ' (+ para sumar, - para restar):');
+                                        if (!pts || isNaN(Number(pts))) return;
+                                        var snap = await getDoc(doc(db, 'clasificacion', j));
+                                        var actual = snap.exists() ? (snap.data().puntos || 0) : 0;
+                                        await setDoc(doc(db, 'clasificacion', j), { puntos: actual + Number(pts), nombre: j }, { merge: true });
+                                        setMsgAdmin('✅ Puntos de ' + j + ' actualizados');
+                                    }} style={{...A.btnPrimary,padding:'6px 12px',fontSize:12}}>
+                                        ✏️ Ajustar
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:10,fontWeight:600}}>
+                            Porra Anual 26/27
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.6)',marginBottom:12,lineHeight:1.6}}>
+                            Gestiona las predicciones de ascenso (activas en J1-J5). Cierra el plazo cuando empiece la J6.
+                        </p>
+                        <button onClick={async function() {
+                            await setDoc(doc(db, 'configuracion', 'porraAnual'), { abierta: false, cerradaEn: serverTimestamp() }, { merge: true });
+                            setMsgAdmin('✅ Porra Anual cerrada — ya no se pueden hacer predicciones');
+                        }} style={{...A.btnPrimary,background:'#e63946',color:'#fff'}}>
+                            Cerrar Porra Anual
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                HERRAMIENTAS
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+            {seccion === 'herramientas' && (
+                <div>
+                    {/* Resetear tutorial */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                            🎓 Resetear tutorial
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            Si un jugador saltó el tutorial y quiere verlo, selecciónalo aquí. La próxima vez que entre le aparecerá de nuevo.
+                        </p>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            {JUGADORES_LISTA.map(function(j) {
+                                return (
+                                    <button key={j} onClick={function(){resetearTutorial(j);}} style={{...A.btnPrimary,padding:'6px 12px',fontSize:12,background:'rgba(0,31,107,0.08)',color:'#001F6B'}}>
+                                        {j}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Resetear PIN */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                            🔑 Resetear PIN de jugador
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            Si un jugador ha olvidado su PIN, bórralo aquí. La próxima vez que entre podrá crear uno nuevo.
+                        </p>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            {JUGADORES_LISTA.map(function(j) {
+                                return (
+                                    <button key={j} onClick={async function() {
+                                        if (!window.confirm('¿Borrar el PIN de ' + j + '? Tendrá que crear uno nuevo.')) return;
+                                        await deleteDoc(doc(db, 'pines', j));
+                                        setMsgAdmin('✅ PIN de ' + j + ' eliminado');
+                                    }} style={{...A.btnPrimary,padding:'6px 12px',fontSize:12,background:'rgba(230,57,70,0.08)',color:'#e63946'}}>
+                                        {j}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* El Otro Equipo — gestión de turnos */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                            🛡️ El Otro Equipo — control de plazos
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            El plazo de elección abre el 11 agosto 12:00 y cierra el 14 agosto 18:00 (hora canaria). Desde aquí puedes forzar el cierre o reabrir el plazo.
+                        </p>
+                        <div style={{display:'flex',gap:8}}>
+                            <button onClick={async function() {
+                                await setDoc(doc(db, 'configuracion', 'elOtro'), { plazoAbierto: true }, { merge: true });
+                                setMsgAdmin('✅ Plazo de El Otro Equipo abierto');
+                            }} style={A.btnSuccess}>Abrir plazo</button>
+                            <button onClick={async function() {
+                                await setDoc(doc(db, 'configuracion', 'elOtro'), { plazoAbierto: false, cerradoEn: serverTimestamp() }, { merge: true });
+                                setMsgAdmin('✅ Plazo de El Otro Equipo cerrado');
+                            }} style={A.btnDanger}>Cerrar plazo</button>
+                        </div>
+                    </div>
+
+                    {/* App en modo construcción */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                            🔒 Modo construcción
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            El código de prueba actual es <strong>udlp2027</strong>. Cuando quieras abrir la app al público, despliega con APP_EN_CONSTRUCCION = false.
+                        </p>
+                        <div style={{background:'rgba(0,31,107,0.06)',borderRadius:8,padding:'10px 14px'}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',fontWeight:600}}>Código de prueba activo: udlp2027</p>
+                        </div>
+                    </div>
+
+                    {/* Enlace de invitación */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                            🔗 Enlace de invitación
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            Este es el enlace base de invitación. Cuando un jugador pulsa "Invitar" en el menú, se genera con su nombre automáticamente.
+                        </p>
+                        <div style={{background:'rgba(0,31,107,0.06)',borderRadius:8,padding:'10px 14px',wordBreak:'break-all'}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B'}}>{window.location.origin}/invitacion.html</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                RIFAS Y EVENTOS (recordatorio privado)
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+            {seccion === 'rifas' && (
+                <div>
+                    {/* Recordatorio privado */}
+                    <div style={{background:'rgba(255,215,0,0.1)',border:'1px solid rgba(255,215,0,0.3)',borderRadius:14,padding:16,marginBottom:16}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:600}}>
+                            🎟️ Recordatorio privado — Rifas y eventos
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,0,0,0.6)',lineHeight:1.6}}>
+                            Las rifas de navidad y eventos a lo largo de la temporada son la forma de compensar las comisiones de Stripe (~25-30€ en toda la temporada) y generar ingresos adicionales para reinvertir en la app y en premios. <strong>Esta sección es solo visible para ti.</strong> Los jugadores no ven nada de esto.
+                        </p>
+                    </div>
+
+                    {/* Crear nueva rifa/evento */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:12,fontWeight:600}}>
+                            Nueva rifa o evento
+                        </p>
+                        <label style={A.label}>Título</label>
+                        <input style={A.input} value={nuevaRifa.titulo}
+                            onChange={function(e){setNuevaRifa(function(r){return {...r,titulo:e.target.value};});}}
+                            placeholder="Ej: Rifa de Navidad 2026" />
+                        <label style={A.label}>Descripción del premio</label>
+                        <input style={A.input} value={nuevaRifa.descripcion}
+                            onChange={function(e){setNuevaRifa(function(r){return {...r,descripcion:e.target.value};});}}
+                            placeholder="Ej: Pack merchandising UDLP + entrada al estadio" />
+                        <label style={A.label}>Precio del ticket (€)</label>
+                        <input style={{...A.input,width:'50%'}} type="number" value={nuevaRifa.precio}
+                            onChange={function(e){setNuevaRifa(function(r){return {...r,precio:e.target.value};});}}
+                            placeholder="2" />
+                        <label style={A.label}>Fecha del sorteo</label>
+                        <input style={{...A.input,width:'60%'}} type="date" value={nuevaRifa.fecha}
+                            onChange={function(e){setNuevaRifa(function(r){return {...r,fecha:e.target.value};});}} />
+                        <button onClick={crearRifa} style={A.btnPrimary}>Crear rifa →</button>
+                    </div>
+
+                    {/* Lista de rifas */}
+                    {rifas.length > 0 && (
+                        <div>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10}}>Rifas creadas</p>
+                            {rifas.map(function(r) {
+                                return (
+                                    <div key={r.id} style={A.card}>
+                                        <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+                                            <div style={{flex:1}}>
+                                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,color:'#001F6B',letterSpacing:1,marginBottom:2}}>{r.titulo}</p>
+                                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)'}}>{r.descripcion}</p>
+                                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',marginTop:4}}>Sorteo: {r.fecha} · {r.precio}€/ticket</p>
+                                            </div>
+                                            <span style={A.tag(r.estado==='activa'?'#10b981':'rgba(0,31,107,0.4)')}>{r.estado}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
+
 
 // ============================================================================
 // --- EL OTRO — Pantalla de selección y gestión del equipo de Primera ---
@@ -4680,12 +5078,14 @@ function App() {
                 <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                     {/* Botón Invita a Amigos */}
                     <button onClick={function() {
-                        var msg = '¡Únete a la Porra UDLP 26/27! Quedan 5 plazas. Escríbeme y te apunto 🐥⚽';
+                        var baseUrl = window.location.origin + '/invitacion.html';
+                        var enlace = baseUrl + '?ref=' + encodeURIComponent(currentUser);
+                        var msg = '🐥 ¡Te invito a la Porra UDLP 26/27!\n\nSoy ' + currentUser + ' y te he reservado una plaza en nuestra liga familiar de la UD Las Palmas.\n\n👉 Entra aquí para ver cómo funciona y apuntarte:\n' + enlace;
                         if (navigator.share) {
-                            navigator.share({ title: 'Porra UDLP 26/27', text: msg });
+                            navigator.share({ title: 'Porra UDLP 26/27 — Invitación', text: msg, url: enlace });
                         } else if (navigator.clipboard) {
                             navigator.clipboard.writeText(msg);
-                            alert('Mensaje copiado — pégalo en WhatsApp');
+                            alert('¡Enlace copiado! Pégalo en WhatsApp.');
                         }
                         setDrawerOpen(false);
                     }}
@@ -4694,7 +5094,7 @@ function App() {
                             fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,
                             color:'#FFD700',textTransform:'uppercase',display:'flex',alignItems:'center',
                             justifyContent:'center',gap:8}}>
-                        👥 INVITA A AMIGOS
+                        👥 INVITAR A ALGUIEN
                     </button>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                         <div style={{ width: 34, height: 34, background: '#FFD700', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Teko',sans-serif", fontSize: 18, fontWeight: 700, color: '#001F6B' }}>
