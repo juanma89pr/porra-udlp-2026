@@ -609,7 +609,7 @@ JUGADORES.forEach(function(j,i){
   var src=sid
     ?('https://img.sofascore.com/api/v1/player/'+sid+'/image')
     :('https://ui-avatars.com/api/?name='+encodeURIComponent(j.nombre)+'&background=001F6B&color=FFD700&size=80&bold=true&length=2');
-  el.innerHTML='<div class="jug-avatar"><img src="'+src+'" onerror="this.parentNode.innerHTML=''+j.dorsal+''"></div><span class="jug-name">'+j.nombre+'</span>';
+  el.innerHTML='<div class="jug-avatar"><img src="'+src+'" onerror="this.parentNode.innerHTML=\''+j.dorsal+'\'"></div><span class="jug-name">'+j.nombre+'</span>';
   el.onclick=(function(jj,elem){return function(){toggleJug(jj,elem);};})(j,el);
   jg.appendChild(el);
 });
