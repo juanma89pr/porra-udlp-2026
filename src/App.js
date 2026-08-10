@@ -484,112 +484,104 @@ const PerfilScreen = ({ currentUser }) => {
 
 
 // ============================================================================
-// LOGOS DE EQUIPOS — fallback hardcoded con API-Sports
-// Se usan si Firestore (configuracion/escudos) está vacío
-// Los IDs son de API-Football v3 (api-sports.io)
+// LOGOS DE EQUIPOS — URLs públicas de Wikipedia (sin API key, sin seed)
+// Funcionan siempre desde cualquier dispositivo
 // ============================================================================
 var LOGOS_EQUIPOS = {
-    // UD Las Palmas
-    'UD Las Palmas':           'https://media.api-sports.io/football/teams/728.png',
-    'Las Palmas':              'https://media.api-sports.io/football/teams/728.png',
-    // Equipos Segunda División 26/27
-    'Albacete Balompié':       'https://media.api-sports.io/football/teams/724.png',
-    'Albacete':                'https://media.api-sports.io/football/teams/724.png',
-    'Córdoba CF':              'https://media.api-sports.io/football/teams/729.png',
-    'Córdoba':                 'https://media.api-sports.io/football/teams/729.png',
-    'Málaga CF':               'https://media.api-sports.io/football/teams/727.png',
-    'Málaga':                  'https://media.api-sports.io/football/teams/727.png',
-    'Burgos CF':               'https://media.api-sports.io/football/teams/10015.png',
-    'Burgos':                  'https://media.api-sports.io/football/teams/10015.png',
-    'Real Sociedad B':         'https://media.api-sports.io/football/teams/732.png',
-    "Real Sociedad 'B'":       'https://media.api-sports.io/football/teams/732.png',
-    'CD Leganés':              'https://media.api-sports.io/football/teams/107.png',
-    'Leganés':                 'https://media.api-sports.io/football/teams/107.png',
-    'UD Almería':              'https://media.api-sports.io/football/teams/232.png',
-    'Almería':                 'https://media.api-sports.io/football/teams/232.png',
-    'Cádiz CF':                'https://media.api-sports.io/football/teams/724.png',
-    'Cádiz':                   'https://media.api-sports.io/football/teams/443.png',
-    'Granada CF':              'https://media.api-sports.io/football/teams/715.png',
-    'Granada':                 'https://media.api-sports.io/football/teams/715.png',
-    'SD Eibar':                'https://media.api-sports.io/football/teams/716.png',
-    'Eibar':                   'https://media.api-sports.io/football/teams/716.png',
-    'SD Huesca':               'https://media.api-sports.io/football/teams/731.png',
-    'Huesca':                  'https://media.api-sports.io/football/teams/731.png',
-    'Sporting de Gijón':       'https://media.api-sports.io/football/teams/725.png',
-    'Sporting Gijón':          'https://media.api-sports.io/football/teams/725.png',
-    'Racing de Santander':     'https://media.api-sports.io/football/teams/728.png',
-    'Racing Santander':        'https://media.api-sports.io/football/teams/9815.png',
-    'Real Valladolid':         'https://media.api-sports.io/football/teams/720.png',
-    'Valladolid':              'https://media.api-sports.io/football/teams/720.png',
-    'CD Castellón':            'https://media.api-sports.io/football/teams/14733.png',
-    'Castellón':               'https://media.api-sports.io/football/teams/14733.png',
-    'CD Mirándés':             'https://media.api-sports.io/football/teams/726.png',
-    'Mirándés':                'https://media.api-sports.io/football/teams/726.png',
-    'AD Ceuta':                'https://media.api-sports.io/football/teams/11597.png',
-    'Ceuta':                   'https://media.api-sports.io/football/teams/11597.png',
-    'Cultural Leonesa':        'https://media.api-sports.io/football/teams/733.png',
-    'Real Zaragoza':           'https://media.api-sports.io/football/teams/723.png',
-    'Zaragoza':                'https://media.api-sports.io/football/teams/723.png',
-    'RC Deportivo':            'https://media.api-sports.io/football/teams/538.png',
-    'Deportivo de la Coruña':  'https://media.api-sports.io/football/teams/538.png',
-    'Deportivo':               'https://media.api-sports.io/football/teams/538.png',
-    'FC Andorra':              'https://media.api-sports.io/football/teams/10159.png',
-    'Andorra':                 'https://media.api-sports.io/football/teams/10159.png',
-    // Equipos Primera División (El Otro Equipo)
-    'FC Barcelona':            'https://media.api-sports.io/football/teams/529.png',
-    'Barcelona':               'https://media.api-sports.io/football/teams/529.png',
-    'Real Madrid':             'https://media.api-sports.io/football/teams/541.png',
-    'Atlético de Madrid':      'https://media.api-sports.io/football/teams/530.png',
-    'Atlético Madrid':         'https://media.api-sports.io/football/teams/530.png',
-    'Villarreal CF':           'https://media.api-sports.io/football/teams/533.png',
-    'Villarreal':              'https://media.api-sports.io/football/teams/533.png',
-    'Real Betis':              'https://media.api-sports.io/football/teams/543.png',
-    'Celta de Vigo':           'https://media.api-sports.io/football/teams/558.png',
-    'Celta':                   'https://media.api-sports.io/football/teams/558.png',
-    'Real Sociedad':           'https://media.api-sports.io/football/teams/548.png',
-    'Getafe CF':               'https://media.api-sports.io/football/teams/546.png',
-    'Getafe':                  'https://media.api-sports.io/football/teams/546.png',
-    'Athletic Club':           'https://media.api-sports.io/football/teams/531.png',
-    'Athletic':                'https://media.api-sports.io/football/teams/531.png',
-    'Sevilla FC':              'https://media.api-sports.io/football/teams/536.png',
-    'Sevilla':                 'https://media.api-sports.io/football/teams/536.png',
-    'Rayo Vallecano':          'https://media.api-sports.io/football/teams/728.png',
-    'Rayo':                    'https://media.api-sports.io/football/teams/728.png',
-    'Deportivo Alavés':        'https://media.api-sports.io/football/teams/542.png',
-    'Alavés':                  'https://media.api-sports.io/football/teams/542.png',
-    'RCD Espanyol':            'https://media.api-sports.io/football/teams/532.png',
-    'Espanyol':                'https://media.api-sports.io/football/teams/532.png',
-    'Valencia CF':             'https://media.api-sports.io/football/teams/532.png',
-    'Valencia':                'https://media.api-sports.io/football/teams/532.png',
-    'CA Osasuna':              'https://media.api-sports.io/football/teams/727.png',
-    'Osasuna':                 'https://media.api-sports.io/football/teams/727.png',
-    'Real Valladolid':         'https://media.api-sports.io/football/teams/720.png',
-    'Valladolid':              'https://media.api-sports.io/football/teams/720.png',
-    'Racing de Santander':     'https://media.api-sports.io/football/teams/9815.png',
-    'Racing':                  'https://media.api-sports.io/football/teams/9815.png',
-    'RC Deportivo':            'https://media.api-sports.io/football/teams/538.png',
-    'Deportivo':               'https://media.api-sports.io/football/teams/538.png',
-    'Málaga CF':               'https://media.api-sports.io/football/teams/727.png',
+    // ── UD LAS PALMAS ────────────────────────────────────────────────────────
+    'UD Las Palmas':           'https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/UD_Las_Palmas_logo.svg/120px-UD_Las_Palmas_logo.svg.png',
+    'Las Palmas':              'https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/UD_Las_Palmas_logo.svg/120px-UD_Las_Palmas_logo.svg.png',
+
+    // ── SEGUNDA DIVISIÓN 26/27 ───────────────────────────────────────────────
+    'Albacete Balompié':       'https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Albacete_Balompie_logo.svg/120px-Albacete_Balompie_logo.svg.png',
+    'Albacete':                'https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Albacete_Balompie_logo.svg/120px-Albacete_Balompie_logo.svg.png',
+    'Córdoba CF':              'https://upload.wikimedia.org/wikipedia/en/thumb/5/52/C%C3%B3rdoba_CF_logo.svg/120px-C%C3%B3rdoba_CF_logo.svg.png',
+    'Córdoba':                 'https://upload.wikimedia.org/wikipedia/en/thumb/5/52/C%C3%B3rdoba_CF_logo.svg/120px-C%C3%B3rdoba_CF_logo.svg.png',
+    'Málaga CF':               'https://upload.wikimedia.org/wikipedia/en/thumb/6/6d/M%C3%A1laga_CF_logo.svg/120px-M%C3%A1laga_CF_logo.svg.png',
+    'Málaga':                  'https://upload.wikimedia.org/wikipedia/en/thumb/6/6d/M%C3%A1laga_CF_logo.svg/120px-M%C3%A1laga_CF_logo.svg.png',
+    'Burgos CF':               'https://upload.wikimedia.org/wikipedia/en/thumb/0/07/Burgos_CF_logo.svg/120px-Burgos_CF_logo.svg.png',
+    'Burgos':                  'https://upload.wikimedia.org/wikipedia/en/thumb/0/07/Burgos_CF_logo.svg/120px-Burgos_CF_logo.svg.png',
+    "Real Sociedad 'B'":       'https://upload.wikimedia.org/wikipedia/en/thumb/f/f1/Real_Sociedad_logo.svg/120px-Real_Sociedad_logo.svg.png',
+    'Real Sociedad B':         'https://upload.wikimedia.org/wikipedia/en/thumb/f/f1/Real_Sociedad_logo.svg/120px-Real_Sociedad_logo.svg.png',
+    'CD Leganés':              'https://upload.wikimedia.org/wikipedia/en/thumb/6/6d/CD_Leganes_logo.svg/120px-CD_Leganes_logo.svg.png',
+    'Leganés':                 'https://upload.wikimedia.org/wikipedia/en/thumb/6/6d/CD_Leganes_logo.svg/120px-CD_Leganes_logo.svg.png',
+    'UD Almería':              'https://upload.wikimedia.org/wikipedia/en/thumb/6/6b/UD_Almer%C3%ADa_logo.svg/120px-UD_Almer%C3%ADa_logo.svg.png',
+    'Almería':                 'https://upload.wikimedia.org/wikipedia/en/thumb/6/6b/UD_Almer%C3%ADa_logo.svg/120px-UD_Almer%C3%ADa_logo.svg.png',
+    'Cádiz CF':                'https://upload.wikimedia.org/wikipedia/en/thumb/6/6e/C%C3%A1diz_CF_logo.svg/120px-C%C3%A1diz_CF_logo.svg.png',
+    'Cádiz':                   'https://upload.wikimedia.org/wikipedia/en/thumb/6/6e/C%C3%A1diz_CF_logo.svg/120px-C%C3%A1diz_CF_logo.svg.png',
+    'Granada CF':              'https://upload.wikimedia.org/wikipedia/en/thumb/0/09/Granada_CF_logo.svg/120px-Granada_CF_logo.svg.png',
+    'Granada':                 'https://upload.wikimedia.org/wikipedia/en/thumb/0/09/Granada_CF_logo.svg/120px-Granada_CF_logo.svg.png',
+    'SD Eibar':                'https://upload.wikimedia.org/wikipedia/en/thumb/d/d8/SD_Eibar_logo.svg/120px-SD_Eibar_logo.svg.png',
+    'Eibar':                   'https://upload.wikimedia.org/wikipedia/en/thumb/d/d8/SD_Eibar_logo.svg/120px-SD_Eibar_logo.svg.png',
+    'SD Huesca':               'https://upload.wikimedia.org/wikipedia/en/thumb/3/3b/SD_Huesca_logo.svg/120px-SD_Huesca_logo.svg.png',
+    'Huesca':                  'https://upload.wikimedia.org/wikipedia/en/thumb/3/3b/SD_Huesca_logo.svg/120px-SD_Huesca_logo.svg.png',
+    'Sporting de Gijón':       'https://upload.wikimedia.org/wikipedia/en/thumb/f/f4/Real_Sporting_de_Gij%C3%B3n_logo.svg/120px-Real_Sporting_de_Gij%C3%B3n_logo.svg.png',
+    'Sporting Gijón':          'https://upload.wikimedia.org/wikipedia/en/thumb/f/f4/Real_Sporting_de_Gij%C3%B3n_logo.svg/120px-Real_Sporting_de_Gij%C3%B3n_logo.svg.png',
+    'Racing de Santander':     'https://upload.wikimedia.org/wikipedia/en/thumb/b/b4/Racing_Santander_logo.svg/120px-Racing_Santander_logo.svg.png',
+    'Racing Santander':        'https://upload.wikimedia.org/wikipedia/en/thumb/b/b4/Racing_Santander_logo.svg/120px-Racing_Santander_logo.svg.png',
+    'Racing':                  'https://upload.wikimedia.org/wikipedia/en/thumb/b/b4/Racing_Santander_logo.svg/120px-Racing_Santander_logo.svg.png',
+    'Real Valladolid':         'https://upload.wikimedia.org/wikipedia/en/thumb/3/31/Real_Valladolid_logo.svg/120px-Real_Valladolid_logo.svg.png',
+    'Valladolid':              'https://upload.wikimedia.org/wikipedia/en/thumb/3/31/Real_Valladolid_logo.svg/120px-Real_Valladolid_logo.svg.png',
+    'CD Castellón':            'https://upload.wikimedia.org/wikipedia/en/thumb/6/65/CD_Castell%C3%B3n_logo.svg/120px-CD_Castell%C3%B3n_logo.svg.png',
+    'Castellón':               'https://upload.wikimedia.org/wikipedia/en/thumb/6/65/CD_Castell%C3%B3n_logo.svg/120px-CD_Castell%C3%B3n_logo.svg.png',
+    'CD Mirándés':             'https://upload.wikimedia.org/wikipedia/en/thumb/7/7c/CD_Mirand%C3%A9s_logo.svg/120px-CD_Mirand%C3%A9s_logo.svg.png',
+    'Mirándés':                'https://upload.wikimedia.org/wikipedia/en/thumb/7/7c/CD_Mirand%C3%A9s_logo.svg/120px-CD_Mirand%C3%A9s_logo.svg.png',
+    'AD Ceuta':                'https://upload.wikimedia.org/wikipedia/en/thumb/8/87/AD_Ceuta_FC_logo.svg/120px-AD_Ceuta_FC_logo.svg.png',
+    'Ceuta':                   'https://upload.wikimedia.org/wikipedia/en/thumb/8/87/AD_Ceuta_FC_logo.svg/120px-AD_Ceuta_FC_logo.svg.png',
+    'Cultural Leonesa':        'https://upload.wikimedia.org/wikipedia/en/thumb/0/07/Cultural_Leonesa_logo.svg/120px-Cultural_Leonesa_logo.svg.png',
+    'Real Zaragoza':           'https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/Real_Zaragoza_logo.svg/120px-Real_Zaragoza_logo.svg.png',
+    'Zaragoza':                'https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/Real_Zaragoza_logo.svg/120px-Real_Zaragoza_logo.svg.png',
+    'RC Deportivo':            'https://upload.wikimedia.org/wikipedia/en/thumb/7/77/Deportivo_de_La_Coru%C3%B1a_logo.svg/120px-Deportivo_de_La_Coru%C3%B1a_logo.svg.png',
+    'Deportivo de la Coruña':  'https://upload.wikimedia.org/wikipedia/en/thumb/7/77/Deportivo_de_La_Coru%C3%B1a_logo.svg/120px-Deportivo_de_La_Coru%C3%B1a_logo.svg.png',
+    'Deportivo':               'https://upload.wikimedia.org/wikipedia/en/thumb/7/77/Deportivo_de_La_Coru%C3%B1a_logo.svg/120px-Deportivo_de_La_Coru%C3%B1a_logo.svg.png',
+    'FC Andorra':              'https://upload.wikimedia.org/wikipedia/en/thumb/3/33/FC_Andorra_logo.svg/120px-FC_Andorra_logo.svg.png',
+    'Andorra':                 'https://upload.wikimedia.org/wikipedia/en/thumb/3/33/FC_Andorra_logo.svg/120px-FC_Andorra_logo.svg.png',
+
+    // ── PRIMERA DIVISIÓN — EL OTRO EQUIPO ────────────────────────────────────
+    'FC Barcelona':            'https://upload.wikimedia.org/wikipedia/en/thumb/4/47/FC_Barcelona_%28crest%29.svg/120px-FC_Barcelona_%28crest%29.svg.png',
+    'Barcelona':               'https://upload.wikimedia.org/wikipedia/en/thumb/4/47/FC_Barcelona_%28crest%29.svg/120px-FC_Barcelona_%28crest%29.svg.png',
+    'Real Madrid':             'https://upload.wikimedia.org/wikipedia/en/thumb/5/56/Real_Madrid_CF.svg/120px-Real_Madrid_CF.svg.png',
+    'Atlético de Madrid':      'https://upload.wikimedia.org/wikipedia/en/thumb/f/f4/Atletico_Madrid_2017_logo.svg/120px-Atletico_Madrid_2017_logo.svg.png',
+    'Atlético Madrid':         'https://upload.wikimedia.org/wikipedia/en/thumb/f/f4/Atletico_Madrid_2017_logo.svg/120px-Atletico_Madrid_2017_logo.svg.png',
+    'Villarreal CF':           'https://upload.wikimedia.org/wikipedia/en/thumb/b/b9/Villarreal_CF_logo-en.svg/120px-Villarreal_CF_logo-en.svg.png',
+    'Villarreal':              'https://upload.wikimedia.org/wikipedia/en/thumb/b/b9/Villarreal_CF_logo-en.svg/120px-Villarreal_CF_logo-en.svg.png',
+    'Real Betis':              'https://upload.wikimedia.org/wikipedia/en/thumb/1/13/Real_betis_logo.svg/120px-Real_betis_logo.svg.png',
+    'Celta de Vigo':           'https://upload.wikimedia.org/wikipedia/en/thumb/1/12/RC_Celta_de_Vigo_logo.svg/120px-RC_Celta_de_Vigo_logo.svg.png',
+    'Celta':                   'https://upload.wikimedia.org/wikipedia/en/thumb/1/12/RC_Celta_de_Vigo_logo.svg/120px-RC_Celta_de_Vigo_logo.svg.png',
+    'Real Sociedad':           'https://upload.wikimedia.org/wikipedia/en/thumb/f/f1/Real_Sociedad_logo.svg/120px-Real_Sociedad_logo.svg.png',
+    'Getafe CF':               'https://upload.wikimedia.org/wikipedia/en/thumb/2/2e/Getafe_CF_logo.svg/120px-Getafe_CF_logo.svg.png',
+    'Getafe':                  'https://upload.wikimedia.org/wikipedia/en/thumb/2/2e/Getafe_CF_logo.svg/120px-Getafe_CF_logo.svg.png',
+    'Athletic Club':           'https://upload.wikimedia.org/wikipedia/en/thumb/9/98/Club_Athletic_de_Bilbao_logo.svg/120px-Club_Athletic_de_Bilbao_logo.svg.png',
+    'Athletic':                'https://upload.wikimedia.org/wikipedia/en/thumb/9/98/Club_Athletic_de_Bilbao_logo.svg/120px-Club_Athletic_de_Bilbao_logo.svg.png',
+    'Sevilla FC':              'https://upload.wikimedia.org/wikipedia/en/thumb/3/3b/Sevilla_FC_logo.svg/120px-Sevilla_FC_logo.svg.png',
+    'Sevilla':                 'https://upload.wikimedia.org/wikipedia/en/thumb/3/3b/Sevilla_FC_logo.svg/120px-Sevilla_FC_logo.svg.png',
+    'Rayo Vallecano':          'https://upload.wikimedia.org/wikipedia/en/thumb/2/27/Rayo_Vallecano_logo.svg/120px-Rayo_Vallecano_logo.svg.png',
+    'Rayo':                    'https://upload.wikimedia.org/wikipedia/en/thumb/2/27/Rayo_Vallecano_logo.svg/120px-Rayo_Vallecano_logo.svg.png',
+    'Deportivo Alavés':        'https://upload.wikimedia.org/wikipedia/en/thumb/b/b9/Deportivo_Alav%C3%A9s_logo.svg/120px-Deportivo_Alav%C3%A9s_logo.svg.png',
+    'Alavés':                  'https://upload.wikimedia.org/wikipedia/en/thumb/b/b9/Deportivo_Alav%C3%A9s_logo.svg/120px-Deportivo_Alav%C3%A9s_logo.svg.png',
+    'RCD Espanyol':            'https://upload.wikimedia.org/wikipedia/en/thumb/7/76/Rcd_espanyol_new_crest.svg/120px-Rcd_espanyol_new_crest.svg.png',
+    'Espanyol':                'https://upload.wikimedia.org/wikipedia/en/thumb/7/76/Rcd_espanyol_new_crest.svg/120px-Rcd_espanyol_new_crest.svg.png',
+    'Valencia CF':             'https://upload.wikimedia.org/wikipedia/en/thumb/c/ce/Valenciacf.svg/120px-Valenciacf.svg.png',
+    'Valencia':                'https://upload.wikimedia.org/wikipedia/en/thumb/c/ce/Valenciacf.svg/120px-Valenciacf.svg.png',
+    'CA Osasuna':              'https://upload.wikimedia.org/wikipedia/en/thumb/d/db/Osasuna_logo.svg/120px-Osasuna_logo.svg.png',
+    'Osasuna':                 'https://upload.wikimedia.org/wikipedia/en/thumb/d/db/Osasuna_logo.svg/120px-Osasuna_logo.svg.png',
 };
 
 var getLogoEquipo = function(nombre, teamLogos) {
     if (!nombre) return '';
-    // Primero buscar en Firestore (teamLogos del admin)
     if (teamLogos && teamLogos[nombre]) return teamLogos[nombre];
-    // Luego en el mapa hardcoded (case-insensitive parcial)
     if (LOGOS_EQUIPOS[nombre]) return LOGOS_EQUIPOS[nombre];
-    // Búsqueda parcial
     var keys = Object.keys(LOGOS_EQUIPOS);
-    for (var i=0; i<keys.length; i++) {
-        if (nombre.toLowerCase().includes(keys[i].toLowerCase()) || 
+    for (var i = 0; i < keys.length; i++) {
+        if (nombre.toLowerCase().includes(keys[i].toLowerCase()) ||
             keys[i].toLowerCase().includes(nombre.toLowerCase())) {
             return LOGOS_EQUIPOS[keys[i]];
         }
     }
-    // Fallback: placehold con iniciales
-    var ini = nombre.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,3).toUpperCase();
+    var ini = nombre.split(' ').map(function(w) { return w[0] || ''; }).join('').substring(0, 3).toUpperCase();
     return 'https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent(ini);
 };
+
 
 const TeamDisplay = ({ teamLogos, teamName, shortName = false, imgStyle }) => {
     var logoSrc = getLogoEquipo(teamName, teamLogos);
