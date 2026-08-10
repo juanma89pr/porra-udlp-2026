@@ -3007,6 +3007,99 @@ const PagosScreen = ({ currentUser }) => {
     return null;
 };
 
+// ============================================================================
+// --- ESTADÍSTICAS ───────────────────────────────────────────────────────────
+// ============================================================================
+const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
+    var G = styles.colors;
+    var [clasificacion, setClasificacion] = useState([]);
+    var [jornadas, setJornadas] = useState([]);
+    var [historico, setHistorico] = useState(false);
+
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, 'clasificacion'), function(snap) {
+            var data = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+            data.sort(function(a,b) { return (b.puntos||0)-(a.puntos||0); });
+            setClasificacion(data);
+        });
+        return function(){unsub();};
+    }, []);
+
+    useEffect(function() {
+        var unsub = onSnapshot(query(collection(db,'jornadas'),orderBy('numeroJornada','asc')),
+            function(snap){setJornadas(snap.docs.map(function(d){return{id:d.id,...d.data()};}));});
+        return function(){unsub();};
+    }, []);
+
+    var medallaColor = ['#FFD700','#C0C0C0','#CD7F32'];
+
+    return (
+        <div style={{paddingBottom:40}}>
+            <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:G.deepBlue,textTransform:'uppercase',marginBottom:16,fontWeight:700}}>
+                📊 ESTADÍSTICAS
+            </h2>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,color:'rgba(0,31,107,0.4)',textTransform:'uppercase',marginBottom:10}}>
+                Clasificación 26/27
+            </p>
+            <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,overflow:'hidden',marginBottom:18}}>
+                {clasificacion.length === 0 ? (
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.4)',padding:20,textAlign:'center'}}>
+                        La clasificación se actualizará al cerrar la primera jornada
+                    </p>
+                ) : clasificacion.map(function(j, idx) {
+                    var online = onlineUsers && onlineUsers[j.id];
+                    var perfil = userProfiles && userProfiles[j.id];
+                    return (
+                        <div key={j.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',
+                            borderBottom:idx<clasificacion.length-1?'1px solid rgba(0,31,107,0.06)':'none',
+                            background:idx===0?'rgba(255,215,0,0.04)':'#fff'}}>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,
+                                color:idx<3?medallaColor[idx]:'rgba(0,31,107,0.25)',minWidth:24,textAlign:'center'}}>
+                                {idx<3?['🥇','🥈','🥉'][idx]:idx+1}
+                            </span>
+                            <div style={{width:34,height:34,borderRadius:'50%',background:'rgba(0,31,107,0.08)',
+                                display:'flex',alignItems:'center',justifyContent:'center',
+                                fontFamily:"'Teko',sans-serif",fontSize:16,color:G.deepBlue,flexShrink:0,
+                                border:online?'2px solid #10b981':'2px solid transparent'}}>
+                                {perfil&&perfil.emoji?perfil.emoji:(j.id||'?')[0].toUpperCase()}
+                            </div>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,color:G.deepBlue,letterSpacing:1,flex:1}}>{j.id}</span>
+                            <div style={{textAlign:'right'}}>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:G.deepBlue}}>{j.puntos||0}</span>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)',marginLeft:4}}>pts</span>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <button onClick={function(){setHistorico(function(h){return !h;});}}
+                style={{width:'100%',background:'rgba(0,31,107,0.06)',border:'1px solid rgba(0,31,107,0.12)',
+                    borderRadius:12,padding:'11px',fontFamily:"'Teko',sans-serif",fontSize:14,
+                    letterSpacing:2,color:G.deepBlue,cursor:'pointer',textTransform:'uppercase',marginBottom:14}}>
+                {historico?'▲ Ocultar':'▼ Ver'} historial de jornadas
+            </button>
+            {historico && jornadas.filter(function(j){return j.estado==='Finalizada';}).map(function(j) {
+                return (
+                    <div key={j.id} style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:14,padding:'14px 16px',marginBottom:8}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10}}>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:G.deepBlue,minWidth:28}}>J{j.numeroJornada}</span>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,color:G.deepBlue,flex:1,textTransform:'uppercase'}}>{j.equipoLocal} {j.resultadoFinal||''} {j.equipoVisitante}</span>
+                            {j.esVip&&<span style={{background:'rgba(255,215,0,0.15)',color:'#001F6B',border:'1px solid rgba(255,215,0,0.3)',borderRadius:8,padding:'2px 8px',fontFamily:"'Teko',sans-serif",fontSize:11}}>VIP</span>}
+                        </div>
+                        {j.ganadorBote&&<p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#10b981',marginTop:4}}>🏆 Bote ganado por {j.ganadorBote}</p>}
+                    </div>
+                );
+            })}
+            {historico&&jornadas.filter(function(j){return j.estado==='Finalizada';}).length===0&&(
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.4)',textAlign:'center',padding:16}}>Aún no hay jornadas finalizadas</p>
+            )}
+        </div>
+    );
+};
+
+// ============================================================================
+// --- CALENDARIO ─────────────────────────────────────────────────────────────
+// ============================================================================
 const CalendarioScreen = ({ teamLogos }) => {
     var G = styles.colors;
     var [jornadas, setJornadas] = useState([]);
