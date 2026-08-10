@@ -990,7 +990,10 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                         </div>
                         <div style={{display:'flex',alignItems:'center',gap:12,justifyContent:'center'}}>
                             <div style={{textAlign:'center'}}>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoLocal.toUpperCase()}</p>
+                                <img src={jornada.udlpEsLocal ? '/escudo.png' : 'https://placehold.co/40x40/f8f9ff/001F6B?text=' + encodeURIComponent(jornada.equipoLocal.substring(0,3))}
+                                    alt={jornada.equipoLocal} style={{width:36,height:36,objectFit:'contain',marginBottom:4}}
+                                    onError={function(e){e.target.style.display='none';}} />
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoLocal.toUpperCase()}</p>
                                 <input type="number" min="0" max="20" value={pronostico.golesLocal}
                                     onChange={function(e) { setPronostico(function(p) { return {...p, golesLocal: e.target.value}; }); setGuardado(false); }}
                                     style={{width:64,height:64,textAlign:'center',border:'2px solid rgba(0,31,107,0.2)',borderRadius:14,
@@ -998,7 +1001,10 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             </div>
                             <span style={{fontFamily:"'Teko',sans-serif",fontSize:28,color:'rgba(0,31,107,0.3)'}}>—</span>
                             <div style={{textAlign:'center'}}>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoVisitante.toUpperCase()}</p>
+                                <img src={!jornada.udlpEsLocal ? '/escudo.png' : 'https://placehold.co/40x40/f8f9ff/001F6B?text=' + encodeURIComponent(jornada.equipoVisitante.substring(0,3))}
+                                    alt={jornada.equipoVisitante} style={{width:36,height:36,objectFit:'contain',marginBottom:4}}
+                                    onError={function(e){e.target.style.display='none';}} />
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoVisitante.toUpperCase()}</p>
                                 <input type="number" min="0" max="20" value={pronostico.golesVisitante}
                                     onChange={function(e) { setPronostico(function(p) { return {...p, golesVisitante: e.target.value}; }); setGuardado(false); }}
                                     style={{width:64,height:64,textAlign:'center',border:'2px solid rgba(0,31,107,0.2)',borderRadius:14,
@@ -1143,6 +1149,176 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     <span style={{fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:1,color:'rgba(255,255,255,0.7)',textTransform:'uppercase',marginTop:1}}>5</span>
                 </button>
             )}
+        </div>
+    );
+};
+
+// ============================================================================
+// --- TUTORIAL ÉPICO — Presentación nueva temporada 26/27 ---
+// ============================================================================
+const TutorialEpico = ({ user, onClose }) => {
+    var [slide, setSlide] = useState(0);
+    var [saliendo, setSaliendo] = useState(false);
+    var SLIDES = [
+        {
+            bg: '#001F6B',
+            accent: '#FFD700',
+            icon: '🏟️',
+            titulo: 'TEMPORADA 26/27',
+            subtitulo: 'UD LAS PALMAS · SEGUNDA DIVISIÓN',
+            texto: 'El equipo vuelve al Estadio de Gran Canaria con un objetivo claro: el ascenso. Y vosotros, como siempre, estaréis en cada partido.',
+            tag: null,
+        },
+        {
+            bg: '#0a0a0a',
+            accent: '#FFD700',
+            icon: '⚡',
+            titulo: 'LA PORRA',
+            subtitulo: 'EL JUEGO CENTRAL',
+            texto: 'Cada jornada, tu apuesta. Adivina el marcador exacto y llévate el bote. Si nadie acierta, se acumula. Así funciona desde el principio, y así sigue.',
+            tag: '3 PTS por resultado exacto',
+        },
+        {
+            bg: '#001F6B',
+            accent: '#FFD700',
+            icon: '🛡️',
+            titulo: 'EL OTRO',
+            subtitulo: 'NOVEDAD 26/27',
+            texto: 'Cada jugador elige un equipo de Primera División en secreto. Cuando lo activas, tus puntos de esa jornada se multiplican. Si tu equipo gana, tú ganas más.',
+            tag: '×2 · ×2.5 · ×3 según el uso',
+        },
+        {
+            bg: '#0a0a0a',
+            accent: '#FFD700',
+            icon: '⭐',
+            titulo: 'MIS 5 ESTRELLAS',
+            subtitulo: 'NOVEDAD 26/27',
+            texto: 'Elige hasta 5 jugadores de la UDLP antes de cada partido. Sus actuaciones reales generan estrellas. El mejor de la jornada suma puntos para la clasificación general.',
+            tag: 'Hasta 5 pts extra por jornada',
+        },
+        {
+            bg: '#001F6B',
+            accent: '#FFD700',
+            icon: '🏆',
+            titulo: '¿ESTÁS LISTO?',
+            subtitulo: user ? 'BIENVENIDO, ' + user.toUpperCase() : 'BIENVENIDO',
+            texto: 'La liga empieza el 15 de agosto. Elige tu equipo de El Otro antes del jueves 13. Y recuerda: esto no va solo de fútbol. Va de vosotros.',
+            tag: null,
+            esUltimo: true,
+        },
+    ];
+
+    var s = SLIDES[slide];
+    var total = SLIDES.length;
+
+    var siguiente = function() {
+        if (slide < total - 1) setSlide(function(v) { return v + 1; });
+        else cerrar();
+    };
+
+    var cerrar = function() {
+        setSaliendo(true);
+        setTimeout(function() {
+            localStorage.setItem('tutorial_2627_' + user, '1');
+            onClose();
+        }, 400);
+    };
+
+    return (
+        <div style={{
+            position:'fixed', inset:0, zIndex:500,
+            background: s.bg,
+            display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+            padding:32, transition:'background .6s ease',
+            animation: saliendo ? 'fadeOut .4s ease forwards' : 'fadeIn .5s ease',
+        }}>
+            <style>{`
+                @keyframes fadeOut{to{opacity:0;transform:scale(.96)}}
+                @keyframes floatIcon{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+                @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+                .tutorial-icon{animation:floatIcon 3s ease-in-out infinite;}
+                .tutorial-content{animation:slideUp .4s ease both;}
+            `}</style>
+
+            {/* Fondo decorativo */}
+            <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none'}}>
+                <div style={{position:'absolute',top:'-20%',right:'-20%',width:'60vw',height:'60vw',
+                    borderRadius:'50%',background:'rgba(255,215,0,0.04)'}} />
+                <div style={{position:'absolute',bottom:'-10%',left:'-15%',width:'40vw',height:'40vw',
+                    borderRadius:'50%',background:'rgba(255,215,0,0.03)'}} />
+                {/* Líneas de pizarra */}
+                <svg style={{position:'absolute',inset:0,width:'100%',height:'100%'}} viewBox="0 0 400 700" fill="none" preserveAspectRatio="xMidYMid slice">
+                    <rect x="40" y="40" width="320" height="620" stroke="#FFD700" strokeWidth="0.4" opacity="0.06" rx="2"/>
+                    <line x1="40" y1="350" x2="360" y2="350" stroke="#FFD700" strokeWidth="0.4" opacity="0.05"/>
+                    <circle cx="200" cy="350" r="60" stroke="#FFD700" strokeWidth="0.4" opacity="0.05"/>
+                </svg>
+            </div>
+
+            {/* Escudo UDLP arriba */}
+            <div style={{position:'relative',zIndex:2,marginBottom:32}}>
+                <img src="/escudo.png" alt="UDLP"
+                    style={{width:56,height:66,objectFit:'contain',filter:'brightness(0) invert(1)',opacity:.15}}
+                    onError={function(e){e.target.style.display='none';}} />
+            </div>
+
+            {/* Contenido */}
+            <div key={slide} className="tutorial-content" style={{position:'relative',zIndex:2,textAlign:'center',maxWidth:360}}>
+                <div className="tutorial-icon" style={{fontSize:72,marginBottom:20,lineHeight:1}}>{s.icon}</div>
+
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:5,color:'rgba(255,215,0,0.5)',
+                    textTransform:'uppercase',marginBottom:8}}>{s.subtitulo}</p>
+
+                <h1 style={{fontFamily:"'Teko',sans-serif",fontSize:'clamp(2.5rem,10vw,3.5rem)',fontWeight:700,
+                    color:'#FFD700',letterSpacing:3,lineHeight:1,marginBottom:20}}>{s.titulo}</h1>
+
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:15,color:'rgba(255,255,255,0.7)',
+                    lineHeight:1.7,marginBottom:s.tag?20:32}}>{s.texto}</p>
+
+                {s.tag && (
+                    <div style={{display:'inline-block',background:'rgba(255,215,0,0.12)',border:'1px solid rgba(255,215,0,0.25)',
+                        borderRadius:20,padding:'8px 20px',marginBottom:32}}>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#FFD700',textTransform:'uppercase'}}>
+                            {s.tag}
+                        </span>
+                    </div>
+                )}
+
+                {/* Dots de progreso */}
+                <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:32}}>
+                    {SLIDES.map(function(_,i) {
+                        return (
+                            <div key={i} style={{
+                                width: i===slide ? 24 : 8, height:8, borderRadius:4,
+                                background: i===slide ? '#FFD700' : 'rgba(255,215,0,0.2)',
+                                transition:'all .3s ease',
+                            }} />
+                        );
+                    })}
+                </div>
+
+                {/* Botón */}
+                <button onClick={siguiente}
+                    style={{
+                        fontFamily:"'Teko',sans-serif",fontSize:'1.2rem',letterSpacing:3,
+                        background: s.esUltimo ? '#FFD700' : 'transparent',
+                        color: s.esUltimo ? '#001F6B' : '#FFD700',
+                        border: s.esUltimo ? 'none' : '1.5px solid rgba(255,215,0,0.4)',
+                        borderRadius:30, padding:'16px 40px', cursor:'pointer',
+                        textTransform:'uppercase',
+                        boxShadow: s.esUltimo ? '0 8px 32px rgba(255,215,0,0.3)' : 'none',
+                    }}>
+                    {s.esUltimo ? '¡EMPEZAR LA TEMPORADA!' : 'SIGUIENTE →'}
+                </button>
+
+                {!s.esUltimo && (
+                    <button onClick={cerrar}
+                        style={{display:'block',margin:'16px auto 0',background:'none',border:'none',
+                            fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.25)',
+                            cursor:'pointer',textDecoration:'underline'}}>
+                        Saltar tutorial
+                    </button>
+                )}
+            </div>
         </div>
     );
 };
@@ -3588,6 +3764,7 @@ function App() {
     const [userProfiles, setUserProfiles] = useState({});
     const [onlineUsers, setOnlineUsers] = useState({});
     const [clasificacionData, setClasificacionData] = useState([]);
+    const [showTutorial, setShowTutorial] = useState(false);
 
     // ── Estilos globales y estado RTDB público al arrancar ──────────────
     useEffect(() => {
@@ -3638,6 +3815,11 @@ function App() {
             });
 
             setScreen('app');
+
+            // Mostrar tutorial épico si es la primera vez en la temporada 26/27
+            if (!localStorage.getItem('tutorial_2627_' + user)) {
+                setShowTutorial(true);
+            }
         } catch (error) {
             console.error('Error en handleLoginSuccess:', error);
             alert("Error al iniciar sesión. Inténtalo de nuevo.");
@@ -3686,6 +3868,9 @@ function App() {
 
     return (
         <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(160deg,#f8f9ff 0%,#eef1fa 100%)', overflow: 'hidden', fontFamily: "'Teko', sans-serif" }}>
+
+            {/* Tutorial épico — primera vez en la temporada */}
+            {showTutorial && <TutorialEpico user={currentUser} onClose={function() { setShowTutorial(false); }} />}
 
             {/* ── TOPBAR ── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(10px)', borderBottom: '0.5px solid rgba(0,31,107,0.08)', position: 'relative', zIndex: 10 }}>
