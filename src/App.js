@@ -77,44 +77,46 @@ const PUNTOS_ESTRELLAS = {
 // Team ID en API-Football: 275 (UD Las Palmas)
 const API_TEAM_ID_UDLP = 275;
 // Plantilla oficial UD Las Palmas 26/27
-// Fuente: pretemporada Marbella (22/07/2026) + dorsales Transfermarkt 26/27
-// Solo jugadores con dorsal de primera plantilla confirmado
-// Cristian Gutiérrez cedido al Cádiz (09/08/2026) — excluido
+// Fotos: API-Football media CDN (confirmados) + ui-avatars fallback
+// Para jugadores sin apiId usamos foto de Wikipedia cuando disponible
 const PLANTILLA_FALLBACK = [
     // PORTEROS
-    { dorsal:"1",  nombre:"Dinko Horkas",       posicion:"Portero",        apiId:430567 },
-    { dorsal:"13", nombre:"José Antonio Caro",  posicion:"Portero",        apiId:0 },
-    { dorsal:"33", nombre:"Adri Suárez",        posicion:"Portero",        apiId:0 },
+    { dorsal:"1",  nombre:"Dinko Horkas",       posicion:"Portero",        apiId:430567,  wikiImg:'' },
+    { dorsal:"13", nombre:"José Antonio Caro",  posicion:"Portero",        apiId:0,       wikiImg:'' },
+    { dorsal:"33", nombre:"Adri Suárez",        posicion:"Portero",        apiId:0,       wikiImg:'' },
     // DEFENSAS
-    { dorsal:"2",  nombre:"Marvin Park",        posicion:"Defensa",        apiId:324219 },
-    { dorsal:"5",  nombre:"Viti Rozada",        posicion:"Defensa",        apiId:0 },
-    { dorsal:"4",  nombre:"Álex Suárez",        posicion:"Defensa",        apiId:289254 },
-    { dorsal:"15", nombre:"Juanma Herzog",      posicion:"Defensa",        apiId:284516 },
-    { dorsal:"23", nombre:"Valentín Pezzolesi", posicion:"Defensa",        apiId:0 },
-    { dorsal:"17", nombre:"Enrique Clemente",   posicion:"Defensa",        apiId:0 },
+    { dorsal:"2",  nombre:"Marvin Park",        posicion:"Defensa",        apiId:324219,  wikiImg:'' },
+    { dorsal:"5",  nombre:"Viti Rozada",        posicion:"Defensa",        apiId:0,       wikiImg:'' },
+    { dorsal:"4",  nombre:"Álex Suárez",        posicion:"Defensa",        apiId:289254,  wikiImg:'' },
+    { dorsal:"15", nombre:"Juanma Herzog",      posicion:"Defensa",        apiId:284516,  wikiImg:'' },
+    { dorsal:"23", nombre:"Valentín Pezzolesi", posicion:"Defensa",        apiId:0,       wikiImg:'' },
+    { dorsal:"17", nombre:"Enrique Clemente",   posicion:"Defensa",        apiId:0,       wikiImg:'' },
     // CENTROCAMPISTAS
-    { dorsal:"12", nombre:"Sergio Ruiz",        posicion:"Centrocampista", apiId:0 },
-    { dorsal:"20", nombre:"Kirian Rodríguez",   posicion:"Centrocampista", apiId:37073 },
-    { dorsal:"26", nombre:"Enzo Loiodice",      posicion:"Centrocampista", apiId:290060 },
-    { dorsal:"8",  nombre:"Mateo Acimovic",     posicion:"Centrocampista", apiId:0 },
-    { dorsal:"11", nombre:"Iñaki González",     posicion:"Centrocampista", apiId:286026 },
-    { dorsal:"16", nombre:"Edward Cedeño",      posicion:"Centrocampista", apiId:0 },
+    { dorsal:"12", nombre:"Sergio Ruiz",        posicion:"Centrocampista", apiId:0,       wikiImg:'' },
+    { dorsal:"20", nombre:"Kirian Rodríguez",   posicion:"Centrocampista", apiId:37073,   wikiImg:'' },
+    { dorsal:"26", nombre:"Enzo Loiodice",      posicion:"Centrocampista", apiId:290060,  wikiImg:'' },
+    { dorsal:"8",  nombre:"Mateo Acimovic",     posicion:"Centrocampista", apiId:0,       wikiImg:'' },
+    { dorsal:"11", nombre:"Iñaki González",     posicion:"Centrocampista", apiId:286026,  wikiImg:'' },
+    { dorsal:"16", nombre:"Edward Cedeño",      posicion:"Centrocampista", apiId:0,       wikiImg:'' },
     // ATACANTES / MEDIAPUNTA
-    { dorsal:"14", nombre:"Manu Fuster",        posicion:"Mediapunta",     apiId:289255 },
-    { dorsal:"22", nombre:"Taisei Miyashiro",   posicion:"Mediapunta",     apiId:320742 },
-    { dorsal:"10", nombre:"Ale García",         posicion:"Mediapunta",     apiId:0 },
+    { dorsal:"14", nombre:"Manu Fuster",        posicion:"Mediapunta",     apiId:289255,  wikiImg:'' },
+    { dorsal:"22", nombre:"Taisei Miyashiro",   posicion:"Mediapunta",     apiId:320742,  wikiImg:'' },
+    { dorsal:"10", nombre:"Ale García",         posicion:"Mediapunta",     apiId:0,       wikiImg:'' },
     // DELANTEROS
-    { dorsal:"9",  nombre:"Jeremía Recoba",     posicion:"Delantero",      apiId:366988 },
-    { dorsal:"19", nombre:"Jesé Rodríguez",     posicion:"Delantero",      apiId:1831 },
-    { dorsal:"14", nombre:"Sandro Ramírez",     posicion:"Delantero",      apiId:18892 },
-    { dorsal:"41", nombre:"Elías Romero",       posicion:"Delantero",      apiId:0 },
+    { dorsal:"9",  nombre:"Jeremía Recoba",     posicion:"Delantero",      apiId:366988,  wikiImg:'' },
+    { dorsal:"19", nombre:"Jesé Rodríguez",     posicion:"Delantero",      apiId:1831,    wikiImg:'' },
+    { dorsal:"7",  nombre:"Sandro Ramírez",     posicion:"Delantero",      apiId:18892,   wikiImg:'' },
+    { dorsal:"41", nombre:"Elías Romero",       posicion:"Delantero",      apiId:0,       wikiImg:'' },
 ].map(function(j) {
-    return {
-        ...j,
-        imageUrl: j.apiId > 0
-            ? 'https://media.api-sports.io/football/players/' + j.apiId + '.png'
-            : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(j.nombre) + '&background=001F6B&color=FFD700&size=80&bold=true&font-size=0.4'
-    };
+    var foto = '';
+    if (j.apiId > 0) {
+        // API-Football CDN — foto oficial del jugador
+        foto = 'https://media.api-sports.io/football/players/' + j.apiId + '.png';
+    } else {
+        // Fallback: avatar con iniciales en colores UDLP
+        foto = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(j.nombre) + '&background=001F6B&color=FFD700&size=120&bold=true&font-size=0.38&length=2';
+    }
+    return { ...j, imageUrl: foto };
 });
 
 // ============================================================================
@@ -1612,25 +1614,60 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
             <div style={{textAlign:'center'}}>
                 <span style={S.iconBig}>⭐</span>
                 <div style={{...S.badge}}><span style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'#001F6B',textTransform:'uppercase'}}>⚡ NOVEDAD 26/27 ⚡</span></div>
-                <h1 style={S.titulo}>LAS ESTRELLAS<br/>DE TU EQUIPO</h1>
-                <p style={S.cuerpo}>Antes de cada partido, eliges hasta <strong style={{color:'#001F6B'}}>5 jugadores de la UDLP</strong>. La API registra sus actuaciones en tiempo real. Cada acción genera <strong style={{color:'#001F6B'}}>estrellas</strong>.</p>
-                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',lineHeight:1.7,textAlign:'center'}}>El que mejor elija cada semana acumula más estrellas y sube en la <strong>liga paralela de estrellas</strong> — con sus propios premios al final de temporada.</p></div>
+                <h1 style={S.titulo}>MIS 5<br/>ESTRELLAS</h1>
+                <p style={S.cuerpo}>Antes de cada partido, eliges hasta <strong style={{color:'#001F6B'}}>5 jugadores de la UDLP</strong>. La API registra sus actuaciones en tiempo real — goles, asistencias, paradas, tarjetas — y cada acción genera <strong style={{color:'#001F6B'}}>estrellas ⭐</strong>.</p>
+                <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:360}}>
+                    <div style={{...S.cardDorado,padding:'12px 14px'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:6}}>Clasificación de jornada → puntos</p>
+                        <div style={{display:'flex',gap:6,justifyContent:'center'}}>
+                            {[['🥇','5 pts'],['🥈','4 pts'],['🥉','3 pts'],['4º','2 pts'],['5º','1 pt']].map(function(r,i){return(
+                                <div key={i} style={{textAlign:'center',flex:1}}>
+                                    <p style={{fontSize:16,marginBottom:2}}>{r[0]}</p>
+                                    <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:'#001F6B'}}>{r[1]}</p>
+                                </div>
+                            );})}
+                        </div>
+                    </div>
+                    <div style={{...S.card,padding:'12px 14px',textAlign:'left'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4}}>Dos ligas en paralelo</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.55)',lineHeight:1.6}}>
+                            📊 <strong style={{color:'#001F6B'}}>Clasificación general</strong> — los puntos (5,4,3,2,1) de estrellas suman al total de la liga normal.<br/>
+                            ⭐ <strong style={{color:'#001F6B'}}>Liga de estrellas</strong> — las estrellas acumuladas forman una clasificación propia con premios al final de temporada.
+                        </p>
+                    </div>
+                </div>
             </div>
         );
 
         case 8: return (
             <div style={{textAlign:'center'}}>
-                <div style={S.eyebrow}>Qué acciones valen estrellas</div>
-                <h1 style={S.titulo}>TABLA DE<br/>ESTRELLAS</h1>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,width:'100%',maxWidth:360,marginBottom:12}}>
-                    {[['⚽ Gol delantero','+5⭐',false],['⚽ Gol centrocampista','+6⭐',false],['⚽ Gol portero/defensa','+8⭐',false],['🅰️ Asistencia','+3⭐',false],['🧤 Portería a 0 (portero)','+4⭐',false],['👟 Titular (+60 min)','+2⭐',false],['🟨 Tarjeta amarilla','-1⭐',true],['🟥 Tarjeta roja','-3⭐',true]].map(function(r,i){return(
-                        <div key={i} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 11px'}}>
+                <div style={S.eyebrow}>Tabla completa de estrellas por acción</div>
+                <h1 style={S.titulo}>¿QUÉ ACCIONES<br/>DAN ESTRELLAS?</h1>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,width:'100%',maxWidth:360,marginBottom:12}}>
+                    {[
+                        ['⚽ Gol portero/defensa','+8⭐',false],
+                        ['⚽ Gol centrocampista','+6⭐',false],
+                        ['⚽ Gol delantero','+5⭐',false],
+                        ['🅰️ Asistencia','+3⭐',false],
+                        ['🧤 Portería a 0 (portero)','+4⭐',false],
+                        ['🧤 Portería a 0 (defensa)','+2⭐',false],
+                        ['🧤 Parada penalti','+5⭐',false],
+                        ['👟 Titular (+60 min)','+2⭐',false],
+                        ['👟 Suplente (entra)','+1⭐',false],
+                        ['🟨 Tarjeta amarilla','-1⭐',true],
+                        ['🟥 Tarjeta roja','-3⭐',true],
+                        ['❌ Penalti fallado','-2⭐',true],
+                    ].map(function(r,i){return(
+                        <div key={i} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px'}}>
                             <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,0,0,0.5)'}}>{r[0]}</span>
-                            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:r[2]?'#b91c1c':'#001F6B',flexShrink:0,marginLeft:4}}>{r[1]}</span>
+                            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:r[2]?'#b91c1c':'#001F6B',flexShrink:0,marginLeft:4}}>{r[1]}</span>
                         </div>
                     );})}
                 </div>
-                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.6}}>La clave está en <strong>saber elegir</strong> — un titular habitual vale más que una estrella que no juega</p></div>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.6}}>
+                    Un portero con portería a 0 y una parada de penalti suma <strong>+9⭐</strong> en un partido.<br/>
+                    La clave: elige jugadores que <strong>jueguen de titular</strong> en partidos con alto riesgo de gol.
+                </p></div>
             </div>
         );
 
@@ -1638,7 +1675,19 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
             <div style={{textAlign:'center'}}>
                 <div style={S.eyebrow}>Así se juega cada semana</div>
                 <h1 style={S.titulo}>ELIGE TUS<br/>5 ESTRELLAS</h1>
-                <p style={{...S.cuerpo,fontSize:13,marginBottom:14}}>Seleccionas hasta 5 jugadores antes del partido. Sus estrellas se suman — el mejor de la jornada suma puntos para la clasificación.</p>
+                <p style={{...S.cuerpo,fontSize:13,marginBottom:14}}>Seleccionas hasta 5 jugadores antes del partido. Sus acciones reales generan ⭐. Al final del partido, las estrellas se convierten en puntos según el ranking de la jornada.</p>
+                {/* Animación estrellas → puntos */}
+                <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'center',marginBottom:14,width:'100%',maxWidth:360}}>
+                    <div style={{...S.cardDorado,flex:1,textAlign:'center',padding:'10px 8px'}}>
+                        <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:'#001F6B',marginBottom:2}}>⭐⭐⭐</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,0,0,0.45)'}}>Tus jugadores acumulan estrellas</p>
+                    </div>
+                    <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:'rgba(0,31,107,0.3)',flexShrink:0}}>→</div>
+                    <div style={{...S.card,flex:1,textAlign:'center',padding:'10px 8px',border:'1.5px solid rgba(0,31,107,0.2)'}}>
+                        <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:'#001F6B',marginBottom:2}}>5 PTS</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,0,0,0.45)'}}>Si eres el mejor de la jornada</p>
+                    </div>
+                </div>
                 <div style={{display:'flex',flexWrap:'wrap',gap:12,justifyContent:'center',maxWidth:340,margin:'0 auto 14px'}}>
                     {JUGADORES_TUTORIAL.map(function(j,i){
                         var sel = !!jugadoresElegidos.find(function(x){return x.nombre===j.nombre;});
@@ -1787,10 +1836,10 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                         </div>
                     </div>
                     <div style={{...S.card,display:'flex',alignItems:'center',gap:12,padding:'12px 14px',textAlign:'left'}}>
-                        <span style={{fontSize:20,flexShrink:0}}>👥</span>
+                        <span style={{fontSize:20,flexShrink:0}}>👨‍👩‍👧</span>
                         <div>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Pago grupal</p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',lineHeight:1.5}}>Laura puede pagar por Vicky, Carmelo y Pepe en un solo cobro desde la app</p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Pago familiar / grupal</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',lineHeight:1.5}}>Si alguien de tu casa se encarga de tu pago, puede seguir siendo así. Ustedes eligen quién paga por quién — la app lo gestiona en un solo cobro.</p>
                         </div>
                     </div>
                     <div style={{...S.card,display:'flex',alignItems:'center',gap:12,padding:'12px 14px',textAlign:'left'}}>
@@ -4687,9 +4736,56 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
 
     if (loading) return <div style={{padding:40,textAlign:'center',color:G.deepBlue}}>Cargando...</div>;
 
+    // Bloqueo hasta que pague
+    if (!jugadorHaPagado(currentUser, pagos || [])) {
+        return (
+            <div style={{paddingBottom:40}}>
+                <h2 style={styles.title}>MIS 5 ESTRELLAS</h2>
+                <BannerPagoPendiente onIrAPagos={onIrAPagos} />
+            </div>
+        );
+    }
+
     return (
         <div style={{padding:'20px 16px'}}>
             <h2 style={styles.title}>MIS 5 ESTRELLAS</h2>
+
+            {/* Carta de puntuación — siempre visible */}
+            <details style={{marginBottom:16}}>
+                <summary style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',cursor:'pointer',userSelect:'none',padding:'10px 14px',background:'rgba(0,31,107,0.04)',borderRadius:10,border:'1px solid rgba(0,31,107,0.1)',listStyle:'none',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span>⭐ Tabla de puntuación</span>
+                    <span style={{fontSize:10,opacity:.5}}>Toca para ver</span>
+                </summary>
+                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:10,marginTop:6,overflow:'hidden'}}>
+                    {[
+                        ['⚽','Gol portero / defensa','+8⭐',false],
+                        ['⚽','Gol centrocampista','+6⭐',false],
+                        ['⚽','Gol delantero','+5⭐',false],
+                        ['🧤','Parada de penalti','+5⭐',false],
+                        ['🅰️','Asistencia','+3⭐',false],
+                        ['🧤','Portería a 0 — portero','+4⭐',false],
+                        ['🧤','Portería a 0 — defensa','+2⭐',false],
+                        ['👟','Titular (+60 min)','+2⭐',false],
+                        ['👟','Suplente (entra)','+1⭐',false],
+                        ['🟨','Tarjeta amarilla','-1⭐',true],
+                        ['❌','Penalti fallado','-2⭐',true],
+                        ['🟥','Tarjeta roja','-3⭐',true],
+                    ].map(function(r,i){return(
+                        <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                            <span style={{fontSize:14,flexShrink:0}}>{r[0]}</span>
+                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)',flex:1}}>{r[1]}</span>
+                            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:r[3]?'#e63946':'#001F6B',flexShrink:0}}>{r[2]}</span>
+                        </div>
+                    );})}
+                    <div style={{padding:'10px 14px',background:'rgba(0,31,107,0.03)'}}>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)',lineHeight:1.6,textAlign:'center'}}>
+                            Las estrellas acumuladas determinan tu posición en la jornada.<br/>
+                            🥇 +5 pts · 🥈 +4 pts · 🥉 +3 pts · 4º +2 pts · 5º +1 pt<br/>
+                            Los puntos también cuentan en la <strong>clasificación general</strong>.
+                        </p>
+                    </div>
+                </div>
+            </details>
 
             {/* Beneficio activo */}
             {miBeneficio && (
