@@ -1395,7 +1395,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
             audio.pause();
             audio.currentTime = 0;
         };
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     var EQUIPOS_PRIMERA = [
         "FC Barcelona","Real Madrid","Atlético de Madrid","Villarreal CF",
@@ -1770,16 +1770,38 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                 <h1 style={S.titulo}>INSCRIPCIÓN<br/>5€</h1>
                 <p style={S.cuerpo}>Un único pago para toda la temporada — 42 jornadas. <strong style={{color:'#001F6B'}}>Sin pago confirmado, no hay acceso a las apuestas ni a El Otro Equipo.</strong></p>
                 <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:360,marginBottom:14}}>
-                    <div style={{...S.cardDorado,display:'flex',alignItems:'center',gap:12,padding:'12px 14px',textAlign:'left'}}>
-                        <span style={{fontSize:20,flexShrink:0}}>💸</span>
-                        <div><p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Pago con tarjeta en la app</p><p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)'}}>Pago seguro procesado por Stripe</p></div>
+                    <div style={{...S.cardDorado,display:'flex',alignItems:'center',gap:12,padding:'14px 16px',textAlign:'left'}}>
+                        <span style={{fontSize:22,flexShrink:0}}>💸</span>
+                        <div style={{flex:1}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Pago con tarjeta</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',marginBottom:6}}>Visa · Mastercard · AMEX · débito</p>
+                            {/* Logo Stripe */}
+                            <div style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(99,91,255,0.08)',border:'1px solid rgba(99,91,255,0.2)',borderRadius:8,padding:'4px 10px'}}>
+                                <svg width="40" height="16" viewBox="0 0 60 25" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M27.5 8.2c0-1.3 1-1.8 2.7-1.8 2.4 0 5.4.7 7.8 2V2.7C35.5 1 32.7.3 29.9.3c-5.1 0-8.5 2.7-8.5 7.2 0 7 9.7 5.9 9.7 8.9 0 1.5-1.3 2-3.1 2-2.7 0-6.1-.9-8.8-2.1v6c2.6 1.1 5.3 1.6 8.8 1.6 5.2 0 8.8-2.6 8.8-7.2-.1-7.6-9.8-6.2-9.8-8.5z" fill="#635BFF"/>
+                                    <path d="M0 23.7l1.8-11.1C2.7 7.3 6.1 4.7 10 4.7c1.6 0 2.7.4 3.4 1L14.5.3h6.8L17.5 24H10.7l.3-1.5c-.9.8-2.2 1.8-4.1 1.8C3.2 24.3.7 21.6 0 23.7z" fill="#635BFF" opacity="0"/>
+                                </svg>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,color:'#635BFF',letterSpacing:1}}>stripe</span>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(99,91,255,0.6)'}}>· pago seguro</span>
+                            </div>
+                        </div>
                     </div>
                     <div style={{...S.card,display:'flex',alignItems:'center',gap:12,padding:'12px 14px',textAlign:'left'}}>
                         <span style={{fontSize:20,flexShrink:0}}>👥</span>
-                        <div><p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Pago grupal</p><p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)'}}>Laura puede pagar por Vicky, Carmelo y Pepe en un solo cobro</p></div>
+                        <div>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Pago grupal</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',lineHeight:1.5}}>Laura puede pagar por Vicky, Carmelo y Pepe en un solo cobro desde la app</p>
+                        </div>
+                    </div>
+                    <div style={{...S.card,display:'flex',alignItems:'center',gap:12,padding:'12px 14px',textAlign:'left'}}>
+                        <span style={{fontSize:20,flexShrink:0}}>🔒</span>
+                        <div>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Tu tarjeta nunca se almacena</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',lineHeight:1.5}}>Stripe gestiona todo — la app solo recibe confirmación del pago</p>
+                        </div>
                     </div>
                 </div>
-                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',lineHeight:1.7,textAlign:'center'}}>🏆 <strong>Todo el dinero va a premios</strong> — entre 75€ y 100€ para el top 3.<br/>Además: experiencias, merchandising UDLP y sorpresas.</p></div>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',lineHeight:1.7,textAlign:'center'}}>🏆 <strong>Todo el dinero va a premios</strong> — entre 75€ y 100€ para el top 3.<br/>Además: experiencias, merchandising UDLP y sorpresas a lo largo de la temporada.</p></div>
             </div>
         );
 
@@ -2729,7 +2751,7 @@ const PagosScreen = ({ currentUser }) => {
             });
             setJugadoresPendientes(sinJornada);
         }
-    }, [pagos, tipoPago, jornadaSel]);
+    }, [pagos, tipoPago, jornadaSel]); // eslint-disable-line react-hooks/exhaustive-deps
 
     var toggleJugadorPagando = function(j) {
         setJugadoresPagando(function(prev) {
@@ -2972,9 +2994,23 @@ const PagosScreen = ({ currentUser }) => {
                 <button onClick={procesarPago} style={S.btnPrimary}>
                     Pagar {total}€ con tarjeta →
                 </button>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.35)',textAlign:'center',marginTop:10,lineHeight:1.5}}>
-                    🔒 Pago seguro por Stripe. Tu tarjeta nunca se almacena en la app.
-                </p>
+
+                {/* Bloque de seguridad Stripe */}
+                <div style={{marginTop:14,display:'flex',flexDirection:'column',alignItems:'center',gap:8}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(99,91,255,0.06)',border:'1px solid rgba(99,91,255,0.15)',borderRadius:10,padding:'8px 16px'}}>
+                        <svg width="44" height="18" viewBox="0 0 60 25" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M27.5 8.2c0-1.3 1-1.8 2.7-1.8 2.4 0 5.4.7 7.8 2V2.7C35.5 1 32.7.3 29.9.3c-5.1 0-8.5 2.7-8.5 7.2 0 7 9.7 5.9 9.7 8.9 0 1.5-1.3 2-3.1 2-2.7 0-6.1-.9-8.8-2.1v6c2.6 1.1 5.3 1.6 8.8 1.6 5.2 0 8.8-2.6 8.8-7.2-.1-7.6-9.8-6.2-9.8-8.5z" fill="#635BFF"/>
+                        </svg>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,color:'#635BFF',letterSpacing:1}}>stripe</span>
+                        <div style={{width:1,height:14,background:'rgba(99,91,255,0.2)'}}/>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(99,91,255,0.7)'}}>Pago 100% seguro</span>
+                    </div>
+                    <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                        {['🔒 Cifrado SSL','💳 Visa · MC · AMEX','🚫 Sin guardar datos'].map(function(t,i){return(
+                            <span key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.35)',letterSpacing:0.5}}>{t}</span>
+                        );})}
+                    </div>
+                </div>
             </div>
         </div>
     );
