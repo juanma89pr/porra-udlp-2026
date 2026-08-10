@@ -5082,12 +5082,22 @@ const LoginScreen = ({ onLoginSuccess }) => {
 
     var JUGADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
 
+    // Autenticamos anónimamente en cuanto se monta la pantalla, ANTES de que
+    // el usuario toque nada. Así, cuando pulse su nombre, la sesión ya está
+    // lista y las reglas de Firestore (que exigen auth) no bloquean la lectura.
+    var garantizarSesion = async function() {
+        if (!auth.currentUser) {
+            await signInAnonymously(auth);
+        }
+    };
+    useEffect(function() { garantizarSesion(); }, []);
+
     var seleccionarNombre = async function(nombre) {
         setCargando(true);
         setError('');
         setNombreSeleccionado(nombre);
-        // Comprobar si ya tiene PIN en Firestore
         try {
+            await garantizarSesion(); // por si el useEffect aún no había terminado
             var snap = await getDoc(doc(db, "pines", nombre));
             if (snap.exists()) {
                 setEsNuevo(false);
@@ -5097,6 +5107,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
                 setPaso('pin_nuevo');
             }
         } catch(e) {
+            console.error(e);
             setError('Error de conexión. Inténtalo de nuevo.');
         }
         setCargando(false);
@@ -5137,12 +5148,13 @@ const LoginScreen = ({ onLoginSuccess }) => {
         }
         setCargando(true);
         try {
+            await garantizarSesion();
             var hash = await hashPin(nombreSeleccionado, pin);
             await setDoc(doc(db, "pines", nombreSeleccionado), { hash: hash, creadoEn: serverTimestamp() });
             await setDoc(doc(db, "perfiles", nombreSeleccionado), { nombre: nombreSeleccionado }, { merge: true });
-            await signInAnonymously(auth);
             onLoginSuccess(nombreSeleccionado);
         } catch(e) {
+            console.error(e);
             setError('Error al guardar. Inténtalo de nuevo.'); setCargando(false);
         }
     };
@@ -5151,17 +5163,18 @@ const LoginScreen = ({ onLoginSuccess }) => {
         setCargando(true);
         setError('');
         try {
+            await garantizarSesion();
             var snap = await getDoc(doc(db, "pines", nombreSeleccionado));
             if (!snap.exists()) { setError('No hay PIN registrado.'); setCargando(false); return; }
             var hash = await hashPin(nombreSeleccionado, pinIntento);
             if (hash === snap.data().hash) {
-                await signInAnonymously(auth);
                 onLoginSuccess(nombreSeleccionado);
             } else {
                 setError('PIN incorrecto. Inténtalo de nuevo.');
                 setPin(''); setCargando(false);
             }
         } catch(e) {
+            console.error(e);
             setError('Error de conexión.'); setCargando(false);
         }
     };
@@ -5296,6 +5309,14 @@ const AUDIO_INTRO_URL = '/intro.mp3'; // mismo mp3 usado dentro de la presentaci
 
 function debeMostrarIntro() {
     if (typeof window === 'undefined') return false;
+    // Vista previa forzada: añade ?intro=1 a la URL para verla en cualquier momento.
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('intro') === '1') return true;
+    // Quien entra con el código de prueba (udlp2027) ya salta la pantalla de
+    // "en construcción" — que vea también la intro ya, sin esperar a la fecha.
+    if (sessionStorage.getItem('porra_prueba') === '1') {
+        return !localStorage.getItem('intro_presentacion_2627_vista');
+    }
     if (new Date() < FECHA_LANZAMIENTO_INTRO) return false;
     return !localStorage.getItem('intro_presentacion_2627_vista');
 }
