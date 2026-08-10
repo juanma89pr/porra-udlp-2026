@@ -6,6 +6,7 @@ import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // --- CONFIGURACIÓN DE FIREBASE ---
 const firebaseConfig = {
@@ -24,6 +25,7 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 const messaging = getMessaging(app);
 const rtdb = getDatabase(app);
+const storage = getStorage(app);
 const functions = getFunctions(app, "europe-west1");
 
 // --- DATOS DE LA APLICACIÓN 26/27 ---
@@ -115,6 +117,11 @@ const PLANTILLA_FALLBACK = [
         'Iñaki González': 1190406, 'Manu Fuster': 856321, 'Taisei Miyashiro': 1030799,
         'Jeremía Recoba': 1640614, 'Jesé Rodríguez': 98637, 'Sandro Ramírez': 477615,
         'Enrique Clemente': 872344, 'Viti Rozada': 921034,
+        // Añadidos — resto de la plantilla
+        'José Antonio Caro': 847993, 'Sergio Ruiz': 2045616, 'Valentín Pezzolesi': 1893819,
+        'Ale García': 1130503, 'Elías Romero': 2045614,
+        // Sin ID confirmado todavía — usan avatar de iniciales:
+        // Adri Suárez, Edward Cedeño, Mateo Acimovic
     };
     var sofaId = sofascoreIds[j.nombre];
     var foto = sofaId
@@ -127,17 +134,17 @@ const PLANTILLA_FALLBACK = [
 // --- ESTILOS PREMIUM ---
 // ============================================================================
 const colors = {
-    deepBlue: '#001F6B', blue: '#001F6B', golden: '#FFD700', goldenDark: '#d4af37', yellow: '#FFD700', gold: '#FFD700', silver: '#555555',
-    lightText: '#0a0a0a', darkText: '#0a0a0a', danger: '#e63946', success: '#10b981', warning: '#d4af37',
+    deepBlue: '#001F6B', blue: '#001F6B', golden: '#FFD700', goldenDark: '#d4af37', yellow: '#FFD700', gold: '#FFD700', silver: '#aaa',
+    lightText: '#f0f0f0', darkText: '#f0f0f0', danger: '#e63946', success: '#10b981', warning: '#d4af37',
     darkUI: '#ffffff', darkUIAlt: '#f5f5f5',
     status: { 'Próximamente': '#6c757d', 'Pre-apertura': '#d4af37', 'Abierta': '#10b981', 'Cerrada': '#e63946', 'En vivo': '#dc3545', 'Finalizada': '#d4af37' }
 };
 
 const styles = {
     colors,
-    container: { display: 'flex', flexDirection: 'column', width: '100%', minHeight: '100dvh', background: 'linear-gradient(160deg,#f8f9ff 0%,#eef1fa 100%)', fontFamily: "'Teko', sans-serif" },
-    card: { width: '100%', flex: 1, backgroundColor: 'transparent', color: '#0a0a0a', padding: '0', minHeight: '100dvh' },
-    title: { fontFamily: "'Teko', sans-serif", color: colors.deepBlue, textTransform: 'uppercase', letterSpacing: '2px', textAlign: 'center', borderBottom: `2px solid ${colors.golden}`, paddingBottom: '10px', marginBottom: '20px', fontSize: 'clamp(1.6rem, 5vw, 2.2rem)', fontWeight: 700 },
+    container: { display: 'flex', flexDirection: 'column', width: '100%', minHeight: '100dvh', background: 'linear-gradient(160deg,#080e24 0%,#0a1228 100%)', fontFamily: "'Teko', sans-serif" },
+    card: { width: '100%', flex: 1, backgroundColor: 'transparent', color: '#f0f0f0', padding: '0', minHeight: '100dvh' },
+    title: { fontFamily: "'Teko', sans-serif", color: '#FFD700', textTransform: 'uppercase', letterSpacing: '2px', textAlign: 'center', borderBottom: '2px solid rgba(255,215,0,0.3)', paddingBottom: '10px', marginBottom: '20px', fontSize: 'clamp(1.6rem, 5vw, 2.2rem)', fontWeight: 700 },
     mainButton: { fontFamily: "'Oswald', sans-serif", padding: '14px 28px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', border: 'none', borderRadius: '30px', background: `linear-gradient(135deg, ${colors.goldenDark}, ${colors.golden})`, color: '#000', marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: '0 4px 12px rgba(212,175,55,0.35)' },
     secondaryButton: { fontFamily: "'Montserrat', sans-serif", padding: '10px 20px', fontSize: '0.9rem', cursor: 'pointer', border: `1px solid ${colors.deepBlue}`, borderRadius: '20px', backgroundColor: 'rgba(0,31,107,0.05)', color: colors.deepBlue, transition: 'all 0.3s ease', textTransform: 'uppercase', fontWeight: 'bold' },
     placeholder: { padding: '40px 20px', backgroundColor: '#f9f9f9', border: `1px dashed ${colors.goldenDark}`, borderRadius: '16px', textAlign: 'center', color: '#555' },
@@ -281,30 +288,77 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
 // --- COMPONENTES UI Y MODALES BASE ---
 // ============================================================================
 // Avatares emoji predefinidos por categoría
-const EMOJIS_PERFIL = {
-    "Animales": ["🦁","🐯","🦊","🐺","🦅","🦆","🐬","🦋","🦖","🦁"],
-    "Deportes": ["⚽","🏆","🎯","🥊","🎱","🏇","🎳","⛷️","🏄","🤺"],
-    "Astros":   ["🌟","⭐","🌙","☀️","🌈","⚡","❄️","🔥","💫","🌊"],
-    "Caras":    ["😎","🤩","😤","🥶","🤯","😈","👑","🎭","🧠","💪"],
-    "Símbolos": ["🔵","🟡","🔴","⚫","🟠","🟢","🟣","🔶","🔷","♾️"],
-};
+// ============================================================================
+// --- PERFILES — foto real con filtro UDLP (prioridad) + emojis fútbol ---
+// ============================================================================
+
+// Set curado de "cultura fútbol / redes" para quien no suba foto.
+// Renderizados en badge premium (gradiente azul→dorado, no emoji plano).
+const EMOJIS_FUTBOL = ["🐐","🔥","👑","⚡","💯","🏆","🎯","🦁","🧠","🥶","😈","⭐","🥇","🛡️","⚔️","🚀"];
+
+// Aplica un filtro duotono azul/dorado UDLP a una imagen y devuelve un Blob JPEG.
+// sombras -> #001F6B (azul UDLP), luces -> #FFD700 (dorado UDLP)
+function aplicarFiltroUDLP(imgElement) {
+    return new Promise(function(resolve) {
+        var SIZE = 480;
+        var canvas = document.createElement('canvas');
+        canvas.width = SIZE; canvas.height = SIZE;
+        var ctx = canvas.getContext('2d');
+
+        // Recorte centrado cuadrado (cover)
+        var iw = imgElement.naturalWidth, ih = imgElement.naturalHeight;
+        var side = Math.min(iw, ih);
+        var sx = (iw - side) / 2, sy = (ih - side) / 2;
+        ctx.drawImage(imgElement, sx, sy, side, side, 0, 0, SIZE, SIZE);
+
+        var data = ctx.getImageData(0, 0, SIZE, SIZE);
+        var px = data.data;
+        var shadow = [0, 31, 107];   // #001F6B
+        var highlight = [255, 215, 0]; // #FFD700
+
+        for (var i = 0; i < px.length; i += 4) {
+            var lum = (0.299*px[i] + 0.587*px[i+1] + 0.114*px[i+2]) / 255;
+            px[i]   = shadow[0] + (highlight[0]-shadow[0]) * lum;
+            px[i+1] = shadow[1] + (highlight[1]-shadow[1]) * lum;
+            px[i+2] = shadow[2] + (highlight[2]-shadow[2]) * lum;
+        }
+        ctx.putImageData(data, 0, 0);
+        canvas.toBlob(function(blob) { resolve(blob); }, 'image/jpeg', 0.9);
+    });
+}
+
+// Icono de perfil unificado: foto real filtrada > emoji fútbol > balón por defecto.
+function IconoPerfil({ perfil, size }) {
+    var foto = perfil && perfil.foto;
+    if (foto) {
+        return (
+            <div style={{width:size,height:size,borderRadius:'50%',overflow:'hidden',
+                background:'#001F6B',boxShadow:'0 0 0 2px #FFD700'}}>
+                <img src={foto} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} />
+            </div>
+        );
+    }
+    var emoji = (perfil && perfil.emoji) || '⚽';
+    return (
+        <div style={{width:size,height:size,borderRadius:'50%',
+            background:'linear-gradient(135deg,#001F6B,#003a9e)',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            fontSize:size*0.48,boxShadow:'0 0 0 2px #FFD700'}}>
+            {emoji}
+        </div>
+    );
+}
 
 // Componente de avatar de jugador con burbuja de El Otro
 const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false }) => {
-    var emoji = (perfil && perfil.emoji) || '❓';
     var elOtroEquipo = elOtroData && elOtroData.equipo;
     var elOtroRevelado = elOtroData && elOtroData.revelado;
-    
+
     return (
         <div style={{position:'relative', display:'inline-flex', flexDirection:'column', alignItems:'center', gap:4}}>
             <div style={{position:'relative'}}>
-                <div style={{
-                    width: size, height: size, borderRadius: '50%',
-                    background: '#FFD700', display:'flex', alignItems:'center', justifyContent:'center',
-                    fontSize: size * 0.45, border: '2px solid rgba(0,31,107,0.15)',
-                    boxShadow: '0 2px 8px rgba(0,31,107,0.12)'
-                }}>
-                    {emoji}
+                <div style={{border: '2px solid rgba(0,31,107,0.15)', borderRadius:'50%', boxShadow: '0 2px 8px rgba(0,31,107,0.12)'}}>
+                    <IconoPerfil perfil={perfil} size={size} />
                 </div>
                 {/* Burbuja de El Otro */}
                 {showElOtro && elOtroEquipo && (
@@ -337,99 +391,151 @@ const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.ligh
 // ============================================================================
 // --- PERFIL — Edición de emoji y apodo ---
 // ============================================================================
-const PerfilScreen = ({ currentUser }) => {
+const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
     var G = styles.colors;
-    var [perfil, setPerfil] = useState({ emoji: '❓', apodo: '' });
+    var [perfil, setPerfil] = useState({ emoji: '⚽', apodo: '', foto: null });
     var [guardado, setGuardado] = useState(false);
     var [guardando, setGuardando] = useState(false);
-    var [categoriaActiva, setCategoriaActiva] = useState('Animales');
-    var [paso, setPaso] = useState(1); // 1=emoji, 2=apodo, 3=confirmado
+    var [subiendoFoto, setSubiendoFoto] = useState(false);
+    var [previewFoto, setPreviewFoto] = useState(null); // dataURL local mientras se procesa/sube
+    var [errorFoto, setErrorFoto] = useState('');
+    var fileInputRef = useRef(null);
 
     useEffect(function() {
         if (!currentUser) return;
         getDoc(doc(db, "perfiles", currentUser)).then(function(snap) {
-            if (snap.exists() && snap.data().emoji) {
-                setPerfil(snap.data());
-                setPaso(3);
+            if (snap.exists()) {
+                setPerfil(function(p) { return { ...p, ...snap.data() }; });
                 setGuardado(true);
             }
         });
     }, [currentUser]);
 
-    var guardar = async function() {
-        if (!perfil.emoji || perfil.emoji === '❓') return;
+    var manejarSeleccionFoto = function(e) {
+        var file = e.target.files && e.target.files[0];
+        if (!file) return;
+        setErrorFoto('');
+        if (!file.type.startsWith('image/')) { setErrorFoto('Elige un archivo de imagen.'); return; }
+        if (file.size > 8 * 1024 * 1024) { setErrorFoto('La imagen pesa demasiado (máx. 8MB).'); return; }
+
+        var img = new Image();
+        img.onload = async function() {
+            setSubiendoFoto(true);
+            try {
+                var blob = await aplicarFiltroUDLP(img);
+                var previewUrl = URL.createObjectURL(blob);
+                setPreviewFoto(previewUrl);
+
+                var ref = storageRef(storage, 'perfiles/' + currentUser + '/foto.jpg');
+                await uploadBytes(ref, blob, { contentType: 'image/jpeg' });
+                var url = await getDownloadURL(ref);
+
+                await setDoc(doc(db, "perfiles", currentUser), {
+                    nombre: currentUser, foto: url, actualizadoEn: serverTimestamp()
+                }, { merge: true });
+
+                setPerfil(function(p) { return { ...p, foto: url }; });
+                setGuardado(true);
+            } catch (err) {
+                console.error(err);
+                setErrorFoto('No se pudo subir la foto. Inténtalo de nuevo.');
+            }
+            setSubiendoFoto(false);
+        };
+        img.onerror = function() { setErrorFoto('No se pudo leer esa imagen.'); };
+        img.src = URL.createObjectURL(file);
+    };
+
+    var elegirEmoji = async function(em) {
+        setPerfil(function(p) { return { ...p, emoji: em }; });
         setGuardando(true);
         try {
             await setDoc(doc(db, "perfiles", currentUser), {
-                nombre: currentUser,
-                emoji: perfil.emoji,
-                apodo: perfil.apodo || currentUser,
-                actualizadoEn: serverTimestamp()
+                nombre: currentUser, emoji: em, actualizadoEn: serverTimestamp()
             }, { merge: true });
             setGuardado(true);
-            setPaso(3);
         } catch(e) { console.error(e); }
         setGuardando(false);
     };
+
+    var guardarApodo = async function() {
+        setGuardando(true);
+        try {
+            await setDoc(doc(db, "perfiles", currentUser), {
+                nombre: currentUser, apodo: perfil.apodo || currentUser, actualizadoEn: serverTimestamp()
+            }, { merge: true });
+            setGuardado(true);
+        } catch(e) { console.error(e); }
+        setGuardando(false);
+    };
+
+    var avatarActual = previewFoto || perfil.foto;
 
     return (
         <div style={{paddingBottom:40}}>
             <h2 style={styles.title}>MI PERFIL</h2>
 
             {/* Vista previa del avatar */}
-            <div style={{textAlign:'center',marginBottom:28}}>
+            <div style={{textAlign:'center',marginBottom:24}}>
                 <div style={{display:'inline-flex',flexDirection:'column',alignItems:'center',gap:8,
                     background:'#fff',borderRadius:20,padding:24,border:'1px solid rgba(0,31,107,0.08)'}}>
-                    <div style={{width:80,height:80,borderRadius:'50%',background:'#FFD700',
-                        display:'flex',alignItems:'center',justifyContent:'center',
-                        fontSize:42,border:'3px solid rgba(0,31,107,0.15)',
-                        boxShadow:'0 4px 16px rgba(0,31,107,0.15)'}}>
-                        {perfil.emoji}
-                    </div>
+                    {avatarActual ? (
+                        <div style={{width:88,height:88,borderRadius:'50%',overflow:'hidden',
+                            boxShadow:'0 0 0 3px #FFD700, 0 4px 16px rgba(0,31,107,0.2)'}}>
+                            <img src={avatarActual} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} />
+                        </div>
+                    ) : (
+                        <div style={{width:88,height:88,borderRadius:'50%',
+                            background:'linear-gradient(135deg,#001F6B,#003a9e)',
+                            display:'flex',alignItems:'center',justifyContent:'center',
+                            fontSize:44,boxShadow:'0 0 0 3px #FFD700, 0 4px 16px rgba(0,31,107,0.2)'}}>
+                            {perfil.emoji || '⚽'}
+                        </div>
+                    )}
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:G.deepBlue,letterSpacing:2,textTransform:'uppercase'}}>
                         {perfil.apodo || currentUser}
                     </p>
-                    {guardado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#10b981',letterSpacing:2,textTransform:'uppercase'}}>✓ Guardado</span>}
+                    {guardado && !subiendoFoto && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#10b981',letterSpacing:2,textTransform:'uppercase'}}>✓ Guardado</span>}
                 </div>
             </div>
 
-            {/* Paso 1: Elegir emoji */}
+            {/* Opción principal: subir foto con filtro UDLP */}
+            <div style={{background:'linear-gradient(135deg,#001F6B,#00296e)',borderRadius:16,padding:20,marginBottom:16,
+                border:'1px solid rgba(0,31,107,0.08)'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',fontWeight:700,marginBottom:4}}>
+                    Sube tu foto
+                </p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.6)',marginBottom:16,lineHeight:1.5}}>
+                    Se aplica automáticamente el filtro azul y dorado de la UDLP. Es la opción recomendada para tu perfil.
+                </p>
+                <input ref={fileInputRef} type="file" accept="image/*" onChange={manejarSeleccionFoto} style={{display:'none'}} />
+                <button onClick={function() { fileInputRef.current && fileInputRef.current.click(); }}
+                    disabled={subiendoFoto}
+                    style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.05rem',letterSpacing:2,
+                        background:'#FFD700',color:'#001F6B',border:'none',borderRadius:30,padding:14,
+                        cursor: subiendoFoto ? 'default' : 'pointer', opacity: subiendoFoto ? 0.7 : 1}}>
+                    {subiendoFoto ? 'PROCESANDO...' : (perfil.foto ? 'CAMBIAR FOTO' : '📷 SUBIR FOTO')}
+                </button>
+                {errorFoto && (
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#ff8a8a',marginTop:10,textAlign:'center'}}>{errorFoto}</p>
+                )}
+            </div>
+
+            {/* Alternativa rápida: emoji fútbol */}
             <div style={{background:'#fff',borderRadius:16,padding:20,border:'1px solid rgba(0,31,107,0.08)',marginBottom:16}}>
-                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
-                    <div style={{width:28,height:28,borderRadius:'50%',background: paso>=1?'#001F6B':'rgba(0,31,107,0.1)',
-                        display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color: paso>=1?'#FFD700':'rgba(0,31,107,0.3)',fontWeight:700}}>1</span>
-                    </div>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',fontWeight:700}}>
-                        Elige tu emoji
-                    </p>
-                </div>
-
-                {/* Categorías */}
-                <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
-                    {Object.keys(EMOJIS_PERFIL).map(function(cat) {
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:G.deepBlue,opacity:.6,textTransform:'uppercase',marginBottom:12}}>
+                    O elige un icono rápido
+                </p>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(8,1fr)',gap:8}}>
+                    {EMOJIS_FUTBOL.map(function(em) {
+                        var sel = !perfil.foto && perfil.emoji === em;
                         return (
-                            <button key={cat} onClick={function() { setCategoriaActiva(cat); }}
-                                style={{padding:'6px 14px',borderRadius:20,border:'none',cursor:'pointer',
-                                    fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,
-                                    background: categoriaActiva===cat ? G.deepBlue : '#f0f0f0',
-                                    color: categoriaActiva===cat ? '#FFD700' : G.deepBlue}}>
-                                {cat}
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {/* Grid de emojis */}
-                <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10}}>
-                    {EMOJIS_PERFIL[categoriaActiva].map(function(em, i) {
-                        var sel = perfil.emoji === em;
-                        return (
-                            <button key={i} onClick={function() { setPerfil(function(p) { return {...p, emoji: em}; }); if(paso<2) setPaso(2); setGuardado(false); }}
-                                style={{padding:12,borderRadius:14,border: sel?'2.5px solid #001F6B':'1.5px solid rgba(0,31,107,0.1)',
-                                    background: sel?'rgba(0,31,107,0.06)':'#f8f8f8',
-                                    fontSize:28,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',
-                                    boxShadow: sel?'0 0 0 3px rgba(0,31,107,0.1)':'none'}}>
+                            <button key={em} onClick={function() { elegirEmoji(em); }}
+                                style={{aspectRatio:'1',borderRadius:'50%',
+                                    border: sel ? '2.5px solid #FFD700' : '1.5px solid rgba(0,31,107,0.1)',
+                                    background: sel ? 'linear-gradient(135deg,#001F6B,#003a9e)' : '#f8f8f8',
+                                    fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',
+                                    boxShadow: sel ? '0 0 0 2px rgba(0,31,107,0.15)' : 'none'}}>
                                 {em}
                             </button>
                         );
@@ -437,50 +543,50 @@ const PerfilScreen = ({ currentUser }) => {
                 </div>
             </div>
 
-            {/* Paso 2: Apodo */}
-            {paso >= 2 && (
-                <div style={{background:'#fff',borderRadius:16,padding:20,border:'1px solid rgba(0,31,107,0.08)',marginBottom:16}}>
-                    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
-                        <div style={{width:28,height:28,borderRadius:'50%',background:'#001F6B',
-                            display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#FFD700',fontWeight:700}}>2</span>
-                        </div>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',fontWeight:700}}>
-                            Tu apodo (opcional)
+            {/* Apodo */}
+            <div style={{background:'#fff',borderRadius:16,padding:20,border:'1px solid rgba(0,31,107,0.08)',marginBottom:16}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:G.deepBlue,opacity:.6,textTransform:'uppercase',marginBottom:12}}>
+                    Tu apodo (opcional)
+                </p>
+                <input
+                    type="text"
+                    value={perfil.apodo || ''}
+                    onChange={function(e) { setPerfil(function(p) { return {...p, apodo: e.target.value}; }); setGuardado(false); }}
+                    onBlur={guardarApodo}
+                    placeholder={currentUser}
+                    maxLength={20}
+                    style={{width:'100%',padding:'14px 16px',border:'1.5px solid rgba(0,31,107,0.15)',borderRadius:12,
+                        fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:2,color:G.deepBlue,
+                        background:'#f8f9ff',textTransform:'uppercase'}}
+                />
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:8}}>
+                    Si lo dejas vacío, usaremos tu nombre real. Se guarda al salir del campo.
+                </p>
+            </div>
+
+            {/* Tema visual */}
+            {cambiarTema && (
+                <div style={{background:'#fff',borderRadius:16,padding:20,border:'1px solid rgba(0,31,107,0.08)',
+                    display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <div>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:G.deepBlue,opacity:.6,textTransform:'uppercase'}}>
+                            Tono de la app
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:2}}>
+                            {tema === 'oscuro' ? 'Pizarra oscura' : 'Pizarra clara'}
                         </p>
                     </div>
-                    <input
-                        type="text"
-                        value={perfil.apodo || ''}
-                        onChange={function(e) { setPerfil(function(p) { return {...p, apodo: e.target.value}; }); setGuardado(false); }}
-                        placeholder={currentUser}
-                        maxLength={20}
-                        style={{width:'100%',padding:'14px 16px',border:'1.5px solid rgba(0,31,107,0.15)',borderRadius:12,
-                            fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:2,color:G.deepBlue,
-                            background:'#f8f9ff',textTransform:'uppercase'}}
-                    />
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:8}}>
-                        Si lo dejas vacío, usaremos tu nombre real.
-                    </p>
+                    <button onClick={cambiarTema} style={{
+                        width:56,height:30,borderRadius:20,border:'none',cursor:'pointer',
+                        background: tema==='oscuro' ? '#001F6B' : '#e5e8f5', position:'relative',padding:0}}>
+                        <div style={{
+                            width:24,height:24,borderRadius:'50%',background:'#FFD700',position:'absolute',top:3,
+                            left: tema==='oscuro' ? 29 : 3, transition:'left .2s ease',
+                            display:'flex',alignItems:'center',justifyContent:'center'}}>
+                            <i className={'ti ' + (tema==='oscuro' ? 'ti-moon' : 'ti-sun')} style={{fontSize:13,color:'#001F6B'}} aria-hidden="true" />
+                        </div>
+                    </button>
                 </div>
-            )}
-
-            {/* Botón guardar */}
-            {paso >= 2 && (
-                <button onClick={guardar} disabled={guardando || perfil.emoji === '❓'}
-                    style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.1rem',letterSpacing:2,
-                        background: guardado ? '#10b981' : G.deepBlue,
-                        color: guardado ? '#fff' : '#FFD700',
-                        border:'none',borderRadius:30,padding:16,cursor:'pointer',
-                        opacity: perfil.emoji==='❓'?0.5:1}}>
-                    {guardando ? 'GUARDANDO...' : guardado ? '✅ PERFIL GUARDADO' : 'GUARDAR MI PERFIL'}
-                </button>
-            )}
-
-            {paso >= 2 && !guardado && (
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,textAlign:'center',marginTop:8}}>
-                    Puedes cambiar tu perfil cuando quieras volviendo a esta pantalla.
-                </p>
             )}
         </div>
     );
@@ -2307,7 +2413,17 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     var [jornada, setJornada] = useState(null);
     var [participantes, setParticipantes] = useState([]);
     var [elOtroTodos, setElOtroTodos] = useState({});
+    var [clasifEstrellas, setClasifEstrellas] = useState([]);
     var [loading, setLoading] = useState(true);
+
+    useEffect(function() {
+        var unsubEst = onSnapshot(collection(db, "clasificacion_estrellas"), function(snap) {
+            var datos = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+                .sort(function(a,b) { return (b.puntosEstrellas||0) - (a.puntosEstrellas||0); });
+            setClasifEstrellas(datos);
+        });
+        return function() { unsubEst(); };
+    }, []);
 
     useEffect(function() {
         var q = query(collection(db, "jornadas"),
@@ -2484,6 +2600,40 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     </div>
                 )}
             </div>
+
+            {/* Clasificación de Estrellas — quién va ganando */}
+            {clasifEstrellas.length > 0 && (
+                <div style={{background:'#fff',borderRadius:16,border:'1px solid rgba(0,31,107,0.08)',overflow:'hidden',marginTop:16}}>
+                    <div style={{background:'rgba(255,215,0,0.06)',padding:'12px 16px',borderBottom:'1px solid rgba(0,31,107,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.6,textTransform:'uppercase'}}>
+                            ⭐ Estrellas — Liga Paralela
+                        </p>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:G.deepBlue,opacity:.35}}>Acumulado temporada</span>
+                    </div>
+                    <div style={{padding:'6px 0'}}>
+                        {clasifEstrellas.slice(0,5).map(function(p, i) {
+                            var perf = userProfiles[p.id] || {};
+                            return (
+                                <div key={p.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',
+                                    borderBottom: i < 4 ? '1px solid rgba(0,31,107,0.05)' : 'none',
+                                    background: i===0 ? 'rgba(255,215,0,0.07)' : 'transparent'}}>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,color: i===0 ? G.golden : 'rgba(0,31,107,0.3)',minWidth:18,textAlign:'center'}}>
+                                        {i+1}
+                                    </span>
+                                    <PlayerAvatar name={p.id} perfil={perf} size={32} />
+                                    <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,fontWeight: i===0?600:400}}>
+                                        {p.id}
+                                    </span>
+                                    {i===0 && <span style={{fontSize:13}}>🏆</span>}
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: i===0 ? G.golden : G.deepBlue}}>
+                                        {p.puntosEstrellas || 0}⭐
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -5136,6 +5286,98 @@ const LoginScreen = ({ onLoginSuccess }) => {
 
 
 
+// ============================================================================
+// --- INTRO CINEMÁTICA — pantalla negra + música + presentación oficial ---
+// Se muestra una sola vez por dispositivo, a partir de la fecha de lanzamiento.
+// Requiere que presentacion_porra.html esté en /public/presentacion_porra.html
+// ============================================================================
+const FECHA_LANZAMIENTO_INTRO = new Date('2026-08-11T00:00:00');
+const AUDIO_INTRO_URL = '/intro.mp3'; // mismo mp3 usado dentro de la presentación
+
+function debeMostrarIntro() {
+    if (typeof window === 'undefined') return false;
+    if (new Date() < FECHA_LANZAMIENTO_INTRO) return false;
+    return !localStorage.getItem('intro_presentacion_2627_vista');
+}
+
+const IntroPresentacionGate = ({ onFinish }) => {
+    var [fase, setFase] = useState('negro'); // negro -> esperandoGesto -> presentacion
+    var [necesitaGesto, setNecesitaGesto] = useState(false);
+    var audioRef = useRef(null);
+    var timerRef = useRef(null);
+
+    var arrancar = function() {
+        var audio = audioRef.current;
+        if (audio) {
+            audio.currentTime = 0;
+            var p = audio.play();
+            if (p && p.catch) {
+                p.catch(function() {
+                    // Autoplay bloqueado por el navegador — pedimos un toque
+                    setNecesitaGesto(true);
+                });
+            }
+        }
+        timerRef.current = setTimeout(function() { setFase('presentacion'); }, 2000);
+    };
+
+    useEffect(function() {
+        arrancar();
+        return function() { if (timerRef.current) clearTimeout(timerRef.current); };
+        // eslint-disable-next-line
+    }, []);
+
+    var tocarParaActivar = function() {
+        setNecesitaGesto(false);
+        var audio = audioRef.current;
+        if (audio) { audio.play().catch(function() {}); }
+    };
+
+    var finalizar = function() {
+        localStorage.setItem('intro_presentacion_2627_vista', '1');
+        onFinish();
+    };
+
+    return (
+        <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <audio ref={audioRef} src={AUDIO_INTRO_URL} preload="auto" />
+
+            {fase !== 'presentacion' && necesitaGesto && (
+                <button onClick={tocarParaActivar} style={{
+                    position: 'absolute', inset: 0, width: '100%', height: '100%',
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                    <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 18, letterSpacing: 3,
+                        color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: 30, padding: '12px 28px' }}>
+                        Toca para empezar
+                    </span>
+                </button>
+            )}
+
+            {fase === 'presentacion' && (
+                <div style={{ position: 'absolute', inset: 0, animation: 'fadeIn 0.6s ease both' }}>
+                    <iframe
+                        title="Presentación Porra UDLP 26/27"
+                        src="/presentacion_porra.html"
+                        style={{ width: '100%', height: '100%', border: 'none' }}
+                    />
+                    <button onClick={finalizar} style={{
+                        position: 'absolute', top: 16, right: 16, zIndex: 10,
+                        fontFamily: "'Teko',sans-serif", fontSize: 13, letterSpacing: 2,
+                        background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.7)',
+                        border: '1px solid rgba(255,255,255,0.2)', borderRadius: 20,
+                        padding: '8px 16px', cursor: 'pointer', textTransform: 'uppercase' }}>
+                        Saltar ✕
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
 function App() {
     const [screen, setScreen] = useState('login');
     const [activeTab, setActiveTab] = useState('miJornada');
@@ -5150,6 +5392,25 @@ function App() {
     const [clasificacionData, setClasificacionData] = useState([]);
     const [showTutorial, setShowTutorial] = useState(false);
     const [pagosGlobal, setPagosGlobal] = useState([]);
+    const [mostrarIntro, setMostrarIntro] = useState(debeMostrarIntro());
+
+    // ── Tema visual — pizarra oscura / pizarra clara. Por defecto oscuro. ──
+    const [tema, setTema] = useState(function() {
+        if (typeof window === 'undefined') return 'oscuro';
+        return localStorage.getItem('tema_udlp_2627') || 'oscuro';
+    });
+    const cambiarTema = function() {
+        setTema(function(t) {
+            var nuevo = t === 'oscuro' ? 'claro' : 'oscuro';
+            localStorage.setItem('tema_udlp_2627', nuevo);
+            return nuevo;
+        });
+    };
+    const TEMA = tema === 'oscuro'
+        ? { fondoApp: 'linear-gradient(160deg,#080e24 0%,#0a1228 100%)', fondoTop: 'rgba(10,15,35,0.75)',
+            textoTop: '#f0f0f0', hairline: 'rgba(255,255,255,0.08)', iconoMenu: '#FFD700' }
+        : { fondoApp: 'linear-gradient(160deg,#f8f9ff 0%,#eef1fa 100%)', fondoTop: 'rgba(255,255,255,0.7)',
+            textoTop: '#001F6B', hairline: 'rgba(0,31,107,0.08)', iconoMenu: '#001F6B' };
 
     // ── Estilos globales y estado RTDB público al arrancar ──────────────
     useEffect(() => {
@@ -5223,6 +5484,7 @@ function App() {
     };
 
     if (APP_EN_CONSTRUCCION) return <ModoConstruccion />;
+    if (mostrarIntro) return <IntroPresentacionGate onFinish={function() { setMostrarIntro(false); }} />;
     if (screen === 'login') return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
 
     var renderContent = function() {
@@ -5235,7 +5497,7 @@ function App() {
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'pagos':       return <PagosScreen currentUser={currentUser} />;
-            case 'perfil':      return <PerfilScreen currentUser={currentUser} />;
+            case 'perfil':      return <PerfilScreen currentUser={currentUser} tema={tema} cambiarTema={cambiarTema} />;
             case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantilla} /> : null;
             default:            return null;
         }
@@ -5255,29 +5517,38 @@ function App() {
     if (isAdmin) TABS.push({ id: 'admin', label: 'Admin', icon: 'ti-settings' });
 
     return (
-        <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(160deg,#f8f9ff 0%,#eef1fa 100%)', overflow: 'hidden', fontFamily: "'Teko', sans-serif" }}>
+        <div style={{ position: 'fixed', inset: 0, background: TEMA.fondoApp, overflow: 'hidden', fontFamily: "'Teko', sans-serif" }}>
 
             {/* Tutorial épico — primera vez en la temporada */}
             {showTutorial && <TutorialEpico user={currentUser} plantilla={plantilla} onClose={function() { setShowTutorial(false); setActiveTab('perfil'); }} />}
 
             {/* ── TOPBAR ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(10px)', borderBottom: '0.5px solid rgba(0,31,107,0.08)', position: 'relative', zIndex: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: TEMA.fondoTop, backdropFilter: 'blur(10px)', borderBottom: '0.5px solid ' + TEMA.hairline, position: 'relative', zIndex: 10 }}>
                 <button
                     onClick={function() { setDrawerOpen(true); }}
                     style={{ width: 40, height: 40, background: 'rgba(0,31,107,0.07)', border: 'none', borderRadius: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 5, padding: '0 10px', animation: drawerHintShown ? 'none' : 'menuPulse 1.5s ease 0.8s 3', position: 'relative' }}
                     aria-label="Abrir menú"
                 >
-                    <div style={{ width: 20, height: 2, background: '#001F6B', borderRadius: 2 }} />
-                    <div style={{ width: 14, height: 2, background: '#001F6B', borderRadius: 2, marginLeft: 3 }} />
-                    <div style={{ width: 20, height: 2, background: '#001F6B', borderRadius: 2 }} />
+                    <div style={{ width: 20, height: 2, background: TEMA.iconoMenu, borderRadius: 2 }} />
+                    <div style={{ width: 14, height: 2, background: TEMA.iconoMenu, borderRadius: 2, marginLeft: 3 }} />
+                    <div style={{ width: 20, height: 2, background: TEMA.iconoMenu, borderRadius: 2 }} />
                 </button>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                    <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 22, fontWeight: 700, color: '#001F6B', letterSpacing: 1, lineHeight: 1 }}>PORRA</span>
-                    <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 22, fontWeight: 700, color: 'transparent', WebkitTextStroke: '1.5px #001F6B', letterSpacing: 1, lineHeight: 1 }}>UDLP</span>
+                    <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 22, fontWeight: 700, color: TEMA.textoTop, letterSpacing: 1, lineHeight: 1 }}>PORRA</span>
+                    <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 22, fontWeight: 700, color: 'transparent', WebkitTextStroke: '1.5px ' + TEMA.textoTop, letterSpacing: 1, lineHeight: 1 }}>UDLP</span>
                 </div>
-                <div style={{ width: 38, height: 38, background: '#FFD700', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Teko',sans-serif", fontSize: 18, fontWeight: 700, color: '#001F6B', cursor: 'pointer' }}
-                    onClick={function() { setActiveTab('perfil'); setDrawerOpen(false); }}>
-                    {(currentUser || 'U')[0].toUpperCase()}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {/* Botón discreto de tema oscuro/claro */}
+                    <button onClick={cambiarTema} aria-label="Cambiar tema"
+                        style={{ width: 30, height: 30, borderRadius: '50%', border: '1px solid ' + TEMA.hairline,
+                            background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', opacity: 0.55 }}>
+                        <i className={'ti ' + (tema === 'oscuro' ? 'ti-sun' : 'ti-moon')} style={{ fontSize: 15, color: TEMA.textoTop }} aria-hidden="true" />
+                    </button>
+                    <div style={{ width: 38, height: 38, background: '#FFD700', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Teko',sans-serif", fontSize: 18, fontWeight: 700, color: '#001F6B', cursor: 'pointer' }}
+                        onClick={function() { setActiveTab('perfil'); setDrawerOpen(false); }}>
+                        {(currentUser || 'U')[0].toUpperCase()}
+                    </div>
                 </div>
             </div>
 
