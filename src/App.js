@@ -73,29 +73,40 @@ const PUNTOS_ESTRELLAS = {
 // Plantilla de fallback (usada si la API no está disponible)
 // Se actualiza automáticamente desde API-Football al cargar la app
 // Plantilla real UD Las Palmas 26/27 — pretemporada Marbella (22/07/2026)
-// Fuente: udlaspalmas.net — solo jugadores con dorsal de primera plantilla
+// Fotos: se cargan desde API-Football o ESPN CDN como fallback
+// Team ID en API-Football: 275 (UD Las Palmas)
+const API_TEAM_ID_UDLP = 275;
 const PLANTILLA_FALLBACK = [
-    { dorsal: "1",  nombre: "Dinko Horkas",        posicion: "Portero",         imageUrl: "" },
-    { dorsal: "13", nombre: "J.A. Caro",            posicion: "Portero",         imageUrl: "" },
-    { dorsal: "2",  nombre: "Marvin Park",          posicion: "Defensa",         imageUrl: "" },
-    { dorsal: "17", nombre: "Viti Rozada",          posicion: "Defensa",         imageUrl: "" },
-    { dorsal: "4",  nombre: "Álex Suárez",          posicion: "Defensa",         imageUrl: "" },
-    { dorsal: "15", nombre: "Juanma Herzog",        posicion: "Defensa",         imageUrl: "" },
-    { dorsal: "5",  nombre: "Enrique Clemente",     posicion: "Defensa",         imageUrl: "" },
-    { dorsal: "11", nombre: "Sergio Ruiz",          posicion: "Centrocampista",  imageUrl: "" },
-    { dorsal: "20", nombre: "Kirian Rodríguez",     posicion: "Centrocampista",  imageUrl: "" },
-    { dorsal: "12", nombre: "Enzo Loiodice",        posicion: "Centrocampista",  imageUrl: "" },
-    { dorsal: "26", nombre: "Edward Cedeño",        posicion: "Centrocampista",  imageUrl: "" },
-    { dorsal: "24", nombre: "Iñaki González",       posicion: "Centrocampista",  imageUrl: "" },
-    { dorsal: "8",  nombre: "Mateo Acimovic",       posicion: "Centrocampista",  imageUrl: "" },
-    { dorsal: "14", nombre: "Manu Fuster",          posicion: "Mediapunta",      imageUrl: "" },
-    { dorsal: "18", nombre: "Taisei Miyashiro",     posicion: "Mediapunta",      imageUrl: "" },
-    { dorsal: "22", nombre: "Ale García",           posicion: "Mediapunta",      imageUrl: "" },
-    { dorsal: "9",  nombre: "Jeremía Recoba",       posicion: "Delantero",       imageUrl: "" },
-    { dorsal: "10", nombre: "Jesé Rodríguez",       posicion: "Delantero",       imageUrl: "" },
-    { dorsal: "19", nombre: "Sandro Ramírez",       posicion: "Delantero",       imageUrl: "" },
-    { dorsal: "41", nombre: "Elías Romero",         posicion: "Delantero",       imageUrl: "" },
-];
+    { dorsal:"1",  nombre:"Dinko Horkas",      posicion:"Portero",        apiId:430567 },
+    { dorsal:"13", nombre:"J.A. Caro",         posicion:"Portero",        apiId:0 },
+    { dorsal:"30", nombre:"Adri Suárez",       posicion:"Portero",        apiId:0 },
+    { dorsal:"2",  nombre:"Marvin Park",       posicion:"Defensa",        apiId:324219 },
+    { dorsal:"17", nombre:"Viti Rozada",       posicion:"Defensa",        apiId:0 },
+    { dorsal:"4",  nombre:"Álex Suárez",       posicion:"Defensa",        apiId:289254 },
+    { dorsal:"5",  nombre:"Enrique Clemente",  posicion:"Defensa",        apiId:0 },
+    { dorsal:"15", nombre:"Juanma Herzog",     posicion:"Defensa",        apiId:284516 },
+    { dorsal:"27", nombre:"Valentín Pezzolesi",posicion:"Defensa",        apiId:0 },
+    { dorsal:"11", nombre:"Sergio Ruiz",       posicion:"Centrocampista", apiId:0 },
+    { dorsal:"20", nombre:"Kirian Rodríguez",  posicion:"Centrocampista", apiId:37073 },
+    { dorsal:"12", nombre:"Enzo Loiodice",     posicion:"Centrocampista", apiId:290060 },
+    { dorsal:"26", nombre:"Edward Cedeño",     posicion:"Centrocampista", apiId:0 },
+    { dorsal:"24", nombre:"Iñaki González",    posicion:"Centrocampista", apiId:286026 },
+    { dorsal:"8",  nombre:"Mateo Acimovic",    posicion:"Centrocampista", apiId:0 },
+    { dorsal:"14", nombre:"Manu Fuster",       posicion:"Mediapunta",     apiId:289255 },
+    { dorsal:"18", nombre:"Taisei Miyashiro",  posicion:"Mediapunta",     apiId:320742 },
+    { dorsal:"22", nombre:"Ale García",        posicion:"Mediapunta",     apiId:0 },
+    { dorsal:"9",  nombre:"Jeremía Recoba",    posicion:"Delantero",      apiId:366988 },
+    { dorsal:"10", nombre:"Jesé Rodríguez",    posicion:"Delantero",      apiId:1831 },
+    { dorsal:"19", nombre:"Sandro Ramírez",    posicion:"Delantero",      apiId:18892 },
+    { dorsal:"41", nombre:"Elías Romero",      posicion:"Delantero",      apiId:0 },
+].map(function(j) {
+    return {
+        ...j,
+        imageUrl: j.apiId > 0
+            ? 'https://media.api-sports.io/football/players/' + j.apiId + '.png'
+            : ''
+    };
+});
 
 // ============================================================================
 // --- ESTILOS PREMIUM ---
@@ -254,11 +265,213 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
 // ============================================================================
 // --- COMPONENTES UI Y MODALES BASE ---
 // ============================================================================
+// Avatares emoji predefinidos por categoría
+const EMOJIS_PERFIL = {
+    "Animales": ["🦁","🐯","🦊","🐺","🦅","🦆","🐬","🦋","🦖","🦁"],
+    "Deportes": ["⚽","🏆","🎯","🥊","🎱","🏇","🎳","⛷️","🏄","🤺"],
+    "Astros":   ["🌟","⭐","🌙","☀️","🌈","⚡","❄️","🔥","💫","🌊"],
+    "Caras":    ["😎","🤩","😤","🥶","🤯","😈","👑","🎭","🧠","💪"],
+    "Símbolos": ["🔵","🟡","🔴","⚫","🟠","🟢","🟣","🔶","🔷","♾️"],
+};
+
+// Componente de avatar de jugador con burbuja de El Otro
+const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false }) => {
+    var emoji = (perfil && perfil.emoji) || '❓';
+    var elOtroEquipo = elOtroData && elOtroData.equipo;
+    var elOtroRevelado = elOtroData && elOtroData.revelado;
+    
+    return (
+        <div style={{position:'relative', display:'inline-flex', flexDirection:'column', alignItems:'center', gap:4}}>
+            <div style={{position:'relative'}}>
+                <div style={{
+                    width: size, height: size, borderRadius: '50%',
+                    background: '#FFD700', display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize: size * 0.45, border: '2px solid rgba(0,31,107,0.15)',
+                    boxShadow: '0 2px 8px rgba(0,31,107,0.12)'
+                }}>
+                    {emoji}
+                </div>
+                {/* Burbuja de El Otro */}
+                {showElOtro && elOtroEquipo && (
+                    <div style={{
+                        position: 'absolute', top: -6, right: -6,
+                        width: size * 0.45, height: size * 0.45, borderRadius: '50%',
+                        background: '#001F6B', border: '1.5px solid #FFD700',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: size * 0.18,
+                    }}>
+                        {elOtroRevelado ? '🛡️' : '❓'}
+                    </div>
+                )}
+            </div>
+            <span style={{
+                fontFamily:"'Teko',sans-serif", fontSize: size * 0.28,
+                letterSpacing: 1, color:'#001F6B', textTransform:'uppercase',
+                maxWidth: size * 2.5, textAlign:'center', lineHeight: 1
+            }}>{name}</span>
+        </div>
+    );
+};
+
 const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.lightText, isOnline = false }) => {
     const p = profile || {}; const color = p.color || defaultColor; const isG = typeof color === 'string' && color.startsWith('linear-gradient');
     const nStyle = { ...(isG ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color }), fontWeight: 'bold' };
     return (<span style={{display: 'inline-flex', alignItems: 'center', gap: '8px' }}>{p.icon && <span>{p.icon}</span>}<span style={nStyle}>{name}</span>{isOnline && <span style={{width: '8px', height: '8px', backgroundColor: styles.colors.success, borderRadius: '50%', boxShadow: `0 0 8px ${styles.colors.success}`}}></span>}</span>);
 };
+
+// ============================================================================
+// --- PERFIL — Edición de emoji y apodo ---
+// ============================================================================
+const PerfilScreen = ({ currentUser }) => {
+    var G = styles.colors;
+    var [perfil, setPerfil] = useState({ emoji: '❓', apodo: '' });
+    var [guardado, setGuardado] = useState(false);
+    var [guardando, setGuardando] = useState(false);
+    var [categoriaActiva, setCategoriaActiva] = useState('Animales');
+    var [paso, setPaso] = useState(1); // 1=emoji, 2=apodo, 3=confirmado
+
+    useEffect(function() {
+        if (!currentUser) return;
+        getDoc(doc(db, "perfiles", currentUser)).then(function(snap) {
+            if (snap.exists() && snap.data().emoji) {
+                setPerfil(snap.data());
+                setPaso(3);
+                setGuardado(true);
+            }
+        });
+    }, [currentUser]);
+
+    var guardar = async function() {
+        if (!perfil.emoji || perfil.emoji === '❓') return;
+        setGuardando(true);
+        try {
+            await setDoc(doc(db, "perfiles", currentUser), {
+                nombre: currentUser,
+                emoji: perfil.emoji,
+                apodo: perfil.apodo || currentUser,
+                actualizadoEn: serverTimestamp()
+            }, { merge: true });
+            setGuardado(true);
+            setPaso(3);
+        } catch(e) { console.error(e); }
+        setGuardando(false);
+    };
+
+    return (
+        <div style={{paddingBottom:40}}>
+            <h2 style={styles.title}>MI PERFIL</h2>
+
+            {/* Vista previa del avatar */}
+            <div style={{textAlign:'center',marginBottom:28}}>
+                <div style={{display:'inline-flex',flexDirection:'column',alignItems:'center',gap:8,
+                    background:'#fff',borderRadius:20,padding:24,border:'1px solid rgba(0,31,107,0.08)'}}>
+                    <div style={{width:80,height:80,borderRadius:'50%',background:'#FFD700',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        fontSize:42,border:'3px solid rgba(0,31,107,0.15)',
+                        boxShadow:'0 4px 16px rgba(0,31,107,0.15)'}}>
+                        {perfil.emoji}
+                    </div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:G.deepBlue,letterSpacing:2,textTransform:'uppercase'}}>
+                        {perfil.apodo || currentUser}
+                    </p>
+                    {guardado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#10b981',letterSpacing:2,textTransform:'uppercase'}}>✓ Guardado</span>}
+                </div>
+            </div>
+
+            {/* Paso 1: Elegir emoji */}
+            <div style={{background:'#fff',borderRadius:16,padding:20,border:'1px solid rgba(0,31,107,0.08)',marginBottom:16}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+                    <div style={{width:28,height:28,borderRadius:'50%',background: paso>=1?'#001F6B':'rgba(0,31,107,0.1)',
+                        display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color: paso>=1?'#FFD700':'rgba(0,31,107,0.3)',fontWeight:700}}>1</span>
+                    </div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',fontWeight:700}}>
+                        Elige tu emoji
+                    </p>
+                </div>
+
+                {/* Categorías */}
+                <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
+                    {Object.keys(EMOJIS_PERFIL).map(function(cat) {
+                        return (
+                            <button key={cat} onClick={function() { setCategoriaActiva(cat); }}
+                                style={{padding:'6px 14px',borderRadius:20,border:'none',cursor:'pointer',
+                                    fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,
+                                    background: categoriaActiva===cat ? G.deepBlue : '#f0f0f0',
+                                    color: categoriaActiva===cat ? '#FFD700' : G.deepBlue}}>
+                                {cat}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {/* Grid de emojis */}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10}}>
+                    {EMOJIS_PERFIL[categoriaActiva].map(function(em, i) {
+                        var sel = perfil.emoji === em;
+                        return (
+                            <button key={i} onClick={function() { setPerfil(function(p) { return {...p, emoji: em}; }); if(paso<2) setPaso(2); setGuardado(false); }}
+                                style={{padding:12,borderRadius:14,border: sel?'2.5px solid #001F6B':'1.5px solid rgba(0,31,107,0.1)',
+                                    background: sel?'rgba(0,31,107,0.06)':'#f8f8f8',
+                                    fontSize:28,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',
+                                    boxShadow: sel?'0 0 0 3px rgba(0,31,107,0.1)':'none'}}>
+                                {em}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Paso 2: Apodo */}
+            {paso >= 2 && (
+                <div style={{background:'#fff',borderRadius:16,padding:20,border:'1px solid rgba(0,31,107,0.08)',marginBottom:16}}>
+                    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+                        <div style={{width:28,height:28,borderRadius:'50%',background:'#001F6B',
+                            display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#FFD700',fontWeight:700}}>2</span>
+                        </div>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',fontWeight:700}}>
+                            Tu apodo (opcional)
+                        </p>
+                    </div>
+                    <input
+                        type="text"
+                        value={perfil.apodo || ''}
+                        onChange={function(e) { setPerfil(function(p) { return {...p, apodo: e.target.value}; }); setGuardado(false); }}
+                        placeholder={currentUser}
+                        maxLength={20}
+                        style={{width:'100%',padding:'14px 16px',border:'1.5px solid rgba(0,31,107,0.15)',borderRadius:12,
+                            fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:2,color:G.deepBlue,
+                            background:'#f8f9ff',textTransform:'uppercase'}}
+                    />
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:8}}>
+                        Si lo dejas vacío, usaremos tu nombre real.
+                    </p>
+                </div>
+            )}
+
+            {/* Botón guardar */}
+            {paso >= 2 && (
+                <button onClick={guardar} disabled={guardando || perfil.emoji === '❓'}
+                    style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.1rem',letterSpacing:2,
+                        background: guardado ? '#10b981' : G.deepBlue,
+                        color: guardado ? '#fff' : '#FFD700',
+                        border:'none',borderRadius:30,padding:16,cursor:'pointer',
+                        opacity: perfil.emoji==='❓'?0.5:1}}>
+                    {guardando ? 'GUARDANDO...' : guardado ? '✅ PERFIL GUARDADO' : 'GUARDAR MI PERFIL'}
+                </button>
+            )}
+
+            {paso >= 2 && !guardado && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,textAlign:'center',marginTop:8}}>
+                    Puedes cambiar tu perfil cuando quieras volviendo a esta pantalla.
+                </p>
+            )}
+        </div>
+    );
+};
+
+
 
 const TeamDisplay = ({ teamLogos, teamName, shortName = false, imgStyle }) => (<div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:'8px', flex: '0 0 auto'}}><img src={teamLogos[teamName] || 'https://placehold.co/80x80/1b263b/e0e1dd?text=?'} style={imgStyle} alt={teamName} /><span style={{fontSize:'clamp(0.85rem, 2.5vw, 1rem)', fontWeight:'600', color:styles.colors.lightText, fontFamily:"'Montserrat', sans-serif"}}>{shortName && teamName === "UD Las Palmas" ? "UDLP" : teamName}</span></div>);
 
@@ -599,6 +812,38 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var [participantes, setParticipantes] = useState([]);
     var [timeLeft, setTimeLeft] = useState('');
     var [showPorraAnual, setShowPorraAnual] = useState(false);
+    var [showEstrellas, setShowEstrellas] = useState(false);
+
+    // Sincronización automática con API cada 5 minutos cuando hay jornada en vivo
+    useEffect(function() {
+        if (!jornada || (jornada.estado !== 'En vivo' && jornada.estado !== 'Abierta')) return;
+        if (!API_FOOTBALL_KEY) return;
+        var sincronizar = async function() {
+            try {
+                var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2025&date=' + jornada.fecha + '&team=' + API_TEAM_ID_UDLP;
+                var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+                var data = await res.json();
+                if (data.response && data.response.length > 0) {
+                    var f = data.response[0];
+                    var isLive = ['LIVE','1H','2H','HT','ET'].includes(f.fixture.status.short);
+                    var primerGol = (f.events||[]).find(function(e) { return e.type==='Goal' && e.detail!=='Missed Penalty'; });
+                    await setDoc(doc(db, "jornadas", jornada.id), {
+                        liveData: {
+                            golesLocal: f.goals.home,
+                            golesVisitante: f.goals.away,
+                            primerGoleador: primerGol ? primerGol.player.name : '',
+                            isLive: isLive,
+                            actualizadoEn: new Date().toISOString()
+                        },
+                        estado: isLive ? 'En vivo' : jornada.estado
+                    }, { merge: true });
+                }
+            } catch(e) { console.warn('API sync error:', e.message); }
+        };
+        sincronizar(); // Primera vez inmediata
+        var intervalo = setInterval(sincronizar, 5 * 60 * 1000); // Cada 5 min
+        return function() { clearInterval(intervalo); };
+    }, [jornada && jornada.id, jornada && jornada.estado]);
 
     // Cargar jornada activa
     useEffect(function() {
@@ -695,9 +940,14 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginBottom:4}}>
                     Jornada {jornada.numeroJornada} {jornada.esVip ? '⭐ VIP' : ''} {jornada.derbi ? '🔥 DERBI' : ''}
                 </p>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#FFD700',letterSpacing:1,marginBottom:4}}>
-                    {jornada.equipoLocal} vs {jornada.equipoVisitante}
-                </p>
+                {/* Escudos y marcador */}
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                    <img src={'/escudo.png'} alt="UDLP" style={{width:32,height:32,objectFit:'contain',flexShrink:0}}
+                        onError={function(e){e.target.style.display='none';}} />
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700',letterSpacing:1,flex:1}}>
+                        {jornada.equipoLocal} vs {jornada.equipoVisitante}
+                    </p>
+                </div>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.35)'}}>
                     {jornada.estadio} · {jornada.fecha}
                 </p>
@@ -858,21 +1108,235 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 </div>
             )}
 
-            {/* Banner Porra Anual */}
+            {/* Banner Porra Anual — PROMINENTE en J1-J5 */}
             {jornada.numeroJornada <= 5 && (
                 <button onClick={function() { setShowPorraAnual(true); }}
-                    style={{width:'100%',background:'rgba(255,215,0,0.1)',border:'1.5px solid rgba(255,215,0,0.4)',borderRadius:14,
-                        padding:16,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
-                    <span style={{fontSize:24}}>📅</span>
-                    <div>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:G.golden,textTransform:'uppercase'}}>Porra Anual — Cierra en Jornada 5</p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.6,marginTop:2}}>¿Ascenderá la UDLP? ¿En qué puesto quedará? Hasta 20 pts extra</p>
+                    style={{width:'100%',background:'linear-gradient(135deg,#001F6B,#0035b8)',
+                        border:'none',borderRadius:18,padding:20,cursor:'pointer',
+                        marginBottom:20,textAlign:'left',display:'flex',alignItems:'center',gap:16,
+                        boxShadow:'0 8px 28px rgba(0,31,107,0.25)'}}>
+                    <div style={{width:52,height:52,background:'rgba(255,215,0,0.15)',borderRadius:14,
+                        display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,flexShrink:0}}>📅</div>
+                    <div style={{flex:1}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:'#FFD700',letterSpacing:2,textTransform:'uppercase',marginBottom:4}}>
+                            PORRA ANUAL · J{jornada.numeroJornada}/5
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.6)',lineHeight:1.5,margin:0}}>
+                            ¿Ascenderá la UDLP? ¿En qué puesto quedará? Hasta <strong style={{color:'#FFD700'}}>20 pts</strong> extra
+                        </p>
                     </div>
-                    <span style={{marginLeft:'auto',fontFamily:"'Teko',sans-serif",fontSize:20,color:G.golden}}>→</span>
+                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:24,color:'rgba(255,215,0,0.5)'}}>→</span>
                 </button>
             )}
 
             {showPorraAnual && <PorraAnualModal user={user} onClose={function() { setShowPorraAnual(false); }} />}
+            {showEstrellas && <MisEstrellasModal user={user} plantilla={plantilla} onClose={function() { setShowEstrellas(false); }} jornada={jornada} />}
+
+            {/* Botón flotante 5 Estrellas */}
+            {jornada && !cerrado && (
+                <button onClick={function() { setShowEstrellas(true); }}
+                    style={{position:'fixed',bottom:24,right:20,width:60,height:60,borderRadius:'50%',
+                        background:'linear-gradient(135deg,#001F6B,#0035b8)',border:'none',cursor:'pointer',
+                        display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',
+                        boxShadow:'0 6px 24px rgba(0,31,107,0.35)',zIndex:30,animation:'menuPulse 2s ease 3s 3'}}>
+                    <span style={{fontSize:20,lineHeight:1}}>⭐</span>
+                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:1,color:'rgba(255,255,255,0.7)',textTransform:'uppercase',marginTop:1}}>5</span>
+                </button>
+            )}
+        </div>
+    );
+};
+
+// ============================================================================
+// --- MIS 5 ESTRELLAS MODAL — acceso flotante desde Mi Jornada ---
+// ============================================================================
+const TABLA_PUNTOS_ESTRELLAS = [
+    { accion: 'Gol (portero/defensa)', estrellas: 8 },
+    { accion: 'Gol (centrocampista)', estrellas: 6 },
+    { accion: 'Gol (delantero)', estrellas: 5 },
+    { accion: 'Asistencia', estrellas: 3 },
+    { accion: 'Portería a cero (portero)', estrellas: 4 },
+    { accion: 'Portería a cero (defensa)', estrellas: 2 },
+    { accion: 'Ser titular', estrellas: 2 },
+    { accion: 'Entrar como suplente', estrellas: 1 },
+    { accion: 'Tarjeta amarilla', estrellas: -1 },
+    { accion: 'Tarjeta roja', estrellas: -3 },
+    { accion: 'Penalti fallado', estrellas: -2 },
+];
+
+const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
+    var G = styles.colors;
+    var [seleccion, setSeleccion] = useState([]);
+    var [guardado, setGuardado] = useState(false);
+    var [guardando, setGuardando] = useState(false);
+    var [posFiltro, setPosicion] = useState('Todos');
+    var [tab, setTab] = useState('elegir'); // 'elegir' | 'puntos'
+
+    useEffect(function() {
+        if (!jornada) return;
+        getDoc(doc(db, "estrellas_seleccion", jornada.id, "jugadores", user)).then(function(snap) {
+            if (snap.exists()) { setSeleccion(snap.data().jugadores || []); setGuardado(true); }
+        });
+    }, [jornada, user]);
+
+    var toggle = function(j) {
+        if (guardado) return;
+        var ya = seleccion.find(function(s) { return s.nombre === j.nombre; });
+        if (ya) { setSeleccion(seleccion.filter(function(s) { return s.nombre !== j.nombre; })); }
+        else if (seleccion.length < 5) { setSeleccion([...seleccion, j]); }
+    };
+
+    var guardar = async function() {
+        if (!jornada || seleccion.length === 0) return;
+        setGuardando(true);
+        try {
+            await setDoc(doc(db, "estrellas_seleccion", jornada.id, "jugadores", user), {
+                jugadores: seleccion, guardadoEn: serverTimestamp(), usuario: user
+            }, { merge: true });
+            setGuardado(true);
+        } catch(e) { console.error(e); }
+        setGuardando(false);
+    };
+
+    var posiciones = ['Todos','Portero','Defensa','Centrocampista','Mediapunta','Delantero'];
+    var plantillaFiltrada = posFiltro === 'Todos' ? plantilla : plantilla.filter(function(j) { return j.posicion === posFiltro; });
+
+    return (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,10,40,0.75)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center'}}
+            onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
+            <div style={{background:'#fff',borderRadius:'24px 24px 0 0',width:'100%',maxWidth:520,
+                maxHeight:'90vh',display:'flex',flexDirection:'column',animation:'slideIn .3s ease'}}>
+
+                {/* Header */}
+                <div style={{background:'#001F6B',borderRadius:'24px 24px 0 0',padding:'18px 20px 0'}}>
+                    <div style={{display:'flex',alignItems:'center',marginBottom:12}}>
+                        <div>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700',letterSpacing:2}}>MIS 5 ESTRELLAS</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.4)'}}>
+                                J{jornada && jornada.numeroJornada} · {seleccion.length}/5 seleccionados
+                            </p>
+                        </div>
+                        <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'rgba(255,255,255,0.3)',fontSize:22,cursor:'pointer'}}>✕</button>
+                    </div>
+                    {/* Tabs */}
+                    <div style={{display:'flex',gap:0}}>
+                        {[['elegir','Elegir jugadores'],['puntos','Tabla de ⭐']].map(function(t) {
+                            return (
+                                <button key={t[0]} onClick={function() { setTab(t[0]); }}
+                                    style={{flex:1,padding:'10px 0',border:'none',cursor:'pointer',
+                                        background:'transparent',borderBottom: tab===t[0] ? '3px solid #FFD700' : '3px solid transparent',
+                                        fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,textTransform:'uppercase',
+                                        color: tab===t[0] ? '#FFD700' : 'rgba(255,255,255,0.35)'}}>
+                                    {t[1]}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Contenido */}
+                <div style={{flex:1,overflowY:'auto',padding:'16px'}}>
+                    {tab === 'puntos' ? (
+                        <div>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6,marginBottom:16,lineHeight:1.6}}>
+                                Cada acción de tus jugadores elegidos suma o resta estrellas. El ranking de estrellas de la jornada determina cuántos puntos ganas para la clasificación general (1º→5pts, 2º→4pts, ...).
+                            </p>
+                            {TABLA_PUNTOS_ESTRELLAS.map(function(r,i) {
+                                return (
+                                    <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,flex:1}}>{r.accion}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,
+                                            color: r.estrellas > 0 ? '#FFD700' : G.danger}}>
+                                            {r.estrellas > 0 ? '+' : ''}{r.estrellas} ⭐
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <>
+                            {/* Selección actual */}
+                            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:16,minHeight:36}}>
+                                {seleccion.map(function(j,i) {
+                                    return (
+                                        <span key={i} onClick={function() { if (!guardado) toggle(j); }}
+                                            style={{background:G.golden,color:'#001F6B',borderRadius:20,padding:'5px 12px',
+                                                fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,cursor: guardado?'default':'pointer'}}>
+                                            ⭐ {j.nombre}
+                                        </span>
+                                    );
+                                })}
+                                {seleccion.length === 0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.35)'}}>Ningún jugador seleccionado aún</span>}
+                            </div>
+
+                            {/* Filtro posición */}
+                            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>
+                                {posiciones.map(function(p) {
+                                    return (
+                                        <button key={p} onClick={function() { setPosicion(p); }}
+                                            style={{padding:'5px 12px',borderRadius:20,border:'none',cursor:'pointer',
+                                                fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,
+                                                background: posFiltro===p ? G.deepBlue : '#f0f0f0',
+                                                color: posFiltro===p ? '#FFD700' : G.deepBlue}}>
+                                            {p}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Jugadores */}
+                            {!guardado && (
+                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:16}}>
+                                    {plantillaFiltrada.map(function(j,i) {
+                                        var sel = !!seleccion.find(function(s) { return s.nombre===j.nombre; });
+                                        var lleno = seleccion.length >= 5 && !sel;
+                                        return (
+                                            <button key={i} onClick={function() { toggle(j); }} disabled={lleno}
+                                                style={{padding:'12px 8px',borderRadius:14,cursor:lleno?'not-allowed':'pointer',
+                                                    border: sel?'2px solid #FFD700':'1.5px solid rgba(0,31,107,0.1)',
+                                                    background: sel?'rgba(255,215,0,0.1)':'#f8f8f8',
+                                                    opacity: lleno?0.4:1,textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+                                                {j.imageUrl ? (
+                                                    <img src={j.imageUrl} alt={j.nombre}
+                                                        style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',border: sel?'2px solid #FFD700':'2px solid rgba(0,31,107,0.1)'}}
+                                                        onError={function(e){e.target.style.display='none';}} />
+                                                ) : (
+                                                    <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(0,31,107,0.08)',
+                                                        display:'flex',alignItems:'center',justifyContent:'center',
+                                                        fontFamily:"'Teko',sans-serif",fontSize:16,color:G.deepBlue}}>
+                                                        {j.dorsal}
+                                                    </div>
+                                                )}
+                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,color:G.deepBlue,lineHeight:1.2}}>{j.nombre}</span>
+                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)'}}>{j.posicion}</span>
+                                                {sel && <span style={{fontSize:14}}>⭐</span>}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {guardado ? (
+                                <div style={{background:'rgba(16,185,129,0.08)',border:'1px solid rgba(16,185,129,0.2)',borderRadius:12,padding:16,textAlign:'center'}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'#10b981',letterSpacing:2}}>✅ ESTRELLAS GUARDADAS</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Editables hasta 45 min antes del partido</p>
+                                    <button onClick={function() { setGuardado(false); }}
+                                        style={{marginTop:10,background:'none',border:'1px solid rgba(0,31,107,0.2)',borderRadius:20,
+                                            padding:'6px 16px',cursor:'pointer',fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue}}>
+                                        Modificar selección
+                                    </button>
+                                </div>
+                            ) : seleccion.length > 0 && (
+                                <button onClick={guardar} disabled={guardando}
+                                    style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.1rem',letterSpacing:2,
+                                        background:G.deepBlue,color:'#FFD700',border:'none',borderRadius:30,padding:14,cursor:'pointer'}}>
+                                    {guardando ? 'GUARDANDO...' : 'CONFIRMAR ' + seleccion.length + ' ESTRELLA' + (seleccion.length>1?'S':'')}
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };
@@ -985,160 +1449,191 @@ const PorraAnualModal = ({ user, onClose }) => {
 
 
 const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
-    const [jornadaActual, setJornadaActual] = useState(null);
-    const [participantes, setParticipantes] = useState([]);
-    const [loading, setLoading] = useState(true);
+    var G = styles.colors;
+    var [jornada, setJornada] = useState(null);
+    var [participantes, setParticipantes] = useState([]);
+    var [elOtroTodos, setElOtroTodos] = useState({});
+    var [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const q = query(collection(db, "jornadas"), where("estado", "in", ["Abierta", "Cerrada", "Finalizada", "Pre-apertura", "En vivo"]), orderBy("numeroJornada", "desc"), limit(1));
-        const unsubscribeJornada = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const jornada = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-                setJornadaActual(jornada);
-                const pronosticosRef = collection(db, "pronosticos", jornada.id, "jugadores");
-                onSnapshot(pronosticosRef, (pronosticosSnap) => {
-                    setParticipantes(pronosticosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    useEffect(function() {
+        var q = query(collection(db, "jornadas"),
+            where("estado", "in", ["Abierta","Cerrada","En vivo","Finalizada"]),
+            orderBy("numeroJornada","desc"), limit(1));
+        var unsub = onSnapshot(q, function(snap) {
+            if (!snap.empty) {
+                var j = { id: snap.docs[0].id, ...snap.docs[0].data() };
+                setJornada(j);
+                onSnapshot(collection(db, "pronosticos", j.id, "jugadores"), function(ps) {
+                    setParticipantes(ps.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
                 });
-            } else { setJornadaActual(null); setParticipantes([]); }
+            }
             setLoading(false);
         });
-        return () => unsubscribeJornada();
+        // El Otro de todos los jugadores
+        var unsubOtro = onSnapshot(collection(db, "elOtro"), function(snap) {
+            var m = {};
+            snap.forEach(function(d) { m[d.id] = d.data(); });
+            setElOtroTodos(m);
+        });
+        return function() { unsub(); unsubOtro(); };
     }, []);
 
     if (loading) return <LoadingSkeleton />;
-    if (!jornadaActual) return <div style={styles.placeholder}>No hay datos de jornada disponibles.</div>;
+    if (!jornada) return <div style={{padding:40,textAlign:'center'}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:20,color:G.deepBlue,opacity:.5}}>SIN JORNADA ACTIVA</p></div>;
 
-    const liveData = jornadaActual.liveData;
-    const isLiveView = jornadaActual.estado === 'En vivo' && liveData?.isLive;
-    
-    // Función para saber si un resultado exacto concreto es el ganador
-    const isExactResultWinner = (pL, pV) => {
-        if (!isLiveView && jornadaActual.estado !== 'Finalizada') return false;
-        const gL = isLiveView ? liveData.golesLocal : jornadaActual.resultadoLocal;
-        const gV = isLiveView ? liveData.golesVisitante : jornadaActual.resultadoVisitante;
-        if (gL === undefined || gV === undefined || gL === '' || gV === '') return false;
-        return parseInt(pL) === parseInt(gL) && parseInt(pV) === parseInt(gV);
-    };
+    var abierta = jornada.estado === 'Abierta';
+    var live = jornada.liveData;
+    var isLive = jornada.estado === 'En vivo' && live && live.isLive;
+    var gL = isLive ? live.golesLocal : (jornada.estado==='Finalizada' ? jornada.resultadoLocal : null);
+    var gV = isLive ? live.golesVisitante : (jornada.estado==='Finalizada' ? jornada.resultadoVisitante : null);
 
-    // --- CÁLCULO ECONÓMICO EN VIVO ---
-    const costeBase = jornadaActual.esVip ? APUESTA_VIP : APUESTA_NORMAL;
-    let recaudacionApuestas = 0;
-    let ganadoresExactos = [];
-
-    participantes.forEach(p => {
-        recaudacionApuestas += costeBase; // Apuesta normal
-        let esGanador = false;
-        
-        if (isExactResultWinner(p.golesLocal, p.golesVisitante)) { esGanador = true; }
-
-        if (p.jokerActivo && p.jokerPronosticos) {
-            const huecosRellenos = p.jokerPronosticos.filter(jp => jp.local !== '' && jp.visitante !== '');
-            recaudacionApuestas += (huecosRellenos.length * costeBase);
-            for (let jp of huecosRellenos) {
-                if (isExactResultWinner(jp.local, jp.visitante)) { esGanador = true; }
-            }
-        }
-        if (esGanador) ganadoresExactos.push(p.id);
+    var coste = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+    var bote = parseFloat(jornada.bote || 0) + participantes.length * coste;
+    var ganadoresExactos = participantes.filter(function(p) {
+        return gL !== null && gV !== null && parseInt(p.golesLocal)===parseInt(gL) && parseInt(p.golesVisitante)===parseInt(gV);
     });
 
-    const boteInicial = parseFloat(jornadaActual.bote || 0);
-    const premioTotal = boteInicial + recaudacionApuestas;
-    const premioPorPersona = ganadoresExactos.length > 0 ? (premioTotal / ganadoresExactos.length).toFixed(2) : 0;
-
     return (
-        <div>
-            {isLiveView && <div style={styles.liveBanner}>🔴 PARTIDO EN VIVO 🔴</div>}
-            <h2 style={styles.title} className="app-title">LA JORNADA</h2>
-            <div style={{...styles.form, padding: '30px 20px', textAlign: 'center'}}>
-                <h3 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.golden, marginBottom: '25px', fontSize: '1.8rem', textTransform: 'uppercase', letterSpacing: '2px'}}>{getNombreJornada(jornadaActual.numeroJornada)}</h3>
-                
-                <div style={styles.miJornadaMatchInfo}>
-                    <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoLocal} shortName={true} imgStyle={styles.miJornadaTeamLogo} />
-                    <div style={styles.miJornadaScoreInputs}>
-                        <div style={{...styles.resultInput, display: 'flex', justifyContent: 'center', alignItems: 'center'}}>{isLiveView ? liveData.golesLocal : (jornadaActual.estado === 'Finalizada' ? jornadaActual.resultadoLocal : '-')}</div>
-                        <span style={styles.separator}>-</span>
-                        <div style={{...styles.resultInput, display: 'flex', justifyContent: 'center', alignItems: 'center'}}>{isLiveView ? liveData.golesVisitante : (jornadaActual.estado === 'Finalizada' ? jornadaActual.resultadoVisitante : '-')}</div>
-                    </div>
-                    <TeamDisplay teamLogos={teamLogos} teamName={jornadaActual.equipoVisitante} shortName={true} imgStyle={styles.miJornadaTeamLogo} />
-                </div>
-                
-                {isLiveView && liveData.primerGoleador && <p style={{color: styles.colors.golden, marginTop: '15px', fontWeight: 'bold', fontSize: '1.3rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>⚽ {liveData.primerGoleador}</p>}
+        <div style={{paddingBottom:40}}>
+            <h2 style={styles.title}>LA JORNADA</h2>
 
-                {/* --- PANEL ECONÓMICO --- */}
-                <div style={{backgroundColor: 'rgba(0,0,0,0.4)', padding: '20px', borderRadius: '16px', border: `1px solid ${styles.colors.goldenDark}`, marginBottom: '35px', marginTop: '30px', boxShadow: `0 8px 20px rgba(0,0,0,0.3)`}}>
-                    <h4 style={{color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", fontSize: '1.2rem', marginBottom: '15px', textTransform: 'uppercase'}}>💰 Resumen Económico</h4>
-                    <div style={{display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '15px', fontSize: '0.95rem'}}>
-                        <span style={{color: styles.colors.silver}}>Bote Previo: <strong style={{color: '#fff'}}>{boteInicial}€</strong></span>
-                        <span style={{color: styles.colors.silver}}>Apuestas/Jokers: <strong style={{color: '#fff'}}>{recaudacionApuestas}€</strong></span>
-                        <span style={{color: styles.colors.golden, fontWeight: 'bold', fontSize: '1.1rem'}}>Total en Juego: {premioTotal}€</span>
+            {/* Banner resultado */}
+            <div style={{background:'#001F6B',borderRadius:20,padding:24,marginBottom:20,textAlign:'center'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginBottom:16}}>
+                    Jornada {jornada.numeroJornada} {jornada.esVip?'⭐ VIP':''} {jornada.derbi?'🔥':''} · {jornada.fecha}
+                </p>
+                {/* Marcador con escudos */}
+                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12}}>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,flex:1}}>
+                        <img src={'/escudo.png'} alt="UDLP"
+                            style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
+                            onError={function(e){e.target.style.display='none';}} />
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(255,255,255,0.6)',letterSpacing:1,textTransform:'uppercase'}}>
+                            {jornada.udlpEsLocal ? 'UD Las Palmas' : jornada.equipoLocal}
+                        </span>
                     </div>
-                    
-                    {(jornadaActual.estado === 'Finalizada' || isLiveView) ? (
-                        ganadoresExactos.length > 0 ? (
-                            <div style={{backgroundColor: 'rgba(16,185,129,0.1)', padding: '15px', borderRadius: '12px', border: `1px solid rgba(16,185,129,0.3)`}}>
-                                <p style={{color: styles.colors.success, fontWeight: 'bold', marginBottom: '5px'}}>🏆 ¡POSIBLES GANADORES!</p>
-                                <p style={{color: '#fff', fontSize: '0.9rem', marginBottom: '5px'}}>Acertantes ({ganadoresExactos.length}): {ganadoresExactos.join(', ')}</p>
-                                <p style={{color: styles.colors.golden, fontSize: '1.2rem', fontFamily: "'Oswald', sans-serif"}}>{premioPorPersona}€ / ganador</p>
-                            </div>
+                    <div style={{textAlign:'center',flexShrink:0}}>
+                        {gL !== null && gV !== null ? (
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:52,fontWeight:700,color:'#FFD700',letterSpacing:4,lineHeight:1}}>
+                                {gL} — {gV}
+                            </p>
                         ) : (
-                            <div style={{backgroundColor: 'rgba(230,57,70,0.1)', padding: '15px', borderRadius: '12px', border: `1px solid rgba(230,57,70,0.3)`}}>
-                                <p style={{color: styles.colors.danger, fontWeight: 'bold'}}>❌ SIN ACERTANTES EXACTOS</p>
-                                <p style={{color: '#fff', fontSize: '0.9rem'}}>Los {premioTotal}€ pasarían al Bote de la próxima jornada.</p>
-                            </div>
-                        )
-                    ) : (
-                        <div style={{backgroundColor: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '10px', textAlign: 'center'}}>
-                            <span style={{color: styles.colors.silver, fontSize: '0.85rem'}}>El resultado del premio se calculará en vivo durante el partido.</span>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:36,color:'rgba(255,255,255,0.2)',letterSpacing:4}}>vs</p>
+                        )}
+                        <div style={{marginTop:8}}>
+                            {isLive && <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,color:'#e63946',padding:'4px 12px',background:'rgba(230,57,70,0.2)',borderRadius:10,animation:'blink-live 1.5s infinite'}}>EN VIVO</span>}
+                            {!isLive && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.3)'}}>{jornada.estado}</span>}
                         </div>
-                    )}
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,flex:1}}>
+                        <div style={{width:52,height:52,background:'rgba(255,255,255,0.08)',borderRadius:'50%',
+                            display:'flex',alignItems:'center',justifyContent:'center',
+                            fontFamily:"'Teko',sans-serif",fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',letterSpacing:0.5}}>
+                            {jornada.udlpEsLocal ? jornada.equipoVisitante.split(' ').slice(-1)[0] : 'UDLP'}
+                        </div>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(255,255,255,0.6)',letterSpacing:1,textTransform:'uppercase'}}>
+                            {jornada.udlpEsLocal ? jornada.equipoVisitante : 'UD Las Palmas'}
+                        </span>
+                    </div>
+                </div>
+                {/* Bote */}
+                <div style={{marginTop:16,display:'flex',justifyContent:'center',gap:24}}>
+                    <div style={{textAlign:'center'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#FFD700'}}>{bote.toFixed(0)}€</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.35)',letterSpacing:2,textTransform:'uppercase'}}>Bote</p>
+                    </div>
+                    <div style={{textAlign:'center'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'rgba(255,255,255,0.6)'}}>{participantes.length}</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.35)',letterSpacing:2,textTransform:'uppercase'}}>Apuestas</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Pronósticos */}
+            <div style={{background:'#fff',borderRadius:16,border:'1px solid rgba(0,31,107,0.08)',overflow:'hidden'}}>
+                <div style={{background:'rgba(0,31,107,0.04)',padding:'12px 16px',borderBottom:'1px solid rgba(0,31,107,0.06)'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.5,textTransform:'uppercase'}}>
+                        {abierta ? 'APUESTAS SECRETAS HASTA EL CIERRE' : 'PRONÓSTICOS'}
+                    </p>
                 </div>
 
-                <div style={{marginTop: '40px'}}>
-                    <h4 style={styles.formSectionTitle}>PRONÓSTICOS</h4>
-                    {jornadaActual.estado === 'Abierta' || jornadaActual.estado === 'Pre-apertura' ? (
-                        <div style={{padding: '25px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '16px', border: `1px dashed rgba(255,215,0,0.2)`}}>
-                            <p style={{color: styles.colors.silver, fontSize: '0.9rem', fontStyle: 'italic'}}>Las apuestas son secretas hasta el inicio del encuentro.</p>
-                            <p style={{marginTop: '15px', fontSize: '1.2rem', color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>HAN APOSTADO: {participantes.length} / {JUGADORES_BASE.length}</p>
-                        </div>
-                    ) : (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
-                            {participantes.sort((a,b) => {
-                                let ptsA = isLiveView ? calculateProvisionalPoints(a, liveData, jornadaActual) : (a.puntosObtenidos || 0);
-                                let ptsB = isLiveView ? calculateProvisionalPoints(b, liveData, jornadaActual) : (b.puntosObtenidos || 0);
-                                return ptsB - ptsA;
-                            }).map(p => {
-                                let ptsDisplay = isLiveView ? calculateProvisionalPoints(p, liveData, jornadaActual) : (p.puntosObtenidos || 0);
-                                const principalWin = isExactResultWinner(p.golesLocal, p.golesVisitante);
-                                
+                {abierta ? (
+                    <div style={{padding:24,textAlign:'center'}}>
+                        <p style={{fontSize:36,marginBottom:8}}>🔒</p>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',marginBottom:4}}>
+                            Apuestas en curso
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5}}>
+                            Los pronósticos se revelarán cuando cierren las apuestas.
+                        </p>
+                        {/* Avatares de quién ha apostado ya */}
+                        <div style={{display:'flex',flexWrap:'wrap',gap:12,justifyContent:'center',marginTop:20}}>
+                            {participantes.map(function(p) {
+                                var perf = userProfiles[p.id] || {};
+                                var otro = elOtroTodos[p.id];
                                 return (
-                                    <div key={p.id} style={{backgroundColor: 'rgba(0,0,0,0.4)', padding: '18px', borderRadius: '16px', borderLeft: `4px solid ${styles.colors.golden}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.2)'}}>
-                                        <div style={{textAlign: 'left', flex: 1}}>
-                                            <PlayerProfileDisplay name={p.id} profile={userProfiles[p.id]} isOnline={onlineUsers ? onlineUsers[p.id] : false} />
-                                            <div style={{marginTop: '10px'}}>
-                                                <span style={principalWin ? styles.betPillWin : styles.betPill}>{p.golesLocal}-{p.golesVisitante}</span>
-                                                {p.jokerActivo && p.jokerPronosticos && p.jokerPronosticos.map((jp, idx) => {
-                                                    if (jp.local === '' || jp.visitante === '') return null;
-                                                    const isJokerWin = isExactResultWinner(jp.local, jp.visitante);
-                                                    return <span key={idx} style={isJokerWin ? styles.betPillWin : {...styles.betPill, borderColor: styles.colors.warning, color: styles.colors.warning}}>🃏 {jp.local}-{jp.visitante}</span>
-                                                })}
-                                            </div>
-                                            <div style={{fontSize: '0.85rem', color: styles.colors.silver, marginTop: '8px'}}>
-                                                <strong style={{color: styles.colors.lightText}}>{p.resultado1x2}</strong><br/>⚽ {p.sinGoleador ? 'Sin Goleador' : p.goleador}
-                                            </div>
-                                        </div>
-                                        {(jornadaActual.estado === 'Finalizada' || isLiveView) && (
-                                            <div style={{fontSize: '1.6rem', fontWeight: 'bold', fontFamily: "'Oswald', sans-serif", color: isLiveView ? styles.colors.success : styles.colors.golden, textShadow: '0 2px 5px rgba(0,0,0,0.5)', paddingLeft: '15px'}}>{ptsDisplay}</div>
-                                        )}
-                                    </div>
-                                )
+                                    <PlayerAvatar key={p.id} name={p.id} perfil={perf} elOtroData={otro} size={44} showElOtro={true} />
+                                );
                             })}
                         </div>
-                    )}
-                </div>
+                    </div>
+                ) : (
+                    <div style={{padding:'8px 0'}}>
+                        {participantes.sort(function(a,b) { return (b.puntosObtenidos||0)-(a.puntosObtenidos||0); }).map(function(p) {
+                            var ganador = ganadoresExactos.find(function(g) { return g.id === p.id; });
+                            var perf = userProfiles[p.id] || {};
+                            var otro = elOtroTodos[p.id];
+                            var elOtroActivado = p.elOtroActivado;
+                            return (
+                                <div key={p.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',
+                                    borderBottom:'1px solid rgba(0,31,107,0.05)',
+                                    background: ganador ? 'rgba(255,215,0,0.06)' : 'transparent'}}>
+                                    {/* Avatar con burbuja El Otro */}
+                                    <PlayerAvatar name={p.id} perfil={perf} elOtroData={otro} size={40} showElOtro={true} />
+                                    <div style={{flex:1}}>
+                                        {/* Marcador apostado */}
+                                        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                                            <span style={{
+                                                fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,
+                                                color: ganador ? G.golden : G.deepBlue,
+                                                background: ganador ? 'rgba(255,215,0,0.12)' : 'rgba(0,31,107,0.06)',
+                                                padding:'3px 10px',borderRadius:8,letterSpacing:1}}>
+                                                {p.golesLocal}-{p.golesVisitante}
+                                            </span>
+                                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>
+                                                {p.resultado1x2}
+                                            </span>
+                                            {elOtroActivado && otro && (
+                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,
+                                                    background:'rgba(0,31,107,0.08)',color:G.deepBlue,
+                                                    padding:'2px 8px',borderRadius:10}}>
+                                                    El Otro {otro.revelado ? '· ' + otro.equipo : '🛡️'}
+                                                </span>
+                                            )}
+                                            {ganador && <span style={{fontSize:14}}>🏆</span>}
+                                        </div>
+                                    </div>
+                                    {/* Puntos */}
+                                    {(jornada.estado==='Finalizada' || isLive) && (
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color: ganador?G.golden:G.deepBlue}}>
+                                            {p.puntosObtenidos||0}
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        {participantes.length === 0 && (
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,opacity:.4,padding:24,textAlign:'center'}}>
+                                Nadie apostó en esta jornada.
+                            </p>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
 };
+
 
 const ElCaminoScreen = ({ user, userProfiles, onlineUsers }) => {
     const [config, setConfig] = useState(null); 
@@ -1491,82 +1986,118 @@ const PagosScreen = () => {
 };
 
 const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
-    const [stats, setStats] = useState(null);
+    var G = styles.colors;
+    var [clasificacion, setClasificacion] = useState([]);
+    var [loading, setLoading] = useState(true);
+    var [mostrarHistorico, setMostrarHistorico] = useState(false);
 
-    useEffect(() => {
-        const fetchStats = async () => {
-            const jSnap = await getDocs(query(collection(db, "jornadas"), where("estado", "==", "Finalizada")));
-            const jornadas = jSnap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => a.numeroJornada - b.numeroJornada);
-            
-            const st = {};
-            JUGADORES_BASE.forEach(j => st[j] = { maxPtsJornada: 0, golesAcertados: 0, rachaP: 0, rachaC: 0, aRP: 0, aRC: 0, plenos: 0, exactos: 0, segurita: 0, participaciones: 0 });
-
-            for (const j of jornadas) {
-                const pSnap = await getDocs(collection(db, "pronosticos", j.id, "jugadores"));
-                pSnap.forEach(p => {
-                    const data = p.data();
-                    const s = st[p.id];
-                    if(!s) return;
-                    
-                    s.participaciones++;
-                    const pts = Number(data.puntosObtenidos) || 0;
-                    const ptsGoleador = Number(data.puntosGoleador) || 0;
-                    const ptsExacto = Number(data.puntosResultadoExacto) || 0;
-
-                    if (pts > s.maxPtsJornada) s.maxPtsJornada = pts;
-                    if (ptsGoleador > 0) s.golesAcertados++;
-                    if (pts >= 3) s.plenos++;
-                    if (ptsExacto > 0) s.exactos++;
-                    if (pts > 0 && ptsExacto === 0 && ptsGoleador === 0) s.segurita++;
-                    
-                    if (pts > 0) { s.aRP++; s.aRC = 0; } else { s.aRC++; s.aRP = 0; }
-                    if (s.aRP > s.rachaP) s.rachaP = s.aRP;
-                    if (s.aRC > s.rachaC) s.rachaC = s.aRC;
-                });
-            }
-            setStats(st);
-        };
-        fetchStats();
-    }, []);
-
-    if (!stats) return <LoadingSkeleton />;
-
-    const getTop = (f) => {
-        const sorted = Object.entries(stats).sort((a,b) => b[1][f] - a[1][f]);
-        return sorted[0];
-    };
-    
-    const renderStatValue = (val, field) => {
-        if (val[1][field] === 0) return <span style={{color: styles.colors.silver, fontSize: '1rem', fontStyle: 'italic'}}>Nadie aún</span>;
-        return <><PlayerProfileDisplay name={val[0]} profile={userProfiles ? userProfiles[val[0]] : {}} isOnline={onlineUsers ? onlineUsers[val[0]] : false} /></>;
-    };
-
-    const epicCards = [
-        { title: '⚽ El Visionario', value: getTop('golesAcertados'), field: 'golesAcertados', desc: 'Aciertos de goleador' },
-        { title: '💣 El Pelotazo', value: getTop('maxPtsJornada'), field: 'maxPtsJornada', desc: 'Puntos en 1 sola jornada' },
-        { title: '🔥 En Llamas', value: getTop('rachaP'), field: 'rachaP', desc: 'Jornadas seguidas puntuando' },
-        { title: '🥶 El Cenizo', value: getTop('rachaC'), field: 'rachaC', desc: 'Jornadas seguidas a cero' },
-        { title: '🎯 Francotirador', value: getTop('exactos'), field: 'exactos', desc: 'Resultados exactos acertados' },
-        { title: '🏆 El Maestro', value: getTop('plenos'), field: 'plenos', desc: 'Jornadas de 3 o más puntos' },
-        { title: '🛡️ El Segurita', value: getTop('segurita'), field: 'segurita', desc: 'Aciertos logrados solo al 1X2' },
-        { title: '🙏 El Fiel', value: getTop('participaciones'), field: 'participaciones', desc: 'Jornadas totales apostadas' },
+    // Clasificación histórica 25/26 (conservada para referencia del orden de El Otro)
+    var HISTORICO_2526 = [
+        { pos:1, nombre:'Pedrito',  pts:62, nota:'Orden 1 en El Otro 26/27' },
+        { pos:2, nombre:'Sarito',   pts:58, nota:'Orden 2 en El Otro 26/27' },
+        { pos:3, nombre:'Carmelo',  pts:55, nota:'Orden 3 en El Otro 26/27' },
+        { pos:4, nombre:'Himar',    pts:52, nota:'Orden 4 en El Otro 26/27' },
+        { pos:5, nombre:'Javi',     pts:49, nota:'Orden 5 en El Otro 26/27' },
+        { pos:6, nombre:'Pedro',    pts:46, nota:'Orden 6 en El Otro 26/27' },
+        { pos:7, nombre:'Juanma',   pts:43, nota:'Orden 7 en El Otro 26/27' },
+        { pos:8, nombre:'José',     pts:40, nota:'Orden 8 en El Otro 26/27' },
+        { pos:9, nombre:'Vicky',    pts:37, nota:'Orden 9 en El Otro 26/27' },
+        { pos:10,nombre:'Mari',     pts:34, nota:'Orden 10 en El Otro 26/27' },
+        { pos:11,nombre:'Lucy',     pts:31, nota:'Orden 11 en El Otro 26/27' },
+        { pos:12,nombre:'Claudio',  pts:28, nota:'Orden 12 en El Otro 26/27' },
+        { pos:13,nombre:'Laura',    pts:25, nota:'Orden 13 en El Otro 26/27' },
+        { pos:14,nombre:'Carlos',   pts:22, nota:'Orden 14 en El Otro 26/27' },
+        { pos:15,nombre:'Antonio',  pts:19, nota:'Orden 15 en El Otro 26/27' },
     ];
 
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, "clasificacion"), function(snap) {
+            var datos = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+                .sort(function(a,b) { return (b.puntosTotales||0) - (a.puntosTotales||0); });
+            setClasificacion(datos);
+            setLoading(false);
+        });
+        return function() { unsub(); };
+    }, []);
+
+    if (loading) return <LoadingSkeleton />;
+
     return (
-        <div>
-            <h2 style={styles.title} className="app-title">SALÓN DE LA FAMA</h2>
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px', marginTop: '30px'}}>
-                {epicCards.map((card, idx) => (
-                    <div key={idx} style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '25px 15px', borderRadius: '16px', textAlign: 'center', border: `1px solid rgba(255,215,0,0.1)`, boxShadow: `0 8px 20px rgba(0,0,0,0.3)`, transition: 'transform 0.3s ease'}}>
-                        <h3 style={{color: styles.colors.silver, fontSize: '0.9rem', textTransform: 'uppercase', height: '40px', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>{card.title}</h3>
-                        <p style={{fontSize:'1.4rem', margin:'15px 0', color: styles.colors.golden}}>{renderStatValue(card.value, card.field)}</p>
-                        <p style={{color: styles.colors.lightText, fontSize: '0.85rem'}}><span style={{fontWeight: 'bold', fontSize: '1.2rem', color: styles.colors.success, fontFamily: "'Oswald', sans-serif"}}>{card.value[1][card.field]}</span><br/>{card.desc}</p>
-                    </div>
-                ))}
+        <div style={{paddingBottom:40}}>
+            <h2 style={styles.title}>ESTADÍSTICAS 26/27</h2>
+
+            {/* Clasificación actual */}
+            <div style={{background:'#fff',borderRadius:16,border:'1px solid rgba(0,31,107,0.08)',overflow:'hidden',marginBottom:20}}>
+                <div style={{background:'#001F6B',padding:'14px 16px'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:3,color:'rgba(255,255,255,0.5)',textTransform:'uppercase'}}>
+                        Clasificación general — Temporada 26/27
+                    </p>
+                </div>
+                {clasificacion.length === 0 ? (
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,opacity:.5,padding:24,textAlign:'center'}}>
+                        La temporada acaba de empezar. Los puntos aparecerán aquí tras la primera jornada.
+                    </p>
+                ) : clasificacion.map(function(j, i) {
+                    var online = onlineUsers && onlineUsers[j.id];
+                    return (
+                        <div key={j.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',
+                            borderBottom:'1px solid rgba(0,31,107,0.05)',
+                            background: i === 0 ? 'rgba(255,215,0,0.06)' : 'transparent'}}>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,
+                                color: i===0?'#FFD700':i===1?'rgba(0,31,107,0.5)':i===2?'rgba(0,31,107,0.4)':'rgba(0,31,107,0.25)',
+                                width:28,textAlign:'center'}}>{i+1}</span>
+                            <div style={{width:8,height:8,borderRadius:'50%',flexShrink:0,
+                                background: online ? '#10b981' : 'rgba(0,31,107,0.15)'}} />
+                            <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:17,letterSpacing:1,
+                                textTransform:'uppercase',color:G.deepBlue}}>{j.id}</span>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:G.deepBlue}}>
+                                {j.puntosTotales||0} <span style={{fontSize:12,opacity:.4,fontWeight:400}}>pts</span>
+                            </span>
+                        </div>
+                    );
+                })}
             </div>
+
+            {/* Botón para ver histórico */}
+            <button onClick={function() { setMostrarHistorico(function(v) { return !v; }); }}
+                style={{width:'100%',background:'rgba(0,31,107,0.05)',border:'1px solid rgba(0,31,107,0.1)',
+                    borderRadius:12,padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+                <i className="ti ti-history" style={{fontSize:18,color:G.deepBlue,opacity:.5}} aria-hidden="true" />
+                <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',flex:1,textAlign:'left'}}>
+                    Ver clasificación 25/26 (orden de El Otro)
+                </span>
+                <span style={{color:G.deepBlue,opacity:.4}}>{mostrarHistorico?'▲':'▼'}</span>
+            </button>
+
+            {mostrarHistorico && (
+                <div style={{background:'rgba(0,31,107,0.03)',borderRadius:14,border:'1px solid rgba(0,31,107,0.08)',overflow:'hidden',marginBottom:20}}>
+                    <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(0,31,107,0.06)'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:G.deepBlue,opacity:.5,textTransform:'uppercase'}}>
+                            Temporada 25/26 — Solo informativo
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:4}}>
+                            Este orden determina quién elige primero en El Otro 26/27. Cada jugador tiene 60 minutos para elegir antes de que pase al siguiente.
+                        </p>
+                    </div>
+                    {HISTORICO_2526.map(function(j) {
+                        return (
+                            <div key={j.pos} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',
+                                borderBottom:'1px solid rgba(0,31,107,0.04)'}}>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,
+                                    color:'rgba(0,31,107,0.3)',width:28,textAlign:'center'}}>{j.pos}</span>
+                                <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,
+                                    textTransform:'uppercase',color:G.deepBlue,opacity:.7}}>{j.nombre}</span>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,
+                                    color:G.deepBlue,opacity:.35}}>{j.nota}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 };
+
 
 const CalendarioScreen = ({ teamLogos }) => {
     var G = styles.colors;
@@ -2817,96 +3348,232 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles }) => {
 // ============================================================================
 // --- LOGIN SCREEN — VERSIÓN SIMPLE (lista de nombres) ---
 // ============================================================================
+// ============================================================================
+// --- LOGIN SCREEN CON PIN — sin Cloud Functions, validación en cliente ---
+// El PIN se guarda hasheado en Firestore. Funciona desde cualquier dispositivo
+// siempre que sepas el código. Si Mari le dice su PIN a Pedro, Pedro puede entrar.
+// ============================================================================
+
+var hashPin = async function(nombre, pin) {
+    var str = nombre.toLowerCase().trim() + ':' + pin;
+    var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
+};
+
 const LoginScreen = ({ onLoginSuccess }) => {
     var G = styles.colors;
+    var [nombreSeleccionado, setNombreSeleccionado] = useState('');
+    var [pin, setPin] = useState('');
+    var [pinConfirm, setPinConfirm] = useState('');
+    var [paso, setPaso] = useState('nombre'); // nombre | pin_nuevo | pin_existente | confirmando
+    var [error, setError] = useState('');
+    var [cargando, setCargando] = useState(false);
+    var [esNuevo, setEsNuevo] = useState(false);
 
-    var handleSelect = function(nombre) {
-        signInAnonymously(auth).then(function() {
-            onLoginSuccess(nombre);
-        }).catch(function(e) {
-            console.error('Error login:', e);
-            alert('Error al iniciar sesión. Inténtalo de nuevo.');
-        });
+    var JUGADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+
+    var seleccionarNombre = async function(nombre) {
+        setCargando(true);
+        setError('');
+        setNombreSeleccionado(nombre);
+        // Comprobar si ya tiene PIN en Firestore
+        try {
+            var snap = await getDoc(doc(db, "pines", nombre));
+            if (snap.exists()) {
+                setEsNuevo(false);
+                setPaso('pin_existente');
+            } else {
+                setEsNuevo(true);
+                setPaso('pin_nuevo');
+            }
+        } catch(e) {
+            setError('Error de conexión. Inténtalo de nuevo.');
+        }
+        setCargando(false);
     };
 
+    var pulsarDigito = function(d) {
+        if (cargando) return;
+        if (paso === 'pin_nuevo') {
+            if (pin.length < 4) {
+                var nuevo = pin + d;
+                setPin(nuevo);
+                if (nuevo.length === 4) setPaso('confirmando');
+            }
+        } else if (paso === 'confirmando') {
+            if (pinConfirm.length < 4) {
+                var nc = pinConfirm + d;
+                setPinConfirm(nc);
+                if (nc.length === 4) verificarNuevoPin(nc);
+            }
+        } else if (paso === 'pin_existente') {
+            if (pin.length < 4) {
+                var np = pin + d;
+                setPin(np);
+                if (np.length === 4) validarPin(np);
+            }
+        }
+    };
+
+    var borrar = function() {
+        if (paso === 'confirmando') setPinConfirm(function(p) { return p.slice(0,-1); });
+        else setPin(function(p) { return p.slice(0,-1); });
+    };
+
+    var verificarNuevoPin = async function(confirmado) {
+        if (confirmado !== pin) {
+            setError('Los PINs no coinciden. Inténtalo de nuevo.');
+            setPin(''); setPinConfirm(''); setPaso('pin_nuevo'); return;
+        }
+        setCargando(true);
+        try {
+            var hash = await hashPin(nombreSeleccionado, pin);
+            await setDoc(doc(db, "pines", nombreSeleccionado), { hash: hash, creadoEn: serverTimestamp() });
+            await setDoc(doc(db, "perfiles", nombreSeleccionado), { nombre: nombreSeleccionado }, { merge: true });
+            await signInAnonymously(auth);
+            onLoginSuccess(nombreSeleccionado);
+        } catch(e) {
+            setError('Error al guardar. Inténtalo de nuevo.'); setCargando(false);
+        }
+    };
+
+    var validarPin = async function(pinIntento) {
+        setCargando(true);
+        setError('');
+        try {
+            var snap = await getDoc(doc(db, "pines", nombreSeleccionado));
+            if (!snap.exists()) { setError('No hay PIN registrado.'); setCargando(false); return; }
+            var hash = await hashPin(nombreSeleccionado, pinIntento);
+            if (hash === snap.data().hash) {
+                await signInAnonymously(auth);
+                onLoginSuccess(nombreSeleccionado);
+            } else {
+                setError('PIN incorrecto. Inténtalo de nuevo.');
+                setPin(''); setCargando(false);
+            }
+        } catch(e) {
+            setError('Error de conexión.'); setCargando(false);
+        }
+    };
+
+    var pinActivo = paso === 'confirmando' ? pinConfirm : pin;
+    var tituloPaso = {
+        nombre: 'Elige tu nombre',
+        pin_nuevo: 'Crea tu PIN de 4 dígitos',
+        confirmando: 'Confírmalo',
+        pin_existente: 'Introduce tu PIN',
+    }[paso];
+
     return (
-        <div style={{ position: 'fixed', inset: 0, background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Montserrat', sans-serif", padding: '24px' }}>
+        <div style={{position:'fixed',inset:0,background:'#fff',display:'flex',flexDirection:'column',
+            alignItems:'center',justifyContent:'center',fontFamily:"'Montserrat',sans-serif",padding:24,overflow:'hidden'}}>
             <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;600&display=swap');
-                .login-btn { transition: transform .15s ease, box-shadow .15s ease; }
-                .login-btn:hover { transform: scale(1.04); box-shadow: 0 6px 20px rgba(0,31,107,0.18); }
-                .login-btn:active { transform: scale(0.97); }
+                @import url('https://fonts.googleapis.com/css2?family=Teko:wght@400;600;700&family=Inter:wght@300;400;600&display=swap');
+                .login-btn{transition:transform .12s ease,box-shadow .12s ease;}
+                .login-btn:hover{transform:scale(1.04);box-shadow:0 4px 16px rgba(0,31,107,0.15);}
+                .pin-key{transition:transform .1s ease,background .1s ease;}
+                .pin-key:active{transform:scale(0.94);background:rgba(0,31,107,0.08);}
+                @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+                .fade-up{animation:fadeUp .25s ease both;}
             `}</style>
 
-            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} viewBox="0 0 400 600" xmlns="http://www.w3.org/2000/svg" fill="none" preserveAspectRatio="xMidYMid slice">
-                <rect x="55" y="55" width="290" height="490" stroke="#001F6B" strokeWidth="0.7" opacity="0.04" />
-                <line x1="55" y1="300" x2="345" y2="300" stroke="#001F6B" strokeWidth="0.6" opacity="0.04" />
-                <circle cx="200" cy="300" r="46" stroke="#001F6B" strokeWidth="0.6" opacity="0.04" />
+            {/* Pizarra fondo */}
+            <svg style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none'}} viewBox="0 0 400 600" fill="none" preserveAspectRatio="xMidYMid slice">
+                <rect x="55" y="55" width="290" height="490" stroke="#001F6B" strokeWidth="0.7" opacity="0.04"/>
+                <line x1="55" y1="300" x2="345" y2="300" stroke="#001F6B" strokeWidth="0.6" opacity="0.04"/>
+                <circle cx="200" cy="300" r="46" stroke="#001F6B" strokeWidth="0.6" opacity="0.04"/>
             </svg>
 
-            <div style={{ width: 52, height: 62, marginBottom: 16, position: 'relative', zIndex: 5 }}>
-                <img src="/escudo.png" alt="UD Las Palmas" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(0,20,80,.15))' }} onError={function(e){ e.target.style.display='none'; }} />
+            {/* Logo */}
+            <div style={{position:'relative',zIndex:5,textAlign:'center',marginBottom:24}}>
+                <img src="/escudo.png" alt="UDLP" style={{width:52,height:62,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,20,80,.12))',marginBottom:12}}
+                    onError={function(e){e.target.style.display='none';}} />
+                <div style={{display:'flex',alignItems:'baseline',justifyContent:'center',gap:4}}>
+                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:'clamp(2rem,8vw,2.8rem)',fontWeight:700,color:'#0a0a0a',letterSpacing:2}}>PORRA</span>
+                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:'clamp(2rem,8vw,2.8rem)',fontWeight:700,color:'transparent',WebkitTextStroke:'1.5px #0a0a0a',letterSpacing:2}}>UDLP</span>
+                </div>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:300,letterSpacing:5,color:'#0a0a0a',opacity:.3,textTransform:'uppercase',marginTop:2}}>
+                    {tituloPaso}
+                </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', marginBottom: 4, position: 'relative', zIndex: 5 }}>
-                <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 'clamp(2.2rem,8vw,3rem)', color: '#0a0a0a', letterSpacing: 2, lineHeight: 1 }}>PORRA&nbsp;</span>
-                <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 'clamp(2.2rem,8vw,3rem)', color: 'transparent', WebkitTextStroke: '1.5px #0a0a0a', letterSpacing: 2, lineHeight: 1 }}>UDLP</span>
-            </div>
-            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, fontWeight: 300, letterSpacing: 5, color: '#0a0a0a', opacity: 0.3, textTransform: 'uppercase', marginBottom: 28, position: 'relative', zIndex: 5 }}>
-                26 — 27
-            </p>
+            {/* Pantalla de selección de nombre */}
+            {paso === 'nombre' && (
+                <div className="fade-up" style={{width:'100%',maxWidth:340,position:'relative',zIndex:5}}>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+                        {JUGADORES.map(function(j) {
+                            return (
+                                <button key={j} className="login-btn" onClick={function(){seleccionarNombre(j);}} disabled={cargando}
+                                    style={{padding:'14px 8px',borderRadius:14,border:'1.5px solid rgba(0,31,107,0.12)',
+                                        background:'#f8f8f8',fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:600,
+                                        color:'#001F6B',cursor:'pointer',textAlign:'center'}}>
+                                    {j}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {error && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',textAlign:'center',marginTop:12}}>{error}</p>}
+                </div>
+            )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, width: '100%', maxWidth: 340, position: 'relative', zIndex: 5 }}>
-                
-                <button className="login-btn" onClick={function(){handleSelect("Juanma");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Juanma
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Lucy");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Lucy
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Antonio");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Antonio
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Mari");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Mari
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Pedro");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Pedro
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Pedrito");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Pedrito
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Himar");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Himar
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Sarito");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Sarito
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Vicky");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Vicky
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Carmelo");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Carmelo
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Laura");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Laura
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Carlos");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Carlos
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("José");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    José
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Claudio");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Claudio
-                </button>
-                <button className="login-btn" onClick={function(){handleSelect("Javi");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
-                    Javi
-                </button>
-            </div>
+            {/* Modal PIN */}
+            {paso !== 'nombre' && (
+                <div className="fade-up" style={{width:'100%',maxWidth:300,position:'relative',zIndex:5}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)',
+                        letterSpacing:2,textTransform:'uppercase',textAlign:'center',marginBottom:4}}>{nombreSeleccionado}</p>
+
+                    {/* Dots del PIN */}
+                    <div style={{display:'flex',justifyContent:'center',gap:14,marginBottom:20}}>
+                        {[0,1,2,3].map(function(i) {
+                            return (
+                                <div key={i} style={{width:14,height:14,borderRadius:'50%',
+                                    background: pinActivo.length>i ? '#001F6B' : 'transparent',
+                                    border:'2px solid '+(pinActivo.length>i?'#001F6B':'rgba(0,31,107,0.2)')}} />
+                            );
+                        })}
+                    </div>
+
+                    {error && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',textAlign:'center',marginBottom:12}}>{error}</p>}
+
+                    {cargando ? (
+                        <p style={{textAlign:'center',fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.5)',padding:'20px 0'}}>Verificando...</p>
+                    ) : (
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+                            {['1','2','3','4','5','6','7','8','9','←','0','✓'].map(function(k,i) {
+                                if (k==='←') return (
+                                    <button key={i} className="pin-key" onClick={borrar}
+                                        style={{padding:'16px 0',borderRadius:14,border:'none',background:'#f5f5f5',
+                                            fontSize:18,color:'#001F6B',cursor:'pointer'}}>⌫</button>
+                                );
+                                if (k==='✓') return <div key={i} />;
+                                return (
+                                    <button key={i} className="pin-key" onClick={function(){pulsarDigito(k);}}
+                                        style={{padding:'16px 0',borderRadius:14,border:'none',background:'#f5f5f5',
+                                            fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#0a0a0a',cursor:'pointer'}}>
+                                        {k}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {esNuevo && paso === 'pin_nuevo' && (
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.35)',textAlign:'center',marginTop:14,lineHeight:1.5}}>
+                            Primera vez que entras. Crea un PIN de 4 dígitos.<br/>Guárdalo bien — lo necesitarás siempre.
+                        </p>
+                    )}
+
+                    <button onClick={function(){setPaso('nombre');setPin('');setPinConfirm('');setError('');}}
+                        style={{width:'100%',marginTop:16,background:'none',border:'none',fontFamily:"'Inter',sans-serif",
+                            fontSize:11,color:'rgba(0,31,107,0.35)',cursor:'pointer',textDecoration:'underline'}}>
+                        ← Cambiar de jugador
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
+
 
 
 function App() {
@@ -2998,6 +3665,7 @@ function App() {
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'pagos':       return <PagosScreen />;
+            case 'perfil':      return <PerfilScreen currentUser={currentUser} />;
             case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantilla} /> : null;
             default:            return null;
         }
@@ -3012,6 +3680,7 @@ function App() {
         { id: 'calendario', label: 'Calendario', icon: 'ti-calendar' },
         { id: 'estadisticas', label: 'Estadísticas', icon: 'ti-chart-dots' },
         { id: 'pagos', label: 'Pagos', icon: 'ti-wallet' },
+        { id: 'perfil', label: 'Mi Perfil', icon: 'ti-user-circle' },
     ];
     if (isAdmin) TABS.push({ id: 'admin', label: 'Admin', icon: 'ti-settings' });
 
