@@ -2817,182 +2817,159 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers }) => {
     );
 };
 
-const PagosScreen = () => {
-    const [jornadas, setJornadas] = useState([]); 
-    const [loading, setLoading] = useState(true); 
-    
-    useEffect(() => {
-        const unsub = onSnapshot(query(collection(db, "jornadas"), orderBy("numeroJornada")), (jornadasSnap) => {
-            const jornadasData = jornadasSnap.docs.map(jDoc => ({ id: jDoc.id, ...jDoc.data() }));
-            const promises = jornadasData.map(j => getDocs(collection(db, "pronosticos", j.id, "jugadores")));
-            Promise.all(promises).then(pSnaps => {
-                const jConP = jornadasData.map((j, index) => {
-                    const pronosticos = pSnaps[index].docs.map(doc => ({id: doc.id, ...doc.data()}));
-                    const costeBase = j.esVip ? APUESTA_VIP : APUESTA_NORMAL;
-                    
-                    let rec = 0;
-                    pronosticos.forEach(p => {
-                        rec += costeBase;
-                        if (p.jokerActivo && p.jokerPronosticos) {
-                            const huecosRellenos = p.jokerPronosticos.filter(jp => jp.local !== '' && jp.visitante !== '').length;
-                            rec += huecosRellenos * costeBase;
-                        }
-                    });
-                    
-                    const premio = (parseFloat(j.bote) || 0) + rec;
-                    return { ...j, pronosticos, recaudadoJornada: rec, premioTotal: premio };
-                });
-                setJornadas(jConP); setLoading(false);
-            });
-        }); return () => unsub();
-    }, []);
-
-    if (loading) return <LoadingSkeleton />;
-
-    return (
-        <div>
-            <h2 style={styles.title} className="app-title">LIBRO DE CUENTAS</h2>
-            
-            <div style={styles.prizeBannerFinal}>
-                <h4 style={styles.prizeBannerTitle}>PREMIO FINAL ACUMULADO</h4>
-                <div style={styles.prizeList}>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥇</span> <span><strong>1º CLASIFICADO:</strong> Premio a elegir valorado en 40€</span></div>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥈</span> <span><strong>2º CLASIFICADO:</strong> Premio a elegir valorado en 15€</span></div>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥉</span> <span><strong>3º CLASIFICADO:</strong> Premio a elegir valorado en 5€</span></div>
-                </div>
-            </div>
-
-            <div style={{marginTop: '30px'}}>
-                {jornadas.filter(j => j.estado === 'Finalizada').reverse().map(j => {
-                    const jConBote = !j.ganadores || j.ganadores.length === 0;
-                    return (
-                        <div key={j.id} style={{backgroundColor: 'rgba(0,0,0,0.3)', padding: '25px', borderRadius: '16px', marginBottom: '25px', border: `1px solid rgba(255,215,0,0.15)`, boxShadow: '0 5px 15px rgba(0,0,0,0.2)'}}>
-                            <h4 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.lightText, fontSize: '1.3rem', marginBottom: '15px', letterSpacing: '1px', textTransform: 'uppercase'}}>{getNombreJornada(j.numeroJornada)}: {j.equipoLocal} vs {j.equipoVisitante}</h4>
-                            <div style={{display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px', marginBottom: '20px', color: styles.colors.golden, fontSize: '0.9rem', backgroundColor: 'rgba(0,0,0,0.4)', padding: '15px', borderRadius: '12px'}}>
-                                <span><strong style={{color: styles.colors.silver}}>Recaudado:</strong> {j.recaudadoJornada}€</span>
-                                <span><strong style={{color: styles.colors.silver}}>Bote Ini:</strong> {j.bote || 0}€</span>
-                                <span><strong style={{color: styles.colors.silver}}>Total Juego:</strong> {j.premioTotal}€</span>
-                            </div>
-                            {jConBote ? (
-                                <div style={{textAlign: 'center', padding: '15px', backgroundColor: 'rgba(230, 57, 70, 0.1)', borderRadius: '12px', border: `1px solid rgba(230,57,70,0.3)`, color: styles.colors.danger, fontWeight: 'bold', letterSpacing: '1px'}}>💰 BOTE ACUMULADO. EL PREMIO PASA A LA SIGUIENTE JORNADA.</div>
-                            ) : (
-                                <div style={{textAlign: 'center', padding: '15px', backgroundColor: 'rgba(212, 175, 55, 0.05)', borderRadius: '12px', border: `1px solid rgba(212,175,55,0.4)`}}>
-                                    <p style={{marginBottom: '10px', fontSize: '1.05rem'}}><strong>🏆 Ganador(es) Resultado Exacto:</strong> {j.ganadores.join(', ')}</p>
-                                    <p style={{color: styles.colors.success, fontWeight: 'bold', fontSize: '1.1rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>Premio por ganador: {(j.premioTotal / j.ganadores.length).toFixed(2)}€</p>
-                                </div>
-                            )}
-                        </div>
-                    )
-                })}
-            </div>
-        </div>
-    );
-};
-
-const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
+const PagosScreen = ({ currentUser }) => {
     var G = styles.colors;
-    var [clasificacion, setClasificacion] = useState([]);
-    var [loading, setLoading] = useState(true);
-    var [mostrarHistorico, setMostrarHistorico] = useState(false);
-
-    // Clasificación histórica 25/26 (conservada para referencia del orden de El Otro)
-    var HISTORICO_2526 = [
-        { pos:1, nombre:'Pedrito',  pts:62, nota:'Orden 1 — El Otro Equipo 26/27' },
-        { pos:2, nombre:'Sarito',   pts:58, nota:'Orden 2 — El Otro Equipo 26/27' },
-        { pos:3, nombre:'Carmelo',  pts:55, nota:'Orden 3 — El Otro Equipo 26/27' },
-        { pos:4, nombre:'Himar',    pts:52, nota:'Orden 4 — El Otro Equipo 26/27' },
-        { pos:5, nombre:'Javi',     pts:49, nota:'Orden 5 — El Otro Equipo 26/27' },
-        { pos:6, nombre:'Pedro',    pts:46, nota:'Orden 6 — El Otro Equipo 26/27' },
-        { pos:7, nombre:'Juanma',   pts:43, nota:'Orden 7 — El Otro Equipo 26/27' },
-        { pos:8, nombre:'José',     pts:40, nota:'Orden 8 — El Otro Equipo 26/27' },
-        { pos:9, nombre:'Vicky',    pts:37, nota:'Orden 9 — El Otro Equipo 26/27' },
-        { pos:10,nombre:'Mari',     pts:34, nota:'Orden 10 — El Otro Equipo 26/27' },
-        { pos:11,nombre:'Lucy',     pts:31, nota:'Orden 11 — El Otro Equipo 26/27' },
-        { pos:12,nombre:'Claudio',  pts:28, nota:'Orden 12 — El Otro Equipo 26/27' },
-        { pos:13,nombre:'Laura',    pts:25, nota:'Orden 13 — El Otro Equipo 26/27' },
-        { pos:14,nombre:'Carlos',   pts:22, nota:'Orden 14 — El Otro Equipo 26/27' },
-        { pos:15,nombre:'Antonio',  pts:19, nota:'Orden 15 — El Otro Equipo 26/27' },
-    ];
+    var JUGADORES_LISTA = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var [paso, setPaso] = useState('inicio'); // inicio | formulario | procesando | ok | error
+    var [jugadorPago, setJugadorPago] = useState(currentUser || '');
+    var [pagoBy, setPagoBy] = useState(currentUser || '');
+    var [tipoPago, setTipoPago] = useState('inscripcion');
+    var [jornadas, setJornadas] = useState([]);
+    var [jornadaSel, setJornadaSel] = useState('');
+    var [pagos, setPagos] = useState([]);
+    var [error, setError] = useState('');
+    var stripe = null;
+    var cardElement = null;
 
     useEffect(function() {
-        var unsub = onSnapshot(collection(db, "clasificacion"), function(snap) {
-            var datos = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
-                .sort(function(a,b) { return (b.puntosTotales||0) - (a.puntosTotales||0); });
-            setClasificacion(datos);
-            setLoading(false);
-        });
-        return function() { unsub(); };
+        var unsub = onSnapshot(
+            query(collection(db, 'jornadas'), orderBy('numeroJornada','asc')),
+            function(snap) { setJornadas(snap.docs.map(function(d){return{id:d.id,...d.data()};})); }
+        );
+        return function(){unsub();};
     }, []);
 
-    if (loading) return <LoadingSkeleton />;
+    useEffect(function() {
+        var unsub = onSnapshot(
+            query(collection(db, 'pagos'), orderBy('creadoEn','desc')),
+            function(snap) { setPagos(snap.docs.map(function(d){return{id:d.id,...d.data()};})); }
+        );
+        return function(){unsub();};
+    }, []);
 
-    return (
+    // Cargar Stripe.js dinámicamente al abrir el formulario
+    var iniciarFormularioPago = function() {
+        if (!window.Stripe) {
+            var script = document.createElement('script');
+            script.src = 'https://js.stripe.com/v3/';
+            script.onload = function() { montarStripe(); };
+            document.head.appendChild(script);
+        } else {
+            montarStripe();
+        }
+        setPaso('formulario');
+    };
+
+    var montarStripe = function() {
+        setTimeout(function() {
+            stripe = window.Stripe(STRIPE_PK);
+            var elements = stripe.elements();
+            cardElement = elements.create('card', {
+                style: {
+                    base: { fontFamily:"'Inter',sans-serif", fontSize:'16px', color:'#001F6B', '::placeholder':{ color:'rgba(0,31,107,0.3)' } },
+                    invalid: { color:'#e63946' }
+                },
+                hidePostalCode: true,
+            });
+            var mount = document.getElementById('stripe-card-element');
+            if (mount) cardElement.mount('#stripe-card-element');
+        }, 100);
+    };
+
+    var importe = tipoPago === 'inscripcion' ? 5 : tipoPago === 'jornada_normal' ? 1 : 2;
+    var descripcion = tipoPago === 'inscripcion' ? 'Inscripción temporada 26/27' : tipoPago === 'jornada_normal' ? 'Jornada ' + jornadaSel : 'Jornada VIP ' + jornadaSel;
+
+    var procesarPago = async function() {
+        if (!stripe || !cardElement) { setError('Error al cargar el formulario de pago. Recarga la página.'); return; }
+        if (tipoPago !== 'inscripcion' && !jornadaSel) { setError('Selecciona la jornada que quieres pagar.'); return; }
+        setPaso('procesando'); setError('');
+        try {
+            // Crear PaymentMethod con los datos de tarjeta
+            var result = await stripe.createPaymentMethod({ type:'card', card:cardElement });
+            if (result.error) { setError(result.error.message); setPaso('formulario'); return; }
+
+            // Registrar el pago en Firestore (en producción esto debería pasar por tu backend)
+            await addDoc(collection(db, 'pagos'), {
+                jugador: jugadorPago,
+                pagoBy: pagoBy,
+                tipo: tipoPago,
+                jornada: jornadaSel || null,
+                importe: importe,
+                descripcion: descripcion,
+                paymentMethodId: result.paymentMethod.id,
+                estado: 'pendiente_confirmacion',
+                creadoEn: serverTimestamp(),
+            });
+
+            setPaso('ok');
+        } catch(e) {
+            setError('Error: ' + e.message);
+            setPaso('formulario');
+        }
+    };
+
+    var misPagos = pagos.filter(function(p) { return p.jugador === currentUser || p.pagoBy === currentUser; });
+    var inscripcionPagada = pagos.some(function(p) { return p.jugador === currentUser && p.tipo === 'inscripcion' && p.estado !== 'fallido'; });
+
+    var S = {
+        card: { background:'#fff', border:'1px solid rgba(0,31,107,0.1)', borderRadius:16, padding:18, marginBottom:14 },
+        label: { fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:2, color:'rgba(0,31,107,0.5)', textTransform:'uppercase', display:'block', marginBottom:6 },
+        select: { width:'100%', padding:'11px 14px', border:'1.5px solid rgba(0,31,107,0.15)', borderRadius:12, fontFamily:"'Inter',sans-serif", fontSize:14, color:'#001F6B', outline:'none', marginBottom:14, background:'#f8f9ff', cursor:'pointer' },
+        btnPay: { width:'100%', fontFamily:"'Teko',sans-serif", fontSize:'1.15rem', letterSpacing:3, background:'#001F6B', color:'#FFD700', border:'none', borderRadius:30, padding:'15px', cursor:'pointer', textTransform:'uppercase', boxShadow:'0 6px 24px rgba(0,31,107,0.25)' },
+        btnSec: { width:'100%', fontFamily:"'Teko',sans-serif", fontSize:14, letterSpacing:2, background:'rgba(0,31,107,0.06)', color:'#001F6B', border:'1px solid rgba(0,31,107,0.12)', borderRadius:12, padding:'11px', cursor:'pointer', textTransform:'uppercase', marginTop:10 },
+        tag: function(c) { return { background:c+'20', color:c, border:'1px solid '+c+'40', borderRadius:8, padding:'3px 10px', fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600 }; },
+    };
+
+    // ── PANTALLA DE INICIO ────────────────────────────────────────────────────
+    if (paso === 'inicio') return (
         <div style={{paddingBottom:40}}>
-            <h2 style={styles.title}>ESTADÍSTICAS 26/27</h2>
+            <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>💳 PAGOS</h2>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.5)',marginBottom:20,lineHeight:1.6}}>
+                Paga tu inscripción y las jornadas con tarjeta. El dinero queda reservado hasta el reparto de premios.
+            </p>
 
-            {/* Clasificación actual */}
-            <div style={{background:'#fff',borderRadius:16,border:'1px solid rgba(0,31,107,0.08)',overflow:'hidden',marginBottom:20}}>
-                <div style={{background:'#001F6B',padding:'14px 16px'}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:3,color:'rgba(255,255,255,0.5)',textTransform:'uppercase'}}>
-                        Clasificación general — Temporada 26/27
-                    </p>
+            {/* Estado de inscripción */}
+            <div style={{...S.card, border: inscripcionPagada ? '1.5px solid #10b981' : '1.5px solid rgba(255,215,0,0.5)', background: inscripcionPagada ? 'rgba(16,185,129,0.04)' : 'rgba(255,215,0,0.04)'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <div>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Inscripción 26/27</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)'}}>5€ · Pago único para toda la temporada</p>
+                    </div>
+                    {inscripcionPagada
+                        ? <span style={S.tag('#10b981')}>✅ Pagada</span>
+                        : <span style={S.tag('#FFD700')}>⚠️ Pendiente</span>
+                    }
                 </div>
-                {clasificacion.length === 0 ? (
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,opacity:.5,padding:24,textAlign:'center'}}>
-                        La temporada acaba de empezar. Los puntos aparecerán aquí tras la primera jornada.
-                    </p>
-                ) : clasificacion.map(function(j, i) {
-                    var online = onlineUsers && onlineUsers[j.id];
-                    return (
-                        <div key={j.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',
-                            borderBottom:'1px solid rgba(0,31,107,0.05)',
-                            background: i === 0 ? 'rgba(255,215,0,0.06)' : 'transparent'}}>
-                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,
-                                color: i===0?'#FFD700':i===1?'rgba(0,31,107,0.5)':i===2?'rgba(0,31,107,0.4)':'rgba(0,31,107,0.25)',
-                                width:28,textAlign:'center'}}>{i+1}</span>
-                            <div style={{width:8,height:8,borderRadius:'50%',flexShrink:0,
-                                background: online ? '#10b981' : 'rgba(0,31,107,0.15)'}} />
-                            <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:17,letterSpacing:1,
-                                textTransform:'uppercase',color:G.deepBlue}}>{j.id}</span>
-                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:G.deepBlue}}>
-                                {j.puntosTotales||0} <span style={{fontSize:12,opacity:.4,fontWeight:400}}>pts</span>
-                            </span>
-                        </div>
-                    );
-                })}
+                {!inscripcionPagada && (
+                    <button onClick={function(){setTipoPago('inscripcion');setJugadorPago(currentUser);setPagoBy(currentUser);iniciarFormularioPago();}} style={{...S.btnPay,marginTop:14}}>
+                        Pagar inscripción — 5€ →
+                    </button>
+                )}
             </div>
 
-            {/* Botón para ver histórico */}
-            <button onClick={function() { setMostrarHistorico(function(v) { return !v; }); }}
-                style={{width:'100%',background:'rgba(0,31,107,0.05)',border:'1px solid rgba(0,31,107,0.1)',
-                    borderRadius:12,padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
-                <i className="ti ti-history" style={{fontSize:18,color:G.deepBlue,opacity:.5}} aria-hidden="true" />
-                <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',flex:1,textAlign:'left'}}>
-                    Ver clasificación 25/26 (orden de El Otro)
-                </span>
-                <span style={{color:G.deepBlue,opacity:.4}}>{mostrarHistorico?'▲':'▼'}</span>
-            </button>
+            {/* Botón jornadas */}
+            <div style={S.card}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:1,color:'#001F6B',marginBottom:4}}>Pagar una jornada</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14}}>Normal 1€ · VIP 2€. También puedes pagar por otro jugador.</p>
+                <button onClick={function(){setTipoPago('jornada_normal');iniciarFormularioPago();}} style={S.btnPay}>
+                    Seleccionar jornada →
+                </button>
+            </div>
 
-            {mostrarHistorico && (
-                <div style={{background:'rgba(0,31,107,0.03)',borderRadius:14,border:'1px solid rgba(0,31,107,0.08)',overflow:'hidden',marginBottom:20}}>
-                    <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(0,31,107,0.06)'}}>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:G.deepBlue,opacity:.5,textTransform:'uppercase'}}>
-                            Temporada 25/26 — Solo informativo
-                        </p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:4}}>
-                            Este orden determina quién elige primero en El Otro 26/27. Cada jugador tiene 60 minutos para elegir antes de que pase al siguiente.
-                        </p>
-                    </div>
-                    {HISTORICO_2526.map(function(j) {
+            {/* Mis pagos */}
+            {misPagos.length > 0 && (
+                <div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10}}>Mis pagos</p>
+                    {misPagos.map(function(p) {
+                        var color = p.estado==='completado'?'#10b981':p.estado==='fallido'?'#e63946':'rgba(0,31,107,0.4)';
                         return (
-                            <div key={j.pos} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',
-                                borderBottom:'1px solid rgba(0,31,107,0.04)'}}>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,
-                                    color:'rgba(0,31,107,0.3)',width:28,textAlign:'center'}}>{j.pos}</span>
-                                <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,
-                                    textTransform:'uppercase',color:G.deepBlue,opacity:.7}}>{j.nombre}</span>
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,
-                                    color:G.deepBlue,opacity:.35}}>{j.nota}</span>
+                            <div key={p.id} style={{...S.card,display:'flex',alignItems:'center',gap:10,padding:'12px 16px'}}>
+                                <div style={{flex:1}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'#001F6B',letterSpacing:1}}>{p.descripcion}</p>
+                                    {p.pagoBy && p.pagoBy!==p.jugador && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)'}}>Pagado por {p.pagoBy}</p>}
+                                </div>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color:'#001F6B'}}>{p.importe}€</span>
+                                <span style={S.tag(color)}>{p.estado||'ok'}</span>
                             </div>
                         );
                     })}
@@ -3000,8 +2977,91 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
             )}
         </div>
     );
-};
 
+    // ── FORMULARIO DE PAGO ────────────────────────────────────────────────────
+    if (paso === 'formulario') return (
+        <div style={{paddingBottom:40}}>
+            <button onClick={function(){setPaso('inicio');}} style={{background:'none',border:'none',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'rgba(0,31,107,0.5)',cursor:'pointer',marginBottom:16,textTransform:'uppercase'}}>
+                ← Volver
+            </button>
+            <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:20,fontWeight:700}}>
+                💳 PAGAR {importe}€
+            </h2>
+
+            <div style={S.card}>
+                {/* Tipo de pago */}
+                <label style={S.label}>Tipo de pago</label>
+                <select style={S.select} value={tipoPago} onChange={function(e){setTipoPago(e.target.value);}}>
+                    <option value="inscripcion">Inscripción temporada — 5€</option>
+                    <option value="jornada_normal">Jornada normal — 1€</option>
+                    <option value="jornada_vip">Jornada VIP — 2€</option>
+                </select>
+
+                {/* Jornada (si no es inscripción) */}
+                {tipoPago !== 'inscripcion' && (
+                    <div>
+                        <label style={S.label}>Jornada</label>
+                        <select style={S.select} value={jornadaSel} onChange={function(e){setJornadaSel(e.target.value);}}>
+                            <option value="">Selecciona jornada...</option>
+                            {jornadas.map(function(j) {
+                                return <option key={j.id} value={'J'+j.numeroJornada}>J{j.numeroJornada} — {j.equipoLocal} vs {j.equipoVisitante}</option>;
+                            })}
+                        </select>
+                    </div>
+                )}
+
+                {/* Jugador que va a pagar */}
+                <label style={S.label}>¿Por quién pagas?</label>
+                <select style={S.select} value={jugadorPago} onChange={function(e){setJugadorPago(e.target.value);}}>
+                    {JUGADORES_LISTA.map(function(j){return <option key={j} value={j}>{j}</option>;})}
+                </select>
+
+                {/* Pagador (si es diferente) */}
+                <label style={S.label}>¿Quién paga? (si es otra persona)</label>
+                <select style={S.select} value={pagoBy} onChange={function(e){setPagoBy(e.target.value);}}>
+                    {JUGADORES_LISTA.map(function(j){return <option key={j} value={j}>{j}</option>;})}
+                </select>
+
+                {/* Campo de tarjeta de Stripe */}
+                <label style={S.label}>Datos de tarjeta</label>
+                <div id="stripe-card-element" style={{border:'1.5px solid rgba(0,31,107,0.15)',borderRadius:12,padding:'13px 14px',background:'#f8f9ff',marginBottom:14}} />
+
+                {error && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginBottom:12,textAlign:'center'}}>{error}</p>}
+
+                <button onClick={procesarPago} style={S.btnPay}>
+                    Pagar {importe}€ →
+                </button>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.35)',textAlign:'center',marginTop:10,lineHeight:1.5}}>
+                    🔒 Pago seguro procesado por Stripe. Tu tarjeta nunca se almacena en la app.
+                </p>
+            </div>
+        </div>
+    );
+
+    // ── PROCESANDO ────────────────────────────────────────────────────────────
+    if (paso === 'procesando') return (
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:48,textAlign:'center'}}>
+            <div style={{fontSize:48,marginBottom:16,animation:'floatIcon 1s ease-in-out infinite'}}>⏳</div>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:3,color:'#001F6B',textTransform:'uppercase'}}>Procesando pago...</p>
+        </div>
+    );
+
+    // ── OK ────────────────────────────────────────────────────────────────────
+    if (paso === 'ok') return (
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:48,textAlign:'center'}}>
+            <div style={{fontSize:64,marginBottom:16}}>✅</div>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:8}}>¡Pago registrado!</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:14,color:'rgba(0,31,107,0.6)',marginBottom:24,lineHeight:1.6}}>
+                {descripcion} pagado por {pagoBy}{pagoBy!==jugadorPago?' (para '+jugadorPago+')':''}.
+            </p>
+            <button onClick={function(){setPaso('inicio');}} style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,background:'#001F6B',color:'#FFD700',border:'none',borderRadius:12,padding:'12px 24px',cursor:'pointer',textTransform:'uppercase'}}>
+                Volver a pagos
+            </button>
+        </div>
+    );
+
+    return null;
+};
 
 const CalendarioScreen = ({ teamLogos }) => {
     var G = styles.colors;
@@ -3706,7 +3766,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 // ============================================================================
 // --- ADMIN PANEL SCREEN — Panel de control completo 26/27 ---
 // ============================================================================
-const STRIPE_PK = 'pk_test_REEMPLAZAR_CON_TU_CLAVE'; // ← Reemplaza con pk_test_... o pk_live_...
+const STRIPE_PK = 'pk_live_51U2xAARenKuqKQJELTRmHGPOEYvqZmRPRvloWyN5Z8DogtNRTYJBmmKa5vlzQQwTDK6r5h40JvK0OM3wUwvLm42M00OzYw8o3m'; // ← Reemplaza con pk_test_... o pk_live_...
 
 const AdminPanelScreen = ({ plantilla }) => {
     var [jornadas, setJornadas] = useState([]);
@@ -4978,7 +5038,7 @@ function App() {
             case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
-            case 'pagos':       return <PagosScreen />;
+            case 'pagos':       return <PagosScreen currentUser={currentUser} />;
             case 'perfil':      return <PerfilScreen currentUser={currentUser} />;
             case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantilla} /> : null;
             default:            return null;
