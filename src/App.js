@@ -37,14 +37,15 @@ const JORNADAS_CUARENTENA = 5; // nuevos jugadores en período de prueba
 const MIN_ACTIVACIONES_EL_OTRO = 3; // mínimo de activaciones durante la temporada
 const PENALIZACION_EL_OTRO = 5; // puntos a restar si no se activa mínimo 3 veces
 
-// 20 equipos de Primera División 26/27 para El Otro
-// (se cargan dinámicamente de la API, esto es el fallback)
+// 20 equipos LaLiga EA Sports 26/27 — confirmados (junio 2026)
+// Bajan: Oviedo, Mallorca, Girona — Suben: Racing Santander, Deportivo, Málaga
+// UDLP NO está en Primera este año (está en Segunda/Hypermotion)
 const EQUIPOS_PRIMERA_DIVISION = [
-    "Real Madrid", "FC Barcelona", "Atlético de Madrid", "Athletic Club",
-    "Real Sociedad", "Villarreal CF", "Real Betis", "Valencia CF",
-    "Sevilla FC", "Getafe CF", "RC Celta", "Rayo Vallecano",
-    "UD Las Palmas", "CA Osasuna", "RCD Mallorca", "Deportivo Alavés",
-    "RCD Espanyol", "Leganés", "Real Valladolid", "Girona FC"
+    "FC Barcelona", "Real Madrid", "Atlético de Madrid", "Villarreal CF",
+    "Real Betis", "Celta de Vigo", "Real Sociedad", "Getafe CF",
+    "Athletic Club", "Sevilla FC", "Rayo Vallecano", "Deportivo Alavés",
+    "RCD Espanyol", "Valencia CF", "Leganés", "CA Osasuna",
+    "Real Valladolid", "Racing de Santander", "RC Deportivo", "Málaga CF"
 ];
 
 // API Football config
@@ -71,27 +72,29 @@ const PUNTOS_ESTRELLAS = {
 
 // Plantilla de fallback (usada si la API no está disponible)
 // Se actualiza automáticamente desde API-Football al cargar la app
+// Plantilla real UD Las Palmas 26/27 — pretemporada Marbella (22/07/2026)
+// Fuente: udlaspalmas.net — solo jugadores con dorsal de primera plantilla
 const PLANTILLA_FALLBACK = [
-    { dorsal: "1", nombre: "Dinko Horkas", posicion: "Portero", imageUrl: "" },
-    { dorsal: "13", nombre: "José Antonio Caro", posicion: "Portero", imageUrl: "" },
-    { dorsal: "2", nombre: "Marvin Park", posicion: "Defensa", imageUrl: "" },
-    { dorsal: "3", nombre: "Mika Mármol", posicion: "Defensa", imageUrl: "" },
-    { dorsal: "4", nombre: "Álex Suárez", posicion: "Defensa", imageUrl: "" },
-    { dorsal: "5", nombre: "Enrique Clemente", posicion: "Defensa", imageUrl: "" },
-    { dorsal: "6", nombre: "Sergio Barcia", posicion: "Defensa", imageUrl: "" },
-    { dorsal: "15", nombre: "Juanma Herzog", posicion: "Defensa", imageUrl: "" },
-    { dorsal: "7", nombre: "Nicolás Benedetti", posicion: "Centrocampista", imageUrl: "" },
-    { dorsal: "8", nombre: "Iván Gil", posicion: "Centrocampista", imageUrl: "" },
-    { dorsal: "12", nombre: "Enzo Loiodice", posicion: "Centrocampista", imageUrl: "" },
-    { dorsal: "14", nombre: "Manu Fuster", posicion: "Centrocampista", imageUrl: "" },
-    { dorsal: "16", nombre: "Lorenzo Amatucci", posicion: "Centrocampista", imageUrl: "" },
-    { dorsal: "20", nombre: "Kirian Rodríguez", posicion: "Centrocampista", imageUrl: "" },
-    { dorsal: "21", nombre: "Jonathan Viera", posicion: "Centrocampista", imageUrl: "" },
-    { dorsal: "9", nombre: "Jeremía Recoba", posicion: "Delantero", imageUrl: "" },
-    { dorsal: "10", nombre: "Jesé", posicion: "Delantero", imageUrl: "" },
-    { dorsal: "18", nombre: "Taisei Miyashiro", posicion: "Delantero", imageUrl: "" },
-    { dorsal: "19", nombre: "Sandro Ramírez", posicion: "Delantero", imageUrl: "" },
-    { dorsal: "24", nombre: "Pejiño", posicion: "Delantero", imageUrl: "" },
+    { dorsal: "1",  nombre: "Dinko Horkas",        posicion: "Portero",         imageUrl: "" },
+    { dorsal: "13", nombre: "J.A. Caro",            posicion: "Portero",         imageUrl: "" },
+    { dorsal: "2",  nombre: "Marvin Park",          posicion: "Defensa",         imageUrl: "" },
+    { dorsal: "17", nombre: "Viti Rozada",          posicion: "Defensa",         imageUrl: "" },
+    { dorsal: "4",  nombre: "Álex Suárez",          posicion: "Defensa",         imageUrl: "" },
+    { dorsal: "15", nombre: "Juanma Herzog",        posicion: "Defensa",         imageUrl: "" },
+    { dorsal: "5",  nombre: "Enrique Clemente",     posicion: "Defensa",         imageUrl: "" },
+    { dorsal: "11", nombre: "Sergio Ruiz",          posicion: "Centrocampista",  imageUrl: "" },
+    { dorsal: "20", nombre: "Kirian Rodríguez",     posicion: "Centrocampista",  imageUrl: "" },
+    { dorsal: "12", nombre: "Enzo Loiodice",        posicion: "Centrocampista",  imageUrl: "" },
+    { dorsal: "26", nombre: "Edward Cedeño",        posicion: "Centrocampista",  imageUrl: "" },
+    { dorsal: "24", nombre: "Iñaki González",       posicion: "Centrocampista",  imageUrl: "" },
+    { dorsal: "8",  nombre: "Mateo Acimovic",       posicion: "Centrocampista",  imageUrl: "" },
+    { dorsal: "14", nombre: "Manu Fuster",          posicion: "Mediapunta",      imageUrl: "" },
+    { dorsal: "18", nombre: "Taisei Miyashiro",     posicion: "Mediapunta",      imageUrl: "" },
+    { dorsal: "22", nombre: "Ale García",           posicion: "Mediapunta",      imageUrl: "" },
+    { dorsal: "9",  nombre: "Jeremía Recoba",       posicion: "Delantero",       imageUrl: "" },
+    { dorsal: "10", nombre: "Jesé Rodríguez",       posicion: "Delantero",       imageUrl: "" },
+    { dorsal: "19", nombre: "Sandro Ramírez",       posicion: "Delantero",       imageUrl: "" },
+    { dorsal: "41", nombre: "Elías Romero",         posicion: "Delantero",       imageUrl: "" },
 ];
 
 // ============================================================================
@@ -2187,91 +2190,243 @@ const AdminPanelScreen = ({ plantilla, jugadores }) => {
 // ============================================================================
 // --- EL OTRO — Pantalla de selección y gestión del equipo de Primera ---
 // ============================================================================
-const ElOtroScreen = ({ currentUser, userProfiles }) => {
-    const G = styles.colors;
-    const [elOtroData, setElOtroData] = useState(null);
-    const [equiposDisponibles, setEquiposDisponibles] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [guardando, setGuardando] = useState(false);
+// Orden de elección de El Otro — basado en clasificación temporada 25/26
+// El primero de la clasificación elige primero
+// Los nuevos jugadores van al final (después de los 15 originales)
+// Orden de elección basado en clasificación REAL temporada 25/26
+// Fuente: captura Firestore 10/08/2026
+const ORDEN_ELECCION_EL_OTRO = [
+    "Pedrito",  // 1º
+    "Sarito",   // 2º
+    "Carmelo",  // 3º
+    "Himar",    // 4º
+    "Javi",     // 5º
+    "Pedro",    // 6º
+    "Juanma",   // 7º
+    "José",     // 8º
+    "Vicky",    // 9º
+    "Mari",     // 10º
+    "Lucy",     // 11º
+    "Claudio",  // 12º
+    "Laura",    // 13º
+    "Carlos",   // 14º (IC en clasificación)
+    "Antonio",  // 15º
+];
+// Plazo límite para elegir El Otro: jueves 13 de agosto 2026 a las 23:59
+const PLAZO_EL_OTRO = new Date('2026-08-13T23:59:00');
+// Tiempo máximo por turno antes de saltarlo: 60 minutos
+const TIMEOUT_TURNO_MINUTOS = 60;
 
-    useEffect(() => {
+const ElOtroScreen = ({ currentUser, userProfiles }) => {
+    var G = styles.colors;
+    var [miElOtro, setMiElOtro] = useState(null);
+    var [todosElOtro, setTodosElOtro] = useState({});
+    var [ordenFinal, setOrdenFinal] = useState([]);
+    var [turnoActual, setTurnoActual] = useState(null);
+    var [tiempoRestante, setTiempoRestante] = useState(null);
+    var [guardando, setGuardando] = useState(false);
+    var [loading, setLoading] = useState(true);
+    var [equiposDisponibles, setEquiposDisponibles] = useState(EQUIPOS_PRIMERA_DIVISION);
+
+    useEffect(function() {
         if (!currentUser) return;
-        // Cargar El Otro del usuario actual
-        const unsubElOtro = onSnapshot(doc(db, "elOtro", currentUser), (snap) => {
-            if (snap.exists()) setElOtroData(snap.data());
-            else setElOtroData(null);
+        var unsub = onSnapshot(collection(db, "elOtro"), function(snap) {
+            var datos = {};
+            snap.forEach(function(d) { datos[d.id] = d.data(); });
+            setTodosElOtro(datos);
+
+            // Construir orden final: base + jugadores nuevos no en la lista base
+            var nuevos = Object.keys(datos).filter(function(j) {
+                return ORDEN_ELECCION_EL_OTRO.indexOf(j) === -1 && !datos[j].equipo;
+            });
+            var ordenConf = [].concat(ORDEN_ELECCION_EL_OTRO, nuevos);
+            setOrdenFinal(ordenConf);
+
+            // Calcular quién tiene el turno ahora mismo
+            var equiposTomados = Object.values(datos).map(function(d) { return d.equipo; }).filter(Boolean);
+            setEquiposDisponibles(EQUIPOS_PRIMERA_DIVISION.filter(function(e) { return equiposTomados.indexOf(e) === -1; }));
+
+            // El turno es del primer jugador en el orden que aún no ha elegido
+            var turno = null;
+            for (var i = 0; i < ordenConf.length; i++) {
+                var j = ordenConf[i];
+                if (!datos[j] || !datos[j].equipo) {
+                    // Verificar si este jugador ha sobrepasado su tiempo (saltado)
+                    var saltado = datos[j] && datos[j].saltado;
+                    if (!saltado) { turno = j; break; }
+                }
+            }
+            setTurnoActual(turno);
+
+            // Mi dato
+            if (datos[currentUser]) setMiElOtro(datos[currentUser]);
+            else setMiElOtro(null);
             setLoading(false);
         });
-        // Calcular equipos disponibles (los que ya no han sido tomados)
-        const unsubTodos = onSnapshot(collection(db, "elOtro"), (snap) => {
-            const tomados = snap.docs.map(d => d.data().equipo).filter(Boolean);
-            setEquiposDisponibles(EQUIPOS_PRIMERA_DIVISION.filter(e => !tomados.includes(e) || (elOtroData && e === elOtroData.equipo)));
-        });
-        return () => { unsubElOtro(); unsubTodos(); };
+        return function() { unsub(); };
     }, [currentUser]);
 
-    const elegirEquipo = async (equipo) => {
-        if (elOtroData?.equipo) return; // ya eligió, no puede cambiar
+    // Temporizador: si es mi turno, mostrar cuenta atrás de 60 minutos
+    useEffect(function() {
+        if (turnoActual !== currentUser) { setTiempoRestante(null); return; }
+        var datos = todosElOtro[currentUser];
+        if (!datos || !datos.turnoIniciadoEn) return;
+
+        var intervalo = setInterval(function() {
+            var ahora = new Date();
+            var inicio = datos.turnoIniciadoEn.toDate ? datos.turnoIniciadoEn.toDate() : new Date(datos.turnoIniciadoEn);
+            var transcurrido = (ahora - inicio) / 1000 / 60;
+            var restante = TIMEOUT_TURNO_MINUTOS - transcurrido;
+            if (restante <= 0) {
+                setTiempoRestante(0);
+                clearInterval(intervalo);
+            } else {
+                setTiempoRestante(Math.ceil(restante));
+            }
+        }, 10000);
+        return function() { clearInterval(intervalo); };
+    }, [turnoActual, currentUser, todosElOtro]);
+
+    var elegirEquipo = function(equipo) {
+        if (guardando) return;
+        if (turnoActual !== currentUser) return;
+        if (miElOtro && miElOtro.equipo) return;
         setGuardando(true);
-        try {
-            await setDoc(doc(db, "elOtro", currentUser), {
-                equipo, activaciones: 0, historial: [], elegidoEn: serverTimestamp()
-            }, { merge: true });
-        } catch (e) { console.error(e); }
-        setGuardando(false);
+        setDoc(doc(db, "elOtro", currentUser), {
+            equipo: equipo,
+            activaciones: 0,
+            historial: [],
+            elegidoEn: serverTimestamp(),
+            revelado: false,
+        }, { merge: true }).then(function() {
+            setGuardando(false);
+        }).catch(function(e) {
+            console.error(e);
+            setGuardando(false);
+        });
     };
 
-    if (loading) return <div style={{padding:40,textAlign:'center',color:G.deepBlue}}>Cargando...</div>;
+    var revelarEquipo = function() {
+        if (!miElOtro || !miElOtro.equipo) return;
+        if (miElOtro.revelado) return;
+        if (!window.confirm('¿Seguro que quieres revelar tu equipo? Esta acción no se puede deshacer.')) return;
+        setDoc(doc(db, "elOtro", currentUser), { revelado: true }, { merge: true });
+    };
+
+    var esMiTurno = turnoActual === currentUser;
+    var yoElegí = miElOtro && miElOtro.equipo;
+    var plazoSuperado = new Date() > PLAZO_EL_OTRO;
+
+    if (loading) return <div style={{padding:40,textAlign:'center',color:G.deepBlue,fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:2}}>CARGANDO...</div>;
 
     return (
-        <div style={{padding:'20px 16px'}}>
+        <div style={{padding:'16px 0'}}>
             <h2 style={styles.title}>EL OTRO</h2>
-            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,opacity:.6,textAlign:'center',marginBottom:24,lineHeight:1.6}}>
-                Tu equipo de Primera División para toda la temporada.<br/>
-                Si activas el modo y tu equipo <strong>gana</strong> → ×2 tus puntos.<br/>
-                Si <strong>empata</strong> → sin efecto. Si <strong>pierde</strong> → ÷2 (redondeando a la baja).<br/>
-                Mínimo 3 activaciones durante la temporada.
-            </p>
 
-            {elOtroData?.equipo ? (
-                <div style={{background:'#f8f8f8',borderRadius:16,padding:24,textAlign:'center',border:`2px solid ${G.golden}`,marginBottom:24}}>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,letterSpacing:3,color:G.deepBlue,opacity:.5,textTransform:'uppercase',marginBottom:8}}>Tu equipo</p>
-                    <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'2rem',color:G.deepBlue,letterSpacing:2}}>{elOtroData.equipo}</p>
-                    <div style={{display:'flex',justifyContent:'center',gap:24,marginTop:16}}>
-                        <div style={{textAlign:'center'}}>
-                            <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.8rem',color:G.golden}}>{elOtroData.activaciones || 0}</p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:G.deepBlue,opacity:.5,letterSpacing:2,textTransform:'uppercase'}}>Activaciones</p>
-                        </div>
-                        <div style={{textAlign:'center'}}>
-                            <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.8rem',color:elOtroData.activaciones >= MIN_ACTIVACIONES_EL_OTRO ? G.golden : G.danger}}>
-                                {MIN_ACTIVACIONES_EL_OTRO - (elOtroData.activaciones || 0) > 0 ? MIN_ACTIVACIONES_EL_OTRO - (elOtroData.activaciones || 0) : 0}
-                            </p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:G.deepBlue,opacity:.5,letterSpacing:2,textTransform:'uppercase'}}>Restantes</p>
-                        </div>
-                    </div>
-                    {(elOtroData.activaciones || 0) < MIN_ACTIVACIONES_EL_OTRO && (
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.danger,marginTop:12,opacity:.8}}>
-                            ⚠️ Necesitas activarlo {MIN_ACTIVACIONES_EL_OTRO - (elOtroData.activaciones || 0)} veces más para evitar la penalización de {PENALIZACION_EL_OTRO} pts.
-                        </p>
-                    )}
-                </div>
-            ) : (
-                <div>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,color:G.deepBlue,textAlign:'center',marginBottom:16,letterSpacing:1}}>
-                        Elige tu equipo — una vez elegido no se puede cambiar
-                    </p>
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10}}>
-                        {equiposDisponibles.map(equipo => (
-                            <button key={equipo} onClick={() => elegirEquipo(equipo)} disabled={guardando}
-                                style={{padding:'12px 8px',borderRadius:12,border:`1.5px solid rgba(0,31,107,0.15)`,
-                                    background:'#f8f8f8',fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
-                                    color:G.deepBlue,cursor:'pointer',textAlign:'center',transition:'all .2s'}}>
-                                {equipo}
+            {/* Reglas */}
+            <div style={{background:'rgba(0,31,107,0.04)',borderRadius:14,padding:16,marginBottom:20,border:'1px solid rgba(0,31,107,0.08)'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',marginBottom:8,fontWeight:600}}>Cómo funciona</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,lineHeight:1.7,margin:0}}>
+                    Cada jugador tiene un equipo de Primera División asignado para <strong>toda la temporada</strong>, en secreto. Cada jornada decides si activarlo o no. Si tu equipo <strong>gana</strong> → ×2 puntos. Si <strong>empata</strong> → sin efecto. Si <strong>pierde</strong> → ÷2 (redondeo a la baja). Mínimo <strong>3 activaciones</strong> en la temporada. El equipo es secreto hasta que decidas revelarlo — y no podrás ocultarlo de nuevo.
+                </p>
+            </div>
+
+            {/* Plazo */}
+            <div style={{background: plazoSuperado ? 'rgba(230,57,70,0.08)' : 'rgba(255,215,0,0.1)', borderRadius:12, padding:'10px 16px', marginBottom:20, border:`1px solid ${plazoSuperado ? 'rgba(230,57,70,0.3)' : 'rgba(255,215,0,0.3)'}`, display:'flex', alignItems:'center', gap:10}}>
+                <i className="ti ti-clock" style={{fontSize:18, color: plazoSuperado ? G.danger : G.golden}} aria-hidden="true" />
+                <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,color: plazoSuperado ? G.danger : G.deepBlue}}>
+                    {plazoSuperado ? 'PLAZO CERRADO' : 'Plazo límite: Jueves 13 Ago · 23:59h'}
+                </span>
+            </div>
+
+            {/* Mi equipo elegido */}
+            {yoElegí && (
+                <div style={{background:'#001F6B',borderRadius:18,padding:24,textAlign:'center',marginBottom:24}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginBottom:6}}>Tu equipo secreto</p>
+                    {miElOtro.revelado ? (
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:'#FFD700',letterSpacing:2}}>{miElOtro.equipo}</p>
+                    ) : (
+                        <div>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,color:'rgba(255,255,255,0.2)',letterSpacing:4}}>??? ??? ???</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:4}}>Solo tú sabes cuál es</p>
+                            <button onClick={revelarEquipo} style={{marginTop:12,background:'rgba(255,215,0,0.1)',border:'1px solid rgba(255,215,0,0.3)',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,padding:'8px 20px',borderRadius:20,cursor:'pointer',textTransform:'uppercase'}}>
+                                Revelar mi equipo
                             </button>
-                        ))}
+                        </div>
+                    )}
+                    <div style={{display:'flex',justifyContent:'center',gap:32,marginTop:20}}>
+                        <div style={{textAlign:'center'}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#FFD700'}}>{miElOtro.activaciones || 0}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.35)',letterSpacing:2,textTransform:'uppercase'}}>Activaciones</p>
+                        </div>
+                        <div style={{textAlign:'center'}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:(miElOtro.activaciones||0) >= MIN_ACTIVACIONES_EL_OTRO ? '#FFD700' : G.danger}}>
+                                {Math.max(0, MIN_ACTIVACIONES_EL_OTRO - (miElOtro.activaciones || 0))}
+                            </p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.35)',letterSpacing:2,textTransform:'uppercase'}}>Restantes</p>
+                        </div>
                     </div>
                 </div>
             )}
+
+            {/* Es mi turno — elegir equipo */}
+            {!yoElegí && esMiTurno && !plazoSuperado && (
+                <div>
+                    <div style={{background:'rgba(255,215,0,0.12)',border:'1.5px solid #FFD700',borderRadius:14,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}>
+                        <i className="ti ti-star-filled" style={{fontSize:20,color:'#FFD700'}} aria-hidden="true" />
+                        <div>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:G.deepBlue,letterSpacing:1}}>¡ES TU TURNO!</p>
+                            {tiempoRestante !== null && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.6}}>Tienes {tiempoRestante} min para elegir antes de que pase al siguiente</p>}
+                        </div>
+                    </div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6,textAlign:'center',marginBottom:16}}>
+                        Elige tu equipo de Primera División — una vez elegido no se puede cambiar y será secreto
+                    </p>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:8}}>
+                        {equiposDisponibles.map(function(equipo) {
+                            return (
+                                <button key={equipo} onClick={function() { elegirEquipo(equipo); }} disabled={guardando}
+                                    style={{padding:'14px 8px',borderRadius:12,border:'1.5px solid rgba(0,31,107,0.15)',
+                                        background:'#fff',fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:600,letterSpacing:1,
+                                        color:G.deepBlue,cursor:'pointer',textAlign:'center',transition:'all .2s',textTransform:'uppercase'}}>
+                                    {equipo}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Esperando turno */}
+            {!yoElegí && !esMiTurno && !plazoSuperado && (
+                <div style={{background:'rgba(0,31,107,0.04)',borderRadius:14,padding:20,textAlign:'center',marginBottom:20,border:'1px solid rgba(0,31,107,0.08)'}}>
+                    <i className="ti ti-hourglass" style={{fontSize:32,color:G.deepBlue,opacity:.3}} aria-hidden="true" />
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,color:G.deepBlue,letterSpacing:2,marginTop:8}}>ESPERANDO TU TURNO</p>
+                    {turnoActual && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5,marginTop:4}}>Ahora está eligiendo: <strong>{turnoActual}</strong></p>}
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:8}}>Recibirás acceso automáticamente cuando te toque</p>
+                </div>
+            )}
+
+            {/* Estado del draft — quién ha elegido ya */}
+            <div style={{marginTop:24}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.4,textTransform:'uppercase',marginBottom:12}}>Estado del draft</p>
+                {ordenFinal.map(function(jugador, i) {
+                    var datos = todosElOtro[jugador] || {};
+                    var eligió = !!datos.equipo;
+                    var esTurno = turnoActual === jugador;
+                    var esSaltado = !!datos.saltado;
+                    return (
+                        <div key={jugador} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:esTurno ? '#FFD700' : 'rgba(0,31,107,0.3)',width:24,textAlign:'center',fontWeight:700}}>{i+1}</span>
+                            <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color: eligió ? G.deepBlue : esTurno ? G.deepBlue : 'rgba(0,31,107,0.4)',textTransform:'uppercase'}}>{jugador}</span>
+                            {eligió && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(16,185,129,0.1)',color:'#10b981',padding:'3px 10px',borderRadius:10}}>✓ Elegido</span>}
+                            {!eligió && esTurno && !esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(255,215,0,0.15)',color:'#d4af37',padding:'3px 10px',borderRadius:10}}>← Turno</span>}
+                            {esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(230,57,70,0.1)',color:G.danger,padding:'3px 10px',borderRadius:10}}>Saltado</span>}
+                            {!eligió && !esTurno && !esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.25)'}}>Pendiente</span>}
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 };
@@ -2667,12 +2822,12 @@ function App() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(10px)', borderBottom: '0.5px solid rgba(0,31,107,0.08)', position: 'relative', zIndex: 10 }}>
                 <button
                     onClick={function() { setDrawerOpen(true); }}
-                    style={{ width: 38, height: 38, background: 'rgba(0,31,107,0.07)', border: 'none', borderRadius: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, animation: drawerHintShown ? 'none' : 'menuPulse 1.5s ease 0.8s 3', position: 'relative' }}
+                    style={{ width: 40, height: 40, background: 'rgba(0,31,107,0.07)', border: 'none', borderRadius: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 5, padding: '0 10px', animation: drawerHintShown ? 'none' : 'menuPulse 1.5s ease 0.8s 3', position: 'relative' }}
                     aria-label="Abrir menú"
                 >
-                    <div style={{ width: 16, height: 2, background: '#001F6B', borderRadius: 2 }} />
-                    <div style={{ width: 11, height: 2, background: '#001F6B', borderRadius: 2, alignSelf: 'flex-start', marginLeft: 3 }} />
-                    <div style={{ width: 16, height: 2, background: '#001F6B', borderRadius: 2 }} />
+                    <div style={{ width: 20, height: 2, background: '#001F6B', borderRadius: 2 }} />
+                    <div style={{ width: 14, height: 2, background: '#001F6B', borderRadius: 2, marginLeft: 3 }} />
+                    <div style={{ width: 20, height: 2, background: '#001F6B', borderRadius: 2 }} />
                 </button>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
                     <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 22, fontWeight: 700, color: '#001F6B', letterSpacing: 1, lineHeight: 1 }}>PORRA</span>
