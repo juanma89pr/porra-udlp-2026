@@ -5312,11 +5312,10 @@ function debeMostrarIntro() {
     // Vista previa forzada: añade ?intro=1 a la URL para verla en cualquier momento.
     var params = new URLSearchParams(window.location.search);
     if (params.get('intro') === '1') return true;
-    // Quien entra con el código de prueba (udlp2027) ya salta la pantalla de
-    // "en construcción" — que vea también la intro ya, sin esperar a la fecha.
-    if (sessionStorage.getItem('porra_prueba') === '1') {
-        return !localStorage.getItem('intro_presentacion_2627_vista');
-    }
+    // Modo prueba (código udlp2027): siempre visible al entrar, tantas veces
+    // como quieran — NO se marca como "vista" para este grupo.
+    if (sessionStorage.getItem('porra_prueba') === '1') return true;
+    // Usuarios normales: solo a partir de la fecha de lanzamiento, y una sola vez.
     if (new Date() < FECHA_LANZAMIENTO_INTRO) return false;
     return !localStorage.getItem('intro_presentacion_2627_vista');
 }
@@ -5324,19 +5323,21 @@ function debeMostrarIntro() {
 const IntroPresentacionGate = ({ onFinish }) => {
     var [fase, setFase] = useState('negro'); // negro -> esperandoGesto -> presentacion
     var [necesitaGesto, setNecesitaGesto] = useState(false);
+    var [errorCarga, setErrorCarga] = useState(''); // mensaje si el archivo no carga
     var audioRef = useRef(null);
     var timerRef = useRef(null);
+    var yaArrancado = useRef(false); // evita que se dispare dos veces (StrictMode / re-render)
 
     var arrancar = function() {
+        if (yaArrancado.current) return;
+        yaArrancado.current = true;
+
         var audio = audioRef.current;
         if (audio) {
             audio.currentTime = 0;
             var p = audio.play();
             if (p && p.catch) {
-                p.catch(function() {
-                    // Autoplay bloqueado por el navegador — pedimos un toque
-                    setNecesitaGesto(true);
-                });
+                p.catch(function() { setNecesitaGesto(true); });
             }
         }
         timerRef.current = setTimeout(function() { setFase('presentacion'); }, 2000);
@@ -5344,9 +5345,38 @@ const IntroPresentacionGate = ({ onFinish }) => {
 
     useEffect(function() {
         arrancar();
-        return function() { if (timerRef.current) clearTimeout(timerRef.current); };
+        return function() {
+            if (timerRef.current) clearTimeout(timerRef.current);
+            var audio = audioRef.current;
+            if (audio) { audio.pause(); }
+        };
         // eslint-disable-next-line
     }, []);
+
+    // Al llegar a la fase de presentación, comprobamos que el archivo existe
+    // de verdad antes de confiar en que el iframe lo va a mostrar. Si no está
+    // en /presentacion_porra.html (falta subirlo, 404, o una regla de Netlify
+    // lo está redirigiendo a index.html) lo decimos claramente en pantalla.
+    useEffect(function() {
+        if (fase !== 'presentacion') return;
+        fetch('/presentacion_porra.html', { cache: 'no-store' })
+            .then(function(res) {
+                if (!res.ok) {
+                    setErrorCarga('El archivo /presentacion_porra.html no se encuentra (error ' + res.status + '). Súbelo a la carpeta public/ del proyecto y vuelve a desplegar.');
+                    return;
+                }
+                return res.text().then(function(texto) {
+                    // Si Netlify está redirigiendo todo a index.html, el contenido
+                    // que llega es el de la app React, no el de la presentación.
+                    if (texto.indexOf('id="s0"') === -1 && texto.indexOf('SLIDE_IDS') === -1) {
+                        setErrorCarga('En esa ruta no está la presentación (parece que está devolviendo otra página). Revisa que public/presentacion_porra.html exista y que no haya una regla de redirección en netlify.toml que la intercepte.');
+                    }
+                });
+            })
+            .catch(function() {
+                setErrorCarga('No se pudo comprobar el archivo de la presentación. Revisa la conexión o el despliegue.');
+            });
+    }, [fase]);
 
     var tocarParaActivar = function() {
         setNecesitaGesto(false);
@@ -5378,7 +5408,7 @@ const IntroPresentacionGate = ({ onFinish }) => {
                 </button>
             )}
 
-            {fase === 'presentacion' && (
+            {fase === 'presentacion' && !errorCarga && (
                 <div style={{ position: 'absolute', inset: 0, animation: 'fadeIn 0.6s ease both' }}>
                     <iframe
                         title="Presentación Porra UDLP 26/27"
@@ -5392,6 +5422,24 @@ const IntroPresentacionGate = ({ onFinish }) => {
                         border: '1px solid rgba(255,255,255,0.2)', borderRadius: 20,
                         padding: '8px 16px', cursor: 'pointer', textTransform: 'uppercase' }}>
                         Saltar ✕
+                    </button>
+                </div>
+            )}
+
+            {fase === 'presentacion' && errorCarga && (
+                <div style={{ maxWidth: 380, padding: 24, textAlign: 'center' }}>
+                    <p style={{ fontFamily: "'Teko',sans-serif", fontSize: 15, letterSpacing: 2,
+                        color: '#e63946', textTransform: 'uppercase', marginBottom: 12 }}>
+                        No se pudo cargar la presentación
+                    </p>
+                    <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
+                        {errorCarga}
+                    </p>
+                    <button onClick={finalizar} style={{
+                        marginTop: 20, fontFamily: "'Teko',sans-serif", fontSize: 14, letterSpacing: 2,
+                        background: '#001F6B', color: '#FFD700', border: 'none', borderRadius: 20,
+                        padding: '10px 24px', cursor: 'pointer', textTransform: 'uppercase' }}>
+                        Continuar a la app
                     </button>
                 </div>
             )}
@@ -5624,6 +5672,18 @@ function App() {
                 </div>
 
                 <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    {/* Ver presentación de nuevo — solo modo prueba */}
+                    {typeof window !== 'undefined' && sessionStorage.getItem('porra_prueba') === '1' && (
+                        <button onClick={function() { setDrawerOpen(false); setMostrarIntro(true); }}
+                            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                padding: '10px 14px', marginBottom: 10, border: '1px solid rgba(255,215,0,0.3)', borderRadius: 12,
+                                background: 'rgba(255,215,0,0.08)', color: '#FFD700', cursor: 'pointer' }}>
+                            <i className="ti ti-player-play" style={{ fontSize: 14 }} aria-hidden="true" />
+                            <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 13, letterSpacing: 1, textTransform: 'uppercase' }}>
+                                Ver presentación
+                            </span>
+                        </button>
+                    )}
                     {/* Botón Invita a Amigos */}
                     <button onClick={function() {
                         var baseUrl = window.location.origin + '/invitacion.html';
