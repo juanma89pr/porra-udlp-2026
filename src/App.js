@@ -263,7 +263,7 @@ const LoadingSkeleton = () => (<div style={{padding:'60px', textAlign:'center', 
 
 // ─── MODO CONSTRUCCIÓN ────────────────────────────────────────────────────────
 // Cambia a false para desbloquear la app cuando esté lista
-const APP_EN_CONSTRUCCION = true;
+const APP_EN_CONSTRUCCION = false;
 
 const ModoConstruccion = () => {
     const [fase, setFase] = useState(0);
@@ -872,7 +872,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 {/* --- ALERTA DE JOKERS / DINERO EXTRA --- */}
                 {['Abierta', 'Pre-apertura'].includes(currentJornada.estado) && participantes.length > 0 && (
                     <div style={{marginTop: '40px', backgroundColor: 'rgba(0,0,0,0.2)', padding: '25px', borderRadius: '16px', border: `1px dashed rgba(255,215,0,0.2)`}}>
-                        <h4 style={{color: styles.colors.silver, marginBottom: '20px', fontSize: '0.9rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>HAN APOSTADO ({participantes.length}/{JUGADORES.length})</h4>
+                        <h4 style={{color: styles.colors.silver, marginBottom: '20px', fontSize: '0.9rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>HAN APOSTADO ({participantes.length}/{JUGADORES_BASE.length})</h4>
                         
                         {estadisticasJoker.usuarios > 0 && (
                             <div style={{marginBottom: '20px', padding: '12px', backgroundColor: 'rgba(16,185,129,0.1)', border: `1px solid rgba(16,185,129,0.3)`, borderRadius: '12px'}}>
@@ -1057,7 +1057,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     {jornadaActual.estado === 'Abierta' || jornadaActual.estado === 'Pre-apertura' ? (
                         <div style={{padding: '25px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '16px', border: `1px dashed rgba(255,215,0,0.2)`}}>
                             <p style={{color: styles.colors.silver, fontSize: '0.9rem', fontStyle: 'italic'}}>Las apuestas son secretas hasta el inicio del encuentro.</p>
-                            <p style={{marginTop: '15px', fontSize: '1.2rem', color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>HAN APOSTADO: {participantes.length} / {JUGADORES.length}</p>
+                            <p style={{marginTop: '15px', fontSize: '1.2rem', color: styles.colors.golden, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>HAN APOSTADO: {participantes.length} / {JUGADORES_BASE.length}</p>
                         </div>
                     ) : (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
@@ -1458,7 +1458,7 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
             const jornadas = jSnap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => a.numeroJornada - b.numeroJornada);
             
             const st = {};
-            JUGADORES.forEach(j => st[j] = { maxPtsJornada: 0, golesAcertados: 0, rachaP: 0, rachaC: 0, aRP: 0, aRC: 0, plenos: 0, exactos: 0, segurita: 0, participaciones: 0 });
+            JUGADORES_BASE.forEach(j => st[j] = { maxPtsJornada: 0, golesAcertados: 0, rachaP: 0, rachaC: 0, aRP: 0, aRC: 0, plenos: 0, exactos: 0, segurita: 0, participaciones: 0 });
 
             for (const j of jornadas) {
                 const pSnap = await getDocs(collection(db, "pronosticos", j.id, "jugadores"));
@@ -1639,7 +1639,7 @@ const AdminCierreTemporada = () => {
             // F. Calcular para cada jugador qué puntos EXTRA faltan sumar
             //    IMPORTANTE: los puntos de la última jornada ya están en clasificación
             //    según me confirmas. Los detectamos comparando puntosObtenidos en el pronóstico.
-            const filas = JUGADORES.map(userId => {
+            const filas = JUGADORES_BASE.map(userId => {
                 const clasif = clasifActual[userId] || {};
                 const totalActual = clasif.puntosTotales || 0;
 
@@ -2459,648 +2459,100 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles }) => {
 };
 
 // ============================================================================
-// --- COMPONENTE PRINCIPAL APP ---
 // ============================================================================
-// --- LOGIN SCREEN — NOMBRE + PIN ---
+// --- LOGIN SCREEN — VERSIÓN SIMPLE (lista de nombres) ---
 // ============================================================================
-const loginConPinCallable = httpsCallable(functions, "loginConPin");
-
 const LoginScreen = ({ onLoginSuccess }) => {
-    const [slide, setSlide] = useState(0);
-    const [data, setData] = useState(null);
-    const [clasifRevealed, setClasifRevealed] = useState(0);
-    const [showPodium, setShowPodium] = useState(false);
-    const TOTAL = 4;
-    const esMalaga = eq => (eq||'').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes('MALAGA');
+    var G = styles.colors;
 
-    useEffect(() => {
-        const load = async () => {
-            try {
-                // Última jornada finalizada
-                const jornadasSnap = await getDocs(query(collection(db,"jornadas"),where("estado","==","Finalizada"),orderBy("numeroJornada","desc"),limit(1)));
-                let ultimaJ = null; let pronosticos = [];
-                if(!jornadasSnap.empty){
-                    ultimaJ = {id:jornadasSnap.docs[0].id,...jornadasSnap.docs[0].data()};
-                    const pSnap = await getDocs(collection(db,"pronosticos",ultimaJ.id,"jugadores"));
-                    pronosticos = pSnap.docs.map(d=>({id:d.id,...d.data()}));
-                }
-                // Calcular premio jornada
-                let ganadores = ultimaJ?.ganadores || [];
-                const coste = ultimaJ?.esVip ? 2 : 1;
-                let rec = 0;
-                pronosticos.forEach(p=>{ rec+=coste; if(p.jokerActivo&&p.jokerPronosticos){ rec+=p.jokerPronosticos.filter(jp=>jp.local!==''&&jp.visitante!=='').length*coste; }});
-                const bote = parseFloat(ultimaJ?.bote||0);
-                const totalBote = bote + rec;
-                const premioPorGanador = ganadores.length > 0 ? (totalBote/ganadores.length).toFixed(2) : 0;
-
-                // El Camino
-                const playoffSnap = await getDoc(doc(db,"configuracion","playoff"));
-                const playoff = playoffSnap.exists() ? playoffSnap.data() : {};
-                const extraSnap = await getDocs(collection(db,"apuestasExtra"));
-                const apuestasExtra = {};
-                extraSnap.forEach(d=>{apuestasExtra[d.id]=d.data();});
-                ['Carlos','Carmelo','José'].forEach(n=>{if(!apuestasExtra[n])apuestasExtra[n]={equipo:'Málaga CF'};});
-                const caminoGanadores = Object.entries(apuestasExtra).filter(([,v])=>esMalaga(v.equipo||'')).map(([k])=>k);
-
-                // Porra anual
-                const anualSnap = await getDocs(collection(db,"porraAnualPronosticos"));
-                const apuestasAnuales = {};
-                anualSnap.forEach(d=>{apuestasAnuales[d.id]=d.data();});
-                const g5=[],g10=[],g20=[];
-                Object.entries(apuestasAnuales).forEach(([userId,ap])=>{
-                    const ascRaw = String(ap.ascenso||ap.asciende||'').toUpperCase().trim();
-                    const dijoSube = ascRaw==='SI'||ascRaw==='SÍ'||ascRaw==='TRUE';
-                    const aciertoAsc = dijoSube===false;
-                    const posRaw = String(ap.posicion||'').trim();
-                    const aciertoPosicion = posRaw==='5';
-                    if(aciertoAsc&&aciertoPosicion) g20.push(userId);
-                    else if(aciertoPosicion) g10.push(userId);
-                    else if(aciertoAsc) g5.push(userId);
-                });
-
-                // Clasificación
-                const clasifSnap = await getDocs(collection(db,"clasificacion"));
-                const clasif = clasifSnap.docs.map(d=>({id:d.id,...d.data()}))
-                    .filter(d=>d.puntosTotales!==undefined)
-                    .sort((a,b)=>(b.puntosTotales||0)-(a.puntosTotales||0));
-
-                setData({ ultimaJ, ganadores, totalBote, premioPorGanador, playoff, caminoGanadores, g5, g10, g20, clasif });
-                setSlide(1);
-            } catch(e){ console.error(e); setSlide(1); }
-        };
-        load();
-    }, []);
-
-    const goNext = () => { if(slide < TOTAL) setSlide(s=>s+1); };
-    const goPrev = () => { if(slide > 1) setSlide(s=>s-1); };
-
-    const revealNext = () => {
-        if(!data) return;
-        const total = data.clasif.length;
-        if(clasifRevealed < total){ setClasifRevealed(r=>r+1); }
-        else { setShowPodium(true); }
+    var handleSelect = function(nombre) {
+        signInAnonymously(auth).then(function() {
+            onLoginSuccess(nombre);
+        }).catch(function(e) {
+            console.error('Error login:', e);
+            alert('Error al iniciar sesión. Inténtalo de nuevo.');
+        });
     };
-
-    const G = colors;
-
-    const slideStyle = (n) => ({
-        display: slide === n ? 'flex' : 'none',
-        flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        minHeight: '100vh', padding: '30px 20px', textAlign: 'center',
-        animation: 'slideIn 0.5s ease',
-    });
-
-    const bigTitle = { fontFamily:"'Oswald',sans-serif", fontSize:'clamp(2rem,7vw,3rem)', fontWeight:700, color:G.golden, letterSpacing:'2px', lineHeight:1.1, textTransform:'uppercase', textShadow:`0 0 30px rgba(255,215,0,0.4)` };
-    const subTitle = { fontFamily:"'Montserrat',sans-serif", fontSize:'11px', letterSpacing:'4px', color:'rgba(255,255,255,0.5)', textTransform:'uppercase', marginBottom:'12px' };
-    const divider = { width:'50px', height:'2px', background:`linear-gradient(90deg,transparent,${G.goldenDark},transparent)`, margin:'16px auto' };
-    const btn = { fontFamily:"'Oswald',sans-serif", background:`linear-gradient(135deg,${G.goldenDark},${G.golden},#FFF7A1,${G.golden})`, color:'#000', border:'none', borderRadius:'30px', padding:'13px 36px', fontSize:'1rem', fontWeight:700, cursor:'pointer', letterSpacing:'2px', textTransform:'uppercase', boxShadow:`0 8px 25px rgba(212,175,55,0.4)`, width:'100%', maxWidth:'300px', marginTop:'20px' };
-    const btnSecondary = { ...btn, background:'transparent', color:G.golden, border:`1px solid ${G.goldenDark}`, boxShadow:'none', maxWidth:'140px', fontSize:'0.8rem', padding:'10px 20px' };
-    const card = { background:'rgba(0,0,0,0.4)', border:`1px solid rgba(255,215,0,0.2)`, borderRadius:'16px', padding:'20px', width:'100%', marginBottom:'12px' };
-    const progressDots = (
-        <div style={{display:'flex',gap:'6px',marginBottom:'24px'}}>
-            {[1,2,3,4].map(i=>(
-                <div key={i} style={{flex:1,height:'3px',borderRadius:'2px',background: i<=slide ? G.goldenDark : 'rgba(255,255,255,0.12)',transition:'background .3s'}}/>
-            ))}
-        </div>
-    );
-    const winnerPill = (name, pts) => (
-        <span key={name} style={{display:'inline-flex',alignItems:'center',gap:'6px',background:'rgba(16,185,129,0.15)',border:`1px solid ${G.success}`,color:G.success,borderRadius:'20px',padding:'5px 14px',fontSize:'12px',fontWeight:700,margin:'4px',letterSpacing:'1px'}}>
-            {userProfiles[name]?.icon || '⭐'} {name} {pts && <span style={{background:G.success,color:'#000',borderRadius:'10px',padding:'1px 7px',fontSize:'10px',fontWeight:700,marginLeft:'4px'}}>{pts}</span>}
-        </span>
-    );
-    const playerChip = (name, color='rgba(255,215,0,0.7)', pts=null) => (
-        <span key={name} style={{display:'inline-flex',alignItems:'center',gap:'5px',background:'rgba(0,0,0,0.4)',border:`1px solid ${color}55`,color,borderRadius:'20px',padding:'5px 14px',fontSize:'12px',fontWeight:700,margin:'4px'}}>
-            {userProfiles[name]?.icon || '⭐'} {name} {pts && <span style={{background:color,color:'#000',borderRadius:'10px',padding:'1px 8px',fontSize:'10px',fontWeight:800,marginLeft:'2px'}}>{pts}</span>}
-        </span>
-    );
-
-    const overallStyle = { position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:9000, background:`linear-gradient(160deg,#000510 0%,#001230 50%,#000 100%)`, color:'#fdfbf7', overflowY:'auto', fontFamily:"'Montserrat',sans-serif" };
-
-    if(!data && slide === 0) return (
-        <div style={{...overallStyle,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
-            <div style={{...bigTitle,fontSize:'1.5rem',animation:'pulse 1.5s infinite alternate'}}>⚡ CARGANDO GALA...</div>
-        </div>
-    );
 
     return (
-        <div style={overallStyle}>
-            <style>{`
-                @keyframes slideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
-                @keyframes shimmer { 0%,100% { text-shadow: 0 0 20px rgba(255,215,0,0.3); } 50% { text-shadow: 0 0 40px rgba(255,215,0,0.8), 0 0 80px rgba(255,215,0,0.3); } }
-                @keyframes floatUp { from { opacity:0; transform:translateY(30px) scale(.9); } to { opacity:1; transform:translateY(0) scale(1); } }
-                @keyframes pulse { 0% { transform:scale(1); } 100% { transform:scale(1.05); } }
-                .gala-reveal { animation: floatUp .5s ease both; }
-            `}</style>
-
-            {/* SLIDE 1: JORNADA FINAL */}
-            <div style={slideStyle(1)}>
-                {progressDots}
-                <p style={subTitle}>Jornada Final del Playoff · 1 / 4</p>
-                <p style={{...bigTitle,fontSize:'clamp(1.6rem,5vw,2.2rem)',marginBottom:'4px'}}>UDLP vs Málaga CF</p>
-                <p style={{...bigTitle,fontSize:'clamp(.85rem,2.5vw,1rem)',color:'rgba(255,255,255,0.5)',letterSpacing:'3px'}}>VUELTA · PLAYOFF ASCENSO</p>
-                <div style={divider}/>
-
-                {/* Marcador */}
-                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'20px',margin:'20px 0'}}>
-                    <div style={{textAlign:'center'}}>
-                        <div style={{fontSize:'clamp(3rem,10vw,4.5rem)',fontFamily:"'Oswald',sans-serif",fontWeight:700,color:G.golden,background:'rgba(0,0,0,0.5)',border:`2px solid ${G.goldenDark}`,borderRadius:'16px',width:'80px',height:'80px',display:'flex',alignItems:'center',justifyContent:'center',textShadow:`0 0 20px rgba(255,215,0,0.5)`}}>
-                            {data?.ultimaJ?.resultadoLocal ?? '?'}
-                        </div>
-                        <p style={{fontSize:'11px',color:'rgba(255,255,255,0.5)',marginTop:'8px',letterSpacing:'1px'}}>UDLP</p>
-                    </div>
-                    <div style={{fontFamily:"'Oswald',sans-serif",fontSize:'1.8rem',color:'rgba(255,255,255,0.3)'}}>—</div>
-                    <div style={{textAlign:'center'}}>
-                        <div style={{fontSize:'clamp(3rem,10vw,4.5rem)',fontFamily:"'Oswald',sans-serif",fontWeight:700,color:G.silver,background:'rgba(0,0,0,0.5)',border:`2px solid rgba(192,192,192,0.3)`,borderRadius:'16px',width:'80px',height:'80px',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                            {data?.ultimaJ?.resultadoVisitante ?? '?'}
-                        </div>
-                        <p style={{fontSize:'11px',color:'rgba(255,255,255,0.5)',marginTop:'8px',letterSpacing:'1px'}}>MÁL</p>
-                    </div>
-                </div>
-
-                <div style={{...card,textAlign:'left'}}>
-                    {[
-                        ['⚽ Goleador UDLP', data?.ultimaJ?.goleador || 'Sin Goleador', G.golden],
-                        ['💰 Total en juego', data ? `${data.totalBote.toFixed(2)}€` : '—', G.golden],
-                        ['🏆 Premio por ganador', data?.ganadores?.length > 0 ? `${data.premioPorGanador}€` : 'Sin ganadores', G.success],
-                    ].map(([label, val, col]) => (
-                        <div key={label} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid rgba(255,255,255,0.06)`}}>
-                            <span style={{fontSize:'12px',color:'rgba(255,255,255,0.5)'}}>{label}</span>
-                            <span style={{fontFamily:"'Oswald',sans-serif",fontSize:'1.05rem',color:col,fontWeight:700}}>{val}</span>
-                        </div>
-                    ))}
-                    <div style={{paddingTop:'14px'}}>
-                        <p style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',letterSpacing:'1px',textTransform:'uppercase',marginBottom:'8px'}}>Ganadores del exacto</p>
-                        <div style={{display:'flex',flexWrap:'wrap',gap:'6px'}}>
-                            {data?.ganadores?.length > 0 ? data.ganadores.map(g=>winnerPill(g)) : <span style={{color:'rgba(255,255,255,0.4)',fontSize:'13px',fontStyle:'italic'}}>Nadie acertó el exacto</span>}
-                        </div>
-                    </div>
-                </div>
-                <button style={btn} onClick={goNext}>El Camino →</button>
-                <button style={{...btnSecondary,marginTop:'12px',fontSize:'0.75rem'}} onClick={onClose}>Saltar presentación</button>
-            </div>
-
-            {/* SLIDE 2: EL CAMINO */}
-            <div style={slideStyle(2)}>
-                {progressDots}
-                <p style={subTitle}>El Camino al Ascenso · 2 / 4</p>
-                <div style={{fontSize:'3rem',marginBottom:'8px',animation:'shimmer 2s infinite'}}>🏆</div>
-                <p style={bigTitle}>El Camino</p>
-                <div style={divider}/>
-                <div style={{display:'flex',gap:'10px',width:'100%',margin:'16px 0'}}>
-                    {['UD Almería','Málaga CF'].map(eq=>(
-                        <div key={eq} style={{flex:1,padding:'14px 8px',background:esMalaga(eq)?'rgba(212,175,55,0.12)':'rgba(0,0,0,0.4)',border:`1px solid ${esMalaga(eq)?G.goldenDark:'rgba(255,255,255,0.1)'}`,borderRadius:'12px',fontSize:'13px',fontWeight:700,color:esMalaga(eq)?G.golden:G.silver,textAlign:'center',boxShadow:esMalaga(eq)?`0 0 20px rgba(212,175,55,0.15)`:''}}>{eq}</div>
-                    ))}
-                </div>
-                <div style={{padding:'20px',background:`linear-gradient(135deg,rgba(212,175,55,0.1),rgba(0,0,0,0.4))`,border:`1px solid ${G.goldenDark}`,borderRadius:'16px',width:'100%',marginBottom:'20px'}}>
-                    <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'clamp(1.5rem,5vw,2rem)',color:G.success,letterSpacing:'2px',textShadow:`0 0 20px rgba(16,185,129,0.5)`}}>
-                        🎉 Asciende: {data?.playoff?.ascendido || 'Málaga CF'}
-                    </p>
-                </div>
-                <p style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',letterSpacing:'2px',textTransform:'uppercase',marginBottom:'10px'}}>+5 puntos para</p>
-                <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:'6px',marginBottom:'8px'}}>
-                    {data?.caminoGanadores?.length > 0 ? data.caminoGanadores.map(n=>playerChip(n,G.golden,'+5')) : <span style={{color:'rgba(255,255,255,0.4)',fontSize:'13px'}}>Nadie acertó</span>}
-                </div>
-                <div style={{display:'flex',gap:'10px',marginTop:'20px',justifyContent:'center',width:'100%',maxWidth:'300px'}}>
-                    <button style={btnSecondary} onClick={goPrev}>← Atrás</button>
-                    <button style={{...btn,maxWidth:'none',flex:1}} onClick={goNext}>Porra Anual →</button>
-                </div>
-            </div>
-
-            {/* SLIDE 3: PORRA ANUAL */}
-            <div style={slideStyle(3)}>
-                {progressDots}
-                <p style={subTitle}>Porra Anual · 3 / 4</p>
-                <div style={{fontSize:'3rem',marginBottom:'8px'}}>📅</div>
-                <p style={bigTitle}>Porra Anual</p>
-                <div style={divider}/>
-                <div style={{...card,textAlign:'left'}}>
-                    {[['📍 Posición final UDLP','5ª',G.golden],['⬆️ ¿Ascendió?','No',colors.danger]].map(([l,v,c])=>(
-                        <div key={l} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid rgba(255,255,255,0.06)`}}>
-                            <span style={{fontSize:'12px',color:'rgba(255,255,255,0.5)'}}>{l}</span>
-                            <span style={{fontFamily:"'Oswald',sans-serif",fontSize:'1.1rem',color:c,fontWeight:700}}>{v}</span>
-                        </div>
-                    ))}
-                </div>
-                {data?.g20?.length > 0 && (
-                    <div style={{width:'100%',marginBottom:'12px'}}>
-                        <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'0.75rem',letterSpacing:'3px',color:'rgba(255,215,0,0.6)',textTransform:'uppercase',marginBottom:'8px'}}>Pleno — +20 puntos</p>
-                        <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center'}}>{data.g20.map(n=>playerChip(n,G.golden,'+20'))}</div>
-                    </div>
-                )}
-                {data?.g10?.length > 0 && (
-                    <div style={{width:'100%',marginBottom:'12px'}}>
-                        <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'0.75rem',letterSpacing:'3px',color:'rgba(192,192,192,0.6)',textTransform:'uppercase',marginBottom:'8px'}}>Posición exacta — +10 puntos</p>
-                        <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center'}}>{data.g10.map(n=>playerChip(n,G.silver,'+10'))}</div>
-                    </div>
-                )}
-                {data?.g5?.length > 0 && (
-                    <div style={{width:'100%',marginBottom:'12px'}}>
-                        <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'0.75rem',letterSpacing:'3px',color:'rgba(205,127,50,0.7)',textTransform:'uppercase',marginBottom:'8px'}}>Ascenso — +5 puntos</p>
-                        <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center'}}>{data.g5.map(n=>playerChip(n,'#CD7F32','+5'))}</div>
-                    </div>
-                )}
-                {!data?.g5?.length && !data?.g10?.length && !data?.g20?.length && (
-                    <p style={{color:'rgba(255,255,255,0.4)',fontSize:'13px',fontStyle:'italic'}}>Nadie acertó posición ni ascenso</p>
-                )}
-                <div style={{display:'flex',gap:'10px',marginTop:'20px',justifyContent:'center',width:'100%',maxWidth:'300px'}}>
-                    <button style={btnSecondary} onClick={goPrev}>← Atrás</button>
-                    <button style={{...btn,maxWidth:'none',flex:1}} onClick={()=>{ setSlide(4); setClasifRevealed(0); setShowPodium(false); }}>Clasificación →</button>
-                </div>
-            </div>
-
-            {/* SLIDE 4: CLASIFICACIÓN */}
-            <div style={slideStyle(4)}>
-                {progressDots}
-                <p style={subTitle}>Clasificación Final · 4 / 4</p>
-                <p style={bigTitle}>Clasificación</p>
-                <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'1rem',color:'rgba(255,255,255,0.4)',letterSpacing:'3px',marginBottom:'4px'}}>FIN DE TEMPORADA</p>
-                <div style={divider}/>
-
-                {/* Lista: empieza en orden alfabético, cada toque coloca al siguiente desde el último */}
-                {(() => {
-                    if(!data?.clasif) return null;
-                    const total = data.clasif.length;
-                    const maxPts = data.clasif[0]?.puntosTotales || 1;
-
-                    // Orden alfabético inicial (todos los jugadores mezclados)
-                    const alfaOrder = [...data.clasif].sort((a,b)=>a.id.localeCompare(b.id));
-
-                    // Los revelados son los últimos `clasifRevealed` de la clasificación real (peores primero)
-                    // revealedIds = set de ids ya revelados con su posición real
-                    const revealedMap = {}; // id → posición real (1=primero)
-                    for(let i = 0; i < clasifRevealed && i < total; i++) {
-                        const posReal = total - i; // empieza por el último
-                        revealedMap[data.clasif[posReal - 1].id] = posReal;
-                    }
-
-                    // Los revelados se muestran en orden de posición real (peor arriba, mejor abajo)
-                    // Los no revelados se muestran en orden alfabético debajo de los revelados
-                    // En realidad mostramos la lista de posiciones ya asignadas arriba,
-                    // y los pendientes en espera abajo
-                    const revealed = data.clasif
-                        .map((j,i)=>({...j, posReal: i+1}))
-                        .filter(j=>revealedMap[j.id] !== undefined)
-                        .sort((a,b)=>b.posReal-a.posReal); // peor posición arriba
-
-                    const pending = alfaOrder.filter(j=>revealedMap[j.id] === undefined);
-
-                    const renderRevealed = (j) => {
-                        const pos = j.posReal;
-                        const pct = Math.round(((j.puntosTotales||0)/maxPts)*100);
-                        const isTop = pos<=3;
-                        const posLabel = pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':`${pos}º`;
-                        const nameColor = pos===1?G.golden:pos===2?G.silver:pos===3?'#CD7F32':'rgba(255,255,255,0.85)';
-                        const barColor = pos===1?G.goldenDark:pos===2?G.silver:pos===3?'#CD7F32':'rgba(255,215,0,0.45)';
-                        return (
-                            <div key={j.id} className="gala-reveal" style={{
-                                display:'flex',alignItems:'center',gap:'10px',
-                                padding:`${isTop?'13px':'9px'} 10px`,
-                                marginBottom:'5px',borderRadius:'12px',
-                                background: pos===1?'rgba(212,175,55,0.13)':pos===2?'rgba(192,192,192,0.07)':pos===3?'rgba(205,127,50,0.07)':'rgba(0,0,0,0.3)',
-                                border:`1px solid ${isTop?barColor+'55':'rgba(255,255,255,0.05)'}`,
-                                boxShadow: isTop ? `0 0 16px ${barColor}22` : 'none',
-                            }}>
-                                <div style={{fontFamily:"'Oswald',sans-serif",fontSize:isTop?'1.35rem':'1rem',minWidth:'38px',textAlign:'center',color:nameColor,fontWeight:700}}>{posLabel}</div>
-                                <div style={{flex:1,textAlign:'left'}}>
-                                    <div style={{fontSize:isTop?'15px':'12px',fontWeight:700,color:nameColor,letterSpacing:'0.5px'}}>
-                                        {userProfiles[j.id]?.icon || '⭐'} {j.id}
-                                    </div>
-                                    <div style={{height:'4px',background:'rgba(255,255,255,0.07)',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-                                        <div style={{height:'100%',width:`${pct}%`,background:barColor,borderRadius:'2px',transition:'width .9s ease .1s'}}/>
-                                    </div>
-                                </div>
-                                <div style={{fontFamily:"'Oswald',sans-serif",fontSize:isTop?'1.35rem':'1rem',fontWeight:700,color:nameColor,minWidth:'42px',textAlign:'right'}}>{j.puntosTotales||0} <span style={{fontSize:'10px',color:`${nameColor}88`}}>pts</span></div>
-                            </div>
-                        );
-                    };
-
-                    const renderPending = (j) => (
-                        <div key={j.id} style={{
-                            display:'flex',alignItems:'center',gap:'10px',
-                            padding:'9px 10px',marginBottom:'5px',borderRadius:'12px',
-                            background:'rgba(255,255,255,0.03)',
-                            border:'1px solid rgba(255,255,255,0.07)',
-                            opacity:0.5,
-                        }}>
-                            <div style={{fontFamily:"'Oswald',sans-serif",fontSize:'1rem',minWidth:'38px',textAlign:'center',color:'rgba(255,255,255,0.25)'}}>—</div>
-                            <div style={{flex:1,textAlign:'left',fontSize:'12px',fontWeight:600,color:'rgba(255,255,255,0.4)',letterSpacing:'0.5px'}}>
-                                {userProfiles[j.id]?.icon || '⭐'} {j.id}
-                            </div>
-                            <div style={{fontFamily:"'Oswald',sans-serif",fontSize:'1rem',fontWeight:700,color:'rgba(255,255,255,0.2)',minWidth:'42px',textAlign:'right'}}>?</div>
-                        </div>
-                    );
-
-                    return (
-                        <div style={{width:'100%',marginBottom:'8px'}}>
-                            {revealed.map(renderRevealed)}
-                            {revealed.length > 0 && pending.length > 0 && (
-                                <div style={{borderTop:'1px dashed rgba(255,255,255,0.08)',margin:'8px 0 8px'}}/>
-                            )}
-                            {pending.map(renderPending)}
-                        </div>
-                    );
-                })()}
-
-                {!showPodium && (
-                    <button style={btn} onClick={revealNext}>
-                        {clasifRevealed === 0
-                            ? '▶ Revelar clasificación'
-                            : clasifRevealed >= (data?.clasif?.length||99)
-                                ? '🎉 Ver podio final'
-                                : `▶ Siguiente — ${(data?.clasif?.length||0) - clasifRevealed} restantes`}
-                    </button>
-                )}
-                {showPodium && (
-                    <div style={{width:'100%',padding:'22px',background:`linear-gradient(135deg,rgba(212,175,55,0.15),rgba(0,0,0,0.5))`,border:`1px solid ${G.goldenDark}`,borderRadius:'16px',marginTop:'8px',animation:'slideIn .5s ease',textAlign:'center'}}>
-                        <p style={{fontFamily:"'Oswald',sans-serif",fontSize:'1.8rem',color:G.golden,letterSpacing:'2px',marginBottom:'6px',textShadow:`0 0 25px rgba(255,215,0,0.6)`}}>🎉 FIN DE TEMPORADA</p>
-                        <p style={{fontSize:'12px',color:'rgba(255,255,255,0.5)',marginBottom:'18px',lineHeight:1.6}}>Los tres primeros se llevan el premio.<br/>¡Enhorabuena a toda la peña!</p>
-                        <button style={btn} onClick={onClose}>Entrar a la app →</button>
-                    </div>
-                )}
-                <button style={{...btnSecondary,marginTop:'12px',fontSize:'0.75rem'}} onClick={goPrev}>← Atrás</button>
-            </div>
-        </div>
-    );
-};
-
-// ============================================================================
-// --- COMPONENTE PRINCIPAL APP ---
-// ============================================================================
-// ============================================================================
-// --- LOGIN SCREEN — NOMBRE + PIN (sustituye el login simple anterior) ---
-// ============================================================================
-const loginConPinCallable = httpsCallable(functions, "loginConPin");
-
-const LoginScreen = ({ onLoginSuccess }) => {
-    const [nombre, setNombre] = useState('');
-    const [showPinModal, setShowPinModal] = useState(false);
-    const [pin, setPin] = useState('');
-    const [cargando, setCargando] = useState(false);
-    const [error, setError] = useState('');
-    const [esNuevoPin, setEsNuevoPin] = useState(false);
-    const [pinConfirmacion, setPinConfirmacion] = useState('');
-    const [pasoNuevoPin, setPasoNuevoPin] = useState(1); // 1 = elegir, 2 = confirmar
-
-    const G = colors;
-
-    const abrirModalPin = () => {
-        if (!nombre.trim()) { setError('Escribe tu nombre primero.'); return; }
-        setError('');
-        setPin('');
-        setPinConfirmacion('');
-        setPasoNuevoPin(1);
-        setEsNuevoPin(false);
-        setShowPinModal(true);
-    };
-
-    const cerrarModal = () => {
-        setShowPinModal(false);
-        setPin('');
-        setPinConfirmacion('');
-        setError('');
-    };
-
-    const pulsarDigito = (d) => {
-        if (cargando) return;
-        const pinActivo = (esNuevoPin && pasoNuevoPin === 2) ? pinConfirmacion : pin;
-        if (pinActivo.length >= 4) return;
-        const nuevoValor = pinActivo + d;
-        if (esNuevoPin && pasoNuevoPin === 2) {
-            setPinConfirmacion(nuevoValor);
-            if (nuevoValor.length === 4) confirmarNuevoPin(nuevoValor);
-        } else {
-            setPin(nuevoValor);
-            if (nuevoValor.length === 4) {
-                if (esNuevoPin) {
-                    // Ya eligió su PIN nuevo, ahora hay que confirmarlo
-                    setPasoNuevoPin(2);
-                } else {
-                    intentarLogin(nuevoValor);
-                }
-            }
-        }
-    };
-
-    const borrarDigito = () => {
-        if (esNuevoPin && pasoNuevoPin === 2) {
-            setPinConfirmacion(p => p.slice(0, -1));
-        } else {
-            setPin(p => p.slice(0, -1));
-        }
-    };
-
-    const intentarLogin = async (pinIntento) => {
-        setCargando(true);
-        setError('');
-        try {
-            const result = await loginConPinCallable({ nombre: nombre.trim(), pin: pinIntento });
-            const { token, esNuevoPin: nuevo } = result.data;
-
-            if (nuevo) {
-                // Era la primera vez de este nombre — la función ya registró
-                // este PIN como definitivo. Pero como aún no sabíamos que era
-                // "nuevo" hasta después de la llamada, completamos sesión
-                // directamente (el registro ya ocurrió en el servidor).
-                await signInWithCustomToken(auth, token);
-                onLoginSuccess(nombre.trim());
-                return;
-            }
-
-            await signInWithCustomToken(auth, token);
-            onLoginSuccess(nombre.trim());
-        } catch (e) {
-            console.error(e);
-            const code = e?.code || '';
-            if (code.includes('permission-denied')) {
-                setError('PIN incorrecto. Inténtalo de nuevo.');
-                setPin('');
-            } else if (code.includes('resource-exhausted')) {
-                setError('Demasiados intentos. Espera un poco o contacta con el admin.');
-            } else {
-                setError('Error al iniciar sesión. Inténtalo de nuevo.');
-            }
-            setCargando(false);
-        }
-    };
-
-    const confirmarNuevoPin = async (pinConfirmado) => {
-        if (pinConfirmado !== pin) {
-            setError('Los PIN no coinciden. Vuelve a intentarlo.');
-            setPasoNuevoPin(1);
-            setPin('');
-            setPinConfirmacion('');
-            return;
-        }
-        // Confirmado: registramos definitivamente con este PIN
-        await intentarLogin(pin);
-    };
-
-    // Detectar si "nombre" parece nuevo: lo sabremos realmente solo cuando
-    // el backend responda esNuevoPin=true. Pero para dar buena UX, si el
-    // primer intento de pin (4 dígitos) fallara como "nuevo", lo gestionamos
-    // dentro de intentarLogin. Para simplificar el flujo visual, ofrecemos
-    // un toggle manual "¿Es la primera vez que entras?" antes de pulsar PIN.
-
-    const pinMostrado = (esNuevoPin && pasoNuevoPin === 2) ? pinConfirmacion : pin;
-
-    return (
-        <div style={{
-            position: 'fixed', inset: 0, background: '#fff',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            fontFamily: "'Montserrat', sans-serif", overflow: 'hidden', padding: '24px'
-        }}>
+        <div style={{ position: 'fixed', inset: 0, background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Montserrat', sans-serif", padding: '24px' }}>
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;600&display=swap');
-                .login-field { transition: border-color .2s ease; }
-                .login-field:focus { border-color: ${G.golden} !important; outline: none; }
-                .pin-key { transition: transform .12s ease, background .12s ease; }
-                .pin-key:active { transform: scale(0.93); background: rgba(0,31,107,0.08); }
-                .pin-dot { transition: all .2s ease; }
-                @keyframes shakeErr { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
-                .shake { animation: shakeErr .35s ease; }
-                @keyframes modalIn { from { opacity:0; transform: translateY(16px) scale(.97); } to { opacity:1; transform: translateY(0) scale(1); } }
-                .modal-in { animation: modalIn .3s ease both; }
+                .login-btn { transition: transform .15s ease, box-shadow .15s ease; }
+                .login-btn:hover { transform: scale(1.04); box-shadow: 0 6px 20px rgba(0,31,107,0.18); }
+                .login-btn:active { transform: scale(0.97); }
             `}</style>
 
-            {/* Pizarra de fondo sutil */}
-            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }}
-                viewBox="0 0 400 600" xmlns="http://www.w3.org/2000/svg" fill="none" preserveAspectRatio="xMidYMid slice">
+            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} viewBox="0 0 400 600" xmlns="http://www.w3.org/2000/svg" fill="none" preserveAspectRatio="xMidYMid slice">
                 <rect x="55" y="55" width="290" height="490" stroke="#001F6B" strokeWidth="0.7" opacity="0.04" />
                 <line x1="55" y1="300" x2="345" y2="300" stroke="#001F6B" strokeWidth="0.6" opacity="0.04" />
                 <circle cx="200" cy="300" r="46" stroke="#001F6B" strokeWidth="0.6" opacity="0.04" />
-                <rect x="113" y="55" width="174" height="96" stroke="#001F6B" strokeWidth="0.6" opacity="0.04" />
-                <rect x="113" y="449" width="174" height="96" stroke="#001F6B" strokeWidth="0.6" opacity="0.04" />
             </svg>
 
-            {/* Escudo */}
-            <div style={{ width: 56, height: 67, marginBottom: 20, position: 'relative', zIndex: 5 }}>
-                <img src="/escudo.png" alt="UD Las Palmas"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 2px 10px rgba(0,20,80,.15))' }}
-                    onError={e => e.target.style.display = 'none'} />
+            <div style={{ width: 52, height: 62, marginBottom: 16, position: 'relative', zIndex: 5 }}>
+                <img src="/escudo.png" alt="UD Las Palmas" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(0,20,80,.15))' }} onError={function(e){ e.target.style.display='none'; }} />
             </div>
 
-            {/* Título */}
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', marginBottom: 6, position: 'relative', zIndex: 5 }}>
-                <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 'clamp(2.4rem,9vw,3.2rem)', color: '#0a0a0a', letterSpacing: 2, lineHeight: 1 }}>PORRA&nbsp;</span>
-                <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 'clamp(2.4rem,9vw,3.2rem)', color: 'transparent', WebkitTextStroke: '1.5px #0a0a0a', letterSpacing: 2, lineHeight: 1 }}>UDLP</span>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', marginBottom: 4, position: 'relative', zIndex: 5 }}>
+                <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 'clamp(2.2rem,8vw,3rem)', color: '#0a0a0a', letterSpacing: 2, lineHeight: 1 }}>PORRA&nbsp;</span>
+                <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 'clamp(2.2rem,8vw,3rem)', color: 'transparent', WebkitTextStroke: '1.5px #0a0a0a', letterSpacing: 2, lineHeight: 1 }}>UDLP</span>
             </div>
-            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, fontWeight: 300, letterSpacing: 6, color: '#0a0a0a', opacity: 0.35, textTransform: 'uppercase', marginBottom: 36, position: 'relative', zIndex: 5 }}>
-                Inicia sesión
+            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, fontWeight: 300, letterSpacing: 5, color: '#0a0a0a', opacity: 0.3, textTransform: 'uppercase', marginBottom: 28, position: 'relative', zIndex: 5 }}>
+                26 — 27
             </p>
 
-            {/* Formulario de nombre */}
-            <div style={{ width: '100%', maxWidth: 300, position: 'relative', zIndex: 5 }}>
-                <label style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 600, color: G.deepBlue, letterSpacing: 1, textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
-                    Tu nombre
-                </label>
-                <input
-                    className="login-field"
-                    type="text"
-                    value={nombre}
-                    onChange={e => { setNombre(e.target.value); setError(''); }}
-                    onKeyDown={e => e.key === 'Enter' && abrirModalPin()}
-                    placeholder="Ej: Juanma"
-                    maxLength={30}
-                    style={{
-                        width: '100%', padding: '14px 16px', border: '1.5px solid rgba(0,31,107,0.2)',
-                        borderRadius: 12, fontFamily: "'Inter',sans-serif", fontSize: '1rem',
-                        color: '#0a0a0a', background: '#f8f8f8', textAlign: 'center', letterSpacing: '0.5px',
-                        marginBottom: 16,
-                    }}
-                    autoFocus
-                />
-
-                {error && !showPinModal && (
-                    <p style={{ color: G.danger, fontSize: 12, textAlign: 'center', marginBottom: 12, fontFamily: "'Inter',sans-serif" }}>{error}</p>
-                )}
-
-                <button onClick={abrirModalPin} style={{
-                    width: '100%', fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.1rem', letterSpacing: 2,
-                    background: G.deepBlue, color: G.golden, border: 'none', borderRadius: 30,
-                    padding: '14px', cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,31,107,0.25)',
-                }}>CONTINUAR →</button>
-
-                <button onClick={() => { setEsNuevoPin(true); abrirModalPin(); }} style={{
-                    width: '100%', marginTop: 12, fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 600,
-                    background: 'transparent', color: G.deepBlue, opacity: 0.55, border: 'none',
-                    letterSpacing: 1, textTransform: 'uppercase', cursor: 'pointer', textDecoration: 'underline',
-                }}>Es la primera vez que entro</button>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, width: '100%', maxWidth: 340, position: 'relative', zIndex: 5 }}>
+                
+                <button className="login-btn" onClick={function(){handleSelect("Juanma");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Juanma
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Lucy");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Lucy
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Antonio");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Antonio
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Mari");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Mari
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Pedro");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Pedro
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Pedrito");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Pedrito
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Himar");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Himar
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Sarito");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Sarito
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Vicky");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Vicky
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Carmelo");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Carmelo
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Laura");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Laura
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Carlos");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Carlos
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("José");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    José
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Claudio");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Claudio
+                </button>
+                <button className="login-btn" onClick={function(){handleSelect("Javi");}} style={{ padding: '14px 8px', borderRadius: 14, border: '1.5px solid rgba(0,31,107,0.12)', background: '#f8f8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, color: '#001F6B', cursor: 'pointer', textAlign: 'center' }}>
+                    Javi
+                </button>
             </div>
-
-            {/* MODAL PIN */}
-            {showPinModal && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,10,40,0.55)', backdropFilter: 'blur(4px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
-                }} onClick={(e) => { if (e.target === e.currentTarget && !cargando) cerrarModal(); }}>
-                    <div className="modal-in" style={{
-                        background: '#fff', borderRadius: 24, padding: '32px 28px', width: '100%', maxWidth: 320,
-                        boxShadow: '0 20px 60px rgba(0,0,0,0.3)', textAlign: 'center', position: 'relative',
-                    }}>
-                        {!cargando && (
-                            <button onClick={cerrarModal} style={{
-                                position: 'absolute', top: 14, right: 14, background: 'none', border: 'none',
-                                fontSize: 18, color: 'rgba(0,0,0,0.3)', cursor: 'pointer', lineHeight: 1,
-                            }}>✕</button>
-                        )}
-
-                        <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 600, color: G.deepBlue, opacity: 0.5, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>
-                            {nombre}
-                        </p>
-                        <p style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', color: '#0a0a0a', letterSpacing: 1, marginBottom: 24 }}>
-                            {esNuevoPin
-                                ? (pasoNuevoPin === 1 ? 'Crea tu PIN' : 'Confírmalo')
-                                : 'Introduce tu PIN'}
-                        </p>
-
-                        {/* Puntos del PIN */}
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginBottom: 24 }} className={error ? 'shake' : ''}>
-                            {[0, 1, 2, 3].map(i => (
-                                <div key={i} className="pin-dot" style={{
-                                    width: 16, height: 16, borderRadius: '50%',
-                                    background: pinMostrado.length > i ? G.deepBlue : 'transparent',
-                                    border: `2px solid ${pinMostrado.length > i ? G.deepBlue : 'rgba(0,31,107,0.25)'}`,
-                                }} />
-                            ))}
-                        </div>
-
-                        {error && (
-                            <p style={{ color: G.danger, fontSize: 12, marginBottom: 16, fontFamily: "'Inter',sans-serif" }}>{error}</p>
-                        )}
-
-                        {cargando ? (
-                            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: G.deepBlue, opacity: 0.6, padding: '20px 0' }}>Verificando...</p>
-                        ) : (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-                                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => {
-                                    if (k === '') return <div key={i} />;
-                                    if (k === '⌫') return (
-                                        <button key={i} onClick={borrarDigito} className="pin-key" style={{
-                                            padding: '16px 0', borderRadius: 14, border: 'none', background: '#f5f5f5',
-                                            fontSize: '1.1rem', color: G.deepBlue, cursor: 'pointer',
-                                        }}>⌫</button>
-                                    );
-                                    return (
-                                        <button key={i} onClick={() => pulsarDigito(k)} className="pin-key" style={{
-                                            padding: '16px 0', borderRadius: 14, border: 'none', background: '#f5f5f5',
-                                            fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.4rem', color: '#0a0a0a', cursor: 'pointer',
-                                        }}>{k}</button>
-                                    );
-                                })}
-                            </div>
-                        )}
-
-                        {esNuevoPin && !cargando && (
-                            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, color: G.deepBlue, opacity: 0.4, marginTop: 16, lineHeight: 1.5 }}>
-                                Elige 4 dígitos fáciles de recordar.<br />Los necesitarás cada vez que entres.
-                            </p>
-                        )}
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
+
 
 function App() {
     const [screen, setScreen] = useState('login');
@@ -3139,24 +2591,27 @@ function App() {
             set(ref(rtdb, 'status/' + user), true);
             onDisconnect(ref(rtdb, 'status/' + user)).set(false);
 
-            // Verificar si es admin
-            const adminSnap = await getDoc(doc(db, "admins", auth.currentUser?.uid || ''));
-            setIsAdmin(adminSnap.exists());
+            // Admin identificado por nombre mientras usamos login simple
+            setIsAdmin(user === 'Juanma');
 
-            // Escudos y clasificación — requieren auth
-            onSnapshot(doc(db, "configuracion", "escudos"), (snap) => { if (snap.exists()) setTeamLogos(snap.data()); });
-            onSnapshot(collection(db, "clasificacion"), (snap) => {
-                const profiles = {}; const clasif = [];
-                snap.forEach(d => { profiles[d.id] = d.data(); clasif.push({ id: d.id, ...d.data() }); });
-                setUserProfiles(profiles); setClasificacionData(clasif);
+            // Listeners de Firestore post-login
+            onSnapshot(doc(db, "configuracion", "escudos"), function(snap) {
+                if (snap.exists()) setTeamLogos(snap.data());
+            });
+            onSnapshot(collection(db, "clasificacion"), function(snap) {
+                var profiles = {};
+                var clasif = [];
+                snap.forEach(function(d) { profiles[d.id] = d.data(); clasif.push({ id: d.id, ...d.data() }); });
+                setUserProfiles(profiles);
+                setClasificacionData(clasif);
             });
 
-            // Cargar plantilla desde Firestore (actualizada por Cloud Function vía API)
-            const plantillaSnap = await getDoc(doc(db, "configuracion", "plantilla_udlp"));
-            if (plantillaSnap.exists() && plantillaSnap.data().jugadores?.length > 0) {
-                setPlantilla(plantillaSnap.data().jugadores);
-            }
-            // Si no hay plantilla en Firestore, usamos el fallback hardcodeado
+            // Cargar plantilla desde Firestore si existe
+            getDoc(doc(db, "configuracion", "plantilla_udlp")).then(function(plantillaSnap) {
+                if (plantillaSnap.exists() && plantillaSnap.data().jugadores?.length > 0) {
+                    setPlantilla(plantillaSnap.data().jugadores);
+                }
+            });
 
             setScreen('app');
         } catch (error) {
@@ -3211,7 +2666,6 @@ function App() {
                 </div>
             </div>
         </div>
-        </>
     );
 }
 
