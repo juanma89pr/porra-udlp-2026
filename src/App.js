@@ -106,19 +106,19 @@ const colors = {
 
 const styles = {
     colors,
-    container: { display: 'flex', justifyContent: 'center', alignItems: 'flex-start', width: '100%', minHeight: '100dvh', background: '#f0f0f0', padding: '15px', fontFamily: "'Montserrat', sans-serif" },
-    card: { width: '100%', maxWidth: '900px', backgroundColor: '#ffffff', color: '#0a0a0a', padding: '25px', borderRadius: '20px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', minHeight: 'calc(100dvh - 30px)', border: '1px solid rgba(0,0,0,0.08)' },
-    title: { fontFamily: "'Oswald', sans-serif", color: colors.deepBlue, textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', borderBottom: `2px solid ${colors.golden}`, paddingBottom: '15px', marginBottom: '25px', fontSize: 'clamp(1.5rem, 5vw, 2rem)' },
+    container: { display: 'flex', flexDirection: 'column', width: '100%', minHeight: '100dvh', background: 'linear-gradient(160deg,#f8f9ff 0%,#eef1fa 100%)', fontFamily: "'Teko', sans-serif" },
+    card: { width: '100%', flex: 1, backgroundColor: 'transparent', color: '#0a0a0a', padding: '0', minHeight: '100dvh' },
+    title: { fontFamily: "'Teko', sans-serif", color: colors.deepBlue, textTransform: 'uppercase', letterSpacing: '2px', textAlign: 'center', borderBottom: `2px solid ${colors.golden}`, paddingBottom: '10px', marginBottom: '20px', fontSize: 'clamp(1.6rem, 5vw, 2.2rem)', fontWeight: 700 },
     mainButton: { fontFamily: "'Oswald', sans-serif", padding: '14px 28px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', border: 'none', borderRadius: '30px', background: `linear-gradient(135deg, ${colors.goldenDark}, ${colors.golden})`, color: '#000', marginTop: '20px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '1px', boxShadow: '0 4px 12px rgba(212,175,55,0.35)' },
     secondaryButton: { fontFamily: "'Montserrat', sans-serif", padding: '10px 20px', fontSize: '0.9rem', cursor: 'pointer', border: `1px solid ${colors.deepBlue}`, borderRadius: '20px', backgroundColor: 'rgba(0,31,107,0.05)', color: colors.deepBlue, transition: 'all 0.3s ease', textTransform: 'uppercase', fontWeight: 'bold' },
     placeholder: { padding: '40px 20px', backgroundColor: '#f9f9f9', border: `1px dashed ${colors.goldenDark}`, borderRadius: '16px', textAlign: 'center', color: '#555' },
     epicSplashContainer: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: '#001F6B', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 9999, animation: 'fadeOut 0.5s ease 2.5s forwards' },
     epicSplashSubtitle: { fontFamily: "'Montserrat', sans-serif", fontSize: 'clamp(1rem, 4vw, 1.5rem)', fontWeight: '600', color: '#FFD700', letterSpacing: '5px', marginBottom: '10px', textTransform: 'uppercase' },
     epicSplashTitle: { fontFamily: "'Oswald', sans-serif", fontSize: 'clamp(3rem, 10vw, 5.5rem)', fontWeight: 'bold', color: '#ffffff', textTransform: 'uppercase', textAlign: 'center', animation: 'pulse 1.5s infinite alternate', lineHeight: 1.1 },
-    navbar: { display: 'flex', flexWrap: 'wrap', gap: '8px', borderBottom: `2px solid ${colors.golden}`, paddingBottom: '15px', marginBottom: '25px', alignItems: 'center', justifyContent: 'center' },
-    navButton: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: 'none', borderRadius: '8px', backgroundColor: 'transparent', color: '#555', cursor: 'pointer', transition: 'all 0.3s', textTransform: 'uppercase', fontWeight: '600' },
-    navButtonActive: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: `1px solid ${colors.deepBlue}`, borderRadius: '8px', backgroundColor: colors.deepBlue, color: '#FFD700', cursor: 'pointer', textTransform: 'uppercase', fontWeight: 'bold' },
-    logoutButton: { fontFamily: "'Montserrat', sans-serif", padding: '8px 14px', fontSize: '0.85rem', border: `1px solid ${colors.danger}`, borderRadius: '8px', backgroundColor: 'rgba(230,57,70,0.08)', color: colors.danger, cursor: 'pointer', marginLeft: '10px', textTransform: 'uppercase', fontWeight: '600' },
+    navbar: { display: 'none' },
+    navButton: { display: 'none' },
+    navButtonActive: { display: 'none' },
+    logoutButton: { display: 'none' },
     form: { backgroundColor: '#f9f9f9', padding: '30px', borderRadius: '20px', marginTop: '20px', border: '1px solid rgba(0,0,0,0.08)' },
     formSectionTitle: { fontFamily: "'Oswald', sans-serif", color: colors.deepBlue, fontSize: '1.4rem', textAlign: 'center', marginBottom: '20px', textTransform: 'uppercase', letterSpacing: '1px' },
     formGroup: { marginBottom: '25px', backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' },
@@ -2557,6 +2557,8 @@ const LoginScreen = ({ onLoginSuccess }) => {
 function App() {
     const [screen, setScreen] = useState('login');
     const [activeTab, setActiveTab] = useState('miJornada');
+    const [drawerOpen, setDrawerOpen] = useState(true);
+    const [drawerHintShown, setDrawerHintShown] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [isAdmin, setIsAdmin] = useState(false);
     const [teamLogos, setTeamLogos] = useState({});
@@ -2631,7 +2633,7 @@ function App() {
     if (APP_EN_CONSTRUCCION) return <ModoConstruccion />;
     if (screen === 'login') return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
 
-    const renderContent = () => {
+    var renderContent = function() {
         switch (activeTab) {
             case 'miJornada':    return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'laJornada':   return <LaJornadaScreen userProfiles={userProfiles} onlineUsers={onlineUsers} teamLogos={teamLogos} />;
@@ -2646,25 +2648,116 @@ function App() {
         }
     };
 
+    var TABS = [
+        { id: 'miJornada', label: 'Mi Jornada', icon: 'ti-calendar-event' },
+        { id: 'laJornada', label: 'La Jornada', icon: 'ti-trophy' },
+        { id: 'elOtro', label: 'El Otro', icon: 'ti-shield-half' },
+        { id: 'estrellas', label: '5 Estrellas', icon: 'ti-star' },
+        { id: 'clasificacion', label: 'Clasificación', icon: 'ti-chart-bar' },
+        { id: 'calendario', label: 'Calendario', icon: 'ti-calendar' },
+        { id: 'estadisticas', label: 'Estadísticas', icon: 'ti-chart-dots' },
+        { id: 'pagos', label: 'Pagos', icon: 'ti-wallet' },
+    ];
+    if (isAdmin) TABS.push({ id: 'admin', label: 'Admin', icon: 'ti-settings' });
+
     return (
-        <div style={styles.container}>
-            <div style={styles.card}>
-                <nav style={styles.navbar}>
-                    <button onClick={() => setActiveTab('miJornada')} style={activeTab === 'miJornada' ? styles.navButtonActive : styles.navButton}>Mi Jornada</button>
-                    <button onClick={() => setActiveTab('laJornada')} style={activeTab === 'laJornada' ? styles.navButtonActive : styles.navButton}>La Jornada</button>
-                    <button onClick={() => setActiveTab('elOtro')} style={activeTab === 'elOtro' ? styles.navButtonActive : styles.navButton}>El Otro</button>
-                    <button onClick={() => setActiveTab('estrellas')} style={activeTab === 'estrellas' ? styles.navButtonActive : styles.navButton}>5 Estrellas</button>
-                    <button onClick={() => setActiveTab('clasificacion')} style={activeTab === 'clasificacion' ? styles.navButtonActive : styles.navButton}>Clasificación</button>
-                    <button onClick={() => setActiveTab('calendario')} style={activeTab === 'calendario' ? styles.navButtonActive : styles.navButton}>Calendario</button>
-                    <button onClick={() => setActiveTab('estadisticas')} style={activeTab === 'estadisticas' ? styles.navButtonActive : styles.navButton}>Estadísticas</button>
-                    <button onClick={() => setActiveTab('pagos')} style={activeTab === 'pagos' ? styles.navButtonActive : styles.navButton}>Pagos</button>
-                    {isAdmin && <button onClick={() => setActiveTab('admin')} style={activeTab === 'admin' ? styles.navButtonActive : styles.navButton}>Admin</button>}
-                    <button onClick={handleLogout} style={styles.logoutButton}>Salir</button>
-                </nav>
-                <div key={activeTab} className="content-enter-active" style={{paddingTop: '15px'}}>
+        <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(160deg,#f8f9ff 0%,#eef1fa 100%)', overflow: 'hidden', fontFamily: "'Teko', sans-serif" }}>
+
+            {/* ── TOPBAR ── */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(10px)', borderBottom: '0.5px solid rgba(0,31,107,0.08)', position: 'relative', zIndex: 10 }}>
+                <button
+                    onClick={function() { setDrawerOpen(true); }}
+                    style={{ width: 38, height: 38, background: 'rgba(0,31,107,0.07)', border: 'none', borderRadius: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, animation: drawerHintShown ? 'none' : 'menuPulse 1.5s ease 0.8s 3', position: 'relative' }}
+                    aria-label="Abrir menú"
+                >
+                    <div style={{ width: 16, height: 2, background: '#001F6B', borderRadius: 2 }} />
+                    <div style={{ width: 11, height: 2, background: '#001F6B', borderRadius: 2, alignSelf: 'flex-start', marginLeft: 3 }} />
+                    <div style={{ width: 16, height: 2, background: '#001F6B', borderRadius: 2 }} />
+                </button>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                    <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 22, fontWeight: 700, color: '#001F6B', letterSpacing: 1, lineHeight: 1 }}>PORRA</span>
+                    <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 22, fontWeight: 700, color: 'transparent', WebkitTextStroke: '1.5px #001F6B', letterSpacing: 1, lineHeight: 1 }}>UDLP</span>
+                </div>
+                <div style={{ width: 38, height: 38, background: '#FFD700', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Teko',sans-serif", fontSize: 18, fontWeight: 700, color: '#001F6B', cursor: 'pointer' }}
+                    onClick={function() { setActiveTab('perfil'); setDrawerOpen(false); }}>
+                    {(currentUser || 'U')[0].toUpperCase()}
+                </div>
+            </div>
+
+            {/* ── CONTENIDO PRINCIPAL ── */}
+            <div style={{ position: 'absolute', top: 62, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px' }}>
+                <div key={activeTab} style={{ animation: 'slideIn .22s ease both' }}>
                     {renderContent()}
                 </div>
             </div>
+
+            {/* ── DRAWER OVERLAY ── */}
+            {drawerOpen && (
+                <div
+                    onClick={function() { setDrawerOpen(false); setDrawerHintShown(true); }}
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,15,60,0.45)', zIndex: 40, backdropFilter: 'blur(3px)', animation: 'fadeInOverlay .2s ease' }}
+                />
+            )}
+
+            {/* ── DRAWER PANEL ── */}
+            <div style={{
+                position: 'fixed', top: 0, left: 0, bottom: 0, width: 240,
+                background: '#001F6B', zIndex: 50, display: 'flex', flexDirection: 'column',
+                transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)',
+                transition: 'transform .28s cubic-bezier(.4,0,.2,1)',
+                boxShadow: drawerOpen ? '4px 0 40px rgba(0,0,0,0.3)' : 'none',
+            }}>
+                <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div style={{ fontFamily: "'Teko',sans-serif", fontSize: 26, fontWeight: 700, color: '#FFD700', letterSpacing: 2, lineHeight: 1 }}>PORRA UDLP</div>
+                    <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: 3, textTransform: 'uppercase', marginTop: 3 }}>Temporada 26/27</div>
+                </div>
+
+                <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+                    {TABS.map(function(tab, i) {
+                        var active = activeTab === tab.id;
+                        return (
+                            <button key={tab.id} onClick={function() { setActiveTab(tab.id); setDrawerOpen(false); setDrawerHintShown(true); }}
+                                style={{
+                                    width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                                    padding: '11px 20px', border: 'none', background: active ? 'rgba(255,215,0,0.1)' : 'transparent',
+                                    borderRight: active ? '3px solid #FFD700' : '3px solid transparent',
+                                    cursor: 'pointer', textAlign: 'left',
+                                    animation: drawerOpen ? ('drawerItem .2s ease ' + (i * 0.04) + 's both') : 'none',
+                                }}>
+                                <i className={'ti ' + tab.icon} style={{ fontSize: 18, color: active ? '#FFD700' : 'rgba(255,255,255,0.3)', width: 20 }} aria-hidden="true" />
+                                <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 17, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: active ? '#FFD700' : 'rgba(255,255,255,0.4)' }}>
+                                    {tab.label}
+                                </span>
+                                {tab.id === 'elOtro' && <span style={{ marginLeft: 'auto', fontFamily: "'Teko',sans-serif", fontSize: 13, background: 'rgba(255,215,0,0.15)', color: '#FFD700', padding: '2px 8px', borderRadius: 10 }}>?</span>}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                        <div style={{ width: 34, height: 34, background: '#FFD700', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Teko',sans-serif", fontSize: 18, fontWeight: 700, color: '#001F6B' }}>
+                            {(currentUser || 'U')[0].toUpperCase()}
+                        </div>
+                        <span style={{ fontFamily: "'Teko',sans-serif", fontSize: 15, color: 'rgba(255,255,255,0.6)', letterSpacing: 1, textTransform: 'uppercase' }}>{currentUser}</span>
+                    </div>
+                    <button onClick={handleLogout} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: 'none', color: 'rgba(255,255,255,0.35)', fontFamily: "'Teko',sans-serif", fontSize: 13, letterSpacing: 2, textTransform: 'uppercase', padding: '8px 0', borderRadius: 8, cursor: 'pointer', textAlign: 'left', paddingLeft: 12 }}>
+                        Salir
+                    </button>
+                </div>
+            </div>
+
+            <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=Teko:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+                @import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css');
+                @keyframes slideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+                @keyframes fadeInOverlay { from { opacity:0; } to { opacity:1; } }
+                @keyframes menuPulse { 0%,100% { box-shadow:0 0 0 0 rgba(0,31,107,0); } 50% { box-shadow:0 0 0 8px rgba(0,31,107,0.15); } }
+                @keyframes drawerItem { from { opacity:0; transform:translateX(-12px); } to { opacity:1; transform:translateX(0); } }
+                * { box-sizing: border-box; }
+                body { margin:0; overflow:hidden; }
+                ::-webkit-scrollbar { width:3px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:rgba(0,31,107,0.15); border-radius:2px; }
+            `}</style>
         </div>
     );
 }
