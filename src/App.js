@@ -54,6 +54,51 @@ const EQUIPOS_PRIMERA_DIVISION = [
 const API_FOOTBALL_KEY = process.env.REACT_APP_API_FOOTBALL_KEY || "";
 const LEAGUE_ID_SEGUNDA = 141;
 const LEAGUE_ID_PRIMERA = 140;
+
+// Busca el partido de Primera División de un equipo cerca de una fecha dada
+// (la fecha de la jornada de Segunda). No usamos el ID numérico del equipo
+// en la API (no tengo los 20 IDs verificados) — en su lugar pedimos TODOS
+// los partidos de Primera en una ventana de ±4 días y buscamos el nuestro
+// por nombre, igual que hace el resto de la app al cruzar plantillas.
+async function buscarPartidoPrimera(equipoNombre, fechaReferenciaStr) {
+    if (!API_FOOTBALL_KEY || !equipoNombre) return null;
+    var fechaBase = fechaReferenciaStr ? new Date(fechaReferenciaStr) : new Date();
+    if (isNaN(fechaBase.getTime())) fechaBase = new Date();
+    var desde = new Date(fechaBase); desde.setDate(desde.getDate() - 4);
+    var hasta = new Date(fechaBase); hasta.setDate(hasta.getDate() + 4);
+    var fmt = function(d) { return d.toISOString().slice(0, 10); };
+    var ultimoNombre = equipoNombre.toLowerCase().split(' ').pop();
+
+    var temporadas = [2025, 2026];
+    for (var t = 0; t < temporadas.length; t++) {
+        try {
+            var url = 'https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+                '&season=' + temporadas[t] + '&from=' + fmt(desde) + '&to=' + fmt(hasta);
+            var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var data = await res.json();
+            var partidos = data.response || [];
+            var encontrado = partidos.find(function(p) {
+                var local = p.teams.home.name.toLowerCase();
+                var visitante = p.teams.away.name.toLowerCase();
+                return local.indexOf(ultimoNombre) !== -1 || visitante.indexOf(ultimoNombre) !== -1;
+            });
+            if (encontrado) {
+                var esLocal = encontrado.teams.home.name.toLowerCase().indexOf(ultimoNombre) !== -1;
+                return {
+                    fixtureId: encontrado.fixture.id,
+                    fecha: encontrado.fixture.date,
+                    rival: esLocal ? encontrado.teams.away.name : encontrado.teams.home.name,
+                    esLocal: esLocal,
+                    estadoCorto: encontrado.fixture.status.short,
+                    golesEquipo: esLocal ? encontrado.goals.home : encontrado.goals.away,
+                    golesRival: esLocal ? encontrado.goals.away : encontrado.goals.home,
+                };
+            }
+        } catch (e) { console.warn('Error buscando partido de Primera:', e.message); }
+    }
+    return null;
+}
+
 const SEASON = 2025; // temporada 2025-26 en API-Football = 26/27 real
 
 // Tabla de puntuación Mis 5 Estrellas (calculada vía API)
@@ -1176,6 +1221,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var [loading, setLoading] = useState(true);
     var [pronostico, setPronostico] = useState({ golesLocal: '', golesVisitante: '', resultado1x2: '' });
     var [elOtroActivado, setElOtroActivado] = useState(false);
+    var [partidoOtro, setPartidoOtro] = useState(null); // partido de Primera del Otro Equipo, cargado al saber la jornada
+    var [cargandoPartidoOtro, setCargandoPartidoOtro] = useState(false);
     var [miElOtro, setMiElOtro] = useState(null);
     var [guardado, setGuardado] = useState(false);
     var [mensaje, setMensaje] = useState('');
@@ -1278,6 +1325,23 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         return function() { unsub(); unsubOtro(); };
     }, [user]);
 
+    // Buscar el partido de Primera del Otro Equipo en cuanto sepamos qué
+    // equipo tengo y qué jornada de Segunda está abierta — así puedo mostrar
+    // rival, fecha y hora, y saber cuándo se cierra el plazo de activación.
+    useEffect(function() {
+        if (!miElOtro || !miElOtro.equipo || !jornada) { setPartidoOtro(null); return; }
+        setCargandoPartidoOtro(true);
+        buscarPartidoPrimera(miElOtro.equipo, jornada.fecha).then(function(p) {
+            setPartidoOtro(p);
+            setCargandoPartidoOtro(false);
+        }).catch(function() { setCargandoPartidoOtro(false); });
+    }, [miElOtro, jornada]);
+
+    // Plazo de activación: hasta que empiece el partido de Primera de tu
+    // equipo — nunca después, para no entrar en conflicto con lo que ya haya
+    // pasado en el campo.
+    var plazoActivacionSuperado = !!(partidoOtro && partidoOtro.fecha && new Date() >= new Date(partidoOtro.fecha));
+
     // Countdown al cierre
     useEffect(function() {
         if (!jornada || !jornada.fechaCierre) return;
@@ -1297,12 +1361,20 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || !pronostico.resultado1x2) {
             setMensaje('Rellena el marcador y el 1X2 antes de guardar.'); return;
         }
+        if (elOtroActivado && plazoActivacionSuperado) {
+            setMensaje('❌ Ya no puedes activar El Otro Equipo — su partido de Primera ya ha empezado.');
+            return;
+        }
         try {
             await setDoc(doc(db, "pronosticos", jornada.id, "jugadores", user), {
                 golesLocal: Number(pronostico.golesLocal),
                 golesVisitante: Number(pronostico.golesVisitante),
                 resultado1x2: pronostico.resultado1x2,
                 elOtroActivado: elOtroActivado,
+                // Guardamos el partido exacto en el momento de activar, para
+                // que al cerrar la jornada no haya que adivinar cuál era.
+                elOtroFixtureId: elOtroActivado && partidoOtro ? partidoOtro.fixtureId : null,
+                elOtroEquipoUsado: elOtroActivado ? (miElOtro && miElOtro.equipo) : null,
                 guardadoEn: serverTimestamp(),
                 usuario: user,
                 puntosObtenidos: 0,
@@ -1312,12 +1384,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         } catch(e) { setMensaje('❌ Error al guardar: ' + e.message); }
     };
 
-    // Multiplicador de El Otro según activaciones
-    var getMultiplicador = function(activaciones) {
-        if (activaciones >= 5) return 3;
-        if (activaciones >= 3) return 2.5;
-        return 2;
-    };
+    // Multiplicador de El Otro según activaciones — versión única en getMultiplicadorOtro()
+    var getMultiplicador = getMultiplicadorOtro;
 
     if (loading) return <LoadingSkeleton />;
 
@@ -1472,30 +1540,65 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     </div>
 
                     {/* El Otro */}
-                    {miElOtro && miElOtro.equipo && (
+                    {miElOtro && miElOtro.equipo && (function() {
+                        var muestraEscudo = miElOtro.revelado || (miElOtro.activaciones || 0) >= 3;
+                        var horaPartido = partidoOtro && partidoOtro.fecha ? new Date(partidoOtro.fecha).toLocaleString('es-ES', {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary'}) : null;
+                        return (
                         <div style={{marginBottom:20,background: elOtroActivado ? 'rgba(0,31,107,0.05)' : '#f8f8f8',
                             borderRadius:14,padding:16,border: elOtroActivado ? '1.5px solid #001F6B' : '1.5px solid rgba(0,31,107,0.1)'}}>
                             <div style={{display:'flex',alignItems:'center',gap:12}}>
+                                {muestraEscudo ? (
+                                    <img src={getLogoEquipo(miElOtro.equipo, teamLogos)} alt={miElOtro.equipo} style={{width:38,height:38,objectFit:'contain',flexShrink:0}}
+                                        onError={function(e){e.target.style.display='none';}} />
+                                ) : (
+                                    <span style={{width:38,height:38,borderRadius:'50%',background:'rgba(0,31,107,0.08)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>👤</span>
+                                )}
                                 <div style={{flex:1}}>
                                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',marginBottom:2}}>
-                                        El Otro Equipo · {miElOtro.revelado ? miElOtro.equipo : '???'}
+                                        El Otro Equipo · {muestraEscudo ? miElOtro.equipo : 'Secreto'}
                                     </p>
                                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5}}>
-                                        {elOtroActivado ? 'Activado — multiplica ×' + mult + ' si tu equipo gana' : 'Activar para multiplicar puntos de esta jornada'}
+                                        {elOtroActivado ? 'Activado — ×' + mult + ' si gana, ÷' + mult + ' si pierde' : 'Actívalo para multiplicar (o dividir) tus puntos de esta jornada'}
                                     </p>
                                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:G.deepBlue,opacity:.35,marginTop:2}}>
                                         Activaciones: {miElOtro.activaciones || 0} · Multiplicador actual: ×{mult}
                                     </p>
                                 </div>
-                                <button onClick={function() { setElOtroActivado(function(v) { return !v; }); setGuardado(false); }}
-                                    style={{width:50,height:28,borderRadius:14,border:'none',cursor:'pointer',transition:'all .2s',
-                                        background: elOtroActivado ? '#001F6B' : 'rgba(0,31,107,0.15)',position:'relative'}}>
+                                <button onClick={function() {
+                                    if (!elOtroActivado && plazoActivacionSuperado) return; // no se puede activar si ya empezó su partido
+                                    setElOtroActivado(function(v) { return !v; }); setGuardado(false);
+                                }}
+                                    disabled={!elOtroActivado && plazoActivacionSuperado}
+                                    style={{width:50,height:28,borderRadius:14,border:'none',cursor: (!elOtroActivado && plazoActivacionSuperado) ? 'not-allowed' : 'pointer',transition:'all .2s',
+                                        background: elOtroActivado ? '#001F6B' : 'rgba(0,31,107,0.15)',position:'relative',opacity:(!elOtroActivado && plazoActivacionSuperado)?0.4:1}}>
                                     <div style={{width:22,height:22,borderRadius:'50%',background:'#fff',position:'absolute',
                                         top:3, left: elOtroActivado ? 25 : 3,transition:'left .2s'}} />
                                 </button>
                             </div>
+
+                            {/* Info del partido real de su equipo esta jornada */}
+                            {cargandoPartidoOtro && (
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:10}}>Buscando su partido de Primera...</p>
+                            )}
+                            {!cargandoPartidoOtro && partidoOtro && (
+                                <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid rgba(0,31,107,0.08)',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.6}}>
+                                        {partidoOtro.esLocal ? 'Juega en casa vs' : 'Juega fuera vs'} <strong>{partidoOtro.rival}</strong>
+                                    </span>
+                                    {horaPartido && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4}}>· {horaPartido}</span>}
+                                </div>
+                            )}
+                            {!cargandoPartidoOtro && !partidoOtro && (
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.35,marginTop:10}}>No encontramos su próximo partido de Primera todavía.</p>
+                            )}
+                            {plazoActivacionSuperado && !elOtroActivado && (
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.danger,marginTop:8}}>
+                                    ⏰ Su partido ya ha empezado — no puedes activarlo esta jornada.
+                                </p>
+                            )}
                         </div>
-                    )}
+                        );
+                    })()}
 
                     {/* Botón guardar */}
                     {mensaje && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: mensaje.startsWith('✅') ? '#10b981' : G.danger,marginBottom:12,textAlign:'center'}}>{mensaje}</p>}
@@ -1646,7 +1749,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
     ];
 
     var JUGADORES_TUTORIAL = (plantilla || []).filter(function(j) { return j.apiId > 0; }).slice(0,8);
-    var TOTAL_SLIDES = 17;
+    var TOTAL_SLIDES = 18;
 
     useEffect(function() {
         if (slide !== 11) return;
@@ -2004,7 +2107,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                     })}
                 </div>
                 <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.7}}>
-                    📅 Plazo: <strong>11 ago 12:00</strong> → <strong>14 ago 18:00</strong> (hora canaria)<br/>
+                    📅 Plazo: <strong>hoy 00:00</strong> → <strong>14 ago 18:00</strong> (hora canaria)<br/>
                     ⏱️ 60 min por turno — si no eliges, pasas al final<br/>
                     <span style={{color:'rgba(0,0,0,0.35)',fontSize:11}}>🪑 Si no vas a jugar de verdad... alguien más merece esa silla</span>
                 </p></div>
@@ -2031,11 +2134,48 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                         );
                     })}
                 </div>
-                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.6}}>⚠️ Mínimo <strong>3 activaciones</strong> para mantener el multiplicador máximo.<br/>🔍 El equipo de cada jugador es <strong>visible para todos</strong>.</p></div>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.6}}>
+                    🤫 Tu equipo es <strong>secreto</strong> mientras lo usas — a partir de tu <strong>3ª activación</strong> (cuando llegas a ×2.5) se hace público para todos, automáticamente.<br/>
+                    📐 Redondeo: al <strong>multiplicar</strong> siempre hacia <strong>arriba</strong>; al <strong>dividir</strong> siempre hacia <strong>abajo</strong>.
+                </p></div>
             </div>
         );
 
         case 13: return (
+            <div style={{textAlign:'center'}}>
+                <span style={S.iconBig}>🍎</span>
+                <div style={S.eyebrow}>Explicado facilito</div>
+                <h1 style={S.titulo}>ES UN<br/>COMODÍN</h1>
+                <p style={{...S.cuerpo,fontSize:13,marginBottom:12}}>
+                    Piénsalo así: tienes un equipo alternativo, tu comodín de toda la temporada. Cada semana decides si lo usas o no — nunca es obligatorio.
+                </p>
+                <p style={{...S.cuerpo,fontSize:13,marginBottom:12}}>
+                    Si lo activas <strong>antes de que empiece el partido de Primera de tu equipo</strong>, lo que haga ese equipo afecta a tus puntos de la jornada:
+                </p>
+                <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:340,marginBottom:14,textAlign:'left'}}>
+                    <div style={{...S.card,padding:'10px 14px',display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:18}}>🟰</span>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)'}}>Empata → tus puntos <strong>no cambian</strong></span>
+                    </div>
+                    <div style={{...S.card,padding:'10px 14px',display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:18}}>📈</span>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)'}}>Gana → tus puntos se <strong>multiplican</strong> (×2, ×2.5 o ×3)</span>
+                    </div>
+                    <div style={{...S.card,padding:'10px 14px',display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:18}}>📉</span>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)'}}>Pierde → tus puntos se <strong>dividen</strong> (÷2, ÷2.5 o ÷3)</span>
+                    </div>
+                </div>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.7}}>
+                    🧮 <strong>Caso práctico:</strong> sacaste 6 puntos esa jornada entre porra y Estrellas. Activas tu comodín y tu equipo gana. Llevas 3 activaciones → multiplicador ×2.5.<br/>
+                    <strong>6 × 2.5 = 15 → redondeo al alza → 15 puntos.</strong><br/>
+                    Si en cambio hubiera perdido: 6 ÷ 2.5 = 2.4 → redondeo a la baja → <strong>2 puntos.</strong><br/><br/>
+                    Con todos los factores a favor (buena jornada + estrellas + comodín en racha) puedes llegar a sumar entre <strong>2 y 30 puntos</strong> en una sola jornada.
+                </p></div>
+            </div>
+        );
+
+        case 14: return (
             <div style={{textAlign:'center'}}>
                 <div style={S.eyebrow}>Todo junto</div>
                 <h1 style={S.titulo}>RESUMEN<br/>DE PUNTOS</h1>
@@ -2052,7 +2192,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
             </div>
         );
 
-        case 14: return (
+        case 15: return (
             <div style={{textAlign:'center'}}>
                 <span style={S.iconBig}>💳</span>
                 <div style={S.eyebrow}>Antes de empezar</div>
@@ -2089,7 +2229,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
             </div>
         );
 
-        case 15: return (
+        case 16: return (
             <div style={{textAlign:'center'}}>
                 <span style={S.iconBig}>👥</span>
                 <div style={S.eyebrow}>Quedan 5 huecos libres</div>
@@ -2107,7 +2247,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
             </div>
         );
 
-        case 16: return (
+        case 17: return (
             <div style={{textAlign:'center'}}>
                 <img src="/escudo.png" alt="UDLP"
                     style={{width:80,height:96,objectFit:'contain',marginBottom:18,
@@ -2247,7 +2387,9 @@ const TABLA_PUNTOS_ESTRELLAS = [
 // Foto oficial de jugador vía CDN público de API-Football (mismo apiId que
 // usamos para calcular sus puntos de Estrellas — no requiere clave para la imagen).
 function getFotoJugador(jug) {
-    if (!jug || !jug.apiId) return '';
+    if (!jug) return '';
+    if (jug.fotoManual) return jug.fotoManual; // fijada a mano en Admin → Verificar fotos, siempre gana
+    if (!jug.apiId) return '';
     return 'https://media.api-sports.io/football/players/' + jug.apiId + '.png';
 }
 
@@ -4229,6 +4371,48 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
             let clasifActual = {};
             clasifSnap.forEach(d => clasifActual[d.id] = d.data());
 
+            // --- EL OTRO EQUIPO: precargar resultados de los partidos activados ---
+            // Aislado del resto — si la API falla aquí, los puntos normales de la
+            // porra se calculan igual, solo que sin el efecto de El Otro.
+            var fixtureIdsUnicos = [];
+            pSnap.forEach(function(d) {
+                var pd = d.data();
+                if (pd.elOtroActivado && pd.elOtroFixtureId && fixtureIdsUnicos.indexOf(pd.elOtroFixtureId) === -1) {
+                    fixtureIdsUnicos.push(pd.elOtroFixtureId);
+                }
+            });
+            var resultadosFixtureOtro = {}; // fixtureId -> {finalizado, golesLocal, golesVisitante, nombreLocal, nombreVisitante}
+            for (var fi = 0; fi < fixtureIdsUnicos.length; fi++) {
+                try {
+                    var resF = await fetch('https://v3.football.api-sports.io/fixtures?id=' + fixtureIdsUnicos[fi],
+                        { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+                    var dataF = await resF.json();
+                    if (dataF.response && dataF.response[0]) {
+                        var fx = dataF.response[0];
+                        var estCorto = fx.fixture.status.short;
+                        resultadosFixtureOtro[fixtureIdsUnicos[fi]] = {
+                            finalizado: estCorto === 'FT' || estCorto === 'AET' || estCorto === 'PEN',
+                            golesLocal: fx.goals.home, golesVisitante: fx.goals.away,
+                            nombreLocal: fx.teams.home.name, nombreVisitante: fx.teams.away.name,
+                        };
+                    }
+                } catch (eF) { console.warn('Error obteniendo resultado de El Otro, fixture', fixtureIdsUnicos[fi], eF.message); }
+            }
+            // Activaciones actuales de cada jugador que activó El Otro esta jornada,
+            // para saber qué multiplicador (×2 / ×2.5 / ×3) le corresponde ANTES de sumar esta.
+            var elOtroDataUsuarios = {};
+            var usuariosConOtroActivado = [];
+            pSnap.forEach(function(d) {
+                var pd = d.data();
+                if (pd.elOtroActivado && pd.elOtroFixtureId) usuariosConOtroActivado.push(d.id);
+            });
+            for (var ui = 0; ui < usuariosConOtroActivado.length; ui++) {
+                try {
+                    var snapU = await getDoc(doc(db, "elOtro", usuariosConOtroActivado[ui]));
+                    if (snapU.exists()) elOtroDataUsuarios[usuariosConOtroActivado[ui]] = snapU.data();
+                } catch (eU) { console.warn('Error leyendo elOtro de', usuariosConOtroActivado[ui], eU.message); }
+            }
+
             pSnap.forEach(docSnap => {
                 const p = docSnap.data();
                 const userId = docSnap.id;
@@ -4254,6 +4438,33 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                     else if (!p.sinGoleador && golAp !== "" && golAp === golReal && golReal !== "sg") { ptosGol += esVip ? 4 : 2; }
                 }
                 ptosJornada += ptosGol;
+
+                // 4. EL OTRO EQUIPO — multiplica o divide el total de ESTA jornada
+                // según el resultado real de su partido. Solo si se activó, con
+                // fixture guardado, y ese partido ya ha terminado de verdad.
+                if (p.elOtroActivado && p.elOtroFixtureId && p.elOtroEquipoUsado && !puntosYaCalculados) {
+                    var resFx = resultadosFixtureOtro[p.elOtroFixtureId];
+                    if (resFx && resFx.finalizado) {
+                        var ultimoNombreOtro = p.elOtroEquipoUsado.toLowerCase().split(' ').pop();
+                        var esLocalOtro = resFx.nombreLocal.toLowerCase().indexOf(ultimoNombreOtro) !== -1;
+                        var golesFavor = esLocalOtro ? resFx.golesLocal : resFx.golesVisitante;
+                        var golesContra = esLocalOtro ? resFx.golesVisitante : resFx.golesLocal;
+                        var resultadoOtro = golesFavor > golesContra ? 'gana' : (golesFavor < golesContra ? 'pierde' : 'empate');
+                        var activacionesPrevias = (elOtroDataUsuarios[userId] && elOtroDataUsuarios[userId].activaciones) || 0;
+                        var multOtro = getMultiplicadorOtro(activacionesPrevias);
+                        var ptosAntesOtro = ptosJornada;
+                        ptosJornada = aplicarMultiplicadorOtro(ptosJornada, resultadoOtro, multOtro);
+
+                        batch.set(doc(db, "elOtro", userId), {
+                            activaciones: increment(1),
+                            historial: arrayUnion({
+                                jornada: jornada.numeroJornada, equipo: p.elOtroEquipoUsado,
+                                resultado: resultadoOtro, multiplicador: multOtro,
+                                ptosAntes: ptosAntesOtro, ptosDespues: ptosJornada,
+                            }),
+                        }, { merge: true });
+                    }
+                }
 
                 if (!puntosYaCalculados) {
                     batch.update(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: ptosJornada, puntosResultadoExacto: ptosExacto, puntosGoleador: ptosGol });
@@ -4634,6 +4845,96 @@ const ConfiguracionBizum = () => {
     );
 };
 
+// Admin: verifica visualmente la foto de cada jugador y permite fijarla a
+// mano si la automática (por apiId) no es la persona correcta. Guarda la
+// plantilla completa en Firestore (configuracion/plantilla_udlp), el mismo
+// sitio que ya usa la app para cargar la plantilla al iniciar sesión — así
+// el cambio se aplica en toda la app sin tocar código.
+const VerificarFotosPlantilla = ({ plantilla }) => {
+    var [ediciones, setEdiciones] = useState({}); // nombre -> {apiId, fotoManual} en edición
+    var [guardandoNombre, setGuardandoNombre] = useState('');
+    var [msg, setMsg] = useState('');
+
+    var valorActual = function(jug, campo) {
+        if (ediciones[jug.nombre] && ediciones[jug.nombre][campo] !== undefined) return ediciones[jug.nombre][campo];
+        return jug[campo] || '';
+    };
+
+    var cambiar = function(nombre, campo, valor) {
+        setEdiciones(function(prev) {
+            var copia = { ...prev };
+            copia[nombre] = { ...(copia[nombre] || {}), [campo]: valor };
+            return copia;
+        });
+    };
+
+    var guardarJugador = async function(jug) {
+        setGuardandoNombre(jug.nombre);
+        try {
+            var apiIdNuevo = valorActual(jug, 'apiId');
+            var fotoManualNueva = valorActual(jug, 'fotoManual');
+            var plantillaActualizada = plantilla.map(function(j) {
+                if (j.nombre !== jug.nombre) return j;
+                return {
+                    ...j,
+                    apiId: apiIdNuevo ? parseInt(apiIdNuevo) || 0 : 0,
+                    fotoManual: fotoManualNueva || '',
+                };
+            });
+            await setDoc(doc(db, 'configuracion', 'plantilla_udlp'), { jugadores: plantillaActualizada });
+            setMsg('✅ Foto de ' + jug.nombre + ' actualizada en toda la app.');
+        } catch(e) {
+            console.error(e);
+            setMsg('❌ Error guardando ' + jug.nombre + ': ' + e.message);
+        }
+        setGuardandoNombre('');
+    };
+
+    var quitarFotoManual = function(jug) {
+        cambiar(jug.nombre, 'fotoManual', '');
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                🖼️ Verificar fotos de la plantilla
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14,lineHeight:1.5}}>
+                Si la foto de alguien no es la suya, pega aquí la URL de una foto correcta (de Wikipedia, Sofascore, o donde sea) — se guarda para toda la app y gana siempre a la foto automática, aunque cambie el apiId.
+            </p>
+            {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msg.startsWith('✅') ? '#10b981' : '#e63946',marginBottom:12}}>{msg}</p>}
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {plantilla.map(function(jug) {
+                    var fotoManual = valorActual(jug, 'fotoManual');
+                    var apiIdVal = valorActual(jug, 'apiId');
+                    var fotoPreview = fotoManual || (apiIdVal ? 'https://media.api-sports.io/football/players/' + apiIdVal + '.png' : '');
+                    return (
+                        <div key={jug.nombre} style={{display:'flex',gap:10,alignItems:'center',padding:'8px 10px',background:'rgba(0,31,107,0.02)',borderRadius:10,flexWrap:'wrap'}}>
+                            {fotoPreview ? (
+                                <img src={fotoPreview} alt="" style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',border:'2px solid rgba(0,31,107,0.1)',flexShrink:0}}
+                                    onError={function(e){e.target.style.opacity=0.15;}} />
+                            ) : (
+                                <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(0,31,107,0.06)',flexShrink:0}} />
+                            )}
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#001F6B',width:110,flexShrink:0}}>{jug.nombre}</span>
+                            <input value={fotoManual} onChange={function(e){cambiar(jug.nombre,'fotoManual',e.target.value);}}
+                                placeholder="URL de foto manual (opcional)"
+                                style={{flex:1,minWidth:160,padding:'6px 10px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:11}} />
+                            {fotoManual && (
+                                <button onClick={function(){quitarFotoManual(jug);}} style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946',background:'none',border:'none',cursor:'pointer'}}>Quitar</button>
+                            )}
+                            <button onClick={function(){guardarJugador(jug);}} disabled={guardandoNombre===jug.nombre}
+                                style={{...ADMIN_STYLES.btnSuccess,padding:'6px 12px',fontSize:11}}>
+                                {guardandoNombre===jug.nombre ? '...' : 'Guardar'}
+                            </button>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
 const AdminPanelScreen = ({ plantilla }) => {
     var [jornadas, setJornadas] = useState([]);
     var [expandida, setExpandida] = useState(null);
@@ -4772,6 +5073,33 @@ const AdminPanelScreen = ({ plantilla }) => {
         } catch(e) {
             console.error(e);
             alert('❌ Error al aprobar: ' + e.message);
+        }
+    };
+
+    // Repara una solicitud que ya figura como "aprobada" pero que en realidad
+    // nunca llegó a activarse de verdad (aprobada con la versión antigua del
+    // panel, que solo cambiaba la palabra de estado sin crear PIN/perfil/
+    // acceso). Cubre los dos casos: si ya tenía PIN guardado, lo reactiva tal
+    // cual; si no lo tenía (solicitudes muy antiguas, de antes de que el
+    // formulario pidiera PIN), te deja ponerle uno nuevo aquí mismo.
+    var repararActivacion = async function(sol) {
+        try {
+            var pinHash = sol.pinHash;
+            if (!pinHash) {
+                var pinNuevo = window.prompt('Esta solicitud no tiene PIN guardado (es de antes de que el formulario lo pidiera).\n\nEscribe un PIN de 4 dígitos para ' + sol.nombre + ' — dáselo tú directamente por WhatsApp para que pueda entrar:');
+                if (!pinNuevo || !/^\d{4}$/.test(pinNuevo)) {
+                    if (pinNuevo !== null) alert('El PIN debe ser exactamente 4 números.');
+                    return;
+                }
+                pinHash = await hashPin(sol.nombre, pinNuevo);
+            }
+            await setDoc(doc(db, 'pines', sol.nombre), { hash: pinHash, creadoEn: serverTimestamp() });
+            await setDoc(doc(db, 'perfiles', sol.nombre), { nombre: sol.nombre, telefono: sol.telefono || '' }, { merge: true });
+            await setDoc(doc(db, 'configuracion', 'jugadoresAprobados'), { nombres: arrayUnion(sol.nombre) }, { merge: true });
+            alert('✅ Reparado. ' + sol.nombre + ' ya puede entrar a la app con su nombre' + (sol.pinHash ? ' y el PIN que había creado.' : ' y el PIN que le acabas de dar por WhatsApp.'));
+        } catch(e) {
+            console.error(e);
+            alert('❌ Error al reparar: ' + e.message);
         }
     };
 
@@ -4996,6 +5324,13 @@ const AdminPanelScreen = ({ plantilla }) => {
                                         </a>
                                     </div>
                                 )}
+                                {s.estado === 'aprobada' && (
+                                    <div style={{marginTop:8}}>
+                                        <button onClick={function(){repararActivacion(s);}} style={{...A.btnPrimary,background:'rgba(0,31,107,0.08)',color:'#001F6B',fontSize:12,padding:'6px 12px'}}>
+                                            🔧 Reparar activación (por si aprobó con la versión antigua y no puede entrar)
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
@@ -5164,6 +5499,9 @@ const AdminPanelScreen = ({ plantilla }) => {
                     {/* Buscador de IDs de API-Football para la plantilla */}
                     <BuscadorApiIdsPlantilla plantilla={plantilla} />
 
+                    {/* Verificación visual de fotos */}
+                    <VerificarFotosPlantilla plantilla={plantilla} />
+
                     {/* Enlace de invitación */}
                     <div style={A.card}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
@@ -5273,20 +5611,42 @@ const ORDEN_ELECCION_EL_OTRO = [
 // Hora canaria = UTC+1 en verano
 // Apertura: lunes 11 agosto 12:00 WEST = 11:00 UTC
 // Cierre: viernes 14 agosto 18:00 WEST = 17:00 UTC
-// Plazo del draft de El Otro Equipo — arranca hoy a las 16:00 hora canaria.
-// Se calcula de forma relativa a "hoy" (no una fecha fija ya pasada), para
-// que el primer turno empiece a contar desde el momento real de lanzamiento.
-function calcularAperturaHoy16h() {
+// Plazo del draft de El Otro Equipo — arranca esta noche a las 00:00 hora
+// canaria (medianoche de hoy a mañana). Antes esta fecha solo se mostraba en
+// el texto informativo pero no bloqueaba nada de verdad — ahora sí impide
+// que se asigne turno a nadie (ni a Pedrito, el primero de la cola) antes de
+// esa hora exacta.
+function calcularAperturaMedianocheHoy() {
     var hoy = new Date();
-    // 16:00 hora canaria (UTC+1 en agosto, horario de verano) = 15:00 UTC
-    return new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate(), 15, 0, 0));
+    // 00:00 hora canaria (inicio de "mañana" en local) = 23:00 UTC de HOY
+    // (UTC+1 en agosto, horario de verano canario)
+    return new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate(), 23, 0, 0));
 }
-const PLAZO_APERTURA_EL_OTRO = calcularAperturaHoy16h();
+const PLAZO_APERTURA_EL_OTRO = calcularAperturaMedianocheHoy();
 const PLAZO_EL_OTRO = new Date('2026-08-14T17:00:00Z');
 // Tiempo máximo por turno antes de saltarlo: 60 minutos
 const TIMEOUT_TURNO_MINUTOS = 60;
 
-const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
+// Multiplicador de El Otro según nº de activaciones acumuladas en la
+// temporada — a partir de la 3ª (×2.5) el equipo deja de ser secreto.
+function getMultiplicadorOtro(activaciones) {
+    if (activaciones >= 5) return 3;
+    if (activaciones >= 3) return 2.5;
+    return 2;
+}
+
+// Redondeo oficial de El Otro: al multiplicar (tu equipo gana), redondeo
+// AL ALZA; al dividir (tu equipo pierde), redondeo A LA BAJA. Un empate deja
+// los puntos exactamente igual. PENDIENTE de conectar con el resultado real
+// del partido de El Otro — ver nota en la auditoría de esta sesión.
+function aplicarMultiplicadorOtro(puntos, resultado, mult) {
+    if (resultado === 'empate') return puntos;
+    if (resultado === 'gana') return Math.ceil(puntos * mult);
+    if (resultado === 'pierde') return Math.floor(puntos / mult);
+    return puntos;
+}
+
+const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos }) => {
     var G = styles.colors;
     var [miElOtro, setMiElOtro] = useState(null);
     var [todosElOtro, setTodosElOtro] = useState({});
@@ -5399,11 +5759,16 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
 
         // El turno es del primer jugador en el orden (ya sin bloquear a los
         // saltados — reaparecen al final, con su cronómetro reiniciado).
+        // El draft no arranca hasta PLAZO_APERTURA_EL_OTRO — antes de esa
+        // hora nadie tiene turno todavía, ni siquiera el primero de la cola.
+        var draftAbierto = new Date() >= PLAZO_APERTURA_EL_OTRO;
         var turno = null;
-        for (var i = 0; i < ordenConf.length; i++) {
-            var j = ordenConf[i];
-            if (j === '__VACANTE__') continue;
-            if (!datos[j] || !datos[j].equipo) { turno = j; break; }
+        if (draftAbierto) {
+            for (var i = 0; i < ordenConf.length; i++) {
+                var j = ordenConf[i];
+                if (j === '__VACANTE__') continue;
+                if (!datos[j] || !datos[j].equipo) { turno = j; break; }
+            }
         }
         setTurnoActual(turno);
 
@@ -5450,6 +5815,21 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
         if (guardando) return;
         if (turnoActual !== currentUser) return;
         if (miElOtro && miElOtro.equipo) return;
+
+        var confirmado = window.confirm(
+            '¿Elegir ' + equipo + ' como tu Otro Equipo?\n\n' +
+            '⚠️ Es DEFINITIVO — no podrás cambiarlo en toda la temporada.\n\n' +
+            'Recuerda las condiciones:\n' +
+            '· Será SECRETO durante tus 3 primeras activaciones.\n' +
+            '· A partir de la 4ª activación (×2.5) se hace público para todos.\n' +
+            '· Si ' + equipo + ' gana su partido → multiplicas tus puntos de la jornada (redondeo al alza).\n' +
+            '· Si empata → tus puntos se quedan igual.\n' +
+            '· Si pierde → tus puntos se dividen (redondeo a la baja).\n' +
+            '· El multiplicador sube con el uso: ×2 al principio, ×2.5 desde la 3ª activación, ×3 desde la 5ª.\n\n' +
+            '¿Confirmas ' + equipo + '?'
+        );
+        if (!confirmado) return;
+
         setGuardando(true);
         setDoc(doc(db, "elOtro", currentUser), {
             equipo: equipo,
@@ -5530,7 +5910,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
             <div style={{background:'rgba(0,31,107,0.04)',borderRadius:14,padding:16,marginBottom:16,border:'1px solid rgba(0,31,107,0.08)'}}>
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',marginBottom:8,fontWeight:600}}>Cómo funciona</p>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,lineHeight:1.7,margin:0}}>
-                    Cada jugador tiene un equipo de Primera División asignado para <strong>toda la temporada</strong>, de forma pública. Cada jornada decides si activarlo o no. Si tu equipo <strong>gana</strong> → ×2 puntos. Si <strong>empata</strong> → sin efecto. Si <strong>pierde</strong> → ÷2 (redondeo a la baja). Mínimo <strong>3 activaciones</strong> en la temporada. El equipo es secreto hasta que decidas revelarlo — y no podrás ocultarlo de nuevo.
+                    Cada jugador tiene un equipo de Primera División asignado para <strong>toda la temporada</strong>. Cada jornada decides si lo activas o no — actívalo antes de que empiece la jornada de Primera de tu equipo. Si <strong>gana</strong> → multiplicas tus puntos de esa jornada (redondeo al alza). Si <strong>empata</strong> → tus puntos se quedan igual. Si <strong>pierde</strong> → tus puntos se dividen (redondeo a la baja). El multiplicador sube con el uso: <strong>×2</strong> al principio, <strong>×2.5</strong> desde tu 3ª activación, <strong>×3</strong> desde la 5ª. Tu equipo es <strong>secreto durante las 3 primeras activaciones</strong> — a partir de ahí (×2.5) se hace público para todos.
                 </p>
             </div>
 
@@ -5538,9 +5918,21 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
             <div style={{background:'rgba(0,31,107,0.04)',borderRadius:14,padding:16,marginBottom:16,border:'1px solid rgba(0,31,107,0.08)'}}>
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',marginBottom:8,fontWeight:600}}>⏱️ Cómo van los turnos</p>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,lineHeight:1.7,margin:0}}>
-                    El draft empieza hoy a las <strong>16:00</strong>. Cuando te toca, tienes <strong>60 minutos</strong> para elegir tu equipo. Si se acaba el tiempo, pasas automáticamente al <strong>final de la cola</strong> — no pierdes tu turno del todo, solo se retrasa hasta que todos los demás hayan elegido.
+                    El draft empieza esta noche a las <strong>00:00</strong>. Cuando te toca, tienes <strong>60 minutos</strong> para elegir tu equipo. Si se acaba el tiempo, pasas automáticamente al <strong>final de la cola</strong> — no pierdes tu turno del todo, solo se retrasa hasta que todos los demás hayan elegido.
                 </p>
             </div>
+
+            {/* Aviso: el draft todavía no ha empezado */}
+            {new Date() < PLAZO_APERTURA_EL_OTRO && (
+                <div style={{background:'rgba(0,31,107,0.06)',borderRadius:14,padding:18,marginBottom:16,textAlign:'center',border:'1px dashed rgba(0,31,107,0.2)'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:G.deepBlue,marginBottom:4}}>
+                        🕛 El draft todavía no ha empezado
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6}}>
+                        Arranca esta noche a las 00:00 — Pedrito, el primero de la cola, podrá elegir a partir de ese momento.
+                    </p>
+                </div>
+            )}
 
             {/* Plazo */}
             <div style={{background: plazoSuperado ? 'rgba(230,57,70,0.08)' : 'rgba(255,215,0,0.1)', borderRadius:12, padding:'10px 16px', marginBottom:20, border:`1px solid ${plazoSuperado ? 'rgba(230,57,70,0.3)' : 'rgba(255,215,0,0.3)'}`, display:'flex', alignItems:'center', gap:10}}>
@@ -5593,14 +5985,19 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6,textAlign:'center',marginBottom:16}}>
                         Elige tu equipo de Primera División — una vez elegido no se puede cambiar y será secreto
                     </p>
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:8}}>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:10}}>
                         {equiposDisponibles.map(function(equipo) {
                             return (
                                 <button key={equipo} onClick={function() { elegirEquipo(equipo); }} disabled={guardando}
-                                    style={{padding:'14px 8px',borderRadius:12,border:'1.5px solid rgba(0,31,107,0.15)',
-                                        background:'#fff',fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:600,letterSpacing:1,
-                                        color:G.deepBlue,cursor:'pointer',textAlign:'center',transition:'all .2s',textTransform:'uppercase'}}>
-                                    {equipo}
+                                    style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,
+                                        padding:'14px 8px',borderRadius:14,border:'1.5px solid rgba(0,31,107,0.12)',
+                                        background:'#fff',cursor:'pointer',textAlign:'center',boxShadow:'0 1px 4px rgba(0,31,107,0.06)'}}>
+                                    <img src={getLogoEquipo(equipo, teamLogos)} alt={equipo}
+                                        style={{width:40,height:40,objectFit:'contain'}}
+                                        onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent(equipo.substring(0,3));}} />
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:600,letterSpacing:0.5,color:G.deepBlue,textTransform:'uppercase',lineHeight:1.15}}>
+                                        {equipo}
+                                    </span>
                                 </button>
                             );
                         })}
@@ -5701,11 +6098,27 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
                     var eligió = !!datos.equipo;
                     var esTurno = turnoActual === jugador;
                     var esSaltado = !!datos.saltado;
+                    // Secretismo: solo se ve el escudo real a partir de la 3ª
+                    // activación (cuando el multiplicador llega a ×2.5). Antes
+                    // de eso, un icono de persona genérico — nadie sabe qué
+                    // equipo es, solo que ya lo tiene elegido.
+                    var revelablePorUso = (datos.activaciones || 0) >= 3;
+                    var muestraEscudo = eligió && (datos.revelado || revelablePorUso);
                     return (
                         <div key={jugador} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
                             <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:esTurno ? '#FFD700' : 'rgba(0,31,107,0.3)',width:24,textAlign:'center',fontWeight:700}}>{i+1}</span>
+                            {eligió ? (
+                                muestraEscudo ? (
+                                    <img src={getLogoEquipo(datos.equipo, teamLogos)} alt={datos.equipo} style={{width:26,height:26,objectFit:'contain',flexShrink:0}}
+                                        onError={function(e){e.target.style.display='none';}} />
+                                ) : (
+                                    <span style={{width:26,height:26,borderRadius:'50%',background:'rgba(0,31,107,0.08)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:14}}>👤</span>
+                                )
+                            ) : (
+                                <span style={{width:26,flexShrink:0}} />
+                            )}
                             <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color: eligió ? G.deepBlue : esTurno ? G.deepBlue : 'rgba(0,31,107,0.4)',textTransform:'uppercase'}}>{jugador}</span>
-                            {eligió && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(16,185,129,0.1)',color:'#10b981',padding:'3px 10px',borderRadius:10}}>✓ Elegido</span>}
+                            {eligió && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(16,185,129,0.1)',color:'#10b981',padding:'3px 10px',borderRadius:10}}>{muestraEscudo ? '✓ '+datos.equipo : '✓ Equipo elegido'}</span>}
                             {!eligió && esTurno && !esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(255,215,0,0.15)',color:'#d4af37',padding:'3px 10px',borderRadius:10}}>← Turno</span>}
                             {esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(230,57,70,0.1)',color:G.danger,padding:'3px 10px',borderRadius:10}}>Saltado</span>}
                             {!eligió && !esTurno && !esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.25)'}}>Pendiente</span>}
@@ -6545,7 +6958,7 @@ function App() {
         switch (activeTab) {
             case 'miJornada':    return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'laJornada':   return <LaJornadaScreen userProfiles={userProfiles} onlineUsers={onlineUsers} teamLogos={teamLogos} />;
-            case 'elOtro':      return <ElOtroScreen currentUser={currentUser} userProfiles={userProfiles} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
+            case 'elOtro':      return <ElOtroScreen currentUser={currentUser} userProfiles={userProfiles} pagos={pagosGlobal} teamLogos={teamLogos} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'estrellas':   return <MisEstrellasScreen currentUser={currentUser} plantilla={plantilla} userProfiles={userProfiles} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
