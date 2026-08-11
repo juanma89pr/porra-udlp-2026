@@ -6453,6 +6453,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         }).catch(function(e) {
             console.error(e);
             setGuardando(false);
+            alert('❌ No se pudo guardar tu equipo: ' + e.message + '\n\nVuelve a intentarlo. Si sigue fallando, avisa a Juanma — puede ser un permiso de Firestore sin actualizar.');
         });
     };
 
@@ -6630,7 +6631,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                 <div style={{background:'rgba(0,31,107,0.04)',borderRadius:14,padding:20,textAlign:'center',marginBottom:20,border:'1px solid rgba(0,31,107,0.08)'}}>
                     <i className="ti ti-hourglass" style={{fontSize:32,color:G.deepBlue,opacity:.3}} aria-hidden="true" />
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,color:G.deepBlue,letterSpacing:2,marginTop:8}}>ESPERANDO TU TURNO</p>
-                    {turnoActual && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5,marginTop:4}}>Ahora está eligiendo: <strong>{turnoActual}</strong></p>}
+                    {turnoActual && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5,marginTop:4}}>Ahora está eligiendo: <strong>{nombreVisible(turnoActual, userProfiles[turnoActual])}</strong></p>}
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:8}}>Recibirás acceso automáticamente cuando te toque</p>
                 </div>
             )}
