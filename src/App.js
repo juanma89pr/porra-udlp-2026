@@ -442,6 +442,16 @@ function AcordeonAyuda({ icono, titulo, children, abiertoPorDefecto }) {
     );
 }
 
+// Nombre a mostrar al resto de la app — automático, sin que nadie tenga que
+// tocar nada: si alguien se registró con apellido ("María García"), aquí
+// mismo se recorta a "María" para todo lo que ven los demás. Si hay un apodo
+// puesto a mano, ese manda por encima de todo.
+function nombreVisible(nombreCrudo, perfil) {
+    if (perfil && perfil.apodo) return perfil.apodo;
+    if (!nombreCrudo) return nombreCrudo;
+    return nombreCrudo.trim().split(/\s+/)[0];
+}
+
 const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false }) => {
     var elOtroEquipo = elOtroData && elOtroData.equipo;
     var elOtroRevelado = elOtroData && elOtroData.revelado;
@@ -469,7 +479,7 @@ const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false 
                 fontFamily:"'Teko',sans-serif", fontSize: size * 0.28,
                 letterSpacing: 1, color:'#001F6B', textTransform:'uppercase',
                 maxWidth: size * 2.5, textAlign:'center', lineHeight: 1
-            }}>{(perfil && perfil.apodo) || name}</span>
+            }}>{nombreVisible(name, perfil)}</span>
         </div>
     );
 };
@@ -477,7 +487,7 @@ const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false 
 const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.lightText, isOnline = false }) => {
     const p = profile || {}; const color = p.color || defaultColor; const isG = typeof color === 'string' && color.startsWith('linear-gradient');
     const nStyle = { ...(isG ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color }), fontWeight: 'bold' };
-    return (<span style={{display: 'inline-flex', alignItems: 'center', gap: '8px' }}>{p.icon && <span>{p.icon}</span>}<span style={nStyle}>{p.apodo || name}</span>{isOnline && <span style={{width: '8px', height: '8px', backgroundColor: styles.colors.success, borderRadius: '50%', boxShadow: `0 0 8px ${styles.colors.success}`}}></span>}</span>);
+    return (<span style={{display: 'inline-flex', alignItems: 'center', gap: '8px' }}>{p.icon && <span>{p.icon}</span>}<span style={nStyle}>{nombreVisible(name, p)}</span>{isOnline && <span style={{width: '8px', height: '8px', backgroundColor: styles.colors.success, borderRadius: '50%', boxShadow: `0 0 8px ${styles.colors.success}`}}></span>}</span>);
 };
 
 // ============================================================================
@@ -584,19 +594,36 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
     var guardarApodo = async function() {
         setGuardando(true);
         try {
-            await setDoc(doc(db, "perfiles", currentUser), {
-                nombre: currentUser, apodo: perfil.apodo || currentUser, actualizadoEn: serverTimestamp()
-            }, { merge: true });
+            // Si deja el campo vacío, NO guardamos el nombre completo como
+            // apodo (eso bloquearía el recorte automático del apellido para
+            // siempre) — simplemente no fijamos apodo, y el nombre visible
+            // sigue siendo el recorte automático de toda la vida.
+            var datosAGuardar = { nombre: currentUser, actualizadoEn: serverTimestamp() };
+            if (perfil.apodo && perfil.apodo.trim()) datosAGuardar.apodo = perfil.apodo.trim();
+            await setDoc(doc(db, "perfiles", currentUser), datosAGuardar, { merge: true });
             setGuardado(true);
         } catch(e) { console.error(e); }
         setGuardando(false);
     };
 
     var avatarActual = previewFoto || perfil.foto;
+    var tieneApellido = currentUser && currentUser.trim().split(/\s+/).length > 1;
 
     return (
         <div style={{paddingBottom:40}}>
             <h2 style={styles.title}>MI PERFIL</h2>
+
+            {/* Aviso automático: detectado apellido en el nombre registrado */}
+            {tieneApellido && !perfil.apodo && (
+                <div style={{background:'rgba(255,215,0,0.08)',border:'1px solid rgba(212,175,55,0.3)',borderRadius:14,padding:'14px 16px',marginBottom:16}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,color:'#8a6a00',fontWeight:700,marginBottom:4}}>
+                        📛 Hemos detectado tu apellido en el nombre
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)',lineHeight:1.6}}>
+                        Te registraste como "{currentUser}" — al resto de jugadores ya solo les aparece <strong>"{currentUser.trim().split(/\s+/)[0]}"</strong> automáticamente, en avatares y clasificación. Si prefieres que se muestre otra cosa, ponte un apodo justo aquí abajo.
+                    </p>
+                </div>
+            )}
 
             {/* Vista previa del avatar */}
             <div style={{textAlign:'center',marginBottom:24}}>
@@ -616,7 +643,7 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
                         </div>
                     )}
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:G.deepBlue,letterSpacing:2,textTransform:'uppercase'}}>
-                        {perfil.apodo || currentUser}
+                        {nombreVisible(currentUser, perfil)}
                     </p>
                     {guardado && !subiendoFoto && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#10b981',letterSpacing:2,textTransform:'uppercase'}}>✓ Guardado</span>}
                 </div>
@@ -6420,7 +6447,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                             ) : (
                                 <span style={{width:26,flexShrink:0}} />
                             )}
-                            <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color: eligió ? G.deepBlue : esTurno ? G.deepBlue : 'rgba(0,31,107,0.4)',textTransform:'uppercase'}}>{jugador}</span>
+                            <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color: eligió ? G.deepBlue : esTurno ? G.deepBlue : 'rgba(0,31,107,0.4)',textTransform:'uppercase'}}>{nombreVisible(jugador, userProfiles[jugador])}</span>
                             {eligió && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(16,185,129,0.1)',color:'#10b981',padding:'3px 10px',borderRadius:10}}>{muestraEscudo ? '✓ '+datos.equipo : '✓ Equipo elegido'}</span>}
                             {!eligió && esTurno && !esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(255,215,0,0.15)',color:'#d4af37',padding:'3px 10px',borderRadius:10}}>← Turno</span>}
                             {esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(230,57,70,0.1)',color:G.danger,padding:'3px 10px',borderRadius:10}}>Saltado</span>}
