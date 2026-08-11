@@ -1759,7 +1759,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                 <div style={S.eyebrow}>Las reglas del juego</div>
                 <h1 style={S.titulo}>NORMAS<br/>BÁSICAS</h1>
                 <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:360}}>
-                    {[['⏰','Plazo de apuesta','Hasta 1 hora antes del partido — hora canaria'],
+                    {[['⏰','Plazo de apuesta','Hasta 5 minutos antes del partido — hora canaria'],
                       ['🔒','Apuestas secretas','Nadie ve el pronóstico hasta que cierra la jornada'],
                       ['💸','Coste','1€ jornada normal · 2€ jornada VIP'],
                       ['🏆','Porra Anual','¿Asciende la UDLP? ¿En qué puesto? Hasta 20 pts extra (J1-J5)'],
@@ -5905,26 +5905,25 @@ const LoginScreen = ({ onLoginSuccess }) => {
 
 // ============================================================================
 // --- INTRO CINEMÁTICA — pantalla negra + música + presentación oficial ---
-// Se muestra una sola vez por dispositivo, a partir de la fecha de lanzamiento.
+// Se muestra la PRIMERA VEZ QUE CADA JUGADOR entra (por nombre, no por
+// dispositivo) — igual que el tutorial, justo antes de él. Así, si varios
+// jugadores comparten móvil u ordenador, cada uno la ve en su primer login,
+// y no depende de si "ese navegador" ya la vio con otro nombre antes.
 // Requiere que presentacion_porra.html esté en /public/presentacion_porra.html
 // ============================================================================
-const FECHA_LANZAMIENTO_INTRO = new Date('2026-08-11T00:00:00');
 const AUDIO_INTRO_URL = '/intro.mp3'; // mismo mp3 usado dentro de la presentación
 
-function debeMostrarIntro() {
-    if (typeof window === 'undefined') return false;
-    // Vista previa forzada: añade ?intro=1 a la URL para verla en cualquier momento.
-    var params = new URLSearchParams(window.location.search);
-    if (params.get('intro') === '1') return true;
-    // Modo prueba (código udlp2027): siempre visible al entrar, tantas veces
-    // como quieran — NO se marca como "vista" para este grupo.
-    if (sessionStorage.getItem('porra_prueba') === '1') return true;
-    // Usuarios normales: solo a partir de la fecha de lanzamiento, y una sola vez.
-    if (new Date() < FECHA_LANZAMIENTO_INTRO) return false;
-    return !localStorage.getItem('intro_presentacion_2627_vista');
+// ¿Ya vio ESTE jugador la presentación? Comprueba local (rápido) + Firestore
+// (por si entra desde otro dispositivo, o el admin se la reseteó).
+async function yaVioPresentacion(user) {
+    if (localStorage.getItem('presentacion_2627_' + user)) return true;
+    try {
+        var snap = await getDoc(doc(db, 'perfiles', user));
+        return !!(snap.exists() && snap.data().presentacionVista === true);
+    } catch(e) { return false; }
 }
 
-const IntroPresentacionGate = ({ onFinish }) => {
+const IntroPresentacionGate = ({ onFinish, user }) => {
     var [fase, setFase] = useState('negro'); // negro -> esperandoGesto -> presentacion
     var [necesitaGesto, setNecesitaGesto] = useState(false);
     var [errorCarga, setErrorCarga] = useState(''); // mensaje si el archivo no carga
@@ -5988,7 +5987,10 @@ const IntroPresentacionGate = ({ onFinish }) => {
     };
 
     var finalizar = function() {
-        localStorage.setItem('intro_presentacion_2627_vista', '1');
+        if (user) {
+            localStorage.setItem('presentacion_2627_' + user, '1');
+            setDoc(doc(db, 'perfiles', user), { presentacionVista: true }, { merge: true }).catch(function(){});
+        }
         onFinish();
     };
 
@@ -6064,7 +6066,7 @@ function App() {
     const [clasificacionData, setClasificacionData] = useState([]);
     const [showTutorial, setShowTutorial] = useState(false);
     const [pagosGlobal, setPagosGlobal] = useState([]);
-    const [mostrarIntro, setMostrarIntro] = useState(debeMostrarIntro());
+    const [mostrarPresentacion, setMostrarPresentacion] = useState(false);
 
     // ── Tema visual — pizarra oscura / pizarra clara. Por defecto oscuro. ──
     const [tema, setTema] = useState(function() {
@@ -6103,6 +6105,21 @@ function App() {
         return () => { document.head.removeChild(styleSheet); unsubStatus(); };
     }, []);
 
+    // Comprueba si hay que mostrar el tutorial — separado para poder llamarlo
+    // tanto justo tras el login (si ya vio la presentación antes) como al
+    // cerrar la presentación (si es la primera vez y acaba de verla).
+    const comprobarTutorial = async (user) => {
+        var yaVistoLocal = !!localStorage.getItem('tutorial_2627_' + user);
+        var perfilSnap = await getDoc(doc(db, 'perfiles', user));
+        var forzadoPorAdmin = perfilSnap.exists() && perfilSnap.data().resetTutorial === true;
+        if (!yaVistoLocal || forzadoPorAdmin) {
+            setShowTutorial(true);
+            if (forzadoPorAdmin) {
+                await setDoc(doc(db, 'perfiles', user), { resetTutorial: false }, { merge: true });
+            }
+        }
+    };
+
     // ── Tras login: cargar datos privados y plantilla vía API ───────────
     const handleLoginSuccess = async (user) => {
         try {
@@ -6137,18 +6154,13 @@ function App() {
 
             setScreen('app');
 
-            // Mostrar tutorial épico si es la primera vez en la temporada 26/27,
-            // O si el admin lo forzó a re-verlo desde el panel (flag en Firestore,
-            // porque desde admin no se puede tocar el localStorage de OTRO dispositivo).
-            var yaVistoLocal = !!localStorage.getItem('tutorial_2627_' + user);
-            var perfilSnap = await getDoc(doc(db, 'perfiles', user));
-            var forzadoPorAdmin = perfilSnap.exists() && perfilSnap.data().resetTutorial === true;
-            if (!yaVistoLocal || forzadoPorAdmin) {
-                setShowTutorial(true);
-                if (forzadoPorAdmin) {
-                    // Consumimos el flag para que no se repita en cada login futuro
-                    await setDoc(doc(db, 'perfiles', user), { resetTutorial: false }, { merge: true });
-                }
+            // PRIMERO la presentación con el storytelling (si es la primera vez
+            // de ESTE jugador), y solo cuando termine, el tutorial de cómo jugar.
+            var vioPresentacion = await yaVioPresentacion(user);
+            if (!vioPresentacion) {
+                setMostrarPresentacion(true); // el tutorial se comprueba al cerrarla (onFinish)
+            } else {
+                await comprobarTutorial(user);
             }
         } catch (error) {
             console.error('Error en handleLoginSuccess:', error);
@@ -6165,7 +6177,7 @@ function App() {
     };
 
     if (APP_EN_CONSTRUCCION) return <ModoConstruccion />;
-    if (mostrarIntro) return <IntroPresentacionGate onFinish={function() { setMostrarIntro(false); }} />;
+    if (mostrarPresentacion) return <IntroPresentacionGate user={currentUser} onFinish={function() { setMostrarPresentacion(false); comprobarTutorial(currentUser); }} />;
     if (screen === 'login') return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
 
     var renderContent = function() {
@@ -6286,7 +6298,7 @@ function App() {
                 <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                     {/* Ver presentación de nuevo — modo prueba, o siempre para el admin */}
                     {typeof window !== 'undefined' && (sessionStorage.getItem('porra_prueba') === '1' || isAdmin) && (
-                        <button onClick={function() { setDrawerOpen(false); setMostrarIntro(true); }}
+                        <button onClick={function() { setDrawerOpen(false); setMostrarPresentacion(true); }}
                             style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                 padding: '10px 14px', marginBottom: 10, border: '1px solid rgba(255,215,0,0.3)', borderRadius: 12,
                                 background: 'rgba(255,215,0,0.08)', color: '#FFD700', cursor: 'pointer' }}>
