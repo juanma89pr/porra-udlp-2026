@@ -12,7 +12,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#001F6B;font-family:
 .slide{
   position:fixed;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:flex-start;
-  padding:28px 24px 130px;overflow-y:auto;
+  padding:28px 24px 100px;overflow-y:auto;
   -webkit-overflow-scrolling:touch;
   opacity:0;pointer-events:none;
   transition:opacity .45s ease,transform .45s ease;
@@ -22,7 +22,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#001F6B;font-family:
 .slide.exit{opacity:0;transform:translateX(-40px);}
 
 .slide-inner{
-  width:100%;max-width:420px;margin:auto;
+  width:100%;max-width:420px;margin:0 auto;
   display:flex;flex-direction:column;align-items:center;
   animation:slideUp .4s ease both;
 }
@@ -88,11 +88,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:#001F6B;font-family:
 .plaza.libre{background:transparent;border:1.5px dashed rgba(255,215,0,0.25);}
 
 /* BARRA DE NAVEGACIÓN */
-.nav-bar{position:fixed;bottom:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:14px 20px 28px;background:transparent;}
-.nav-btn{font-family:'Teko',sans-serif;font-size:15px;letter-spacing:2px;border:none;cursor:pointer;border-radius:24px;padding:12px 22px;text-transform:uppercase;transition:all .2s;}
-.nav-btn.prev{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.45);}
-.nav-btn.next{background:#FFD700;color:#001F6B;box-shadow:0 4px 20px rgba(255,215,0,0.3);}
-.nav-btn.next.fin{font-size:12px;}
+.nav-bar{position:fixed;bottom:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:10px 16px 20px;background:transparent;}
+.nav-btn{font-family:'Teko',sans-serif;font-size:12px;letter-spacing:1.5px;border:none;cursor:pointer;border-radius:18px;padding:8px 16px;text-transform:uppercase;transition:all .2s;}
+.nav-btn.prev{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.4);backdrop-filter:blur(6px);}
+.nav-btn.next{background:#FFD700;color:#001F6B;box-shadow:0 2px 12px rgba(255,215,0,0.25);}
+.nav-btn.next.fin{font-size:11px;}
 .nav-dots{display:flex;gap:5px;align-items:center;}
 .nd{width:5px;height:5px;border-radius:3px;background:rgba(255,215,0,0.2);cursor:pointer;transition:all .3s ease;}
 .nd.active{width:18px;background:#FFD700;}
@@ -474,7 +474,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#001F6B;font-family:
       <span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(0,145,255,0.7);">directo desde tu banco · sin comisión</span>
     </div>
   </div>
-  <div class="info-box"><p>🏆 <strong>Top 3 de la porra con premio asegurado</strong> — el bote sale de las inscripciones (5€ × jugadores), mínimo 75€ con 15 jugadores, hasta 100€ si llegamos a 20. Reparto exacto al cerrar inscripciones.<br>❄️ <strong>Campeón de Invierno</strong> a mitad de temporada<br>🎟️ <strong>Rifas</strong> durante toda la temporada, para todos<br>⭐ <strong>Liga de Estrellas</strong> con premio de alto valor — se va desvelando poco a poco<br>✨ Y más sorpresas según avance la temporada</p></div>
+  <div class="info-box"><p>🏆 <strong>Top 3 con premio asegurado</strong><br>❄️ <strong>Campeón de Invierno</strong> a mitad de temporada<br>🎟️ <strong>Rifas</strong> durante toda la temporada<br>⭐ <strong>Estrellas</strong> con premio de alto valor<br>✨ Y más sorpresas por llegar</p></div>
 </div>
 </div>
 <div class="slide bg-blue" id="s14">
@@ -492,6 +492,23 @@ html,body{width:100%;height:100%;overflow:hidden;background:#001F6B;font-family:
 <!-- ════════════════════════════════════════════
      SLIDE 15 — CIERRE ÉPICO
 ════════════════════════════════════════════ -->
+
+<!-- NEGRO: HAY PREMIO DE VERDAD -->
+<div class="slide negro" id="sF">
+  <div class="deco"><div class="deco-circle" style="top:-10%;left:-15%;width:60vw;height:60vw;background:rgba(255,215,0,0.04);"></div></div>
+  <div class="slide-inner">
+    <p class="cs" style="animation:cineFade 1.3s ease .3s both;margin-bottom:16px;">esto no es solo por diversión</p>
+    <h1 class="ct" style="animation:cineSube 1s ease .8s both;font-size:clamp(2.6rem,11vw,4.2rem);">HAY PREMIO</h1>
+    <h1 class="ct d" style="animation:cineSube 1s ease 1.3s both;font-size:clamp(2.6rem,11vw,4.2rem);">DE VERDAD</h1>
+    <div class="cl" style="width:0;max-width:75px;animation-delay:2s;"></div>
+    <div style="animation:cineFade 1.2s ease 2.3s both;display:flex;flex-direction:column;gap:10px;margin-top:6px;">
+      <p class="cs" style="margin:0;">🥇 Top 3 con premio asegurado</p>
+      <p class="cs" style="margin:0;">❄️ Campeón de Invierno</p>
+      <p class="cs" style="margin:0;">🎟️ Rifas toda la temporada</p>
+      <p class="cs" style="margin:0;color:#FFD700;">⭐ Y la Estrella... eso todavía no lo contamos</p>
+    </div>
+  </div>
+</div>
 
 <!-- NEGRO FINAL: ESTE AÑO ES DIFERENTE -->
 <div class="slide negro" id="sD">
@@ -549,13 +566,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:#001F6B;font-family:
 </div>
 
 <script>
-var TOTAL = 22;
+var TOTAL = 23;
 var current = 0;
 var jugSel = [];
 var escInt, multInt, jugInt;
 var jugActivo = 0;
 
-var SLIDE_IDS = ["sA","sB","sC","s0","s1","s2","s3","s4","s5","s6","s7","s8","s9","s10","s11","s12","s13","s14b","s14","sD","sE","s15"];
+var SLIDE_IDS = ["sA","sB","sC","s0","s1","s2","s3","s4","s5","s6","s7","s8","s9","s10","s11","s12","s13","s14b","s14","sF","sD","sE","s15"];
 
 var EQUIPOS = ["Barcelona","R.Madrid","Atlético","Villarreal","R.Betis","Celta","R.Sociedad","Getafe","Athletic","Sevilla","Rayo","Alavés","Espanyol","Valencia","Leganés","Osasuna","Valladolid","Racing","Deportivo","Málaga"];
 
