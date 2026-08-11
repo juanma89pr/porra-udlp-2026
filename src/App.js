@@ -4641,6 +4641,7 @@ const AdminPanelScreen = ({ plantilla }) => {
     var [msgSync, setMsgSync] = useState('');
     var [seccion, setSeccion] = useState('jornadas');
     var [solicitudes, setSolicitudes] = useState([]);
+    var [errorSolicitudes, setErrorSolicitudes] = useState('');
     var [pagos, setPagos] = useState([]);
     var [msgAdmin, setMsgAdmin] = useState('');
     var [rifas, setRifas] = useState([]);
@@ -4684,9 +4685,14 @@ const AdminPanelScreen = ({ plantilla }) => {
 
     useEffect(function() {
         if (seccion !== 'solicitudes') return;
+        setErrorSolicitudes('');
         var unsub = onSnapshot(
             query(collection(db, 'solicitudes_ingreso'), orderBy('creadoEn', 'asc')),
-            function(snap) { setSolicitudes(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })); }
+            function(snap) { setSolicitudes(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })); },
+            function(err) {
+                console.error('Error leyendo solicitudes:', err);
+                setErrorSolicitudes('No se pudieron cargar las solicitudes: ' + err.message + ' (revisa las reglas de Firestore para la colección "solicitudes_ingreso")');
+            }
         );
         return function() { unsub(); };
     }, [seccion]);
@@ -4952,7 +4958,12 @@ const AdminPanelScreen = ({ plantilla }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'solicitudes' && (
                 <div>
-                    {solicitudes.length === 0 ? (
+                    {errorSolicitudes && (
+                        <div style={{...A.card,background:'rgba(230,57,70,0.08)',border:'1px solid rgba(230,57,70,0.25)',color:'#e63946',fontFamily:"'Inter',sans-serif",fontSize:12,padding:16,marginBottom:12}}>
+                            ⚠️ {errorSolicitudes}
+                        </div>
+                    )}
+                    {solicitudes.length === 0 && !errorSolicitudes ? (
                         <div style={{...A.card,textAlign:'center',color:'rgba(0,31,107,0.4)',fontFamily:"'Inter',sans-serif",fontSize:13,padding:24}}>
                             No hay solicitudes de ingreso todavía
                         </div>
@@ -5291,6 +5302,22 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
     var [copiadoPlaza, setCopiadoPlaza] = useState(false);
     var [heEnviadoPlaza, setHeEnviadoPlaza] = useState(false);
     var [enviandoPlaza, setEnviandoPlaza] = useState(false);
+    var [jugadoresAprobados, setJugadoresAprobados] = useState([]); // nuevos por invitación, en orden real de entrada
+    var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(snap) {
+            setJugadoresAprobados(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
+            setJugadoresInactivos(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'bizum'), function(snap) {
@@ -5334,8 +5361,24 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
             if (idxVac !== -1) baseOrden[idxVac] = vacante.nombreNuevo || '__VACANTE__';
         }
 
-        var nuevos = Object.keys(datos).filter(function(j) {
-            return baseOrden.indexOf(j) === -1 && !datos[j].equipo;
+        // "Nuevos" ya NO se detectan mirando quién tiene ya un documento
+        // guardado en El Otro (eso era el bug: un jugador recién aprobado por
+        // invitación nunca llega a tener ese documento hasta que puede elegir,
+        // y no puede elegir si nunca aparece en la cola — círculo cerrado).
+        // Ahora se usa la lista real de aprobados por invitación, que ya
+        // viene en su orden real de entrada (arrayUnion añade siempre al
+        // final), filtrando a quien haya sido dado de baja.
+        var nuevosAprobados = jugadoresAprobados.filter(function(j) {
+            return jugadoresInactivos.indexOf(j) === -1 && baseOrden.indexOf(j) === -1;
+        });
+        // Por si alguien tiene ya un documento en El Otro sin estar en la
+        // lista de aprobados (casos antiguos) — se mantiene como red de
+        // seguridad, sin duplicar a quien ya esté contado arriba.
+        var otrosConDocumento = Object.keys(datos).filter(function(j) {
+            return baseOrden.indexOf(j) === -1 && nuevosAprobados.indexOf(j) === -1;
+        });
+        var nuevos = [].concat(nuevosAprobados, otrosConDocumento).filter(function(j) {
+            return !datos[j] || !datos[j].equipo;
         });
         var ordenCompleto = [].concat(baseOrden, nuevos);
 
@@ -5377,7 +5420,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
                 }, { merge: true }).catch(function(){});
             }
         }
-    }, [todosElOtro, vacante, currentUser]);
+    }, [todosElOtro, vacante, currentUser, jugadoresAprobados, jugadoresInactivos]);
 
     // Temporizador: si es mi turno, cuenta atrás de 60 minutos — y si se agota,
     // me marco a mí mismo como "saltado" (paso al final de la cola) para que
