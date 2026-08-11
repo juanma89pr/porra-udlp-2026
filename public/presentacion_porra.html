@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Porra UDLP 26/27 — Presentación</title>
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{width:100%;height:100%;overflow:hidden;background:#001F6B;font-family:'Inter',sans-serif;}
+
+.slide{
+  position:fixed;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:flex-start;
+  padding:28px 24px 90px;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  opacity:0;pointer-events:none;
+  transition:opacity .45s ease,transform .45s ease;
+  transform:translateX(40px);
+}
+.slide.active{opacity:1;pointer-events:all;transform:translateX(0);}
+.slide.exit{opacity:0;transform:translateX(-40px);}
+
+.slide-inner{
+  width:100%;max-width:420px;margin:auto;
+  display:flex;flex-direction:column;align-items:center;
+  animation:slideUp .4s ease both;
+}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,215,0,0.4)}70%{box-shadow:0 0 0 16px rgba(255,215,0,0)}100%{box-shadow:0 0 0 0 rgba(255,215,0,0)}}
+@keyframes cascadeIn{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+
+.bg-blue{background:linear-gradient(160deg,#001F6B 0%,#0035b8 100%);}
+.bg-dark{background:linear-gradient(160deg,#080810 0%,#12121e 100%);}
+
+.deco{position:absolute;inset:0;overflow:hidden;pointer-events:none;}
+.deco svg{position:absolute;inset:0;width:100%;height:100%;}
+.deco .c1{position:absolute;border-radius:50%;background:rgba(255,215,0,0.03);}
+
+.eyebrow{font-family:'Teko',sans-serif;font-size:11px;letter-spacing:5px;color:rgba(255,215,0,0.5);text-transform:uppercase;margin-bottom:10px;text-align:center;}
+.titulo{font-family:'Teko',sans-serif;font-weight:700;color:#FFD700;letter-spacing:3px;text-transform:uppercase;line-height:1;text-align:center;margin-bottom:18px;font-size:clamp(2.6rem,11vw,4rem);}
+.titulo.mega{font-size:clamp(3.2rem,13vw,5rem);}
+.cuerpo{font-family:'Inter',sans-serif;font-size:clamp(13px,3.8vw,15px);color:rgba(255,255,255,0.65);line-height:1.8;text-align:center;max-width:360px;margin-bottom:18px;}
+.sep{width:40px;height:2px;background:rgba(255,215,0,0.25);border-radius:1px;margin:14px auto;}
+.tag{display:inline-block;background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.25);border-radius:20px;padding:8px 22px;margin-bottom:16px;}
+.tag span{font-family:'Teko',sans-serif;font-size:14px;letter-spacing:2px;color:#FFD700;text-transform:uppercase;}
+.icon-big{font-size:clamp(58px,14vw,78px);display:block;margin-bottom:18px;animation:float 3s ease-in-out infinite;text-align:center;}
+
+.card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 12px;}
+.card-gold{background:rgba(255,215,0,0.07);border:1px solid rgba(255,215,0,0.2);border-radius:14px;padding:14px 12px;}
+.info-box{background:rgba(255,215,0,0.07);border:1px solid rgba(255,215,0,0.18);border-radius:14px;padding:14px 18px;width:100%;max-width:380px;}
+.info-box p{font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,215,0,0.75);line-height:1.7;text-align:center;}
+
+.pts-row{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.04);border-radius:10px;padding:10px 14px;width:100%;max-width:380px;}
+.pts-row .pr-l{flex:1;font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,0.65);}
+.pts-row .pr-v{font-family:'Teko',sans-serif;font-size:24px;font-weight:700;color:#FFD700;min-width:48px;text-align:right;}
+.pts-row .pr-vip{font-family:'Teko',sans-serif;font-size:13px;color:rgba(255,215,0,0.4);min-width:52px;text-align:right;}
+
+.stats-row{display:flex;width:100%;max-width:380px;background:rgba(255,255,255,0.04);border-radius:14px;overflow:hidden;}
+.stat-item{flex:1;padding:16px 8px;text-align:center;border-right:1px solid rgba(255,255,255,0.06);}
+.stat-item:last-child{border-right:none;}
+.stat-item .sv{font-family:'Teko',sans-serif;font-size:26px;font-weight:700;color:#FFD700;}
+.stat-item .sl{font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.3);letter-spacing:2px;text-transform:uppercase;margin-top:2px;}
+
+.escudo-box{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:8px 4px;text-align:center;transition:all .18s ease;}
+.escudo-box.hl{background:rgba(255,215,0,0.15);border-color:rgba(255,215,0,0.5);transform:scale(1.1);}
+.escudo-box span{font-family:'Teko',sans-serif;font-size:9px;color:rgba(255,255,255,0.3);letter-spacing:0.5px;line-height:1.2;display:block;}
+.escudo-box.hl span{color:#FFD700;}
+
+.jug-item{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;transition:all .3s ease;}
+.jug-avatar{width:52px;height:52px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;transition:all .3s ease;font-family:'Teko',sans-serif;font-size:16px;color:rgba(255,255,255,0.4);}
+.jug-avatar img{width:100%;height:100%;object-fit:cover;}
+.jug-name{font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.3);max-width:56px;text-align:center;line-height:1.2;}
+.jug-item.sel .jug-avatar{border-color:#FFD700;background:rgba(255,215,0,0.1);}
+.jug-item.sel .jug-name{color:#FFD700;}
+.jug-item.hl .jug-avatar{transform:scale(1.2) translateY(-4px);border-color:rgba(255,215,0,0.5);}
+
+.mult-card{flex:1;background:rgba(255,215,0,0.06);border:1px solid rgba(255,215,0,0.15);border-radius:14px;padding:16px 8px;text-align:center;transition:all .4s ease;}
+.mult-card.hl{background:rgba(255,215,0,0.15);border-color:rgba(255,215,0,0.5);transform:scale(1.06);}
+.mult-card .mc-use{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.35);margin-bottom:8px;line-height:1.4;}
+.mult-card .mc-val{font-family:'Teko',sans-serif;font-size:32px;font-weight:700;color:rgba(255,215,0,0.4);transition:color .4s;}
+.mult-card.hl .mc-val{color:#FFD700;}
+
+.plaza{width:15px;height:15px;border-radius:50%;transition:all .3s;}
+.plaza.ok{background:rgba(255,215,0,0.65);border:1.5px solid rgba(255,215,0,0.4);}
+.plaza.libre{background:transparent;border:1.5px dashed rgba(255,215,0,0.25);}
+
+/* BARRA DE NAVEGACIÓN */
+.nav-bar{position:fixed;bottom:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:14px 20px 28px;background:transparent;}
+.nav-btn{font-family:'Teko',sans-serif;font-size:15px;letter-spacing:2px;border:none;cursor:pointer;border-radius:24px;padding:12px 22px;text-transform:uppercase;transition:all .2s;}
+.nav-btn.prev{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.45);}
+.nav-btn.next{background:#FFD700;color:#001F6B;box-shadow:0 4px 20px rgba(255,215,0,0.3);}
+.nav-btn.next.fin{font-size:12px;}
+.nav-dots{display:flex;gap:5px;align-items:center;}
+.nd{width:5px;height:5px;border-radius:3px;background:rgba(255,215,0,0.2);cursor:pointer;transition:all .3s ease;}
+.nd.active{width:18px;background:#FFD700;}
+
+.slide-num{position:fixed;top:16px;left:16px;z-index:100;font-family:'Teko',sans-serif;font-size:12px;letter-spacing:3px;color:rgba(255,215,0,0.25);text-transform:uppercase;}
+.skip-btn{position:fixed;top:16px;right:16px;z-index:100;background:none;border:none;font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.2);cursor:pointer;letter-spacing:1px;}
+
+/* ── PANTALLAS NEGRAS ── */
+.slide.negro { background:#000 !important; }
+@keyframes cineAparece { 0%{opacity:0;letter-spacing:14px} 100%{opacity:1;letter-spacing:inherit} }
+@keyframes cineFade    { 0%{opacity:0}                     100%{opacity:1} }
+@keyframes cineLinea   { 0%{width:0}                       100%{width:100%} }
+@keyframes cineSube    { 0%{opacity:0;transform:translateY(26px)} 100%{opacity:1;transform:translateY(0)} }
+.ct { font-family:'Teko',sans-serif; font-weight:700; text-transform:uppercase;
+  color:#fff; letter-spacing:4px; line-height:1.05; text-align:center;
+  font-size:clamp(3rem,13vw,5rem); }
+.ct.d { color:#FFD700; }
+.ct.g { color:rgba(255,255,255,0.6); }
+.cs { font-family:'Inter',sans-serif; font-weight:300;
+  font-size:clamp(10px,2.6vw,12px); letter-spacing:5px;
+  color:rgba(255,255,255,0.28); text-transform:uppercase; text-align:center; }
+.cl { height:1px; background:rgba(255,215,0,0.3); margin:14px auto;
+  animation:cineLinea 1.2s ease forwards; }
+</style>
+</head>
+<body>
+
+<!-- Fondo decorativo global -->
+<div class="deco">
+  <div class="c1" style="top:-20%;right:-20%;width:60vw;height:60vw;"></div>
+  <div class="c1" style="bottom:-10%;left:-15%;width:40vw;height:40vw;"></div>
+  <svg viewBox="0 0 400 700" fill="none" preserveAspectRatio="xMidYMid slice">
+    <rect x="40" y="40" width="320" height="620" stroke="#FFD700" stroke-width="0.4" opacity="0.05" rx="2"/>
+    <line x1="40" y1="350" x2="360" y2="350" stroke="#FFD700" stroke-width="0.4" opacity="0.04"/>
+    <circle cx="200" cy="350" r="60" stroke="#FFD700" stroke-width="0.4" opacity="0.04"/>
+  </svg>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 0 — PORTADA
+════════════════════════════════════════════ -->
+
+<!-- NEGRO 0: EL AÑO PASADO -->
+<div class="slide negro active" id="sA">
+  <div class="deco"><div class="deco-circle" style="top:-20%;right:-20%;width:60vw;height:60vw;"></div></div>
+  <div class="slide-inner">
+    <p class="cs" style="animation:cineFade 2s ease .5s both;margin-bottom:24px;">temporada 25 / 26</p>
+    <h1 class="ct g" style="animation:cineAparece 2s ease 1s both;">EL AÑO</h1>
+    <h1 class="ct"   style="animation:cineAparece 2s ease 1.6s both;">PASADO</h1>
+    <div class="cl"  style="width:0;max-width:70px;animation-delay:2.3s;"></div>
+    <p class="cs"    style="animation:cineFade 1.5s ease 2.8s both;max-width:280px;margin:0 auto;line-height:1.9;">
+      todos juntos — empujamos<br/>para conseguirlo
+    </p>
+  </div>
+</div>
+
+<!-- NEGRO 1: PERO NO PUDIMOS -->
+<div class="slide negro" id="sB">
+  <div class="slide-inner">
+    <h1 class="ct g" style="animation:cineAparece 2s ease .4s both;">PERO</h1>
+    <h1 class="ct"   style="animation:cineAparece 2s ease 1s both;">NO PUDIMOS</h1>
+    <div class="cl"  style="width:0;max-width:55px;animation-delay:1.8s;"></div>
+    <p class="cs"    style="animation:cineFade 1.5s ease 2.3s both;max-width:280px;margin:0 auto;line-height:1.9;">
+      volver a jugar con los grandes —<br/>rodeados de estrellas
+    </p>
+  </div>
+</div>
+
+<!-- NEGRO 2: PERO ESTE AÑO -->
+<div class="slide negro" id="sC">
+  <div class="slide-inner">
+    <p class="cs"  style="animation:cineFade 1.5s ease .3s both;color:rgba(255,215,0,.45);margin-bottom:14px;">pero este año</p>
+    <h1 class="ct" style="animation:cineAparece 1.8s ease .8s both;">EN ESTA</h1>
+    <h1 class="ct d" style="animation:cineAparece 1.8s ease 1.4s both;">PORRA</h1>
+    <div class="cl" style="width:0;max-width:65px;animation-delay:2s;"></div>
+    <p class="cs"   style="animation:cineFade 1.5s ease 2.5s both;max-width:280px;margin:0 auto;line-height:1.9;">
+      sí podrás hacerlo —<br/>con tu propia liga de estrellas
+    </p>
+  </div>
+</div>
+
+<div class="slide bg-blue" id="s0">
+<div class="slide-inner">
+  <img src="https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/UD_Las_Palmas_logo.svg/200px-UD_Las_Palmas_logo.svg.png"
+    alt="UDLP" style="width:90px;height:auto;margin-bottom:24px;filter:drop-shadow(0 0 40px rgba(255,215,0,0.45));animation:float 3s ease-in-out infinite;"
+    onerror="this.style.display='none'">
+  <p class="eyebrow">Temporada 26/27</p>
+  <h1 class="titulo mega">PORRA<br/>UDLP</h1>
+  <p class="cuerpo">La porra más épica de la familia arranca una nueva temporada. Nuevas reglas, misma pasión por los colores amarillo-azules.</p>
+  <div class="tag"><span>Segunda División · 42 Jornadas · 20 Jugadores</span></div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 1 — LA UDLP
+════════════════════════════════════════════ -->
+<div class="slide bg-dark" id="s1">
+<div class="slide-inner">
+  <span class="icon-big">🏟️</span>
+  <p class="eyebrow">UD Las Palmas · 2º año en Segunda</p>
+  <h1 class="titulo">EL AÑO<br/>DEL ASCENSO</h1>
+  <p class="cuerpo">Estuvimos <strong style="color:#FFD700">a un paso</strong> el año pasado. El playoff nos dejó a las puertas. Esta temporada la UDLP va a por todas con Rubén de la Barrera al mando — y ustedes estarán en cada partido.</p>
+  <div class="stats-row">
+    <div class="stat-item"><div class="sv">42</div><div class="sl">Jornadas</div></div>
+    <div class="stat-item"><div class="sv">15 AGO</div><div class="sl">Arranque</div></div>
+    <div class="stat-item"><div class="sv">20</div><div class="sl">Jugadores</div></div>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 2 — LA PORRA: QUÉ ES
+════════════════════════════════════════════ -->
+<div class="slide bg-blue" id="s2">
+<div class="slide-inner">
+  <span class="icon-big">⚽</span>
+  <p class="eyebrow">El juego central de siempre</p>
+  <h1 class="titulo">LA PORRA</h1>
+  <p class="cuerpo">Cada semana, antes del partido de la UDLP, haces tu apuesta. Adivinas el <strong style="color:#FFD700">marcador exacto</strong> y, si aciertas, te llevas el <strong style="color:#FFD700">bote de la jornada</strong>. Si nadie acierta, el bote crece y se acumula.</p>
+  <div style="display:flex;gap:10px;width:100%;max-width:380px;">
+    <div class="card-gold" style="flex:1;text-align:center;">
+      <div style="font-size:28px;margin-bottom:8px;">🎯</div>
+      <p style="font-family:'Teko',sans-serif;font-size:14px;letter-spacing:2px;color:rgba(255,215,0,0.8);margin-bottom:4px;text-transform:uppercase;">Exacto</p>
+      <p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.4);line-height:1.5;">Ganas el bote</p>
+    </div>
+    <div class="card" style="flex:1;text-align:center;">
+      <div style="font-size:28px;margin-bottom:8px;">💰</div>
+      <p style="font-family:'Teko',sans-serif;font-size:14px;letter-spacing:2px;color:rgba(255,255,255,0.5);margin-bottom:4px;text-transform:uppercase;">Nadie acierta</p>
+      <p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.35);line-height:1.5;">El bote crece</p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 3 — CÓMO SE APUESTA
+════════════════════════════════════════════ -->
+<div class="slide bg-dark" id="s3">
+<div class="slide-inner">
+  <p class="eyebrow">Tu apuesta semanal</p>
+  <h1 class="titulo">¿CÓMO SE<br/>APUESTA?</h1>
+  <p class="cuerpo" style="font-size:13px;">Cada jornada rellenas el marcador y el 1X2 por separado — puedes contradecirte, eso es estrategia.</p>
+  <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:380px;">
+    <div class="card-gold" style="display:flex;align-items:center;gap:14px;padding:16px 18px;">
+      <span style="font-size:30px;flex-shrink:0;">⚽</span>
+      <div>
+        <p style="font-family:'Teko',sans-serif;font-size:20px;letter-spacing:1px;color:#FFD700;margin-bottom:3px;">Marcador exacto</p>
+        <p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.5;">Eliges el resultado: 2-1, 0-0, 3-2... Si aciertas, ganas el bote + puntos</p>
+      </div>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:14px;padding:16px 18px;">
+      <span style="font-size:30px;flex-shrink:0;">1️⃣</span>
+      <div>
+        <p style="font-family:'Teko',sans-serif;font-size:20px;letter-spacing:1px;color:#FFD700;margin-bottom:3px;">1X2 — Independiente</p>
+        <p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.5;">Gana / Empata / Pierde — puede diferir del marcador. Tu estrategia.</p>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 4 — PUNTOS RESULTADO Y 1X2
+════════════════════════════════════════════ -->
+<div class="slide bg-blue" id="s4">
+<div class="slide-inner">
+  <p class="eyebrow">¿Cuánto vale acertar?</p>
+  <h1 class="titulo">RESULTADO<br/>Y 1X2</h1>
+  <div style="display:flex;flex-direction:column;gap:8px;width:100%;max-width:380px;margin-bottom:14px;">
+    <div class="pts-row"><span class="pr-l">⚽ Resultado exacto</span><span class="pr-v">3 pts</span><span class="pr-vip">6 VIP</span></div>
+    <div class="pts-row"><span class="pr-l">1️⃣ 1X2 acertado</span><span class="pr-v">2 pts</span><span class="pr-vip">4 VIP</span></div>
+  </div>
+  <div class="info-box">
+    <p>🏆 Las jornadas <strong>VIP</strong> doblan los puntos de resultado y 1X2, y cuestan <strong>2€</strong> en vez de 1€.<br/>El bote solo lo gana quien acierta el <strong>marcador exacto</strong>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 5 — NORMAS BÁSICAS
+════════════════════════════════════════════ -->
+<div class="slide bg-dark" id="s5">
+<div class="slide-inner">
+  <span class="icon-big">📋</span>
+  <p class="eyebrow">Las reglas del juego</p>
+  <h1 class="titulo">NORMAS<br/>BÁSICAS</h1>
+  <div style="display:flex;flex-direction:column;gap:8px;width:100%;max-width:380px;">
+    <div class="card" style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;">
+      <span style="font-size:18px;flex-shrink:0;">⏰</span>
+      <div><p style="font-family:'Teko',sans-serif;font-size:16px;letter-spacing:1px;color:#FFD700;margin-bottom:2px;">Plazo de apuesta</p><p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.4);line-height:1.5;">Hasta 1 hora antes del partido — hora canaria siempre</p></div>
+    </div>
+    <div class="card" style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;">
+      <span style="font-size:18px;flex-shrink:0;">🔒</span>
+      <div><p style="font-family:'Teko',sans-serif;font-size:16px;letter-spacing:1px;color:#FFD700;margin-bottom:2px;">Apuestas secretas</p><p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.4);line-height:1.5;">Nadie ve el pronóstico de los demás hasta que cierra la jornada</p></div>
+    </div>
+    <div class="card" style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;">
+      <span style="font-size:18px;flex-shrink:0;">💸</span>
+      <div><p style="font-family:'Teko',sans-serif;font-size:16px;letter-spacing:1px;color:#FFD700;margin-bottom:2px;">Coste semanal</p><p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.4);line-height:1.5;">1€ jornada normal · 2€ jornada VIP</p></div>
+    </div>
+    <div class="card" style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;">
+      <span style="font-size:18px;flex-shrink:0;">🏆</span>
+      <div><p style="font-family:'Teko',sans-serif;font-size:16px;letter-spacing:1px;color:#FFD700;margin-bottom:2px;">Porra Anual (bonus)</p><p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.4);line-height:1.5;">¿Asciende la UDLP? ¿En qué puesto queda? Hasta 20 pts extra (jornadas 1-5)</p></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 6 — CLASIFICACIÓN GENERAL
+════════════════════════════════════════════ -->
+<div class="slide bg-blue" id="s6">
+<div class="slide-inner">
+  <span class="icon-big">📊</span>
+  <p class="eyebrow">A lo largo de la temporada</p>
+  <h1 class="titulo">LA CLASIFICACIÓN<br/>GENERAL</h1>
+  <p class="cuerpo">Todos los puntos de cada jornada — resultado, 1X2, estrellas y el multiplicador — se acumulan en una <strong style="color:#FFD700">clasificación general</strong> durante las 42 jornadas. Al final de temporada, el que más puntos tenga, gana.</p>
+  <div style="display:flex;gap:10px;width:100%;max-width:380px;">
+    <div class="card-gold" style="flex:1;text-align:center;"><p style="font-family:'Teko',sans-serif;font-size:36px;font-weight:700;color:#FFD700;line-height:1;">10</p><p style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.35);margin-top:4px;">pts máx/jornada</p></div>
+    <div class="card" style="flex:1;text-align:center;"><p style="font-family:'Teko',sans-serif;font-size:36px;font-weight:700;color:rgba(255,215,0,0.6);line-height:1;">42</p><p style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.25);margin-top:4px;">jornadas</p></div>
+    <div class="card" style="flex:1;text-align:center;"><p style="font-family:'Teko',sans-serif;font-size:36px;font-weight:700;color:rgba(255,215,0,0.6);line-height:1;">+20</p><p style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.25);margin-top:4px;">porra anual</p></div>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 7 — ESTRELLAS: INTRO
+════════════════════════════════════════════ -->
+<div class="slide bg-dark" id="s7">
+<div class="slide-inner">
+  <span class="icon-big">⭐</span>
+  <p class="eyebrow">Novedad 26/27</p>
+  <h1 class="titulo">LAS ESTRELLAS<br/>DE TU EQUIPO</h1>
+  <p class="cuerpo">Antes de cada partido, eliges hasta <strong style="color:#FFD700">5 jugadores de la UDLP</strong>. Durante el partido, la API oficial registra sus actuaciones en tiempo real — goles, asistencias, paradas, tarjetas... Cada acción genera <strong style="color:#FFD700">estrellas</strong>.</p>
+  <div class="info-box">
+    <p>El que mejor elija sus jugadores cada semana acumula más estrellas y sube en la <strong>clasificación de estrellas</strong> — una liga paralela con sus propios premios al final de temporada.</p>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 8 — TABLA DE ESTRELLAS
+════════════════════════════════════════════ -->
+<div class="slide bg-blue" id="s8">
+<div class="slide-inner">
+  <p class="eyebrow">Qué acciones valen estrellas</p>
+  <h1 class="titulo">TABLA DE<br/>ESTRELLAS</h1>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;max-width:380px;margin-bottom:14px;">
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;"><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.5);">⚽ Gol delantero</span><span style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">+5⭐</span></div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;"><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.5);">⚽ Gol centrocampista</span><span style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">+6⭐</span></div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;"><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.5);">⚽ Gol portero/defensa</span><span style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">+8⭐</span></div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;"><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.5);">🅰️ Asistencia</span><span style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">+3⭐</span></div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;"><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.5);">🧤 Portería a 0 (portero)</span><span style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">+4⭐</span></div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;"><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.5);">🧤 Portería a 0 (defensa)</span><span style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">+2⭐</span></div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;"><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.5);">👟 Titular (+60 min)</span><span style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:rgba(255,215,0,0.6);">+2⭐</span></div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;"><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.5);">👟 Suplente</span><span style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:rgba(255,215,0,0.5);">+1⭐</span></div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;"><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.5);">🟨 Tarjeta amarilla</span><span style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#e63946;">-1⭐</span></div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;"><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.5);">🟥 Tarjeta roja</span><span style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#e63946;">-3⭐</span></div>
+  </div>
+  <div class="info-box"><p>La clave está en <strong>saber elegir</strong> — un titular habitual vale más que una estrella que no juega</p></div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 9 — ELEGIR 5 ESTRELLAS (JUGADORES)
+════════════════════════════════════════════ -->
+<div class="slide bg-dark" id="s9">
+<div class="slide-inner">
+  <p class="eyebrow">Así se juega cada semana</p>
+  <h1 class="titulo">ELIGE TUS<br/>5 ESTRELLAS</h1>
+  <p class="cuerpo" style="font-size:13px;margin-bottom:16px;">Seleccionas hasta 5 jugadores antes del partido. Sus estrellas se suman — quien consiga más en la jornada se lleva los puntos extra.</p>
+  <div id="jugGrid" style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:360px;margin-bottom:14px;"></div>
+  <div style="display:flex;gap:8px;justify-content:center;margin-bottom:8px;">
+    <div class="card-gold" style="text-align:center;padding:8px 8px;min-width:50px;"><p style="font-family:'Teko',sans-serif;font-size:12px;color:rgba(255,215,0,0.6);">1º</p><p style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">5 pts</p></div>
+    <div class="card-gold" style="text-align:center;padding:8px 8px;min-width:50px;"><p style="font-family:'Teko',sans-serif;font-size:12px;color:rgba(255,215,0,0.6);">2º</p><p style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">4 pts</p></div>
+    <div class="card-gold" style="text-align:center;padding:8px 8px;min-width:50px;"><p style="font-family:'Teko',sans-serif;font-size:12px;color:rgba(255,215,0,0.6);">3º</p><p style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">3 pts</p></div>
+    <div class="card-gold" style="text-align:center;padding:8px 8px;min-width:50px;"><p style="font-family:'Teko',sans-serif;font-size:12px;color:rgba(255,215,0,0.6);">4º</p><p style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">2 pts</p></div>
+    <div class="card-gold" style="text-align:center;padding:8px 8px;min-width:50px;"><p style="font-family:'Teko',sans-serif;font-size:12px;color:rgba(255,215,0,0.6);">5º</p><p style="font-family:'Teko',sans-serif;font-size:17px;font-weight:700;color:#FFD700;">1 pt</p></div>
+  </div>
+  <p id="jugCount" style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.2);">Toca los jugadores · 0/5 seleccionados</p>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 10 — EL OTRO EQUIPO: INTRO
+════════════════════════════════════════════ -->
+<div class="slide bg-blue" id="s10">
+<div class="slide-inner">
+  <div style="width:80px;height:80px;border-radius:50%;background:rgba(255,215,0,0.1);border:2px solid rgba(255,215,0,0.3);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;animation:float 3s ease-in-out infinite;font-size:40px;">🛡️</div>
+  <p class="eyebrow">La novedad más grande de 26/27</p>
+  <h1 class="titulo">EL OTRO<br/>EQUIPO</h1>
+  <p class="cuerpo">Cada jugador tiene asignado <strong style="color:#FFD700">un equipo de Primera División</strong> para toda la temporada. Convive con la UDLP durante las 42 jornadas.</p>
+  <p class="cuerpo" style="font-size:13px;opacity:0.8;">Cada jornada decides si activarlo o no. Esa decisión puede <strong style="color:#FFD700">multiplicar tus puntos</strong> o hacerte perder la mitad. El riesgo es parte del juego.</p>
+  <div style="display:flex;justify-content:center;gap:10px;width:100%;max-width:380px;">
+    <div class="card" style="flex:1;text-align:center;padding:12px 8px;"><p style="font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.4);margin-bottom:6px;">Tu equipo gana</p><p style="font-family:'Teko',sans-serif;font-size:22px;font-weight:700;color:#10b981;">×2-3</p></div>
+    <div class="card" style="flex:1;text-align:center;padding:12px 8px;"><p style="font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.4);margin-bottom:6px;">Tu equipo empata</p><p style="font-family:'Teko',sans-serif;font-size:22px;font-weight:700;color:rgba(255,255,255,0.4);">×1</p></div>
+    <div class="card" style="flex:1;text-align:center;padding:12px 8px;"><p style="font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.4);margin-bottom:6px;">Tu equipo pierde</p><p style="font-family:'Teko',sans-serif;font-size:22px;font-weight:700;color:#e63946;">÷2</p></div>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 11 — LOS 20 EQUIPOS
+════════════════════════════════════════════ -->
+<div class="slide bg-dark" id="s11">
+<div class="slide-inner">
+  <p class="eyebrow">Primera División 26/27</p>
+  <h1 class="titulo">20 EQUIPOS<br/>20 JUGADORES</h1>
+  <p class="cuerpo" style="font-size:13px;margin-bottom:14px;">Uno por jugador. Sin repetición. Elegidos por orden según la clasificación del año pasado — Pedrito eligió primero.</p>
+  <div id="escudosGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%;max-width:360px;margin-bottom:14px;"></div>
+  <div class="info-box"><p>📅 Plazo: <strong>11 ago 12:00</strong> → <strong>14 ago 18:00</strong> hora canaria<br/>⏱️ Cada jugador tiene <strong>60 minutos</strong> para elegir — si no elige, pasa al final</p></div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 12 — EL MULTIPLICADOR
+════════════════════════════════════════════ -->
+<div class="slide bg-blue" id="s12">
+<div class="slide-inner">
+  <span class="icon-big">⚡</span>
+  <p class="eyebrow">Cuanto más lo usas, más potente</p>
+  <h1 class="titulo">EL<br/>MULTIPLICADOR</h1>
+  <p class="cuerpo" style="font-size:13px;">El multiplicador <strong style="color:#FFD700">crece con el uso</strong>. Empieza en ×2 y puede llegar a ×3 si lo activas con constancia durante la temporada.</p>
+  <div id="multGrid" style="display:flex;gap:10px;width:100%;max-width:380px;margin-bottom:14px;">
+    <div class="mult-card hl" id="mc0"><div class="mc-use">1ª y 2ª<br/>activación</div><div class="mc-val">×2</div></div>
+    <div class="mult-card" id="mc1"><div class="mc-use">3ª y 4ª<br/>activación</div><div class="mc-val">×2.5</div></div>
+    <div class="mult-card" id="mc2"><div class="mc-use">5ª en<br/>adelante</div><div class="mc-val">×3</div></div>
+  </div>
+  <div class="info-box"><p>⚠️ Mínimo <strong>3 activaciones</strong> durante la temporada para mantener el multiplicador máximo.<br/>🔍 El equipo de cada jugador es <strong>público y visible</strong> para todos.</p></div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 13 — RESUMEN TOTAL DE PUNTOS
+════════════════════════════════════════════ -->
+<div class="slide bg-dark" id="s13">
+<div class="slide-inner">
+  <p class="eyebrow">Todo junto</p>
+  <h1 class="titulo">RESUMEN DE<br/>PUNTOS</h1>
+  <div style="display:flex;flex-direction:column;gap:7px;width:100%;max-width:380px;">
+    <div class="pts-row"><span style="font-size:14px;flex-shrink:0;">⚽</span><span class="pr-l">Resultado exacto</span><span class="pr-v">3 pts</span><span class="pr-vip">6 VIP</span></div>
+    <div class="pts-row"><span style="font-size:14px;flex-shrink:0;">1️⃣</span><span class="pr-l">1X2 acertado</span><span class="pr-v">2 pts</span><span class="pr-vip">4 VIP</span></div>
+    <div class="pts-row"><span style="font-size:14px;flex-shrink:0;">⭐</span><span class="pr-l">1º en Estrellas (jornada)</span><span class="pr-v">5 pts</span><span class="pr-vip">5 VIP</span></div>
+    <div class="pts-row"><span style="font-size:14px;flex-shrink:0;">⭐</span><span class="pr-l">2º / 3º / 4º / 5º</span><span class="pr-v">4-1</span><span class="pr-vip">igual</span></div>
+    <div class="pts-row"><span style="font-size:14px;flex-shrink:0;">🛡️</span><span class="pr-l">El Otro Equipo gana</span><span class="pr-v" style="color:#10b981;">×2-3</span><span class="pr-vip">todo</span></div>
+    <div class="pts-row"><span style="font-size:14px;flex-shrink:0;">🛡️</span><span class="pr-l">El Otro Equipo pierde</span><span class="pr-v" style="color:#e63946;">÷2</span><span class="pr-vip">todo</span></div>
+    <div class="pts-row"><span style="font-size:14px;flex-shrink:0;">📅</span><span class="pr-l">Porra Anual (bonus)</span><span class="pr-v">+20</span><span class="pr-vip">1 vez</span></div>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 14 — INVITA A AMIGOS
+════════════════════════════════════════════ -->
+
+<div class="slide bg-dark" id="s14b">
+<div class="slide-inner">
+  <span class="icon-big">💳</span>
+  <p class="eyebrow">Antes de empezar</p>
+  <h1 class="titulo">INSCRIPCIÓN<br/>5€</h1>
+  <p class="cuerpo" style="font-size:13px;">Una vez al inicio. Sin cuotas — solo pagas la jornada cuando quieres participar.</p>
+  <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:380px;margin-bottom:14px;">
+    <div class="card-gold" style="display:flex;align-items:center;gap:12px;padding:14px 16px;">
+      <span style="font-size:22px;flex-shrink:0;">💳</span>
+      <div>
+        <p style="font-family:'Teko',sans-serif;font-size:17px;color:#FFD700;letter-spacing:1px;margin-bottom:2px;">Pago por Bizum en la app</p>
+        <p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.4);">Directo desde tu app del banco, al instante</p>
+      </div>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px;">
+      <span style="font-size:22px;flex-shrink:0;">👥</span>
+      <div>
+        <p style="font-family:'Teko',sans-serif;font-size:17px;color:#FFD700;letter-spacing:1px;margin-bottom:2px;">Pago grupal</p>
+        <p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.4);line-height:1.5;">Cualquiera puede pagar por varios jugadores en un solo cobro</p>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;background:rgba(0,145,255,0.12);border:1px solid rgba(0,145,255,0.25);border-radius:10px;padding:8px 14px;justify-content:center;">
+      <span style="font-size:16px;">📲</span>
+      <span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:#0091FF;letter-spacing:1px;">BIZUM</span>
+      <span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(0,145,255,0.7);">directo desde tu banco · sin comisión</span>
+    </div>
+  </div>
+  <div class="info-box"><p>🏆 <strong>Todo el dinero va a premios</strong> — entre 75€ y 100€ para el top 3 al final de temporada</p></div>
+</div>
+</div>
+<div class="slide bg-blue" id="s14">
+<div class="slide-inner">
+  <span class="icon-big">👥</span>
+  <p class="eyebrow">Quedan 5 huecos libres</p>
+  <h1 class="titulo">INVITA A<br/>UN AMIGO</h1>
+  <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:center;max-width:340px;margin-bottom:10px;" id="plazasRow"></div>
+  <p style="font-family:'Teko',sans-serif;font-size:12px;letter-spacing:3px;color:rgba(255,215,0,0.4);text-transform:uppercase;margin-bottom:14px;">15/20 plazas · quedan 5</p>
+  <p class="cuerpo" style="font-size:13px;">La liga admite hasta <strong style="color:#FFD700">20 jugadores</strong>, uno por cada equipo de Primera División. Si traes a alguien, <strong style="color:#FFD700">la próxima temporada tendrás tu propia liga</strong>.</p>
+  <div class="info-box"><p>🏆 Más jugadores = más bote semanal<br/>🚀 Quien llene plazas, <strong>gestiona su propia liga</strong> la próxima temporada<br/>📲 Botón de invitar disponible en el menú de la app</p></div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 15 — CIERRE ÉPICO
+════════════════════════════════════════════ -->
+
+<!-- NEGRO FINAL: ESTE AÑO ES DIFERENTE -->
+<div class="slide negro" id="sD">
+  <div class="deco"><div class="deco-circle" style="top:-15%;right:-15%;width:55vw;height:55vw;"></div></div>
+  <div class="slide-inner">
+    <p class="cs" style="animation:cineFade 1.5s ease .3s both;margin-bottom:18px;">26 / 27</p>
+    <h1 class="ct" style="animation:cineSube 1s ease .8s both;font-size:clamp(2.4rem,10vw,4rem);">ESTE AÑO</h1>
+    <h1 class="ct d" style="animation:cineSube 1s ease 1.3s both;font-size:clamp(2.4rem,10vw,4rem);">ES DIFERENTE</h1>
+    <div class="cl" style="width:0;max-width:75px;animation-delay:2s;"></div>
+    <p class="cs" style="animation:cineFade 1.2s ease 2.5s both;max-width:280px;margin:0 auto;line-height:1.9;">
+      la UDLP vuelve a por el ascenso —<br/>y tú estarás en cada partido
+    </p>
+  </div>
+</div>
+
+<!-- NEGRO FINAL: 15 AGO EMPIEZA LA LIGA -->
+<div class="slide negro" id="sE">
+  <div class="slide-inner">
+    <img src="https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/UD_Las_Palmas_logo.svg/200px-UD_Las_Palmas_logo.svg.png"
+      alt="UDLP" style="width:72px;height:auto;filter:drop-shadow(0 0 36px rgba(255,215,0,.55));
+      animation:cineSube 1.2s cubic-bezier(.22,.68,0,1.2) .3s both;margin-bottom:18px;"
+      onerror="this.style.display='none'">
+    <h1 class="ct d" style="animation:cineAparece 1.8s ease 1s both;font-size:clamp(3.5rem,16vw,6rem);letter-spacing:6px;">15 AGO</h1>
+    <h1 class="ct" style="animation:cineAparece 1.8s ease 1.6s both;font-size:clamp(1.8rem,8vw,2.8rem);">EMPIEZA LA LIGA</h1>
+    <div class="cl" style="width:0;max-width:85px;animation-delay:2.3s;"></div>
+    <p class="cs" style="animation:cineFade 1.2s ease 2.8s both;">¿estás dentro?</p>
+  </div>
+</div>
+
+<div class="slide bg-dark" id="s15">
+<div class="slide-inner">
+  <img src="https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/UD_Las_Palmas_logo.svg/200px-UD_Las_Palmas_logo.svg.png"
+    alt="UDLP" style="width:86px;height:auto;margin-bottom:20px;filter:drop-shadow(0 0 40px rgba(255,215,0,0.55));animation:float 3s ease-in-out infinite;"
+    onerror="this.style.display='none'">
+  <p class="eyebrow">Todo listo para arrancar</p>
+  <h1 class="titulo mega">¿ESTÁN<br/>LISTOS?</h1>
+  <p class="cuerpo">La liga empieza el <strong style="color:#FFD700">15 de agosto</strong>.<br/>El Otro Equipo se elige del <strong style="color:#FFD700">11 al 14 de agosto</strong> (hora canaria).</p>
+  <div style="display:flex;gap:8px;width:100%;max-width:380px;margin-bottom:16px;">
+    <div class="card-gold" style="flex:1;text-align:center;padding:12px 6px;"><span style="font-size:20px;display:block;margin-bottom:6px;">⚽</span><p style="font-family:'Teko',sans-serif;font-size:12px;color:#FFD700;letter-spacing:1px;text-transform:uppercase;line-height:1.2;">Porra</p><p style="font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.3);margin-top:4px;">42 jornadas</p></div>
+    <div class="card-gold" style="flex:1;text-align:center;padding:12px 6px;"><span style="font-size:20px;display:block;margin-bottom:6px;">🛡️</span><p style="font-family:'Teko',sans-serif;font-size:12px;color:#FFD700;letter-spacing:1px;text-transform:uppercase;line-height:1.2;">El Otro Equipo</p><p style="font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.3);margin-top:4px;">×2 hasta ×3</p></div>
+    <div class="card-gold" style="flex:1;text-align:center;padding:12px 6px;"><span style="font-size:20px;display:block;margin-bottom:6px;">⭐</span><p style="font-family:'Teko',sans-serif;font-size:12px;color:#FFD700;letter-spacing:1px;text-transform:uppercase;line-height:1.2;">Estrellas</p><p style="font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.3);margin-top:4px;">Liga paralela</p></div>
+    <div class="card-gold" style="flex:1;text-align:center;padding:12px 6px;"><span style="font-size:20px;display:block;margin-bottom:6px;">👥</span><p style="font-family:'Teko',sans-serif;font-size:12px;color:#FFD700;letter-spacing:1px;text-transform:uppercase;line-height:1.2;">Amigos</p><p style="font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.3);margin-top:4px;">5 plazas</p></div>
+  </div>
+  <p style="font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,0.35);line-height:1.7;max-width:300px;text-align:center;">🐥 Arranca el 15 de agosto. El grupo espera.</p>
+</div>
+</div>
+
+<!-- UI FIJA -->
+<div class="slide-num" id="slideNum">1 / 22</div>
+<button class="skip-btn" id="skipBtn" onclick="goTo(21)">Saltar al final</button>
+<div class="nav-bar">
+  <button class="nav-btn prev" id="btnPrev" onclick="prevSlide()">← Atrás</button>
+  <div class="nav-dots" id="navDots"></div>
+  <button class="nav-btn next" id="btnNext" onclick="nextSlide()">Siguiente →</button>
+</div>
+
+<script>
+var TOTAL = 22;
+var current = 0;
+var jugSel = [];
+var escInt, multInt, jugInt;
+var jugActivo = 0;
+
+var SLIDE_IDS = ["sA","sB","sC","s0","s1","s2","s3","s4","s5","s6","s7","s8","s9","s10","s11","s12","s13","s14b","s14","sD","sE","s15"];
+
+var EQUIPOS = ["Barcelona","R.Madrid","Atlético","Villarreal","R.Betis","Celta","R.Sociedad","Getafe","Athletic","Sevilla","Rayo","Alavés","Espanyol","Valencia","Leganés","Osasuna","Valladolid","Racing","Deportivo","Málaga"];
+
+var JUGADORES = [
+  {nombre:'Kirian',dorsal:'20'},
+  {nombre:'Jeremía',dorsal:'9'},
+  {nombre:'Sandro',dorsal:'19'},
+  {nombre:'Jesé',dorsal:'10'},
+  {nombre:'Loiodice',dorsal:'12'},
+  {nombre:'Horkas',dorsal:'1'},
+  {nombre:'Fuster',dorsal:'14'},
+  {nombre:'M.Park',dorsal:'2'},
+];
+
+var SOFA_IDS = {
+  'Kirian':868411,'Jeremía':1640614,'Sandro':477615,'Jesé':98637,
+  'Loiodice':1002088,'Horkas':868411,'Fuster':856321,'M.Park':942489
+};
+
+// Init dots
+var dotsEl = document.getElementById('navDots');
+for(var i=0;i<TOTAL;i++){
+  var d=document.createElement('div');
+  d.className='nd'+(i===0?' active':'');
+  d.setAttribute('data-i',i);
+  (function(idx){d.onclick=function(){goTo(idx);};})(i);
+  dotsEl.appendChild(d);
+}
+
+// Plazas
+var plRow=document.getElementById('plazasRow');
+for(var i=0;i<20;i++){
+  var p=document.createElement('div');
+  p.className='plaza '+(i<15?'ok':'libre');
+  plRow.appendChild(p);
+}
+
+// Escudos
+var eg=document.getElementById('escudosGrid');
+EQUIPOS.forEach(function(eq,i){
+  var d=document.createElement('div');d.className='escudo-box';d.id='esc'+i;
+  d.innerHTML='<span>'+eq+'</span>';
+  eg.appendChild(d);
+});
+
+// Jugadores con fotos Sofascore
+var jg=document.getElementById('jugGrid');
+JUGADORES.forEach(function(j,i){
+  var el=document.createElement('div');el.className='jug-item';el.id='jug'+i;
+  var sid=SOFA_IDS[j.nombre];
+  var src=sid
+    ?('https://img.sofascore.com/api/v1/player/'+sid+'/image')
+    :('https://ui-avatars.com/api/?name='+encodeURIComponent(j.nombre)+'&background=001F6B&color=FFD700&size=80&bold=true&length=2');
+  el.innerHTML='<div class="jug-avatar"><img src="'+src+'" onerror="this.parentNode.innerHTML=\''+j.dorsal+'\'"></div><span class="jug-name">'+j.nombre+'</span>';
+  el.onclick=(function(jj,elem){return function(){toggleJug(jj,elem);};})(j,el);
+  jg.appendChild(el);
+});
+
+function toggleJug(j,el){
+  var idx=jugSel.indexOf(j.nombre);
+  if(idx>-1){jugSel.splice(idx,1);el.classList.remove('sel');}
+  else if(jugSel.length<5){jugSel.push(j.nombre);el.classList.add('sel');}
+  var c=document.getElementById('jugCount');
+  if(c)c.textContent='Toca los jugadores · '+jugSel.length+'/5 seleccionados';
+}
+
+function goTo(n){
+  var curEl=document.getElementById(SLIDE_IDS[current]);
+  var nxtEl=document.getElementById(SLIDE_IDS[n]);
+  if(!curEl||!nxtEl) return;
+  curEl.classList.remove('active');
+  curEl.classList.add('exit');
+  (function(el){setTimeout(function(){el.classList.remove('exit');},500);})(curEl);
+  current=n;
+  nxtEl.classList.add('active');
+  updateUI();
+  stopAll();
+  if(SLIDE_IDS[n]==='s11') startEscudos();
+  if(SLIDE_IDS[n]==='s12') startMult();
+  if(SLIDE_IDS[n]==='s9')  startJug();
+}
+
+function nextSlide(){_startAudio();if(current<TOTAL-1)goTo(current+1);}
+function prevSlide(){_startAudio();if(current>0)goTo(current-1);}
+
+function updateUI(){
+  document.getElementById('slideNum').textContent=(current+1)+' / '+TOTAL;
+  document.querySelectorAll('.nd').forEach(function(d,i){d.classList.toggle('active',i===current);});
+  document.getElementById('btnPrev').style.opacity=current===0?'0.25':'1';
+  var skipBtn=document.getElementById('skipBtn');
+  if(skipBtn)skipBtn.style.display=current===TOTAL-1?'none':'block';
+  var btn=document.getElementById('btnNext');
+  if(current===TOTAL-1){btn.textContent='🐥 ¡A jugar!';btn.className='nav-btn next fin';}
+  else{btn.textContent='Siguiente →';btn.className='nav-btn next';}
+}
+
+function stopAll(){
+  if(escInt)clearInterval(escInt);
+  if(multInt)clearInterval(multInt);
+  if(jugInt)clearInterval(jugInt);
+  document.querySelectorAll('.escudo-box').forEach(function(b){b.classList.remove('hl');});
+  [0,1,2].forEach(function(i){
+    var el=document.getElementById('mc'+i);
+    if(el)el.classList.remove('hl');
+  });
+  document.querySelectorAll('.jug-item').forEach(function(el){el.classList.remove('hl');});
+}
+
+function startEscudos(){
+  var idx=0;
+  escInt=setInterval(function(){
+    document.querySelectorAll('.escudo-box').forEach(function(b){b.classList.remove('hl');});
+    var el=document.getElementById('esc'+idx);
+    if(el)el.classList.add('hl');
+    idx=(idx+1)%EQUIPOS.length;
+  },160);
+}
+
+function startMult(){
+  document.getElementById('mc0').classList.add('hl');
+  var idx=0;
+  multInt=setInterval(function(){
+    [0,1,2].forEach(function(i){document.getElementById('mc'+i).classList.remove('hl');});
+    idx=(idx+1)%3;
+    document.getElementById('mc'+idx).classList.add('hl');
+  },1800);
+}
+
+function startJug(){
+  var idx=0;
+  jugInt=setInterval(function(){
+    document.querySelectorAll('.jug-item').forEach(function(el){el.classList.remove('hl');});
+    var el=document.getElementById('jug'+idx);
+    if(el&&!el.classList.contains('sel'))el.classList.add('hl');
+    idx=(idx+1)%JUGADORES.length;
+  },700);
+}
+
+// Teclado
+document.addEventListener('keydown',function(e){
+  if(e.key==='ArrowRight'||e.key===' ')nextSlide();
+  if(e.key==='ArrowLeft')prevSlide();
+});
+
+// Swipe
+var tx=0;
+document.addEventListener('touchstart',function(e){tx=e.touches[0].clientX;});
+document.addEventListener('touchend',function(e){
+  var dx=tx-e.changedTouches[0].clientX;
+  if(Math.abs(dx)>50){if(dx>0)nextSlide();else prevSlide();}
+});
+
+updateUI();
+</script>
+<audio id="bgAudio" loop preload="auto"><source src="/intro.mp3" type="audio/mpeg"></audio>
+<script>
+var _audio=document.getElementById('bgAudio'),_audioStarted=false;
+function _startAudio(){if(_audioStarted)return;_audio.volume=0.18;_audio.play().then(function(){_audioStarted=true;}).catch(function(){});}
+</script>
+</body>
+</html>
