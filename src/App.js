@@ -46,8 +46,8 @@ const EQUIPOS_PRIMERA_DIVISION = [
     "FC Barcelona", "Real Madrid", "Atlético de Madrid", "Villarreal CF",
     "Real Betis", "Celta de Vigo", "Real Sociedad", "Getafe CF",
     "Athletic Club", "Sevilla FC", "Rayo Vallecano", "Deportivo Alavés",
-    "RCD Espanyol", "Valencia CF", "Leganés", "CA Osasuna",
-    "Real Valladolid", "Racing de Santander", "RC Deportivo", "Málaga CF"
+    "RCD Espanyol", "Valencia CF", "Elche CF", "CA Osasuna",
+    "Levante UD", "Racing de Santander", "RC Deportivo", "Málaga CF"
 ];
 
 // API Football config
@@ -881,6 +881,8 @@ var LOGOS_EQUIPOS = {
     'Valencia CF':             'https://upload.wikimedia.org/wikipedia/en/thumb/c/ce/Valenciacf.svg/120px-Valenciacf.svg.png',
     'Valencia':                'https://upload.wikimedia.org/wikipedia/en/thumb/c/ce/Valenciacf.svg/120px-Valenciacf.svg.png',
     'CA Osasuna':              'https://upload.wikimedia.org/wikipedia/en/thumb/d/db/Osasuna_logo.svg/120px-Osasuna_logo.svg.png',
+    'Elche CF':                'https://upload.wikimedia.org/wikipedia/en/thumb/0/01/Elche_CF_logo.svg/120px-Elche_CF_logo.svg.png',
+    'Levante UD':              'https://upload.wikimedia.org/wikipedia/en/thumb/6/6d/Levante_UD_logo.svg/120px-Levante_UD_logo.svg.png',
     'Osasuna':                 'https://upload.wikimedia.org/wikipedia/en/thumb/d/db/Osasuna_logo.svg/120px-Osasuna_logo.svg.png',
 };
 
@@ -5326,6 +5328,73 @@ const ConfiguracionBizum = () => {
 // plantilla completa en Firestore (configuracion/plantilla_udlp), el mismo
 // sitio que ya usa la app para cargar la plantilla al iniciar sesión — así
 // el cambio se aplica en toda la app sin tocar código.
+// Admin: verificar y corregir el escudo de cada equipo de Primera División
+// (El Otro Equipo) sin tocar código. Usa el mismo mecanismo que ya existe
+// (configuracion/escudos → teamLogos), que YA tiene prioridad sobre el mapa
+// fijo del código — no hacía falta construir nada nuevo por debajo, solo
+// esta pantalla para editarlo.
+const VerificarEscudosPrimera = ({ teamLogos }) => {
+    var [ediciones, setEdiciones] = useState({});
+    var [guardandoEquipo, setGuardandoEquipo] = useState('');
+    var [msg, setMsg] = useState('');
+
+    var valorActual = function(equipo) {
+        if (ediciones[equipo] !== undefined) return ediciones[equipo];
+        return (teamLogos && teamLogos[equipo]) || '';
+    };
+
+    var guardar = async function(equipo) {
+        var url = valorActual(equipo).trim();
+        if (!url) { setMsg('Pega una URL de imagen para ' + equipo + ' antes de guardar.'); return; }
+        setGuardandoEquipo(equipo);
+        try {
+            var campo = {};
+            campo[equipo] = url;
+            await setDoc(doc(db, 'configuracion', 'escudos'), campo, { merge: true });
+            setMsg('✅ Escudo de ' + equipo + ' actualizado en toda la app.');
+        } catch(e) {
+            console.error(e);
+            setMsg('❌ Error guardando ' + equipo + ': ' + e.message);
+        }
+        setGuardandoEquipo('');
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                🛡️ Verificar escudos de Primera (El Otro Equipo)
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14,lineHeight:1.5}}>
+                Si el escudo de algún equipo no carga o no es el correcto, pega aquí una URL de imagen (Wikipedia, web oficial, donde sea) y guarda — se aplica al instante en toda la app, sin esperar a que yo toque código.
+            </p>
+            {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msg.startsWith('✅') ? '#10b981' : '#e63946',marginBottom:12}}>{msg}</p>}
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {EQUIPOS_PRIMERA_DIVISION.map(function(equipo) {
+                    var url = valorActual(equipo);
+                    return (
+                        <div key={equipo} style={{display:'flex',gap:8,alignItems:'center',padding:'6px 8px',background:'rgba(0,31,107,0.02)',borderRadius:8,flexWrap:'wrap'}}>
+                            {url ? (
+                                <img src={url} alt="" style={{width:32,height:32,objectFit:'contain',flexShrink:0}}
+                                    onError={function(e){e.target.style.opacity=0.15;}} />
+                            ) : (
+                                <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(0,31,107,0.08)',flexShrink:0}} />
+                            )}
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#001F6B',width:130,flexShrink:0}}>{equipo}</span>
+                            <input value={url} onChange={function(e){setEdiciones(function(p){var c={...p};c[equipo]=e.target.value;return c;});}}
+                                placeholder="URL del escudo"
+                                style={{flex:1,minWidth:140,padding:'6px 10px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:11}} />
+                            <button onClick={function(){guardar(equipo);}} disabled={guardandoEquipo===equipo}
+                                style={{...ADMIN_STYLES.btnSuccess,padding:'6px 12px',fontSize:11}}>
+                                {guardandoEquipo===equipo ? '...' : 'Guardar'}
+                            </button>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
 const VerificarFotosPlantilla = ({ plantilla }) => {
     var [ediciones, setEdiciones] = useState({}); // nombre -> {apiId, fotoManual} en edición (sin guardar aún)
     var [guardados, setGuardados] = useState({}); // nombre -> {apiId, fotoManual} — lo que YA hay en Firestore, en vivo
@@ -5488,7 +5557,7 @@ const NormativaScreen = () => {
     );
 };
 
-const AdminPanelScreen = ({ plantilla }) => {
+const AdminPanelScreen = ({ plantilla, teamLogos }) => {
     var [jornadas, setJornadas] = useState([]);
     var [expandida, setExpandida] = useState(null);
     var [sincronizando, setSincronizando] = useState(false);
@@ -6072,6 +6141,8 @@ const AdminPanelScreen = ({ plantilla }) => {
                     <BuscadorApiIdsPlantilla plantilla={plantilla} />
 
                     {/* Verificación visual de fotos */}
+                    <VerificarEscudosPrimera teamLogos={teamLogos} />
+
                     <VerificarFotosPlantilla plantilla={plantilla} />
 
                     <GestionPlantillaAdmin plantilla={plantilla} />
@@ -7619,7 +7690,7 @@ function App() {
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'pagos':       return <PagosScreen currentUser={currentUser} />;
             case 'perfil':      return <PerfilScreen currentUser={currentUser} tema={tema} cambiarTema={cambiarTema} />;
-            case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantillaConFotos} /> : null;
+            case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantillaConFotos} teamLogos={teamLogos} /> : null;
             default:            return null;
         }
     };
