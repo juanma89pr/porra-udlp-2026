@@ -4611,10 +4611,17 @@ const AdminPanelScreen = ({ plantilla }) => {
 
     var resetearTutorial = async function(jugador) {
         if (!jugador) { setMsgAdmin('Selecciona un jugador'); return; }
-        // El tutorial se guarda en localStorage del dispositivo del jugador
-        // Desde admin guardamos un flag en Firestore que la app lee al inicio
-        await setDoc(doc(db, 'perfiles', jugador), { resetTutorial: true }, { merge: true });
-        setMsgAdmin('✅ Tutorial de ' + jugador + ' se mostrará de nuevo la próxima vez que entre');
+        try {
+            // El tutorial se guarda en localStorage del dispositivo del jugador.
+            // Desde admin guardamos un flag en Firestore que la app SÍ lee ahora
+            // al iniciar sesión (handleLoginSuccess), y lo consume automáticamente.
+            await setDoc(doc(db, 'perfiles', jugador), { resetTutorial: true }, { merge: true });
+            setMsgAdmin('✅ Tutorial de ' + jugador + ' se mostrará de nuevo la próxima vez que entre');
+            alert('✅ Listo. La próxima vez que ' + jugador + ' inicie sesión, verá el tutorial de nuevo.');
+        } catch(e) {
+            console.error('Error reseteando tutorial:', e);
+            alert('❌ No se pudo resetear el tutorial de ' + jugador + '.\n\nError: ' + e.message);
+        }
     };
 
     var aprobarSolicitud = async function(sol) {
@@ -4914,10 +4921,16 @@ const AdminPanelScreen = ({ plantilla }) => {
                                 return (
                                     <button key={j} onClick={async function() {
                                         if (!window.confirm('¿Eliminar a ' + j + ' definitivamente?\n\n· Ya no podrá entrar a la app\n· Su hueco en El Otro Equipo quedará "disponible" para otro jugador\n\nEsto no borra su historial de puntos ni pagos pasados.')) return;
-                                        await setDoc(doc(db, 'configuracion', 'jugadoresInactivos'), { nombres: arrayUnion(j) }, { merge: true });
-                                        await setDoc(doc(db, 'configuracion', 'elOtroVacante'), { nombreOriginal: j, nombreNuevo: null, marcadoEn: serverTimestamp() });
-                                        await deleteDoc(doc(db, 'pines', j));
-                                        setMsgAdmin('✅ ' + j + ' eliminado. Su hueco en El Otro Equipo ya está disponible.');
+                                        try {
+                                            await setDoc(doc(db, 'configuracion', 'jugadoresInactivos'), { nombres: arrayUnion(j) }, { merge: true });
+                                            await setDoc(doc(db, 'configuracion', 'elOtroVacante'), { nombreOriginal: j, nombreNuevo: null, marcadoEn: serverTimestamp() });
+                                            await deleteDoc(doc(db, 'pines', j));
+                                            setMsgAdmin('✅ ' + j + ' eliminado. Su hueco en El Otro Equipo ya está disponible.');
+                                            alert('✅ ' + j + ' eliminado correctamente.\n\nYa no podrá entrar a la app, y su hueco en El Otro Equipo está marcado como disponible.');
+                                        } catch(e) {
+                                            console.error('Error eliminando jugador:', e);
+                                            alert('❌ No se pudo eliminar a ' + j + '.\n\nError: ' + e.message + '\n\nProbablemente sea un problema de permisos en las reglas de Firestore — revisa que la colección "configuracion" permita escritura.');
+                                        }
                                     }} style={{...A.btnPrimary,padding:'6px 12px',fontSize:12,background:'rgba(230,57,70,0.1)',color:'#e63946',border:'1px solid rgba(230,57,70,0.2)'}}>
                                         🗑️ {j}
                                     </button>
@@ -6124,9 +6137,18 @@ function App() {
 
             setScreen('app');
 
-            // Mostrar tutorial épico si es la primera vez en la temporada 26/27
-            if (!localStorage.getItem('tutorial_2627_' + user)) {
+            // Mostrar tutorial épico si es la primera vez en la temporada 26/27,
+            // O si el admin lo forzó a re-verlo desde el panel (flag en Firestore,
+            // porque desde admin no se puede tocar el localStorage de OTRO dispositivo).
+            var yaVistoLocal = !!localStorage.getItem('tutorial_2627_' + user);
+            var perfilSnap = await getDoc(doc(db, 'perfiles', user));
+            var forzadoPorAdmin = perfilSnap.exists() && perfilSnap.data().resetTutorial === true;
+            if (!yaVistoLocal || forzadoPorAdmin) {
                 setShowTutorial(true);
+                if (forzadoPorAdmin) {
+                    // Consumimos el flag para que no se repita en cada login futuro
+                    await setDoc(doc(db, 'perfiles', user), { resetTutorial: false }, { merge: true });
+                }
             }
         } catch (error) {
             console.error('Error en handleLoginSuccess:', error);
@@ -6262,8 +6284,8 @@ function App() {
                 </div>
 
                 <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                    {/* Ver presentación de nuevo — solo modo prueba */}
-                    {typeof window !== 'undefined' && sessionStorage.getItem('porra_prueba') === '1' && (
+                    {/* Ver presentación de nuevo — modo prueba, o siempre para el admin */}
+                    {typeof window !== 'undefined' && (sessionStorage.getItem('porra_prueba') === '1' || isAdmin) && (
                         <button onClick={function() { setDrawerOpen(false); setMostrarIntro(true); }}
                             style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                 padding: '10px 14px', marginBottom: 10, border: '1px solid rgba(255,215,0,0.3)', borderRadius: 12,
