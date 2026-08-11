@@ -4340,14 +4340,14 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
     };
 
     return (
-        <div style={A.card}>
+        <div style={ADMIN_STYLES.card}>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
                 🔍 Buscar IDs de API-Football (para Estrellas)
             </p>
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
                 Los jugadores con apiId:0 no pueden puntuar Estrellas automáticamente. Esto hace una llamada a la API con toda la plantilla oficial y cruza los nombres para encontrar sus IDs reales.
             </p>
-            <button onClick={buscar} disabled={buscando} style={A.btnPrimary}>
+            <button onClick={buscar} disabled={buscando} style={ADMIN_STYLES.btnPrimary}>
                 {buscando ? 'Consultando API...' : 'Buscar IDs ahora'}
             </button>
             {errorMsg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginTop:10}}>{errorMsg}</p>}
@@ -4425,7 +4425,7 @@ const GestionHuecoVacante = () => {
     };
 
     return (
-        <div style={A.card}>
+        <div style={ADMIN_STYLES.card}>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
                 🎟️ Hueco simbólico — baja voluntaria
             </p>
@@ -4442,17 +4442,26 @@ const GestionHuecoVacante = () => {
             <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
                 <input value={nombreOriginal} onChange={function(e){setNombreOriginal(e.target.value);}} placeholder="Nombre de quien se da de baja"
                     style={{flex:1,minWidth:160,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
-                <button onClick={marcarBaja} style={{...A.btnPrimary,padding:'8px 14px',fontSize:12}}>Marcar hueco</button>
+                <button onClick={marcarBaja} style={{...ADMIN_STYLES.btnPrimary,padding:'8px 14px',fontSize:12}}>Marcar hueco</button>
             </div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
                 <input value={nombreNuevo} onChange={function(e){setNombreNuevo(e.target.value);}} placeholder="Nombre de quien lo ocupa (cuando lo sepas)"
                     style={{flex:1,minWidth:160,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
-                <button onClick={asignarSustituto} style={A.btnSuccess}>Asignar</button>
+                <button onClick={asignarSustituto} style={ADMIN_STYLES.btnSuccess}>Asignar</button>
             </div>
-            <button onClick={limpiar} style={{...A.btnPrimary,background:'rgba(230,57,70,0.08)',color:'#e63946',padding:'6px 14px',fontSize:12}}>Borrar hueco</button>
+            <button onClick={limpiar} style={{...ADMIN_STYLES.btnPrimary,background:'rgba(230,57,70,0.08)',color:'#e63946',padding:'6px 14px',fontSize:12}}>Borrar hueco</button>
             {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#10b981',marginTop:10}}>{msg}</p>}
         </div>
     );
+};
+
+// Estilos reutilizables para tarjetas/botones del panel admin — usados también
+// por componentes fuera de AdminPanelScreen (que antes solo tenía su copia local).
+const ADMIN_STYLES = {
+    card: { background:'#fff', border:'1px solid rgba(0,31,107,0.1)', borderRadius:14, padding:16, marginBottom:12 },
+    btnPrimary: { background:'#001F6B', color:'#FFD700', border:'none', borderRadius:10, padding:'11px 20px', fontFamily:"'Teko',sans-serif", fontSize:14, letterSpacing:2, cursor:'pointer', textTransform:'uppercase' },
+    btnSuccess: { background:'#10b981', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
+    btnDanger: { background:'#e63946', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
 };
 
 const AdminPanelScreen = ({ plantilla }) => {
