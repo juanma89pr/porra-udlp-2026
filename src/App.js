@@ -442,13 +442,22 @@ function AcordeonAyuda({ icono, titulo, children, abiertoPorDefecto }) {
     );
 }
 
+// Variable de módulo, actualizada en vivo por un listener en App() sobre
+// configuracion/mostrarApellidos — así el admin puede activar/desactivar el
+// recorte automático de apellidos desde el panel, sin tocar código.
+// Por defecto (false) se recortan los apellidos, que es el comportamiento
+// que se pidió mantener.
+var MOSTRAR_APELLIDOS = false;
+
 // Nombre a mostrar al resto de la app — automático, sin que nadie tenga que
 // tocar nada: si alguien se registró con apellido ("María García"), aquí
 // mismo se recorta a "María" para todo lo que ven los demás. Si hay un apodo
-// puesto a mano, ese manda por encima de todo.
+// puesto a mano, ese manda por encima de todo. El admin puede desactivar
+// este recorte entero desde el panel (MOSTRAR_APELLIDOS).
 function nombreVisible(nombreCrudo, perfil) {
     if (perfil && perfil.apodo) return perfil.apodo;
     if (!nombreCrudo) return nombreCrudo;
+    if (MOSTRAR_APELLIDOS) return nombreCrudo;
     return nombreCrudo.trim().split(/\s+/)[0];
 }
 
@@ -1272,6 +1281,50 @@ const ModoConstruccion = () => {
 // --- PANTALLAS DE USUARIO ---
 // ============================================================================
 
+// Cuenta atrás de El Otro Equipo en la pantalla principal — antes de que
+// abra la temporada, cuenta hasta PLAZO_APERTURA_EL_OTRO; durante la pausa
+// nocturna (01:00-09:00), cuenta hasta que se reanude a las 09:00. Si está
+// abierto ahora mismo, no muestra nada (no hace falta contar nada).
+function CuentaAtrasElOtro() {
+    var [ahora, setAhora] = useState(new Date());
+    useEffect(function() {
+        var t = setInterval(function() { setAhora(new Date()); }, 1000);
+        return function() { clearInterval(t); };
+    }, []);
+
+    var objetivo = null;
+    var etiqueta = '';
+    if (ahora < PLAZO_APERTURA_EL_OTRO) {
+        objetivo = PLAZO_APERTURA_EL_OTRO;
+        etiqueta = '🛡️ El Otro Equipo abre en';
+    } else if (estaEnPausaNocturna(ahora)) {
+        var proximas09 = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate(), 8, 0, 0));
+        if (proximas09 <= ahora) proximas09 = new Date(proximas09.getTime() + 24 * 60 * 60 * 1000);
+        objetivo = proximas09;
+        etiqueta = '🌙 El Otro Equipo se reanuda en';
+    } else {
+        return null;
+    }
+
+    var msRestante = objetivo - ahora;
+    if (msRestante < 0) return null;
+    var horas = Math.floor(msRestante / 3600000);
+    var minutos = Math.floor((msRestante % 3600000) / 60000);
+    var segundos = Math.floor((msRestante % 60000) / 1000);
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+
+    return (
+        <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:14,padding:'14px 16px',marginBottom:16,textAlign:'center'}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'rgba(255,215,0,0.7)',textTransform:'uppercase',marginBottom:6}}>
+                {etiqueta}
+            </p>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:30,fontWeight:700,color:'#FFD700',letterSpacing:2}}>
+                {pad(horas)}:{pad(minutos)}:{pad(segundos)}
+            </p>
+        </div>
+    );
+}
+
 const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers, pagos, onIrAPagos }) => {
     var G = styles.colors;
     var [jornada, setJornada] = useState(null);
@@ -1414,6 +1467,17 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         return function() { clearInterval(tick); };
     }, [jornada]);
 
+    // ¿Ha pagado esta jornada en concreto? El sistema deja apostar igualmente
+    // (no bloquea el formulario) — el pago solo confirma que el resultado
+    // contará al cerrar la jornada. Sin pagar, el resultado no se tiene en
+    // cuenta aunque esté guardado.
+    var jornadaCodigo = jornada ? 'J' + jornada.numeroJornada : null;
+    var jornadaPagada = jornadaCodigo && (pagos || []).some(function(p) {
+        return p.jugador === user && p.jornada === jornadaCodigo &&
+            (p.tipo === 'jornada_normal' || p.tipo === 'jornada_vip') &&
+            p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido';
+    });
+
     var guardar = async function() {
         if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || !pronostico.resultado1x2) {
             setMensaje('Rellena el marcador y el 1X2 antes de guardar.'); return;
@@ -1437,7 +1501,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 puntosObtenidos: 0,
             }, { merge: true });
             setGuardado(true);
-            setMensaje('✅ Apuesta guardada correctamente.');
+            setMensaje(jornadaPagada ? '✅ Apuesta guardada correctamente.' : '✅ Apuesta guardada — recuerda pagar esta jornada por Bizum para que cuente.');
         } catch(e) { setMensaje('❌ Error al guardar: ' + e.message); }
     };
 
@@ -1524,10 +1588,29 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 </div>
             </div>
 
+            {/* Cuenta atrás de El Otro Equipo — apertura de temporada, o reanudación tras la pausa nocturna */}
+            <CuentaAtrasElOtro />
+
             {/* Banner VIP */}
             {jornada.esVip && (
                 <div style={{background:'rgba(255,215,0,0.1)',border:'1px solid rgba(255,215,0,0.3)',borderRadius:12,padding:12,marginBottom:16,textAlign:'center'}}>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:3,color:G.golden,textTransform:'uppercase'}}>⭐ Jornada VIP — Puntos dobles en resultado y 1X2 · Cuesta 2€</p>
+                </div>
+            )}
+
+            {/* Aviso: apuesta guardada pero jornada sin pagar todavía */}
+            {guardado && !jornadaPagada && (
+                <div style={{background:'rgba(255,215,0,0.1)',border:'1.5px solid rgba(212,175,55,0.4)',borderRadius:14,padding:'14px 16px',marginBottom:16}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,color:'#8a6a00',fontWeight:700,marginBottom:4}}>
+                        💳 Falta pagar esta jornada
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)',lineHeight:1.6}}>
+                        Tu apuesta ya está guardada, pero <strong>no contará al cerrar la jornada</strong> hasta que pagues por Bizum. Pagar no bloquea que sigas cambiando tu resultado — solo confirma tu participación.
+                    </p>
+                    <button onClick={onIrAPagos} style={{marginTop:10,fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,
+                        background:'#001F6B',color:'#FFD700',border:'none',borderRadius:20,padding:'8px 18px',cursor:'pointer'}}>
+                        Ir a pagar →
+                    </button>
                 </div>
             )}
 
@@ -2292,7 +2375,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                     </div>
                 </div>
                 <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',lineHeight:1.7,textAlign:'center'}}>
-                    🏆 <strong>Top 3 de la porra con premio asegurado</strong> — el bote sale de las inscripciones (5€ × jugadores), mínimo 75€ con 15 jugadores, hasta 100€ si llegamos a 20. El reparto exacto se confirma al cerrar inscripciones.<br/>
+                    🏆 <strong>Top 3 de la porra con premio asegurado</strong> — el bote sale de las inscripciones (5€ × jugadores): <strong>65%</strong> para el 1º, <strong>25%</strong> para el 2º, <strong>10%</strong> para el 3º. El resto de premios (Estrellas, rifas...) salen de otros botes internos, no de este.<br/>
                     ❄️ <strong>Campeón de Invierno</strong> — reconocimiento propio a mitad de temporada.<br/>
                     🎟️ <strong>Rifas</strong> durante toda la temporada, para todos.<br/>
                     ⭐ <strong>Liga de Estrellas</strong> — premio aparte, de alto valor, que iremos desvelando poco a poco.<br/>
@@ -3293,23 +3376,26 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
             .map(function(p) { return p.jugador; })
     ));
     const boteActual = inscritos.length * 5;
+    const premio1 = Math.round(boteActual * 0.65);
+    const premio2 = Math.round(boteActual * 0.25);
+    const premio3 = Math.round(boteActual * 0.10);
 
     return (
         <div>
             <h2 style={styles.title} className="app-title">CLASIFICACIÓN GLOBAL</h2>
             
             <div style={styles.prizeBannerFinal}>
-                <h4 style={styles.prizeBannerTitle}>BOTE FINAL — A REPARTIR ENTRE EL TOP 3</h4>
+                <h4 style={styles.prizeBannerTitle}>BOTE DE LA PORRA — A REPARTIR ENTRE EL TOP 3</h4>
                 <p style={{textAlign:'center',fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:'#FFD700',letterSpacing:2,margin:'4px 0 6px'}}>
                     {boteActual}€
                 </p>
                 <p style={{textAlign:'center',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.55)',marginBottom:10}}>
-                    Con {inscritos.length} inscritos ahora mismo — mínimo 15 jugadores (75€), objetivo 20 (100€). El reparto exacto entre 1º, 2º y 3º se confirmará según cuántos seamos al cierre de inscripciones.
+                    Con {inscritos.length} inscritos ahora mismo — mínimo 15 jugadores (75€), objetivo 20 (100€). Este bote sale solo de las inscripciones de la porra — el resto de premios (Estrellas, rifas...) van aparte, de otros botes internos.
                 </p>
                 <div style={styles.prizeList}>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥇</span> <span><strong>1º CLASIFICADO:</strong> la mayor parte del bote</span></div>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥈</span> <span><strong>2º CLASIFICADO:</strong> premio asegurado</span></div>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥉</span> <span><strong>3º CLASIFICADO:</strong> premio asegurado</span></div>
+                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥇</span> <span><strong>1º CLASIFICADO (65%):</strong> {premio1}€</span></div>
+                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥈</span> <span><strong>2º CLASIFICADO (25%):</strong> {premio2}€</span></div>
+                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥉</span> <span><strong>3º CLASIFICADO (10%):</strong> {premio3}€</span></div>
                 </div>
             </div>
 
@@ -4487,6 +4573,21 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
             let clasifActual = {};
             clasifSnap.forEach(d => clasifActual[d.id] = d.data());
 
+            // --- PAGO POR JORNADA: quién ha pagado ESTA jornada en concreto.
+            // Sin pagar, su resultado no cuenta al cerrar — se le avisa en su
+            // pantalla, pero la comprobación real de verdad pasa por aquí.
+            const jornadaCodigoActual = 'J' + jornada.numeroJornada;
+            const pagosSnap = await getDocs(collection(db, "pagos"));
+            var jugadoresQueHanPagadoEstaJornada = {};
+            pagosSnap.forEach(function(d) {
+                var pg = d.data();
+                if (pg.jornada === jornadaCodigoActual &&
+                    (pg.tipo === 'jornada_normal' || pg.tipo === 'jornada_vip') &&
+                    pg.estado !== 'cancelado' && pg.estado !== 'rechazado' && pg.estado !== 'fallido') {
+                    jugadoresQueHanPagadoEstaJornada[pg.jugador] = true;
+                }
+            });
+
             // --- EL OTRO EQUIPO: precargar resultados de los partidos activados ---
             // Aislado del resto — si la API falla aquí, los puntos normales de la
             // porra se calculan igual, solo que sin el efecto de El Otro.
@@ -4534,6 +4635,20 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 const userId = docSnap.id;
                 let isWinner = false;
                 let ptosJornada = 0; let ptosExacto = 0; let ptosGol = 0;
+
+                // PAGO POR JORNADA: si no ha pagado esta jornada en concreto,
+                // su resultado no cuenta — se guarda a 0 puntos con el motivo,
+                // para que quede claro en el historial por qué no puntuó.
+                const haPagadoEstaJornada = !!jugadoresQueHanPagadoEstaJornada[userId];
+                if (!haPagadoEstaJornada) {
+                    if (!puntosYaCalculados) {
+                        batch.update(doc(db, "pronosticos", jornada.id, "jugadores", userId), {
+                            puntosObtenidos: 0, puntosResultadoExacto: 0, puntosGoleador: 0,
+                            noContabilizado: true, motivoNoContabilizado: 'Jornada no pagada por Bizum',
+                        });
+                    }
+                    return; // no suma nada a clasificación, no entra en ganadores
+                }
 
                 // 1. EXACTO
                 if (parseInt(p.golesLocal) === resL && parseInt(p.golesVisitante) === resV) {
@@ -4930,6 +5045,51 @@ const ADMIN_STYLES = {
 // registró con nombre y apellido y ahora aparece así por toda la app en vez
 // de solo su nombre de pila. Al guardar el apodo, se aplica al instante en
 // avatares y clasificación (los componentes ya priorizan el apodo).
+// Admin: interruptor global para mostrar u ocultar apellidos en toda la app.
+// Por defecto están ocultos (recorte automático) — esto permite desactivarlo
+// sin tocar código, por si algún día se quiere volver a mostrar completo.
+const MostrarApellidosAdmin = () => {
+    var [activo, setActivo] = useState(false);
+    var [guardando, setGuardando] = useState(false);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'mostrarApellidos'), function(snap) {
+            setActivo(!!(snap.exists() && snap.data().activo));
+        });
+        return function() { unsub(); };
+    }, []);
+
+    var toggle = async function() {
+        setGuardando(true);
+        try {
+            await setDoc(doc(db, 'configuracion', 'mostrarApellidos'), { activo: !activo }, { merge: true });
+        } catch(e) {
+            console.error(e);
+            alert('Error: ' + e.message);
+        }
+        setGuardando(false);
+    };
+
+    return (
+        <div style={{...ADMIN_STYLES.card,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:2,fontWeight:600}}>
+                    🏷️ Mostrar apellidos en la app
+                </p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>
+                    {activo ? 'Activado — se ve el nombre completo de todos' : 'Desactivado — se recorta automáticamente al nombre de pila'}
+                </p>
+            </div>
+            <button onClick={toggle} disabled={guardando} style={{
+                width:52,height:28,borderRadius:16,border:'none',cursor:'pointer',flexShrink:0,
+                background: activo ? '#001F6B' : 'rgba(0,31,107,0.15)', position:'relative'}}>
+                <div style={{width:22,height:22,borderRadius:'50%',background:'#fff',position:'absolute',
+                    top:3, left: activo ? 27 : 3, transition:'left .2s ease'}} />
+            </button>
+        </div>
+    );
+};
+
 const PonerApodoAdmin = ({ jugadoresLista }) => {
     var [nombreSeleccionado, setNombreSeleccionado] = useState('');
     var [apodo, setApodo] = useState('');
@@ -5259,6 +5419,71 @@ const VerificarFotosPlantilla = ({ plantilla }) => {
                     );
                 })}
             </div>
+        </div>
+    );
+};
+
+// Pantalla de Normativa — toda la reglas de la temporada, por apartado,
+// en burbujas desplegables (mismo componente que ya usan El Otro y Estrellas).
+const NormativaScreen = () => {
+    var G = styles.colors;
+    return (
+        <div style={{padding:'20px 16px'}}>
+            <h2 style={styles.title}>NORMATIVA</h2>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5,textAlign:'center',marginBottom:18,lineHeight:1.6}}>
+                Todas las reglas de la temporada 26/27, por apartado. Toca cada título para desplegarlo.
+            </p>
+
+            <AcordeonAyuda icono="⚽" titulo="La Porra" abiertoPorDefecto={true}>
+                <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
+                    <p style={{marginBottom:8}}>Cada jornada de la UDLP, adivinas el <strong>marcador exacto</strong> y el <strong>1X2</strong> (quién gana, pierde o empata), y opcionalmente el <strong>primer goleador</strong>.</p>
+                    <p style={{marginBottom:8}}><strong>Puntos:</strong> marcador exacto +3 (jornada VIP +6) · 1X2 acertado +1 (VIP +2) · goleador acertado +2 (VIP +4) · sin goleador acertado ("SG") +1.</p>
+                    <p style={{marginBottom:8}}><strong>Cierre:</strong> las apuestas se cierran <strong>5 minutos antes</strong> del partido de la UDLP. Puedes cambiar tu apuesta cuantas veces quieras hasta ese momento.</p>
+                    <p style={{marginBottom:8}}><strong>Secreto hasta el cierre:</strong> nadie ve el resultado de nadie mientras la jornada está abierta. Solo se ven estadísticas agregadas (qué marcadores se repiten, cuántos Local/Empate/Visitante) — y solo a partir de <strong>5 apuestas guardadas</strong>, para que nunca se pueda intuir quién puso qué con pocos datos.</p>
+                    <p style={{margin:0}}><strong>⚠️ Pago obligatorio por jornada:</strong> el sistema te deja apostar siempre, pero tu resultado <strong>solo cuenta si pagas esa jornada por Bizum</strong> antes del cierre. Pagar no bloquea que sigas cambiando tu apuesta — solo confirma tu participación. Si no pagas, tu apuesta se guarda pero no puntúa.</p>
+                </div>
+            </AcordeonAyuda>
+
+            <AcordeonAyuda icono="🛡️" titulo="El Otro Equipo">
+                <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
+                    <p style={{marginBottom:8}}>Eliges un equipo de Primera División para <strong>toda la temporada</strong> — una vez elegido, no se puede cambiar.</p>
+                    <p style={{marginBottom:8}}><strong>Orden de elección:</strong> según la clasificación de la liga paralela de la temporada 25/26. Los jugadores nuevos entran al final, por orden de aprobación de su solicitud.</p>
+                    <p style={{marginBottom:8}}><strong>Turnos:</strong> cuando te toca, tienes <strong>60 minutos</strong> para elegir. Si se agota el tiempo, pasas al final de la cola — no pierdes el turno del todo, solo se retrasa.</p>
+                    <p style={{marginBottom:8}}><strong>Pausa nocturna:</strong> de <strong>01:00 a 09:00</strong> (hora canaria) el draft se pausa cada noche, por igualdad de condiciones ya que hay gente durmiendo. Se retoma exactamente donde se quedó, sin que esas horas cuenten contra el cronómetro de nadie.</p>
+                    <p style={{marginBottom:8}}><strong>Secreto:</strong> tu equipo es secreto durante tus <strong>3 primeras activaciones</strong>. A partir de la 4ª (cuando llegas a ×2.5) se hace público para todos, automáticamente.</p>
+                    <p style={{marginBottom:8}}><strong>Activación por jornada:</strong> decides si lo activas o no, y tienes que hacerlo <strong>antes de que empiece el partido de Primera de tu equipo</strong> — no después.</p>
+                    <p style={{marginBottom:8}}><strong>Efecto:</strong> si tu equipo gana, tus puntos de esa jornada se <strong>multiplican</strong> (redondeo al alza). Si empata, no cambian. Si pierde, se <strong>dividen</strong> (redondeo a la baja). El multiplicador sube con el uso: <strong>×2</strong> al principio, <strong>×2.5</strong> desde la 3ª activación, <strong>×3</strong> desde la 5ª.</p>
+                    <p style={{margin:0}}><strong>Plaza vacante:</strong> si alguien se da de baja, cualquiera puede pagar <strong>2€</strong> para ocupar su hueco en la cola, en la misma posición que tenía.</p>
+                </div>
+            </AcordeonAyuda>
+
+            <AcordeonAyuda icono="⭐" titulo="Mis 5 Estrellas">
+                <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
+                    <p style={{marginBottom:8}}>Eliges hasta <strong>5 jugadores de la UDLP</strong> antes de cada partido. Sus goles, asistencias, paradas y tarjetas generan estrellas según una tabla de puntos fija.</p>
+                    <p style={{marginBottom:8}}><strong>Cierre:</strong> se cierra a la vez que la porra — 5 minutos antes del partido de la UDLP. Editable libremente hasta ese momento.</p>
+                    <p style={{marginBottom:8}}><strong>Cálculo:</strong> automático, tras el partido, con estadísticas oficiales de la API. Algunas acciones (robo de balón, recuperaciones) no se pueden calcular automáticamente y no puntúan.</p>
+                    <p style={{margin:0}}>Las estrellas acumuladas forman una <strong>clasificación paralela</strong>, con su propio premio.</p>
+                </div>
+            </AcordeonAyuda>
+
+            <AcordeonAyuda icono="💳" titulo="Pagos">
+                <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
+                    <p style={{marginBottom:8}}><strong>Inscripción:</strong> 5€, una vez por temporada. Sin pagarla, no se puede usar la app (ni apostar, ni Estrellas, ni El Otro Equipo).</p>
+                    <p style={{marginBottom:8}}><strong>Jornada:</strong> 1€ normal, 2€ si es jornada VIP. Obligatorio para que tu resultado de esa jornada cuente.</p>
+                    <p style={{marginBottom:8}}><strong>Método:</strong> solo Bizum, directo desde tu banco, sin comisión.</p>
+                    <p style={{marginBottom:8}}><strong>Confirmación:</strong> manual — el admin marca el pago como confirmado al verlo llegar. Queda "pendiente" hasta entonces.</p>
+                    <p style={{margin:0}}><strong>Pagar por otro jugador:</strong> puedes pagar la inscripción o una jornada de otra persona en la misma pantalla, en un solo cobro. Eso queda bajo la responsabilidad de cada uno — la app no media en esos acuerdos entre jugadores.</p>
+                </div>
+            </AcordeonAyuda>
+
+            <AcordeonAyuda icono="🏆" titulo="Premios">
+                <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
+                    <p style={{marginBottom:8}}><strong>Bote de la porra</strong> (solo de las inscripciones, 5€ × jugadores): se reparte <strong>65%</strong> para el 1º, <strong>25%</strong> para el 2º, <strong>10%</strong> para el 3º.</p>
+                    <p style={{marginBottom:8}}><strong>Campeón de Invierno:</strong> reconocimiento propio para quien vaya primero al terminar la primera vuelta.</p>
+                    <p style={{marginBottom:8}}><strong>Rifas:</strong> durante toda la temporada, con premios propios, para todos los jugadores.</p>
+                    <p style={{margin:0}}><strong>Liga de Estrellas:</strong> premio aparte, de alto valor — todavía sin desvelar del todo. Este y el resto de premios (Campeón de Invierno, rifas) salen de <strong>botes internos</strong>, no del bote de la porra.</p>
+                </div>
+            </AcordeonAyuda>
         </div>
     );
 };
@@ -5853,6 +6078,8 @@ const AdminPanelScreen = ({ plantilla }) => {
 
                     <PonerApodoAdmin jugadoresLista={JUGADORES_LISTA} />
 
+                    <MostrarApellidosAdmin />
+
                     {/* Enlace de invitación */}
                     <div style={A.card}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
@@ -5978,6 +6205,36 @@ const PLAZO_EL_OTRO = new Date('2026-08-14T17:00:00Z');
 // Tiempo máximo por turno antes de saltarlo: 60 minutos
 const TIMEOUT_TURNO_MINUTOS = 60;
 
+// Pausa nocturna del draft de El Otro Equipo — de 01:00 a 09:00 hora canaria,
+// todos los días mientras dure el draft (por igualdad de condiciones, ya que
+// hay gente durmiendo). Nadie recibe turno nuevo durante la pausa, y a quien
+// ya le tocaba se le "congela" el cronómetro — al reanudar sigue exactamente
+// donde se quedó, sin que las horas de sueño le coman su tiempo de turno.
+function estaEnPausaNocturna(fecha) {
+    // 01:00-09:00 hora canaria (UTC+1 en agosto) = 00:00-08:00 UTC
+    var h = fecha.getUTCHours();
+    return h >= 0 && h < 8;
+}
+
+function minutosPausaEnRango(inicio, fin) {
+    var minutosPausa = 0;
+    var cursor = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth(), inicio.getUTCDate(), 0, 0, 0));
+    while (cursor < fin) {
+        var pausaInicio = new Date(cursor.getTime());
+        var pausaFin = new Date(cursor.getTime() + 8 * 60 * 60 * 1000);
+        var solapaInicio = new Date(Math.max(pausaInicio.getTime(), inicio.getTime()));
+        var solapaFin = new Date(Math.min(pausaFin.getTime(), fin.getTime()));
+        if (solapaFin > solapaInicio) minutosPausa += (solapaFin - solapaInicio) / 60000;
+        cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+    }
+    return minutosPausa;
+}
+
+function minutosEfectivosTranscurridos(inicio, fin) {
+    var totalBruto = (fin - inicio) / 60000;
+    return Math.max(0, totalBruto - minutosPausaEnRango(inicio, fin));
+}
+
 // Multiplicador de El Otro según nº de activaciones acumuladas en la
 // temporada — a partir de la 3ª (×2.5) el equipo deja de ser secreto.
 function getMultiplicadorOtro(activaciones) {
@@ -6007,6 +6264,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
     var [guardando, setGuardando] = useState(false);
     var [loading, setLoading] = useState(true);
     var [equiposDisponibles, setEquiposDisponibles] = useState(EQUIPOS_PRIMERA_DIVISION);
+    var [enPausaNocturna, setEnPausaNocturna] = useState(false);
     var [vacante, setVacante] = useState(null); // { nombreOriginal, nombreNuevo } — hueco simbólico de baja
     var [comprandoPlaza, setComprandoPlaza] = useState(false);
     var [bizumInfo, setBizumInfo] = useState({ nombre: 'Juanma', telefono: '' });
@@ -6110,9 +6368,11 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
 
         // El turno es del primer jugador en el orden (ya sin bloquear a los
         // saltados — reaparecen al final, con su cronómetro reiniciado).
-        // El draft no arranca hasta PLAZO_APERTURA_EL_OTRO — antes de esa
-        // hora nadie tiene turno todavía, ni siquiera el primero de la cola.
-        var draftAbierto = new Date() >= PLAZO_APERTURA_EL_OTRO;
+        // El draft no arranca hasta PLAZO_APERTURA_EL_OTRO, y se pausa cada
+        // noche de 01:00 a 09:00 — nadie recibe turno nuevo en ese tramo.
+        var ahoraCheck = new Date();
+        var draftAbierto = ahoraCheck >= PLAZO_APERTURA_EL_OTRO && !estaEnPausaNocturna(ahoraCheck);
+        setEnPausaNocturna(ahoraCheck >= PLAZO_APERTURA_EL_OTRO && estaEnPausaNocturna(ahoraCheck));
         var turno = null;
         if (draftAbierto) {
             for (var i = 0; i < ordenConf.length; i++) {
@@ -6149,7 +6409,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         var intervalo = setInterval(function() {
             var ahora = new Date();
             var inicio = datos.turnoIniciadoEn.toDate ? datos.turnoIniciadoEn.toDate() : new Date(datos.turnoIniciadoEn);
-            var transcurrido = (ahora - inicio) / 1000 / 60;
+            var transcurrido = minutosEfectivosTranscurridos(inicio, ahora); // descuenta la pausa nocturna
             var restante = TIMEOUT_TURNO_MINUTOS - transcurrido;
             if (restante <= 0) {
                 setTiempoRestante(0);
@@ -6278,6 +6538,18 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                     </p>
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6}}>
                         Arranca esta noche a las 00:00 — Pedrito, el primero de la cola, podrá elegir a partir de ese momento.
+                    </p>
+                </div>
+            )}
+
+            {/* Aviso: pausa nocturna — por igualdad de condiciones, ya que hay gente durmiendo */}
+            {enPausaNocturna && (
+                <div style={{background:'rgba(0,31,107,0.06)',borderRadius:14,padding:18,marginBottom:16,textAlign:'center',border:'1px dashed rgba(0,31,107,0.2)'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:G.deepBlue,marginBottom:4}}>
+                        🌙 El draft está en pausa
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6}}>
+                        De 01:00 a 09:00 nadie elige — por igualdad de condiciones, ya que hay gente durmiendo. Se retoma a las 09:00 exactamente donde se quedó, sin que nadie pierda su turno por esto.
                     </p>
                 </div>
             )}
@@ -7190,6 +7462,7 @@ function App() {
     const [teamLogos, setTeamLogos] = useState({});
     const [plantilla, setPlantilla] = useState(PLANTILLA_FALLBACK);
     const [fotosJugadores, setFotosJugadores] = useState({}); // nombre -> {apiId, fotoManual}, en vivo desde Firestore
+    const [, forzarRepintadoNombres] = useState(0); // fuerza re-render cuando cambia MOSTRAR_APELLIDOS (var de módulo, no estado)
 
     // Plantilla combinada: la base + las fotos verificadas a mano en Admin.
     // Se usa en TODAS las pantallas en vez de "plantilla" a secas, para que
@@ -7289,6 +7562,14 @@ function App() {
                 snap.forEach(function(d) { mapa[d.id] = d.data(); });
                 setFotosJugadores(mapa);
             });
+            // Interruptor de admin: mostrar apellidos sí/no en toda la app.
+            // Se guarda en una var de módulo (MOSTRAR_APELLIDOS) para que
+            // nombreVisible() lo lea sin tener que pasarlo como prop por
+            // todos lados — se actualiza en vivo con este listener.
+            onSnapshot(doc(db, "configuracion", "mostrarApellidos"), function(snap) {
+                MOSTRAR_APELLIDOS = !!(snap.exists() && snap.data().activo);
+                forzarRepintadoNombres(function(n) { return n + 1; }); // repinta la app entera con el nuevo valor
+            });
 
             // Cargar plantilla desde Firestore si existe
             getDoc(doc(db, "configuracion", "plantilla_udlp")).then(function(plantillaSnap) {
@@ -7332,6 +7613,7 @@ function App() {
             case 'elOtro':      return <ElOtroScreen currentUser={currentUser} userProfiles={userProfiles} pagos={pagosGlobal} teamLogos={teamLogos} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'estrellas':   return <MisEstrellasScreen currentUser={currentUser} plantilla={plantillaConFotos} userProfiles={userProfiles} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} />;
+            case 'normativa':     return <NormativaScreen />;
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'pagos':       return <PagosScreen currentUser={currentUser} />;
@@ -7347,6 +7629,7 @@ function App() {
         { id: 'elOtro', label: 'El Otro Equipo', icon: 'ti-shield-half' },
         { id: 'estrellas', label: '5 Estrellas', icon: 'ti-star' },
         { id: 'clasificacion', label: 'Clasificación', icon: 'ti-chart-bar' },
+        { id: 'normativa', label: 'Normativa', icon: 'ti-gavel' },
         { id: 'calendario', label: 'Calendario', icon: 'ti-calendar' },
         { id: 'estadisticas', label: 'Estadísticas', icon: 'ti-chart-dots' },
         { id: 'pagos', label: 'Pagos', icon: 'ti-wallet' },
