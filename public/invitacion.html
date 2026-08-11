@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Te invitan a la Porra UDLP 26/27 🐥</title>
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{min-height:100%;background:linear-gradient(160deg,#001F6B 0%,#0a0a2e 100%);font-family:'Inter',sans-serif;color:#fff;}
+.wrap{max-width:440px;margin:0 auto;padding:32px 24px 60px;position:relative;z-index:1;}
+.deco{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0;}
+.deco svg{position:absolute;inset:0;width:100%;height:100%;}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.fade{animation:fadeIn .5s ease both;}
+
+.header{text-align:center;margin-bottom:28px;}
+.escudo{width:70px;height:auto;margin-bottom:14px;filter:drop-shadow(0 0 30px rgba(255,215,0,0.4));animation:float 3s ease-in-out infinite;}
+.logo-txt{font-family:'Teko',sans-serif;font-size:clamp(2.6rem,11vw,3.8rem);font-weight:700;letter-spacing:4px;line-height:1;color:#FFD700;}
+.logo-outline{color:transparent;-webkit-text-stroke:2px #FFD700;}
+.sub{font-size:10px;letter-spacing:5px;color:rgba(255,215,0,0.4);text-transform:uppercase;margin-top:6px;}
+
+.badge-invitador{display:inline-flex;align-items:center;gap:8px;background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.25);border-radius:30px;padding:8px 18px;margin:0 auto 24px;font-family:'Teko',sans-serif;font-size:15px;letter-spacing:2px;color:#FFD700;text-transform:uppercase;}
+
+.intro{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:20px;margin-bottom:16px;}
+.intro h2{font-family:'Teko',sans-serif;font-size:clamp(1.6rem,7vw,2.2rem);font-weight:700;color:#FFD700;letter-spacing:2px;line-height:1;margin-bottom:10px;}
+.intro p{font-size:14px;color:rgba(255,255,255,0.65);line-height:1.75;}
+.intro p strong{color:#FFD700;}
+
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.ic{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 10px;text-align:center;}
+.ic .icon{font-size:22px;margin-bottom:6px;display:block;}
+.ic .lbl{font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:3px;}
+.ic .val{font-family:'Teko',sans-serif;font-size:20px;font-weight:700;color:#FFD700;display:block;}
+
+.normas{background:rgba(255,215,0,0.06);border:1px solid rgba(255,215,0,0.15);border-radius:16px;padding:16px;margin-bottom:16px;}
+.normas h3{font-family:'Teko',sans-serif;font-size:13px;letter-spacing:3px;color:rgba(255,215,0,0.6);text-transform:uppercase;margin-bottom:12px;}
+.ni{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;}
+.ni:last-child{margin-bottom:0;}
+.ni .nii{font-size:15px;flex-shrink:0;margin-top:1px;}
+.ni .nit{font-size:13px;color:rgba(255,255,255,0.6);line-height:1.6;}
+.ni .nit strong{color:#FFD700;}
+
+.precio{background:rgba(255,215,0,0.1);border:2px solid rgba(255,215,0,0.3);border-radius:18px;padding:18px;margin-bottom:16px;text-align:center;}
+.precio .ptag{font-size:10px;letter-spacing:4px;color:rgba(255,215,0,0.5);text-transform:uppercase;margin-bottom:4px;}
+.precio .pnum{font-family:'Teko',sans-serif;font-size:clamp(2.8rem,12vw,3.8rem);font-weight:700;color:#FFD700;line-height:1;margin-bottom:6px;}
+.precio .psub{font-size:12px;color:rgba(255,255,255,0.55);line-height:1.6;}
+.precio .psub strong{color:#FFD700;}
+
+.plazas-wrap{margin-bottom:20px;text-align:center;}
+.plazas-row{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;margin-bottom:8px;}
+.pz{width:15px;height:15px;border-radius:50%;}
+.pz.ok{background:rgba(255,215,0,0.65);border:1.5px solid rgba(255,215,0,0.4);}
+.pz.libre{background:transparent;border:1.5px dashed rgba(255,215,0,0.3);}
+.plazas-lbl{font-family:'Teko',sans-serif;font-size:11px;letter-spacing:3px;color:rgba(255,215,0,0.4);text-transform:uppercase;}
+
+.form-box{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:22px 18px;}
+.form-box h3{font-family:'Teko',sans-serif;font-size:clamp(1.4rem,6vw,1.9rem);font-weight:700;color:#FFD700;letter-spacing:2px;text-align:center;margin-bottom:4px;}
+.form-box .fsub{font-size:12px;color:rgba(255,255,255,0.35);text-align:center;margin-bottom:18px;line-height:1.5;}
+.field{margin-bottom:12px;}
+.field label{font-size:10px;font-weight:600;color:rgba(255,215,0,0.55);letter-spacing:2px;text-transform:uppercase;display:block;margin-bottom:5px;}
+.field input{width:100%;background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.12);border-radius:12px;padding:12px 14px;font-family:'Inter',sans-serif;font-size:15px;color:#fff;outline:none;transition:border-color .2s;}
+.field input:focus{border-color:rgba(255,215,0,0.5);}
+.field input::placeholder{color:rgba(255,255,255,0.22);}
+.ferr{font-size:12px;color:#e63946;text-align:center;margin-bottom:10px;display:none;}
+.btn{width:100%;font-family:'Teko',sans-serif;font-size:1.2rem;letter-spacing:3px;background:#FFD700;color:#001F6B;border:none;border-radius:30px;padding:15px;cursor:pointer;text-transform:uppercase;box-shadow:0 6px 28px rgba(255,215,0,0.3);font-weight:700;transition:all .2s;}
+.btn:disabled{opacity:.6;cursor:not-allowed;}
+.fnota{font-size:10px;color:rgba(255,255,255,0.2);text-align:center;margin-top:10px;line-height:1.5;}
+
+#conf{display:none;flex-direction:column;align-items:center;text-align:center;padding:20px;}
+#conf .cicon{font-size:70px;margin-bottom:14px;animation:float 3s ease-in-out infinite;}
+#conf h2{font-family:'Teko',sans-serif;font-size:clamp(1.8rem,8vw,2.6rem);font-weight:700;color:#FFD700;letter-spacing:3px;margin-bottom:10px;}
+#conf p{font-size:14px;color:rgba(255,255,255,0.55);line-height:1.75;max-width:300px;}
+#conf p strong{color:#FFD700;}
+</style>
+</head>
+<body>
+
+<div class="deco">
+  <svg viewBox="0 0 400 800" fill="none" preserveAspectRatio="xMidYMid slice">
+    <rect x="40" y="40" width="320" height="720" stroke="#FFD700" stroke-width="0.4" opacity="0.05" rx="2"/>
+    <circle cx="200" cy="400" r="80" stroke="#FFD700" stroke-width="0.4" opacity="0.04"/>
+    <line x1="40" y1="400" x2="360" y2="400" stroke="#FFD700" stroke-width="0.4" opacity="0.04"/>
+  </svg>
+</div>
+
+<div class="wrap fade">
+
+  <div class="header">
+    <img src="https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/UD_Las_Palmas_logo.svg/200px-UD_Las_Palmas_logo.svg.png"
+      class="escudo" alt="UDLP" onerror="this.style.display='none'">
+    <div class="logo-txt">PORRA <span class="logo-outline">UDLP</span></div>
+    <div class="sub">Temporada 26/27 · Segunda División</div>
+  </div>
+
+  <!-- Badge del jugador que invita — se rellena con JS -->
+  <div style="text-align:center;">
+    <div class="badge-invitador" id="badgeInvitador" style="display:none;">
+      👥 <span id="nombreInvitador"></span> te invita
+    </div>
+  </div>
+
+  <div class="intro">
+    <h2 id="tituloIntro">¡TIENES UNA INVITACIÓN!</h2>
+    <p id="textoIntro">
+      La <strong>Porra UDLP</strong> es una liga privada entre amigos y familia donde cada semana apostamos por el resultado de la UD Las Palmas.
+      Este año damos un salto con app propia, nuevas mecánicas y muchos premios. Y queda tu plaza libre.
+    </p>
+  </div>
+
+  <div class="info-grid">
+    <div class="ic"><span class="icon">⚽</span><span class="lbl">Jornadas</span><span class="val">42</span></div>
+    <div class="ic"><span class="icon">👥</span><span class="lbl">Máx jugadores</span><span class="val">20</span></div>
+    <div class="ic"><span class="icon">🏆</span><span class="lbl">Premio total</span><span class="val">75-100€</span></div>
+    <div class="ic"><span class="icon">📅</span><span class="lbl">Arranque</span><span class="val">15 AGO</span></div>
+  </div>
+
+  <div class="normas">
+    <h3>¿Cómo funciona?</h3>
+    <div class="ni"><span class="nii">⚽</span><div class="nit">Cada jornada apuestas el <strong>marcador exacto y el 1X2</strong> del partido de la UDLP. Si aciertas el marcador, te llevas el bote acumulado.</div></div>
+    <div class="ni"><span class="nii">⭐</span><div class="nit">Eliges hasta <strong>5 jugadores de la plantilla</strong> antes de cada partido. Sus actuaciones reales generan estrellas y puntos extra.</div></div>
+    <div class="ni"><span class="nii">🛡️</span><div class="nit">Cada jugador tiene <strong>un equipo de Primera División</strong> asignado — El Otro Equipo. Actívalo para multiplicar tus puntos por ×2, ×2.5 o ×3.</div></div>
+    <div class="ni"><span class="nii">📱</span><div class="nit">Todo se gestiona desde una <strong>app propia</strong> — en tiempo real, con clasificación, historial y notificaciones.</div></div>
+    <div class="ni"><span class="nii">⏰</span><div class="nit">Las apuestas cierran <strong>5 minutos antes del partido</strong>. Puedes cambiar tu apuesta hasta ese momento.</div></div>
+  </div>
+
+  <div class="precio">
+    <div class="ptag">Inscripción</div>
+    <div class="pnum">5€</div>
+    <div class="psub">
+      Pago único para toda la temporada — 42 jornadas.<br/>
+      <strong>Todo el dinero va a premios:</strong> el top 3 se reparte entre 75€ y 100€.<br/>
+      Además habrá sorpresas a lo largo de la temporada: experiencias, merchandising de la UDLP y mucho más.
+    </div>
+  </div>
+
+  <div class="plazas-wrap">
+    <div class="plazas-row">
+      <div class="pz ok"></div><div class="pz ok"></div><div class="pz ok"></div>
+      <div class="pz ok"></div><div class="pz ok"></div><div class="pz ok"></div>
+      <div class="pz ok"></div><div class="pz ok"></div><div class="pz ok"></div>
+      <div class="pz ok"></div><div class="pz ok"></div><div class="pz ok"></div>
+      <div class="pz ok"></div><div class="pz ok"></div><div class="pz ok"></div>
+      <div class="pz libre"></div><div class="pz libre"></div><div class="pz libre"></div>
+      <div class="pz libre"></div><div class="pz libre"></div>
+    </div>
+    <div class="plazas-lbl">15/20 plazas ocupadas · quedan 5</div>
+  </div>
+
+  <div class="form-box" id="formBox">
+    <h3>¡QUIERO ENTRAR!</h3>
+    <p class="fsub" id="formSub">Rellena tus datos. Juanma te contactará por WhatsApp para confirmar tu plaza y el pago de los 5€.</p>
+    <div class="field">
+      <label>Tu nombre completo *</label>
+      <input type="text" id="inp-nombre" placeholder="Ej: María García" maxlength="60">
+    </div>
+    <div class="field">
+      <label>Teléfono WhatsApp *</label>
+      <input type="tel" id="inp-telefono" placeholder="Ej: 612 345 678" maxlength="15">
+    </div>
+    <div class="field">
+      <label>Crea tu PIN de acceso — 4 dígitos *</label>
+      <input type="tel" inputmode="numeric" id="inp-pin" placeholder="••••" maxlength="4" style="letter-spacing:8px;text-align:center;font-size:22px;">
+    </div>
+    <div class="field">
+      <label>Repite el PIN *</label>
+      <input type="tel" inputmode="numeric" id="inp-pin2" placeholder="••••" maxlength="4" style="letter-spacing:8px;text-align:center;font-size:22px;">
+    </div>
+    <p class="fnota" style="margin-top:-8px;margin-bottom:10px;">Este PIN es el que usarás para entrar a la app en cuanto se apruebe tu solicitud — apúntatelo.</p>
+    <p class="ferr" id="ferr"></p>
+    <button class="btn" id="btnEnviar" onclick="enviarSolicitud()">¡QUIERO ENTRAR! →</button>
+    <p class="fnota">Solo pueden entrar personas invitadas por un jugador actual.<br/>Las solicitudes se revisan por orden de llegada.</p>
+  </div>
+
+  <div id="conf">
+    <div class="cicon">🐥</div>
+    <h2>¡SOLICITUD ENVIADA!</h2>
+    <p>Hemos recibido tu solicitud con tu PIN ya guardado. En cuanto Juanma la apruebe, entra directamente en la app con <strong>tu nombre</strong> y <strong>el PIN que has creado</strong> — no hace falta que hagas nada más.<br/><br/>Te avisará por WhatsApp cuando esté lista. Si en 24h no recibes nada, escríbele directamente.</p>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDyxwLEkH36_7uXNeBYayIwZYI8IuAsDm4",
+  authDomain: "porra-udlp-2026-v2.firebaseapp.com",
+  projectId: "porra-udlp-2026-v2",
+  storageBucket: "porra-udlp-2026-v2.firebasestorage.app",
+  messagingSenderId: "611441868159",
+  appId: "1:611441868159:web:13008731a05c4321946e4a"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+// Quien entra por invitación no tiene cuenta todavía — nos autenticamos de
+// forma anónima en cuanto carga la página, ANTES de que rellene el
+// formulario. Si no hacemos esto, escribir en Firestore falla por permisos
+// (las reglas exigen sesión iniciada) y la solicitud nunca llega a guardarse.
+signInAnonymously(auth).catch(function(e) { console.error('Error de autenticación:', e); });
+
+// Leer el ?ref= de la URL para saber quién invita
+var params = new URLSearchParams(window.location.search);
+var invitadoPor = params.get('ref') || '';
+
+// Personalizar la página con el nombre del invitador
+if (invitadoPor) {
+  document.getElementById('badgeInvitador').style.display = 'inline-flex';
+  document.getElementById('nombreInvitador').textContent = invitadoPor;
+  document.getElementById('tituloIntro').textContent = invitadoPor.toUpperCase() + ' TE INVITA';
+  document.getElementById('formSub').textContent = invitadoPor + ' te ha reservado una plaza. Rellena tus datos y Juanma te contactará por WhatsApp para confirmártela.';
+}
+
+window.enviarSolicitud = async function() {
+  var nombre = document.getElementById('inp-nombre').value.trim();
+  var telefono = document.getElementById('inp-telefono').value.trim();
+  var pin = document.getElementById('inp-pin').value.trim();
+  var pin2 = document.getElementById('inp-pin2').value.trim();
+  var errEl = document.getElementById('ferr');
+
+  if (!nombre || nombre.length < 2) { errEl.textContent = 'Escribe tu nombre completo'; errEl.style.display = 'block'; return; }
+  if (!telefono || telefono.length < 9) { errEl.textContent = 'Escribe un teléfono válido'; errEl.style.display = 'block'; return; }
+  if (!/^\d{4}$/.test(pin)) { errEl.textContent = 'El PIN debe ser de 4 números'; errEl.style.display = 'block'; return; }
+  if (pin !== pin2) { errEl.textContent = 'Los dos PIN no coinciden'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  var btn = document.getElementById('btnEnviar');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  try {
+    // Por si acaso la autenticación anónima del principio aún no ha terminado
+    if (!auth.currentUser) { await signInAnonymously(auth); }
+
+    // Mismo algoritmo de hash que usa la app (LoginScreen: hashPin) — así el
+    // PIN que elige aquí funciona directamente en cuanto se apruebe, sin
+    // pasos intermedios ni que el jugador tenga que volver a crearlo.
+    var str = nombre.toLowerCase().trim() + ':' + pin;
+    var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    var pinHash = Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
+
+    await addDoc(collection(db, 'solicitudes_ingreso'), {
+      nombre: nombre,
+      telefono: telefono,
+      pinHash: pinHash,
+      invitadoPor: invitadoPor || 'enlace directo',
+      estado: 'pendiente',
+      creadoEn: serverTimestamp(),
+    });
+    document.getElementById('formBox').style.display = 'none';
+    var conf = document.getElementById('conf');
+    conf.style.display = 'flex';
+  } catch(e) {
+    errEl.textContent = 'Error al enviar. Inténtalo de nuevo.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '¡QUIERO ENTRAR! →';
+  }
+};
+</script>
+</body>
+</html>
