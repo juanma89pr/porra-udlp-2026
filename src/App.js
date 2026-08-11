@@ -413,6 +413,35 @@ function IconoPerfil({ perfil, size }) {
 }
 
 // Componente de avatar de jugador con burbuja de El Otro
+// Burbuja de ayuda desplegable — pulsas el título y se abre/cierra. Estilo
+// único reutilizado en El Otro Equipo y en Estrellas, para que toda la
+// información de reglas se vea y se comporte igual en toda la app.
+function AcordeonAyuda({ icono, titulo, children, abiertoPorDefecto }) {
+    var [abierto, setAbierto] = useState(!!abiertoPorDefecto);
+    return (
+        <div style={{marginBottom:10,borderRadius:14,overflow:'hidden',
+            border: abierto ? '1px solid rgba(0,31,107,0.18)' : '1px solid rgba(0,31,107,0.1)',
+            background: abierto ? 'rgba(0,31,107,0.03)' : '#fff',
+            boxShadow: abierto ? '0 2px 8px rgba(0,31,107,0.06)' : 'none',
+            transition:'all .2s ease'}}>
+            <button onClick={function(){setAbierto(function(v){return !v;});}} style={{
+                width:'100%',display:'flex',alignItems:'center',gap:10,padding:'13px 14px',
+                background:'none',border:'none',cursor:'pointer',textAlign:'left'}}>
+                <span style={{fontSize:16,flexShrink:0}}>{icono}</span>
+                <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1.5,color:'#001F6B',textTransform:'uppercase',fontWeight:600}}>{titulo}</span>
+                <span style={{fontSize:11,color:'rgba(0,31,107,0.35)',flexShrink:0}}>{abierto ? 'Ocultar' : 'Ver'}</span>
+                <span style={{fontSize:11,color:'rgba(0,31,107,0.4)',display:'inline-block',
+                    transform: abierto ? 'rotate(180deg)' : 'none', transition:'transform .2s ease',flexShrink:0}}>▼</span>
+            </button>
+            {abierto && (
+                <div style={{padding:'0 14px 14px 14px'}}>
+                    {children}
+                </div>
+            )}
+        </div>
+    );
+}
+
 const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false }) => {
     var elOtroEquipo = elOtroData && elOtroData.equipo;
     var elOtroRevelado = elOtroData && elOtroData.revelado;
@@ -5906,21 +5935,18 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                 se lee bien tanto en tono claro como en tono oscuro de la app */}
             <div style={{background:'#fff',borderRadius:20,padding:18,boxShadow:'0 4px 20px rgba(0,0,0,0.15)'}}>
 
-            {/* Reglas */}
-            <div style={{background:'rgba(0,31,107,0.04)',borderRadius:14,padding:16,marginBottom:16,border:'1px solid rgba(0,31,107,0.08)'}}>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',marginBottom:8,fontWeight:600}}>Cómo funciona</p>
+            {/* Reglas — en burbujas desplegables */}
+            <AcordeonAyuda icono="📖" titulo="Cómo funciona" abiertoPorDefecto={false}>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,lineHeight:1.7,margin:0}}>
                     Cada jugador tiene un equipo de Primera División asignado para <strong>toda la temporada</strong>. Cada jornada decides si lo activas o no — actívalo antes de que empiece la jornada de Primera de tu equipo. Si <strong>gana</strong> → multiplicas tus puntos de esa jornada (redondeo al alza). Si <strong>empata</strong> → tus puntos se quedan igual. Si <strong>pierde</strong> → tus puntos se dividen (redondeo a la baja). El multiplicador sube con el uso: <strong>×2</strong> al principio, <strong>×2.5</strong> desde tu 3ª activación, <strong>×3</strong> desde la 5ª. Tu equipo es <strong>secreto durante las 3 primeras activaciones</strong> — a partir de ahí (×2.5) se hace público para todos.
                 </p>
-            </div>
+            </AcordeonAyuda>
 
-            {/* Turnos: explicación del plazo de 60 minutos */}
-            <div style={{background:'rgba(0,31,107,0.04)',borderRadius:14,padding:16,marginBottom:16,border:'1px solid rgba(0,31,107,0.08)'}}>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',marginBottom:8,fontWeight:600}}>⏱️ Cómo van los turnos</p>
+            <AcordeonAyuda icono="⏱️" titulo="Cómo van los turnos" abiertoPorDefecto={false}>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,lineHeight:1.7,margin:0}}>
                     El draft empieza esta noche a las <strong>00:00</strong>. Cuando te toca, tienes <strong>60 minutos</strong> para elegir tu equipo. Si se acaba el tiempo, pasas automáticamente al <strong>final de la cola</strong> — no pierdes tu turno del todo, solo se retrasa hasta que todos los demás hayan elegido.
                 </p>
-            </div>
+            </AcordeonAyuda>
 
             {/* Aviso: el draft todavía no ha empezado */}
             {new Date() < PLAZO_APERTURA_EL_OTRO && (
@@ -6219,13 +6245,9 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         <div style={{padding:'20px 16px'}}>
             <h2 style={styles.title}>MIS 5 ESTRELLAS</h2>
 
-            {/* Carta de puntuación — siempre visible */}
-            <details style={{marginBottom:16}}>
-                <summary style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',cursor:'pointer',userSelect:'none',padding:'10px 14px',background:'rgba(0,31,107,0.04)',borderRadius:10,border:'1px solid rgba(0,31,107,0.1)',listStyle:'none',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <span>⭐ Tabla de puntuación</span>
-                    <span style={{fontSize:10,opacity:.5}}>Toca para ver</span>
-                </summary>
-                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:10,marginTop:6,overflow:'hidden'}}>
+            {/* Carta de puntuación — misma burbuja desplegable que en El Otro Equipo */}
+            <AcordeonAyuda icono="⭐" titulo="Tabla de puntuación" abiertoPorDefecto={false}>
+                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:10,overflow:'hidden'}}>
                     {[
                         ['⚽','Gol portero / defensa','+8⭐',false],
                         ['⚽','Gol centrocampista','+6⭐',false],
@@ -6255,7 +6277,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                         </p>
                     </div>
                 </div>
-            </details>
+            </AcordeonAyuda>
 
             {/* Beneficio activo */}
             {miBeneficio && (
