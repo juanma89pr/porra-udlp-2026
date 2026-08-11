@@ -289,32 +289,55 @@ const EMOJIS_FUTBOL = ["🐐","🔥","👑","⚡","💯","🏆","🎯","🦁","�
 
 // Aplica un filtro duotono azul/dorado UDLP a una imagen y devuelve un Blob JPEG.
 // sombras -> #001F6B (azul UDLP), luces -> #FFD700 (dorado UDLP)
+// Aplica un filtro duotono azul/dorado UDLP a una imagen y devuelve un Blob JPEG.
+// sombras -> #001F6B (azul UDLP), luces -> #FFD700 (dorado UDLP)
+// Nunca se queda colgada: si algo falla en el canvas (pasa con ciertos formatos
+// raros o navegadores embebidos como el de WhatsApp), rechaza la promesa en vez
+// de quedarse esperando para siempre.
 function aplicarFiltroUDLP(imgElement) {
-    return new Promise(function(resolve) {
-        var SIZE = 480;
-        var canvas = document.createElement('canvas');
-        canvas.width = SIZE; canvas.height = SIZE;
-        var ctx = canvas.getContext('2d');
+    return new Promise(function(resolve, reject) {
+        try {
+            var SIZE = 480;
+            var canvas = document.createElement('canvas');
+            canvas.width = SIZE; canvas.height = SIZE;
+            var ctx = canvas.getContext('2d');
 
-        // Recorte centrado cuadrado (cover)
-        var iw = imgElement.naturalWidth, ih = imgElement.naturalHeight;
-        var side = Math.min(iw, ih);
-        var sx = (iw - side) / 2, sy = (ih - side) / 2;
-        ctx.drawImage(imgElement, sx, sy, side, side, 0, 0, SIZE, SIZE);
+            // Recorte centrado cuadrado (cover)
+            var iw = imgElement.naturalWidth, ih = imgElement.naturalHeight;
+            if (!iw || !ih) { reject(new Error('La imagen no tiene dimensiones válidas.')); return; }
+            var side = Math.min(iw, ih);
+            var sx = (iw - side) / 2, sy = (ih - side) / 2;
+            ctx.drawImage(imgElement, sx, sy, side, side, 0, 0, SIZE, SIZE);
 
-        var data = ctx.getImageData(0, 0, SIZE, SIZE);
-        var px = data.data;
-        var shadow = [0, 31, 107];   // #001F6B
-        var highlight = [255, 215, 0]; // #FFD700
+            var data = ctx.getImageData(0, 0, SIZE, SIZE);
+            var px = data.data;
+            var shadow = [0, 31, 107];   // #001F6B
+            var highlight = [255, 215, 0]; // #FFD700
 
-        for (var i = 0; i < px.length; i += 4) {
-            var lum = (0.299*px[i] + 0.587*px[i+1] + 0.114*px[i+2]) / 255;
-            px[i]   = shadow[0] + (highlight[0]-shadow[0]) * lum;
-            px[i+1] = shadow[1] + (highlight[1]-shadow[1]) * lum;
-            px[i+2] = shadow[2] + (highlight[2]-shadow[2]) * lum;
+            for (var i = 0; i < px.length; i += 4) {
+                var lum = (0.299*px[i] + 0.587*px[i+1] + 0.114*px[i+2]) / 255;
+                px[i]   = shadow[0] + (highlight[0]-shadow[0]) * lum;
+                px[i+1] = shadow[1] + (highlight[1]-shadow[1]) * lum;
+                px[i+2] = shadow[2] + (highlight[2]-shadow[2]) * lum;
+            }
+            ctx.putImageData(data, 0, 0);
+            canvas.toBlob(function(blob) {
+                if (!blob) { reject(new Error('El navegador no pudo procesar esta imagen.')); return; }
+                resolve(blob);
+            }, 'image/jpeg', 0.9);
+        } catch (err) {
+            reject(err);
         }
-        ctx.putImageData(data, 0, 0);
-        canvas.toBlob(function(blob) { resolve(blob); }, 'image/jpeg', 0.9);
+    });
+}
+
+// Envuelve cualquier promesa con un límite de tiempo — para que nada se quede
+// "procesando" para siempre si el navegador se cuelga con un formato raro.
+function conTimeout(promise, ms, mensajeTimeout) {
+    return new Promise(function(resolve, reject) {
+        var t = setTimeout(function() { reject(new Error(mensajeTimeout)); }, ms);
+        promise.then(function(v) { clearTimeout(t); resolve(v); },
+                      function(e) { clearTimeout(t); reject(e); });
     });
 }
 
@@ -406,35 +429,66 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
         var file = e.target.files && e.target.files[0];
         if (!file) return;
         setErrorFoto('');
-        if (!file.type.startsWith('image/')) { setErrorFoto('Elige un archivo de imagen.'); return; }
+        // Comprobación permisiva: en muchos móviles (sobre todo HEIC de iPhone)
+        // file.type llega vacío aunque SÍ sea una imagen válida — no bloqueamos
+        // por eso, solo si el navegador dice explícitamente que es OTRA cosa.
+        if (file.type && !file.type.startsWith('image/')) { setErrorFoto('Elige un archivo de imagen.'); return; }
         if (file.size > 8 * 1024 * 1024) { setErrorFoto('La imagen pesa demasiado (máx. 8MB).'); return; }
 
+        var subirBlobFinal = async function(blob, tipo) {
+            var ref = storageRef(storage, 'perfiles/' + currentUser + '/foto.jpg');
+            await conTimeout(uploadBytes(ref, blob, { contentType: tipo }), 20000, 'La subida está tardando demasiado. Comprueba tu conexión e inténtalo de nuevo.');
+            var url = await conTimeout(getDownloadURL(ref), 10000, 'No se pudo obtener el enlace de la foto. Inténtalo de nuevo.');
+            await setDoc(doc(db, "perfiles", currentUser), {
+                nombre: currentUser, foto: url, actualizadoEn: serverTimestamp()
+            }, { merge: true });
+            setPerfil(function(p) { return { ...p, foto: url }; });
+            setGuardado(true);
+        };
+
+        var objectUrl = URL.createObjectURL(file);
         var img = new Image();
+
+        var yaResuelto = false;
+        var timeoutCarga = setTimeout(function() {
+            if (yaResuelto) return;
+            yaResuelto = true;
+            setErrorFoto('Este formato de foto no se puede procesar en tu navegador. Prueba a hacer una captura de pantalla de la foto y sube esa captura.');
+            setSubiendoFoto(false);
+        }, 12000); // si ni onload ni onerror disparan en 12s (pasa con algunos HEIC), no nos quedamos colgados
+
         img.onload = async function() {
+            if (yaResuelto) return;
+            yaResuelto = true;
+            clearTimeout(timeoutCarga);
             setSubiendoFoto(true);
             try {
-                var blob = await aplicarFiltroUDLP(img);
+                var blob = await conTimeout(aplicarFiltroUDLP(img), 15000, 'El procesado de la imagen está tardando demasiado.');
                 var previewUrl = URL.createObjectURL(blob);
                 setPreviewFoto(previewUrl);
-
-                var ref = storageRef(storage, 'perfiles/' + currentUser + '/foto.jpg');
-                await uploadBytes(ref, blob, { contentType: 'image/jpeg' });
-                var url = await getDownloadURL(ref);
-
-                await setDoc(doc(db, "perfiles", currentUser), {
-                    nombre: currentUser, foto: url, actualizadoEn: serverTimestamp()
-                }, { merge: true });
-
-                setPerfil(function(p) { return { ...p, foto: url }; });
-                setGuardado(true);
+                await subirBlobFinal(blob, 'image/jpeg');
             } catch (err) {
-                console.error(err);
-                setErrorFoto('No se pudo subir la foto. Inténtalo de nuevo.');
+                console.warn('Filtro UDLP falló, subiendo foto original sin filtro:', err.message);
+                // No bloqueamos al jugador por un fallo del filtro — mejor una
+                // foto sin el efecto azul/dorado que ninguna foto.
+                try {
+                    setPreviewFoto(objectUrl);
+                    await subirBlobFinal(file, file.type || 'image/jpeg');
+                    setErrorFoto('');
+                } catch (err2) {
+                    console.error(err2);
+                    setErrorFoto('No se pudo subir la foto. Inténtalo de nuevo o prueba con otra imagen.');
+                }
             }
             setSubiendoFoto(false);
         };
-        img.onerror = function() { setErrorFoto('No se pudo leer esa imagen.'); };
-        img.src = URL.createObjectURL(file);
+        img.onerror = function() {
+            if (yaResuelto) return;
+            yaResuelto = true;
+            clearTimeout(timeoutCarga);
+            setErrorFoto('No se pudo leer esa imagen. Prueba con otro archivo (JPG o PNG van siempre bien).');
+        };
+        img.src = objectUrl;
     };
 
     var elegirEmoji = async function(em) {
@@ -4539,7 +4593,16 @@ const AdminPanelScreen = ({ plantilla }) => {
     var [rifas, setRifas] = useState([]);
     var [nuevaRifa, setNuevaRifa] = useState({ titulo:'', descripcion:'', precio:'', fecha:'' });
 
-    var JUGADORES_LISTA = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var JUGADORES_TODOS = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
+    var JUGADORES_LISTA = JUGADORES_TODOS.filter(function(j) { return jugadoresInactivos.indexOf(j) === -1; });
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
+            setJugadoresInactivos(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
 
     useEffect(function() {
         var unsub = onSnapshot(
@@ -5107,7 +5170,15 @@ const ORDEN_ELECCION_EL_OTRO = [
 // Hora canaria = UTC+1 en verano
 // Apertura: lunes 11 agosto 12:00 WEST = 11:00 UTC
 // Cierre: viernes 14 agosto 18:00 WEST = 17:00 UTC
-const PLAZO_APERTURA_EL_OTRO = new Date('2026-08-11T11:00:00Z');
+// Plazo del draft de El Otro Equipo — arranca hoy a las 16:00 hora canaria.
+// Se calcula de forma relativa a "hoy" (no una fecha fija ya pasada), para
+// que el primer turno empiece a contar desde el momento real de lanzamiento.
+function calcularAperturaHoy16h() {
+    var hoy = new Date();
+    // 16:00 hora canaria (UTC+1 en agosto, horario de verano) = 15:00 UTC
+    return new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate(), 15, 0, 0));
+}
+const PLAZO_APERTURA_EL_OTRO = calcularAperturaHoy16h();
 const PLAZO_EL_OTRO = new Date('2026-08-14T17:00:00Z');
 // Tiempo máximo por turno antes de saltarlo: 60 minutos
 const TIMEOUT_TURNO_MINUTOS = 60;
@@ -5162,27 +5233,51 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
         var nuevos = Object.keys(datos).filter(function(j) {
             return baseOrden.indexOf(j) === -1 && !datos[j].equipo;
         });
-        var ordenConf = [].concat(baseOrden, nuevos);
+        var ordenCompleto = [].concat(baseOrden, nuevos);
+
+        // Los saltados por no responder a tiempo van al FINAL de la cola —
+        // tienen una segunda oportunidad después de que todos los demás elijan,
+        // en vez de quedar bloqueados para siempre.
+        var pendientesNormales = ordenCompleto.filter(function(j) {
+            return j === '__VACANTE__' || !datos[j] || (!datos[j].equipo && !datos[j].saltado);
+        });
+        var saltadosSinEquipo = ordenCompleto.filter(function(j) {
+            return j !== '__VACANTE__' && datos[j] && datos[j].saltado && !datos[j].equipo;
+        });
+        var ordenConf = [].concat(pendientesNormales, saltadosSinEquipo);
         setOrdenFinal(ordenConf);
 
         var equiposTomados = Object.values(datos).map(function(d) { return d.equipo; }).filter(Boolean);
         setEquiposDisponibles(EQUIPOS_PRIMERA_DIVISION.filter(function(e) { return equiposTomados.indexOf(e) === -1; }));
 
-        // El turno es del primer jugador en el orden que aún no ha elegido.
-        // El hueco vacante sin reclamar ('__VACANTE__') no bloquea a nadie.
+        // El turno es del primer jugador en el orden (ya sin bloquear a los
+        // saltados — reaparecen al final, con su cronómetro reiniciado).
         var turno = null;
         for (var i = 0; i < ordenConf.length; i++) {
             var j = ordenConf[i];
             if (j === '__VACANTE__') continue;
-            if (!datos[j] || !datos[j].equipo) {
-                var saltado = datos[j] && datos[j].saltado;
-                if (!saltado) { turno = j; break; }
-            }
+            if (!datos[j] || !datos[j].equipo) { turno = j; break; }
         }
         setTurnoActual(turno);
-    }, [todosElOtro, vacante]);
 
-    // Temporizador: si es mi turno, mostrar cuenta atrás de 60 minutos
+        // En cuanto alguien pasa a ser "el turno actual", le arrancamos el
+        // cronómetro de 60 minutos si aún no lo tenía (primera vez que le toca,
+        // o le toca de nuevo tras haber sido saltado). Solo el propio dueño del
+        // turno escribe su marca de tiempo, para evitar carreras entre clientes.
+        if (turno && turno === currentUser) {
+            var miDato = datos[turno];
+            var necesitaArranque = !miDato || !miDato.turnoIniciadoEn || miDato.saltado;
+            if (necesitaArranque) {
+                setDoc(doc(db, "elOtro", turno), {
+                    turnoIniciadoEn: serverTimestamp(), saltado: false
+                }, { merge: true }).catch(function(){});
+            }
+        }
+    }, [todosElOtro, vacante, currentUser]);
+
+    // Temporizador: si es mi turno, cuenta atrás de 60 minutos — y si se agota,
+    // me marco a mí mismo como "saltado" (paso al final de la cola) para que
+    // el draft nunca se quede bloqueado esperando a una sola persona.
     useEffect(function() {
         if (turnoActual !== currentUser) { setTiempoRestante(null); return; }
         var datos = todosElOtro[currentUser];
@@ -5196,6 +5291,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
             if (restante <= 0) {
                 setTiempoRestante(0);
                 clearInterval(intervalo);
+                setDoc(doc(db, "elOtro", currentUser), { saltado: true }, { merge: true }).catch(function(){});
             } else {
                 setTiempoRestante(Math.ceil(restante));
             }
@@ -5249,11 +5345,23 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
         <div style={{padding:'16px 0'}}>
             <h2 style={styles.title}>EL OTRO</h2>
 
+            {/* Todo el contenido va en tarjeta blanca — así el texto azul oscuro
+                se lee bien tanto en tono claro como en tono oscuro de la app */}
+            <div style={{background:'#fff',borderRadius:20,padding:18,boxShadow:'0 4px 20px rgba(0,0,0,0.15)'}}>
+
             {/* Reglas */}
-            <div style={{background:'rgba(0,31,107,0.04)',borderRadius:14,padding:16,marginBottom:20,border:'1px solid rgba(0,31,107,0.08)'}}>
+            <div style={{background:'rgba(0,31,107,0.04)',borderRadius:14,padding:16,marginBottom:16,border:'1px solid rgba(0,31,107,0.08)'}}>
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',marginBottom:8,fontWeight:600}}>Cómo funciona</p>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,lineHeight:1.7,margin:0}}>
                     Cada jugador tiene un equipo de Primera División asignado para <strong>toda la temporada</strong>, de forma pública. Cada jornada decides si activarlo o no. Si tu equipo <strong>gana</strong> → ×2 puntos. Si <strong>empata</strong> → sin efecto. Si <strong>pierde</strong> → ÷2 (redondeo a la baja). Mínimo <strong>3 activaciones</strong> en la temporada. El equipo es secreto hasta que decidas revelarlo — y no podrás ocultarlo de nuevo.
+                </p>
+            </div>
+
+            {/* Turnos: explicación del plazo de 60 minutos */}
+            <div style={{background:'rgba(0,31,107,0.04)',borderRadius:14,padding:16,marginBottom:16,border:'1px solid rgba(0,31,107,0.08)'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',marginBottom:8,fontWeight:600}}>⏱️ Cómo van los turnos</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,lineHeight:1.7,margin:0}}>
+                    El draft empieza hoy a las <strong>16:00</strong>. Cuando te toca, tienes <strong>60 minutos</strong> para elegir tu equipo. Si se acaba el tiempo, pasas automáticamente al <strong>final de la cola</strong> — no pierdes tu turno del todo, solo se retrasa hasta que todos los demás hayan elegido.
                 </p>
             </div>
 
@@ -5261,7 +5369,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
             <div style={{background: plazoSuperado ? 'rgba(230,57,70,0.08)' : 'rgba(255,215,0,0.1)', borderRadius:12, padding:'10px 16px', marginBottom:20, border:`1px solid ${plazoSuperado ? 'rgba(230,57,70,0.3)' : 'rgba(255,215,0,0.3)'}`, display:'flex', alignItems:'center', gap:10}}>
                 <i className="ti ti-clock" style={{fontSize:18, color: plazoSuperado ? G.danger : G.golden}} aria-hidden="true" />
                 <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,color: plazoSuperado ? G.danger : G.deepBlue}}>
-                    {plazoSuperado ? 'PLAZO CERRADO' : 'Plazo límite: Jueves 13 Ago · 23:59h'}
+                    {plazoSuperado ? 'PLAZO CERRADO' : 'Plazo límite: ' + PLAZO_EL_OTRO.toLocaleDateString('es-ES', {weekday:'long', day:'numeric', month:'short', timeZone:'Atlantic/Canary'}) + ' · ' + PLAZO_EL_OTRO.toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary'}) + 'h'}
                 </span>
             </div>
 
@@ -5361,6 +5469,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
                         </div>
                     );
                 })}
+            </div>
             </div>
         </div>
     );
