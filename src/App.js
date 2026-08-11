@@ -754,7 +754,8 @@ var jugadorHaPagado = function(nombre, pagosArr) {
         return p.jugador === nombre &&
                p.tipo === 'inscripcion' &&
                p.estado !== 'fallido' &&
-               p.estado !== 'rechazado';
+               p.estado !== 'rechazado' &&
+               p.estado !== 'cancelado';
     });
 };
 
@@ -3288,7 +3289,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
     // (mínimo 15, objetivo 20). Contamos jugadores únicos, por si alguien
     // pagó la inscripción de varios a la vez.
     const inscritos = Array.from(new Set(
-        (pagos || []).filter(function(p) { return p.tipo === 'inscripcion' && p.estado !== 'pendiente_confirmacion'; })
+        (pagos || []).filter(function(p) { return p.tipo === 'inscripcion' && p.estado !== 'pendiente_confirmacion' && p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido'; })
             .map(function(p) { return p.jugador; })
     ));
     const boteActual = inscritos.length * 5;
@@ -3415,12 +3416,12 @@ const PagosScreen = ({ currentUser }) => {
     useEffect(function() {
         if (tipoPago === 'inscripcion') {
             var sinInscripcion = JUGADORES_LISTA.filter(function(j) {
-                return !pagos.some(function(p){ return p.jugador===j && p.tipo==='inscripcion' && p.estado!=='fallido'; });
+                return !pagos.some(function(p){ return p.jugador===j && p.tipo==='inscripcion' && p.estado!=='fallido' && p.estado!=='cancelado' && p.estado!=='rechazado'; });
             });
             setJugadoresPendientes(sinInscripcion);
         } else if (jornadaSel) {
             var sinJornada = JUGADORES_LISTA.filter(function(j) {
-                return !pagos.some(function(p){ return p.jugador===j && p.jornada===jornadaSel && p.estado!=='fallido'; });
+                return !pagos.some(function(p){ return p.jugador===j && p.jornada===jornadaSel && p.estado!=='fallido' && p.estado!=='cancelado' && p.estado!=='rechazado'; });
             });
             setJugadoresPendientes(sinJornada);
         }
@@ -5554,7 +5555,7 @@ const AdminPanelScreen = ({ plantilla }) => {
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',marginBottom:12,textTransform:'uppercase'}}>Estado de inscripciones</p>
                         <div style={{display:'flex',flexDirection:'column',gap:8}}>
                             {JUGADORES_LISTA.map(function(j) {
-                                var pago = pagos.find(function(p) { return p.jugador === j && p.tipo === 'inscripcion'; });
+                                var pago = pagos.find(function(p) { return p.jugador === j && p.tipo === 'inscripcion' && p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido'; });
                                 return (
                                     <div key={j} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(0,31,107,0.06)'}}>
                                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'#001F6B',flex:1,letterSpacing:1}}>{j}</span>
@@ -5585,22 +5586,39 @@ const AdminPanelScreen = ({ plantilla }) => {
                                 </div>
                                 <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color:'#10b981'}}>{p.importe}€</span>
                                 {pendiente ? (
-                                    <button onClick={async function() {
-                                        await updateDoc(doc(db,'pagos',p.id), { estado: 'completado', confirmadoEn: serverTimestamp() });
-                                        // Si es una compra de plaza vacante en El Otro Equipo, al confirmar el
-                                        // pago se asigna automáticamente el hueco a este jugador.
-                                        if (p.tipo === 'plaza_otro') {
-                                            var vacanteSnap = await getDoc(doc(db, 'configuracion', 'elOtroVacante'));
-                                            if (vacanteSnap.exists() && !vacanteSnap.data().nombreNuevo) {
-                                                await setDoc(doc(db, 'configuracion', 'elOtroVacante'), { nombreNuevo: p.jugador }, { merge: true });
-                                                alert('✅ Pago confirmado. ' + p.jugador + ' ya tiene el hueco de El Otro Equipo asignado.');
-                                            } else {
-                                                alert('✅ Pago confirmado, pero el hueco ya no está disponible (puede que otro pago se confirmara antes). Revísalo en El Otro Equipo.');
+                                    <div style={{display:'flex',gap:6}}>
+                                        <button onClick={async function() {
+                                            await updateDoc(doc(db,'pagos',p.id), { estado: 'completado', confirmadoEn: serverTimestamp() });
+                                            // Si es una compra de plaza vacante en El Otro Equipo, al confirmar el
+                                            // pago se asigna automáticamente el hueco a este jugador.
+                                            if (p.tipo === 'plaza_otro') {
+                                                var vacanteSnap = await getDoc(doc(db, 'configuracion', 'elOtroVacante'));
+                                                if (vacanteSnap.exists() && !vacanteSnap.data().nombreNuevo) {
+                                                    await setDoc(doc(db, 'configuracion', 'elOtroVacante'), { nombreNuevo: p.jugador }, { merge: true });
+                                                    alert('✅ Pago confirmado. ' + p.jugador + ' ya tiene el hueco de El Otro Equipo asignado.');
+                                                } else {
+                                                    alert('✅ Pago confirmado, pero el hueco ya no está disponible (puede que otro pago se confirmara antes). Revísalo en El Otro Equipo.');
+                                                }
                                             }
-                                        }
-                                    }} style={{...A.btnSuccess,padding:'6px 14px'}}>
-                                        ✅ Confirmar
-                                    </button>
+                                        }} style={{...A.btnSuccess,padding:'6px 14px'}}>
+                                            ✅ Confirmar
+                                        </button>
+                                        <button onClick={async function() {
+                                            var motivo = window.prompt('¿Por qué cancelas esta petición de ' + p.jugador + ' (' + p.importe + '€)?\n\nEjemplos: no llegó el Bizum, duplicado, se equivocó de importe, se ha dado de baja...');
+                                            if (motivo === null) return; // canceló el propio prompt, no hacemos nada
+                                            if (!motivo.trim()) { alert('Escribe un motivo, aunque sea breve — queda guardado para el historial.'); return; }
+                                            await updateDoc(doc(db,'pagos',p.id), {
+                                                estado: 'cancelado', motivoCancelacion: motivo.trim(), canceladoEn: serverTimestamp()
+                                            });
+                                        }} style={{...A.btnPrimary,padding:'6px 14px',fontSize:12,background:'rgba(230,57,70,0.1)',color:'#e63946',border:'1px solid rgba(230,57,70,0.2)'}}>
+                                            ❌ Cancelar
+                                        </button>
+                                    </div>
+                                ) : p.estado === 'cancelado' ? (
+                                    <span style={{...A.tag('#e63946'), cursor: p.motivoCancelacion ? 'help' : 'default'}}
+                                        title={p.motivoCancelacion || ''}>
+                                        ❌ Cancelado{p.motivoCancelacion ? ': ' + p.motivoCancelacion : ''}
+                                    </span>
                                 ) : (
                                     <span style={A.tag('#10b981')}>{p.estado || 'ok'}</span>
                                 )}
