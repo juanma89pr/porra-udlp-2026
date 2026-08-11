@@ -4387,18 +4387,24 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
     var [buscando, setBuscando] = useState(false);
     var [errorMsg, setErrorMsg] = useState('');
 
+    var consultarTemporada = async function(season) {
+        var url = 'https://v3.football.api-sports.io/players?team=' + API_TEAM_ID_UDLP + '&season=' + season;
+        var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+        var data = await res.json();
+        return (data.response || []);
+    };
+
     var buscar = async function() {
         if (!API_FOOTBALL_KEY) { setErrorMsg('Falta configurar REACT_APP_API_FOOTBALL_KEY.'); return; }
         setBuscando(true); setErrorMsg(''); setResultado(null);
         try {
-            var url = 'https://v3.football.api-sports.io/players?team=' + API_TEAM_ID_UDLP + '&season=2025';
-            var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
-            var data = await res.json();
-            if (!data.response || data.response.length === 0) {
-                setErrorMsg('La API no devolvió jugadores. Puede que la temporada 2025 aún no tenga plantilla cargada — prueba a cambiar el año en la URL si hace falta.');
+            var response = await consultarTemporada(2026);
+            if (response.length === 0) response = await consultarTemporada(2025);
+            if (response.length === 0) {
+                setErrorMsg('La API no devolvió jugadores en 2026 ni en 2025. Puede que la plantilla de esta temporada aún no esté cargada en API-Football.');
                 setBuscando(false); return;
             }
-            var apiPorNombre = data.response.map(function(r) {
+            var apiPorNombre = response.map(function(r) {
                 return { nombre: r.player.name, id: r.player.id, foto: r.player.photo };
             });
             // Cruce simple con nuestra plantilla por coincidencia de apellido/nombre
@@ -4408,7 +4414,13 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
                     var jn = jug.nombre.toLowerCase();
                     return an.indexOf(jn.split(' ').pop()) !== -1 || jn.indexOf(an.split(' ').pop()) !== -1;
                 });
-                return { nombre: jug.nombre, apiIdActual: jug.apiId, apiIdEncontrado: match ? match.id : null, nombreApi: match ? match.nombre : null };
+                var fotoActual = jug.apiId ? ('https://media.api-sports.io/football/players/' + jug.apiId + '.png') : null;
+                return {
+                    nombre: jug.nombre, apiIdActual: jug.apiId, fotoActual: fotoActual,
+                    apiIdEncontrado: match ? match.id : null, nombreApi: match ? match.nombre : null,
+                    fotoEncontrada: match ? match.foto : null,
+                    posibleConflicto: !!(jug.apiId && match && match.id !== jug.apiId),
+                };
             });
             setResultado(cruce);
         } catch(e) {
@@ -4420,13 +4432,13 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
     return (
         <div style={ADMIN_STYLES.card}>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
-                🔍 Buscar IDs de API-Football (para Estrellas)
+                🔍 Buscar y verificar IDs de API-Football (para Estrellas)
             </p>
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
-                Los jugadores con apiId:0 no pueden puntuar Estrellas automáticamente. Esto hace una llamada a la API con toda la plantilla oficial y cruza los nombres para encontrar sus IDs reales.
+                Comprueba TODOS los jugadores, no solo los que faltan — así puedes ver con tus propios ojos si alguna foto o ID de sesiones anteriores está mal asignado. Compara "Tienes ahora" con "La API dice" antes de copiar nada.
             </p>
             <button onClick={buscar} disabled={buscando} style={ADMIN_STYLES.btnPrimary}>
-                {buscando ? 'Consultando API...' : 'Buscar IDs ahora'}
+                {buscando ? 'Consultando API...' : 'Buscar y verificar ahora'}
             </button>
             {errorMsg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginTop:10}}>{errorMsg}</p>}
             {resultado && (
@@ -4434,22 +4446,46 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
                     {resultado.map(function(r) {
                         var sinIdAntes = !r.apiIdActual || r.apiIdActual === 0;
                         return (
-                            <div key={r.nombre} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',
-                                borderBottom:'1px solid rgba(0,31,107,0.06)',
-                                background: sinIdAntes && r.apiIdEncontrado ? 'rgba(16,185,129,0.06)' : 'transparent'}}>
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',flex:1}}>{r.nombre}</span>
-                                {r.apiIdEncontrado ? (
-                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color: sinIdAntes ? '#10b981' : 'rgba(0,31,107,0.4)'}}>
-                                        apiId: {r.apiIdEncontrado} {r.nombreApi ? '(' + r.nombreApi + ')' : ''} {sinIdAntes ? '✓ NUEVO' : ''}
-                                    </span>
-                                ) : (
-                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946'}}>No encontrado — revisar manualmente</span>
-                                )}
+                            <div key={r.nombre} style={{padding:'10px 12px',borderBottom:'1px solid rgba(0,31,107,0.06)',
+                                background: r.posibleConflicto ? 'rgba(230,57,70,0.06)' : (sinIdAntes && r.apiIdEncontrado ? 'rgba(16,185,129,0.06)' : 'transparent')}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#001F6B',marginBottom:6,fontWeight:600}}>
+                                    {r.nombre} {r.posibleConflicto && <span style={{color:'#e63946',fontSize:11}}>⚠️ ID distinto al que tienes — revisar</span>}
+                                </p>
+                                <div style={{display:'flex',gap:16,alignItems:'center'}}>
+                                    <div style={{textAlign:'center'}}>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)',marginBottom:3,textTransform:'uppercase'}}>Tienes ahora</p>
+                                        {r.fotoActual ? (
+                                            <img src={r.fotoActual} alt="" style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',border:'2px solid rgba(0,31,107,0.15)'}}
+                                                onError={function(e){e.target.style.opacity=0.2;}} />
+                                        ) : (
+                                            <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(0,31,107,0.06)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'rgba(0,31,107,0.3)'}}>sin ID</div>
+                                        )}
+                                    </div>
+                                    <span style={{color:'rgba(0,31,107,0.25)',fontSize:16}}>→</span>
+                                    <div style={{textAlign:'center'}}>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)',marginBottom:3,textTransform:'uppercase'}}>La API dice</p>
+                                        {r.fotoEncontrada ? (
+                                            <img src={r.fotoEncontrada} alt="" style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',border: r.posibleConflicto ? '2px solid #e63946' : '2px solid #10b981'}} />
+                                        ) : (
+                                            <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(230,57,70,0.08)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'#e63946'}}>?</div>
+                                        )}
+                                    </div>
+                                    <div style={{flex:1}}>
+                                        {r.apiIdEncontrado ? (
+                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color: sinIdAntes ? '#10b981' : (r.posibleConflicto ? '#e63946' : 'rgba(0,31,107,0.4)')}}>
+                                                apiId: {r.apiIdEncontrado}<br/>
+                                                <span style={{fontSize:11,opacity:.7}}>{r.nombreApi}</span>
+                                            </span>
+                                        ) : (
+                                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946'}}>No encontrado en la API — revisar manualmente</span>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         );
                     })}
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',padding:'8px 12px'}}>
-                        Copia los IDs marcados "NUEVO" al campo apiId de PLANTILLA_FALLBACK en el código. La coincidencia es por apellido — revisa que el nombre completo coincida antes de usarlo.
+                        Compara las dos fotos de cada fila. Si la de "La API dice" es la persona correcta, copia ese apiId a PLANTILLA_FALLBACK en el código. La coincidencia de nombre es automática por apellido — puede fallar con apodos o nombres compuestos, así que la foto es la comprobación real.
                     </p>
                 </div>
             )}
@@ -5547,7 +5583,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         setGuardando(false);
     };
 
-    const posiciones = ['Todos', 'Portero', 'Defensa', 'Centrocampista', 'Delantero'];
+    const posiciones = ['Todos', 'Portero', 'Defensa', 'Centrocampista', 'Mediapunta', 'Delantero'];
     const plantillaFiltrada = posicionFiltro === 'Todos' ? plantilla : plantilla.filter(j => j.posicion === posicionFiltro);
     const maxEstrellas = miBeneficio === 'sexta_estrella' ? 6 : 5;
 
