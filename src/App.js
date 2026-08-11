@@ -3102,8 +3102,10 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers }) => {
 
 const PagosScreen = ({ currentUser }) => {
     var G = styles.colors;
-    var JUGADORES_TODOS = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var JUGADORES_FUNDADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
+    var [jugadoresAprobados, setJugadoresAprobados] = useState([]);
+    var JUGADORES_TODOS = Array.from(new Set(JUGADORES_FUNDADORES.concat(jugadoresAprobados)));
     var JUGADORES_LISTA = JUGADORES_TODOS.filter(function(j) { return jugadoresInactivos.indexOf(j) === -1; });
     var [paso, setPaso] = useState('inicio');
     var [pagos, setPagos] = useState([]);
@@ -3127,6 +3129,13 @@ const PagosScreen = ({ currentUser }) => {
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
             setJugadoresInactivos(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(snap) {
+            setJugadoresAprobados(snap.exists() ? (snap.data().nombres || []) : []);
         });
         return function() { unsub(); };
     }, []);
@@ -4387,26 +4396,30 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
     var [buscando, setBuscando] = useState(false);
     var [errorMsg, setErrorMsg] = useState('');
 
-    var consultarTemporada = async function(season) {
-        var url = 'https://v3.football.api-sports.io/players?team=' + API_TEAM_ID_UDLP + '&season=' + season;
+    var consultarPlantillaActual = async function() {
+        // /players/squads da la plantilla REGISTRADA actual directamente — a
+        // diferencia de /players?season=, que solo devuelve algo si el
+        // jugador ya tiene estadísticas de partidos jugados esa temporada
+        // (por eso fallaba justo ahora, con la liga recién empezada).
+        var url = 'https://v3.football.api-sports.io/players/squads?team=' + API_TEAM_ID_UDLP;
         var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
         var data = await res.json();
-        return (data.response || []);
+        var response = data.response || [];
+        if (response.length === 0) return [];
+        return (response[0].players || []).map(function(p) {
+            return { nombre: p.name, id: p.id, foto: p.photo };
+        });
     };
 
     var buscar = async function() {
         if (!API_FOOTBALL_KEY) { setErrorMsg('Falta configurar REACT_APP_API_FOOTBALL_KEY.'); return; }
         setBuscando(true); setErrorMsg(''); setResultado(null);
         try {
-            var response = await consultarTemporada(2026);
-            if (response.length === 0) response = await consultarTemporada(2025);
-            if (response.length === 0) {
-                setErrorMsg('La API no devolvió jugadores en 2026 ni en 2025. Puede que la plantilla de esta temporada aún no esté cargada en API-Football.');
+            var apiPorNombre = await consultarPlantillaActual();
+            if (apiPorNombre.length === 0) {
+                setErrorMsg('La API no devolvió la plantilla. Puede que el equipo aún no esté vinculado correctamente en API-Football para esta temporada.');
                 setBuscando(false); return;
             }
-            var apiPorNombre = response.map(function(r) {
-                return { nombre: r.player.name, id: r.player.id, foto: r.player.photo };
-            });
             // Cruce simple con nuestra plantilla por coincidencia de apellido/nombre
             var cruce = plantilla.map(function(jug) {
                 var match = apiPorNombre.find(function(a) {
@@ -4633,13 +4646,22 @@ const AdminPanelScreen = ({ plantilla }) => {
     var [rifas, setRifas] = useState([]);
     var [nuevaRifa, setNuevaRifa] = useState({ titulo:'', descripcion:'', precio:'', fecha:'' });
 
-    var JUGADORES_TODOS = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var JUGADORES_FUNDADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
+    var [jugadoresAprobados, setJugadoresAprobados] = useState([]);
+    var JUGADORES_TODOS = Array.from(new Set(JUGADORES_FUNDADORES.concat(jugadoresAprobados)));
     var JUGADORES_LISTA = JUGADORES_TODOS.filter(function(j) { return jugadoresInactivos.indexOf(j) === -1; });
 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
             setJugadoresInactivos(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(snap) {
+            setJugadoresAprobados(snap.exists() ? (snap.data().nombres || []) : []);
         });
         return function() { unsub(); };
     }, []);
@@ -4727,8 +4749,24 @@ const AdminPanelScreen = ({ plantilla }) => {
         }
     };
 
+    // Aprobar de verdad activa el acceso: crea su PIN (con el que ya eligió
+    // en el formulario de invitación), su perfil, y lo añade a la lista de
+    // jugadores activos — sin esto, "aprobar" no dejaba entrar a nadie.
     var aprobarSolicitud = async function(sol) {
-        await setDoc(doc(db, 'solicitudes_ingreso', sol.id), { estado: 'aprobada' }, { merge: true });
+        if (!sol.pinHash) {
+            alert('Esta solicitud es de antes de que existiera el PIN en el formulario de invitación.\n\nPídele que rellene el formulario de nuevo desde el enlace de invitación — así su PIN queda guardado y puede entrar directamente al aprobarla.');
+            return;
+        }
+        try {
+            await setDoc(doc(db, 'pines', sol.nombre), { hash: sol.pinHash, creadoEn: serverTimestamp() });
+            await setDoc(doc(db, 'perfiles', sol.nombre), { nombre: sol.nombre, telefono: sol.telefono || '' }, { merge: true });
+            await setDoc(doc(db, 'configuracion', 'jugadoresAprobados'), { nombres: arrayUnion(sol.nombre) }, { merge: true });
+            await setDoc(doc(db, 'solicitudes_ingreso', sol.id), { estado: 'aprobada' }, { merge: true });
+            alert('✅ ' + sol.nombre + ' ya puede entrar a la app con su nombre y el PIN que creó al solicitar la plaza.');
+        } catch(e) {
+            console.error(e);
+            alert('❌ Error al aprobar: ' + e.message);
+        }
     };
 
     var rechazarSolicitud = async function(sol) {
@@ -4886,6 +4924,17 @@ const AdminPanelScreen = ({ plantilla }) => {
                                 {pendiente ? (
                                     <button onClick={async function() {
                                         await updateDoc(doc(db,'pagos',p.id), { estado: 'completado', confirmadoEn: serverTimestamp() });
+                                        // Si es una compra de plaza vacante en El Otro Equipo, al confirmar el
+                                        // pago se asigna automáticamente el hueco a este jugador.
+                                        if (p.tipo === 'plaza_otro') {
+                                            var vacanteSnap = await getDoc(doc(db, 'configuracion', 'elOtroVacante'));
+                                            if (vacanteSnap.exists() && !vacanteSnap.data().nombreNuevo) {
+                                                await setDoc(doc(db, 'configuracion', 'elOtroVacante'), { nombreNuevo: p.jugador }, { merge: true });
+                                                alert('✅ Pago confirmado. ' + p.jugador + ' ya tiene el hueco de El Otro Equipo asignado.');
+                                            } else {
+                                                alert('✅ Pago confirmado, pero el hueco ya no está disponible (puede que otro pago se confirmara antes). Revísalo en El Otro Equipo.');
+                                            }
+                                        }
                                     }} style={{...A.btnSuccess,padding:'6px 14px'}}>
                                         ✅ Confirmar
                                     </button>
@@ -4919,6 +4968,9 @@ const AdminPanelScreen = ({ plantilla }) => {
                                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:1,color:'#001F6B',marginBottom:2}}>{s.nombre}</p>
                                         <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.6)'}}>{s.telefono}</p>
                                         {s.invitadoPor && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',marginTop:2}}>Invitado por: {s.invitadoPor}</p>}
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,marginTop:4,color: s.pinHash ? '#10b981' : '#e63946'}}>
+                                            {s.pinHash ? '🔑 PIN listo — al aprobar entra directo' : '⚠️ Sin PIN (solicitud antigua) — pídele que rellene el formulario de nuevo'}
+                                        </p>
                                     </div>
                                     <span style={A.tag(estadoColor)}>{s.estado || 'pendiente'}</span>
                                 </div>
@@ -5234,6 +5286,18 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
     var [loading, setLoading] = useState(true);
     var [equiposDisponibles, setEquiposDisponibles] = useState(EQUIPOS_PRIMERA_DIVISION);
     var [vacante, setVacante] = useState(null); // { nombreOriginal, nombreNuevo } — hueco simbólico de baja
+    var [comprandoPlaza, setComprandoPlaza] = useState(false);
+    var [bizumInfo, setBizumInfo] = useState({ nombre: 'Juanma', telefono: '' });
+    var [copiadoPlaza, setCopiadoPlaza] = useState(false);
+    var [heEnviadoPlaza, setHeEnviadoPlaza] = useState(false);
+    var [enviandoPlaza, setEnviandoPlaza] = useState(false);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'bizum'), function(snap) {
+            if (snap.exists()) setBizumInfo(snap.data());
+        });
+        return function() { unsub(); };
+    }, []);
 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'elOtroVacante'), function(snap) {
@@ -5358,6 +5422,36 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
         });
     };
 
+    // Comprar el hueco vacante por 2€ — no obligatorio, cualquiera que aún no
+    // haya elegido equipo puede pedirlo. Usa el mismo circuito de Bizum +
+    // aprobación manual que el resto de pagos. Cuando el admin confirma este
+    // pago concreto, la app asigna automáticamente el hueco a este jugador.
+    var yaSolicitePlaza = (pagos || []).some(function(p) {
+        return p.tipo === 'plaza_otro' && p.jugador === currentUser && p.estado !== 'fallido';
+    });
+
+    var confirmarCompraPlaza = async function() {
+        setEnviandoPlaza(true);
+        try {
+            await addDoc(collection(db, 'pagos'), {
+                jugador: currentUser,
+                pagoBy: currentUser,
+                tipo: 'plaza_otro',
+                importe: 2,
+                descripcion: 'Plaza en El Otro Equipo (hueco vacante)',
+                metodo: 'bizum',
+                estado: 'pendiente_confirmacion',
+                creadoEn: serverTimestamp(),
+            });
+            setComprandoPlaza(false);
+            setHeEnviadoPlaza(false);
+        } catch(e) {
+            console.error(e);
+            alert('No se pudo registrar la solicitud. Inténtalo de nuevo.');
+        }
+        setEnviandoPlaza(false);
+    };
+
     var revelarEquipo = function() {
         if (!miElOtro || !miElOtro.equipo) return;
         if (miElOtro.revelado) return;
@@ -5478,6 +5572,72 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos }) => {
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,color:G.deepBlue,letterSpacing:2,marginTop:8}}>ESPERANDO TU TURNO</p>
                     {turnoActual && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5,marginTop:4}}>Ahora está eligiendo: <strong>{turnoActual}</strong></p>}
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:8}}>Recibirás acceso automáticamente cuando te toque</p>
+                </div>
+            )}
+
+            {/* Comprar el hueco vacante — opcional, no obligatorio */}
+            {vacante && vacante.nombreOriginal && !vacante.nombreNuevo && !(miElOtro && miElOtro.equipo) && (
+                <div style={{marginTop:12,background:'rgba(255,215,0,0.06)',border:'1px dashed rgba(255,215,0,0.35)',borderRadius:14,padding:16}}>
+                    {!comprandoPlaza && !yaSolicitePlaza && (
+                        <>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,color:G.deepBlue,marginBottom:6}}>
+                                🎟️ ¿Quieres ese hueco?
+                            </p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,marginBottom:10,lineHeight:1.5}}>
+                                Págalo por <strong>2€</strong> y pasas a ocupar esa posición en la cola — eliges tu equipo antes que el resto de gente por detrás tuya. No es obligatorio, es solo una opción.
+                            </p>
+                            <button onClick={function() { setComprandoPlaza(true); }} style={{
+                                fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,background:'#001F6B',color:'#FFD700',
+                                border:'none',borderRadius:20,padding:'8px 18px',cursor:'pointer'}}>
+                                Quiero esta plaza — 2€
+                            </button>
+                        </>
+                    )}
+
+                    {yaSolicitePlaza && !comprandoPlaza && (
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#b8860b'}}>
+                            ⏳ Ya has pedido este hueco — en cuanto se confirme tu Bizum de 2€, pasarás a ocuparlo.
+                        </p>
+                    )}
+
+                    {comprandoPlaza && (
+                        <div>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,color:G.deepBlue,marginBottom:8}}>
+                                1 · Envía 2€ por Bizum a
+                            </p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:G.deepBlue,marginBottom:2}}>
+                                {bizumInfo.telefono || '(número pendiente de configurar)'}
+                            </p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginBottom:10}}>{bizumInfo.nombre}</p>
+                            {bizumInfo.telefono && (
+                                <button onClick={function() {
+                                    navigator.clipboard.writeText(bizumInfo.telefono);
+                                    setCopiadoPlaza(true); setTimeout(function(){setCopiadoPlaza(false);}, 2000);
+                                }} style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,background:'#0091FF',color:'#fff',
+                                    border:'none',borderRadius:20,padding:'6px 16px',cursor:'pointer',marginBottom:14}}>
+                                    {copiadoPlaza ? '✓ Copiado' : '📋 Copiar número'}
+                                </button>
+                            )}
+                            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginBottom:12}}>
+                                <input type="checkbox" checked={heEnviadoPlaza} onChange={function(e){setHeEnviadoPlaza(e.target.checked);}}
+                                    style={{width:18,height:18,accentColor:G.deepBlue}} />
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue}}>Ya he enviado los 2€</span>
+                            </label>
+                            <div style={{display:'flex',gap:8}}>
+                                <button onClick={confirmarCompraPlaza} disabled={!heEnviadoPlaza || enviandoPlaza} style={{
+                                    fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,background:G.deepBlue,color:'#FFD700',
+                                    border:'none',borderRadius:20,padding:'8px 18px',cursor:'pointer',opacity:heEnviadoPlaza?1:0.5}}>
+                                    {enviandoPlaza ? 'Enviando...' : 'Confirmar solicitud'}
+                                </button>
+                                <button onClick={function(){setComprandoPlaza(false);}} style={{
+                                    fontFamily:"'Inter',sans-serif",fontSize:12,background:'none',color:'rgba(0,31,107,0.5)',
+                                    border:'none',cursor:'pointer'}}>Cancelar</button>
+                            </div>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:10}}>
+                                Tu solicitud queda pendiente hasta que {bizumInfo.nombre} confirme el pago — entonces pasarás a ocupar el hueco automáticamente.
+                            </p>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -5806,13 +5966,22 @@ const LoginScreen = ({ onLoginSuccess }) => {
         return !localStorage.getItem('aviso_reinstalar_2627_visto');
     });
 
-    var JUGADORES_TODOS = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var JUGADORES_FUNDADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
+    var [jugadoresAprobados, setJugadoresAprobados] = useState([]); // nuevos, entrados por invitación aprobada
+    var JUGADORES_TODOS = Array.from(new Set(JUGADORES_FUNDADORES.concat(jugadoresAprobados)));
     var JUGADORES = JUGADORES_TODOS.filter(function(j) { return jugadoresInactivos.indexOf(j) === -1; });
 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
             setJugadoresInactivos(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(snap) {
+            setJugadoresAprobados(snap.exists() ? (snap.data().nombres || []) : []);
         });
         return function() { unsub(); };
     }, []);
