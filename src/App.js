@@ -4880,12 +4880,25 @@ const ConfiguracionBizum = () => {
 // sitio que ya usa la app para cargar la plantilla al iniciar sesión — así
 // el cambio se aplica en toda la app sin tocar código.
 const VerificarFotosPlantilla = ({ plantilla }) => {
-    var [ediciones, setEdiciones] = useState({}); // nombre -> {apiId, fotoManual} en edición
+    var [ediciones, setEdiciones] = useState({}); // nombre -> {apiId, fotoManual} en edición (sin guardar aún)
+    var [guardados, setGuardados] = useState({}); // nombre -> {apiId, fotoManual} — lo que YA hay en Firestore, en vivo
     var [guardandoNombre, setGuardandoNombre] = useState('');
     var [msg, setMsg] = useState('');
 
+    // Escucha en vivo la colección — cada jugador es un documento
+    // independiente, así que guardar a uno nunca puede pisar a otro.
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, 'fotosJugadores'), function(snap) {
+            var mapa = {};
+            snap.forEach(function(d) { mapa[d.id] = d.data(); });
+            setGuardados(mapa);
+        });
+        return function() { unsub(); };
+    }, []);
+
     var valorActual = function(jug, campo) {
         if (ediciones[jug.nombre] && ediciones[jug.nombre][campo] !== undefined) return ediciones[jug.nombre][campo];
+        if (guardados[jug.nombre] && guardados[jug.nombre][campo] !== undefined) return guardados[jug.nombre][campo];
         return jug[campo] || '';
     };
 
@@ -4897,20 +4910,19 @@ const VerificarFotosPlantilla = ({ plantilla }) => {
         });
     };
 
+    // Cada jugador se guarda en SU PROPIO documento (fotosJugadores/{nombre}),
+    // con merge:true — así guardar a Fulano nunca toca ni borra lo de Mengano,
+    // aunque los guardes uno detrás de otro sin recargar la página.
     var guardarJugador = async function(jug) {
         setGuardandoNombre(jug.nombre);
         try {
             var apiIdNuevo = valorActual(jug, 'apiId');
             var fotoManualNueva = valorActual(jug, 'fotoManual');
-            var plantillaActualizada = plantilla.map(function(j) {
-                if (j.nombre !== jug.nombre) return j;
-                return {
-                    ...j,
-                    apiId: apiIdNuevo ? parseInt(apiIdNuevo) || 0 : 0,
-                    fotoManual: fotoManualNueva || '',
-                };
-            });
-            await setDoc(doc(db, 'configuracion', 'plantilla_udlp'), { jugadores: plantillaActualizada });
+            await setDoc(doc(db, 'fotosJugadores', jug.nombre), {
+                apiId: apiIdNuevo ? parseInt(apiIdNuevo) || 0 : 0,
+                fotoManual: fotoManualNueva || '',
+                actualizadoEn: serverTimestamp(),
+            }, { merge: true });
             setMsg('✅ Foto de ' + jug.nombre + ' actualizada en toda la app.');
         } catch(e) {
             console.error(e);
@@ -4929,7 +4941,7 @@ const VerificarFotosPlantilla = ({ plantilla }) => {
                 🖼️ Verificar fotos de la plantilla
             </p>
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14,lineHeight:1.5}}>
-                Si la foto de alguien no es la suya, pega aquí la URL de una foto correcta (de Wikipedia, Sofascore, o donde sea) — se guarda para toda la app y gana siempre a la foto automática, aunque cambie el apiId.
+                Si la foto de alguien no es la suya, pega aquí la URL de una foto correcta (de Wikipedia, Sofascore, o donde sea) — se guarda para toda la app y gana siempre a la foto automática. Puedes guardar uno detrás de otro sin problema, cada uno es independiente.
             </p>
             {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msg.startsWith('✅') ? '#10b981' : '#e63946',marginBottom:12}}>{msg}</p>}
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
@@ -6857,6 +6869,16 @@ function App() {
     const [isAdmin, setIsAdmin] = useState(false);
     const [teamLogos, setTeamLogos] = useState({});
     const [plantilla, setPlantilla] = useState(PLANTILLA_FALLBACK);
+    const [fotosJugadores, setFotosJugadores] = useState({}); // nombre -> {apiId, fotoManual}, en vivo desde Firestore
+
+    // Plantilla combinada: la base + las fotos verificadas a mano en Admin.
+    // Se usa en TODAS las pantallas en vez de "plantilla" a secas, para que
+    // una foto guardada se vea al instante en toda la app.
+    const plantillaConFotos = plantilla.map(function(j) {
+        var override = fotosJugadores[j.nombre];
+        if (!override) return j;
+        return { ...j, ...override };
+    });
     const [userProfiles, setUserProfiles] = useState({});
     const [onlineUsers, setOnlineUsers] = useState({});
     const [clasificacionData, setClasificacionData] = useState([]);
@@ -6940,6 +6962,13 @@ function App() {
                 setUserProfiles(profiles);
                 setClasificacionData(clasif);
             });
+            // Fotos verificadas a mano desde Admin — un documento por jugador,
+            // en vivo, para que un cambio se vea al instante en toda la app.
+            onSnapshot(collection(db, "fotosJugadores"), function(snap) {
+                var mapa = {};
+                snap.forEach(function(d) { mapa[d.id] = d.data(); });
+                setFotosJugadores(mapa);
+            });
 
             // Cargar plantilla desde Firestore si existe
             getDoc(doc(db, "configuracion", "plantilla_udlp")).then(function(plantillaSnap) {
@@ -6978,16 +7007,16 @@ function App() {
 
     var renderContent = function() {
         switch (activeTab) {
-            case 'miJornada':    return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantilla} userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
+            case 'miJornada':    return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantillaConFotos} userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'laJornada':   return <LaJornadaScreen userProfiles={userProfiles} onlineUsers={onlineUsers} teamLogos={teamLogos} />;
             case 'elOtro':      return <ElOtroScreen currentUser={currentUser} userProfiles={userProfiles} pagos={pagosGlobal} teamLogos={teamLogos} onIrAPagos={function(){setActiveTab('pagos');}} />;
-            case 'estrellas':   return <MisEstrellasScreen currentUser={currentUser} plantilla={plantilla} userProfiles={userProfiles} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
+            case 'estrellas':   return <MisEstrellasScreen currentUser={currentUser} plantilla={plantillaConFotos} userProfiles={userProfiles} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'pagos':       return <PagosScreen currentUser={currentUser} />;
             case 'perfil':      return <PerfilScreen currentUser={currentUser} tema={tema} cambiarTema={cambiarTema} />;
-            case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantilla} /> : null;
+            case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantillaConFotos} /> : null;
             default:            return null;
         }
     };
@@ -7009,7 +7038,7 @@ function App() {
         <div style={{ position: 'fixed', inset: 0, background: TEMA.fondoApp, overflow: 'hidden', fontFamily: "'Teko', sans-serif" }}>
 
             {/* Tutorial épico — primera vez en la temporada */}
-            {showTutorial && <TutorialEpico user={currentUser} plantilla={plantilla} onClose={function() { setShowTutorial(false); setActiveTab('perfil'); }} />}
+            {showTutorial && <TutorialEpico user={currentUser} plantilla={plantillaConFotos} onClose={function() { setShowTutorial(false); setActiveTab('perfil'); }} />}
 
             {/* ── TOPBAR ── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: TEMA.fondoTop, backdropFilter: 'blur(10px)', borderBottom: '0.5px solid ' + TEMA.hairline, position: 'relative', zIndex: 10 }}>
