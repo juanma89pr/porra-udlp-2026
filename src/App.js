@@ -1182,7 +1182,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         sincronizar(); // Primera vez inmediata
         var intervalo = setInterval(sincronizar, 5 * 60 * 1000); // Cada 5 min
         return function() { clearInterval(intervalo); };
-    }, [jornada, plantilla]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [jornada, plantilla]);
 
     // Cargar jornada activa
     useEffect(function() {
@@ -4492,7 +4492,7 @@ const AdminPanelScreen = ({ plantilla }) => {
             }
         );
         return function() { unsub(); };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(function() {
         if (seccion !== 'solicitudes') return;
@@ -5813,12 +5813,11 @@ const IntroPresentacionGate = ({ onFinish }) => {
 
     useEffect(function() {
         arrancar();
+        var audioEl = audioRef.current; // copia local — evita el warning de ref en cleanup
         return function() {
             if (timerRef.current) clearTimeout(timerRef.current);
-            var audio = audioRef.current;
-            if (audio) { audio.pause(); }
+            if (audioEl) { audioEl.pause(); }
         };
-        // eslint-disable-next-line
     }, []);
 
     // Al llegar a la fase de presentación, comprobamos que el archivo existe
