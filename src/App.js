@@ -1998,18 +1998,13 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                 <p style={S.cuerpo}>Un único pago para toda la temporada — 42 jornadas. <strong style={{color:'#001F6B'}}>Sin pago confirmado, no hay acceso a las apuestas ni a El Otro Equipo.</strong></p>
                 <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',maxWidth:360,marginBottom:14}}>
                     <div style={{...S.cardDorado,display:'flex',alignItems:'center',gap:12,padding:'14px 16px',textAlign:'left'}}>
-                        <span style={{fontSize:22,flexShrink:0}}>💸</span>
+                        <span style={{fontSize:22,flexShrink:0}}>📲</span>
                         <div style={{flex:1}}>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Pago con tarjeta</p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',marginBottom:6}}>Visa · Mastercard · AMEX · débito</p>
-                            {/* Logo Stripe */}
-                            <div style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(99,91,255,0.08)',border:'1px solid rgba(99,91,255,0.2)',borderRadius:8,padding:'4px 10px'}}>
-                                <svg width="40" height="16" viewBox="0 0 60 25" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M27.5 8.2c0-1.3 1-1.8 2.7-1.8 2.4 0 5.4.7 7.8 2V2.7C35.5 1 32.7.3 29.9.3c-5.1 0-8.5 2.7-8.5 7.2 0 7 9.7 5.9 9.7 8.9 0 1.5-1.3 2-3.1 2-2.7 0-6.1-.9-8.8-2.1v6c2.6 1.1 5.3 1.6 8.8 1.6 5.2 0 8.8-2.6 8.8-7.2-.1-7.6-9.8-6.2-9.8-8.5z" fill="#635BFF"/>
-                                    <path d="M0 23.7l1.8-11.1C2.7 7.3 6.1 4.7 10 4.7c1.6 0 2.7.4 3.4 1L14.5.3h6.8L17.5 24H10.7l.3-1.5c-.9.8-2.2 1.8-4.1 1.8C3.2 24.3.7 21.6 0 23.7z" fill="#635BFF" opacity="0"/>
-                                </svg>
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,color:'#635BFF',letterSpacing:1}}>stripe</span>
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(99,91,255,0.6)'}}>· pago seguro</span>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Pago por Bizum</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',marginBottom:6}}>Directo desde tu app del banco, sin comisiones</p>
+                            <div style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(0,145,255,0.08)',border:'1px solid rgba(0,145,255,0.2)',borderRadius:8,padding:'4px 10px'}}>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,color:'#0091FF',letterSpacing:1}}>BIZUM</span>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,145,255,0.6)'}}>· al instante</span>
                             </div>
                         </div>
                     </div>
@@ -2023,8 +2018,8 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                     <div style={{...S.card,display:'flex',alignItems:'center',gap:12,padding:'12px 14px',textAlign:'left'}}>
                         <span style={{fontSize:20,flexShrink:0}}>🔒</span>
                         <div>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Tu tarjeta nunca se almacena</p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',lineHeight:1.5}}>Stripe gestiona todo — la app solo recibe confirmación del pago</p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'#001F6B',marginBottom:2}}>Nunca compartes datos bancarios</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.45)',lineHeight:1.5}}>El Bizum lo haces tú mismo desde tu banco — la app solo registra la confirmación</p>
                         </div>
                     </div>
                 </div>
@@ -3034,9 +3029,16 @@ const PagosScreen = ({ currentUser }) => {
     var [jugadoresPagando, setJugadoresPagando] = useState([currentUser]);
     var [jugadoresPendientes, setJugadoresPendientes] = useState([]);
     var [error, setError] = useState('');
-    var [stripe, setStripe] = useState(null);
-    var [cardMounted, setCardMounted] = useState(false);
-    var cardRef = { current: null };
+    var [bizumInfo, setBizumInfo] = useState({ nombre: 'Juanma', telefono: '' });
+    var [copiado, setCopiado] = useState(false);
+    var [heEnviado, setHeEnviado] = useState(false);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'bizum'), function(snap) {
+            if (snap.exists()) setBizumInfo(snap.data());
+        });
+        return function() { unsub(); };
+    }, []);
 
     useEffect(function() {
         var unsub = onSnapshot(query(collection(db, 'pagos'), orderBy('creadoEn','desc')),
@@ -3082,39 +3084,12 @@ const PagosScreen = ({ currentUser }) => {
         if (jugadoresPagando.length === 0) { setError('Selecciona al menos un jugador'); return; }
         if (tipoPago !== 'inscripcion' && !jornadaSel) { setError('Selecciona la jornada'); return; }
         setError('');
-        setPaso('tarjeta');
-        setTimeout(function() {
-            if (window.Stripe) { montarStripe(); return; }
-            var s = document.createElement('script');
-            s.src = 'https://js.stripe.com/v3/';
-            s.onload = function(){ montarStripe(); };
-            document.head.appendChild(s);
-        }, 200);
+        setPaso('bizum');
     };
 
-    var stripeInst = null;
-    var cardInst = null;
-
-    var montarStripe = function() {
-        stripeInst = window.Stripe(STRIPE_PK);
-        setStripe(stripeInst);
-        var elements = stripeInst.elements();
-        cardInst = elements.create('card', {
-            style:{ base:{ fontFamily:"'Inter',sans-serif", fontSize:'16px', color:'#001F6B', '::placeholder':{ color:'rgba(0,31,107,0.3)' } }, invalid:{color:'#e63946'} },
-            hidePostalCode:true,
-        });
-        cardRef.current = cardInst;
-        var el = document.getElementById('stripe-card-el');
-        if (el) { cardInst.mount('#stripe-card-el'); setCardMounted(true); }
-    };
-
-    var procesarPago = async function() {
-        if (!cardRef.current) { setError('Error al cargar el formulario. Recarga.'); return; }
+    var confirmarEnvioBizum = async function() {
         setPaso('procesando');
         try {
-            var result = await window._stripeInst.createPaymentMethod({ type:'card', card:cardRef.current });
-            if (result.error) { setError(result.error.message); setPaso('tarjeta'); return; }
-            // Registrar un pago por cada jugador seleccionado
             var batch = jugadoresPagando.map(function(j) {
                 return addDoc(collection(db,'pagos'), {
                     jugador: j,
@@ -3123,8 +3098,8 @@ const PagosScreen = ({ currentUser }) => {
                     jornada: jornadaSel || null,
                     importe: precioUnitario,
                     descripcion: tipoPago==='inscripcion' ? 'Inscripción 26/27' : ('Jornada '+(tipoPago==='jornada_vip'?'VIP ':'')+ jornadaSel),
-                    paymentMethodId: result.paymentMethod.id,
-                    estado: 'pendiente_confirmacion',
+                    metodo: 'bizum',
+                    estado: 'pendiente_confirmacion', // el admin lo confirma tras verlo en su banco
                     creadoEn: serverTimestamp(),
                 });
             });
@@ -3132,14 +3107,9 @@ const PagosScreen = ({ currentUser }) => {
             setPaso('ok');
         } catch(e) {
             setError('Error: ' + e.message);
-            setPaso('tarjeta');
+            setPaso('bizum');
         }
     };
-
-    // Guardar referencia global para acceder desde procesarPago
-    useEffect(function() {
-        if (stripe) window._stripeInst = stripe;
-    }, [stripe]);
 
     var misPagos = pagos.filter(function(p){return p.jugador===currentUser||p.pagoBy===currentUser;});
     var inscripcionPagada = jugadorHaPagado(currentUser, pagos);
@@ -3284,11 +3254,11 @@ const PagosScreen = ({ currentUser }) => {
         </div>
     );
 
-    // ── TARJETA ─────────────────────────────────────────────────────────────
-    if (paso === 'tarjeta') return (
+    // ── BIZUM ─────────────────────────────────────────────────────────────
+    if (paso === 'bizum') return (
         <div style={{paddingBottom:40}}>
-            <button onClick={function(){setPaso('seleccion');}} style={{background:'none',border:'none',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',cursor:'pointer',marginBottom:16,textTransform:'uppercase'}}>← Volver</button>
-            <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:20,fontWeight:700}}>Pagar {total}€</h2>
+            <button onClick={function(){setPaso('seleccion');setHeEnviado(false);}} style={{background:'none',border:'none',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',cursor:'pointer',marginBottom:16,textTransform:'uppercase'}}>← Volver</button>
+            <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:20,fontWeight:700}}>Pagar {total}€ por Bizum</h2>
 
             <div style={S.card}>
                 <div style={{background:'rgba(0,31,107,0.04)',borderRadius:10,padding:'10px 14px',marginBottom:16}}>
@@ -3300,31 +3270,48 @@ const PagosScreen = ({ currentUser }) => {
                     </p>
                 </div>
 
-                <label style={S.label}>Datos de tarjeta</label>
-                <div id="stripe-card-el" style={{border:'1.5px solid rgba(0,31,107,0.15)',borderRadius:12,padding:'13px 14px',background:'#f8f9ff',marginBottom:14,minHeight:44}} />
+                {/* Paso 1: enviar el Bizum */}
+                <div style={{background:'rgba(0,145,255,0.05)',border:'1px solid rgba(0,145,255,0.15)',borderRadius:14,padding:18,marginBottom:16,textAlign:'center'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#0091FF',textTransform:'uppercase',marginBottom:10}}>
+                        1 · Envía {total}€ por Bizum a
+                    </p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#001F6B',letterSpacing:1,marginBottom:4}}>
+                        {bizumInfo.telefono || '(número pendiente de configurar)'}
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14}}>
+                        {bizumInfo.nombre}
+                    </p>
+                    {bizumInfo.telefono && (
+                        <button onClick={function() {
+                            navigator.clipboard.writeText(bizumInfo.telefono);
+                            setCopiado(true); setTimeout(function(){setCopiado(false);}, 2000);
+                        }} style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#0091FF',color:'#fff',
+                            border:'none',borderRadius:20,padding:'8px 20px',cursor:'pointer',textTransform:'uppercase'}}>
+                            {copiado ? '✓ Copiado' : '📋 Copiar número'}
+                        </button>
+                    )}
+                </div>
+
+                {/* Paso 2: confirmar que se ha enviado */}
+                <div style={{marginBottom:16}}>
+                    <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'10px 4px'}}>
+                        <input type="checkbox" checked={heEnviado} onChange={function(e){setHeEnviado(e.target.checked);}}
+                            style={{width:20,height:20,accentColor:'#001F6B'}} />
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'#001F6B'}}>
+                            Ya he enviado el Bizum de {total}€
+                        </span>
+                    </label>
+                </div>
 
                 {error && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginBottom:12,textAlign:'center'}}>{error}</p>}
 
-                <button onClick={procesarPago} style={S.btnPrimary}>
-                    Pagar {total}€ con tarjeta →
+                <button onClick={confirmarEnvioBizum} disabled={!heEnviado} style={{...S.btnPrimary,opacity:heEnviado?1:0.5}}>
+                    Confirmar pago →
                 </button>
 
-                {/* Bloque de seguridad Stripe */}
-                <div style={{marginTop:14,display:'flex',flexDirection:'column',alignItems:'center',gap:8}}>
-                    <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(99,91,255,0.06)',border:'1px solid rgba(99,91,255,0.15)',borderRadius:10,padding:'8px 16px'}}>
-                        <svg width="44" height="18" viewBox="0 0 60 25" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M27.5 8.2c0-1.3 1-1.8 2.7-1.8 2.4 0 5.4.7 7.8 2V2.7C35.5 1 32.7.3 29.9.3c-5.1 0-8.5 2.7-8.5 7.2 0 7 9.7 5.9 9.7 8.9 0 1.5-1.3 2-3.1 2-2.7 0-6.1-.9-8.8-2.1v6c2.6 1.1 5.3 1.6 8.8 1.6 5.2 0 8.8-2.6 8.8-7.2-.1-7.6-9.8-6.2-9.8-8.5z" fill="#635BFF"/>
-                        </svg>
-                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,color:'#635BFF',letterSpacing:1}}>stripe</span>
-                        <div style={{width:1,height:14,background:'rgba(99,91,255,0.2)'}}/>
-                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(99,91,255,0.7)'}}>Pago 100% seguro</span>
-                    </div>
-                    <div style={{display:'flex',gap:10,alignItems:'center'}}>
-                        {['🔒 Cifrado SSL','💳 Visa · MC · AMEX','🚫 Sin guardar datos'].map(function(t,i){return(
-                            <span key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.35)',letterSpacing:0.5}}>{t}</span>
-                        );})}
-                    </div>
-                </div>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',textAlign:'center',marginTop:12,lineHeight:1.5}}>
+                    Tu pago quedará "pendiente" hasta que {bizumInfo.nombre} lo confirme al verlo en el banco — normalmente el mismo día.
+                </p>
             </div>
         </div>
     );
@@ -3333,7 +3320,7 @@ const PagosScreen = ({ currentUser }) => {
     if (paso === 'procesando') return (
         <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:60,textAlign:'center'}}>
             <div style={{fontSize:52,marginBottom:16}}>⏳</div>
-            <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:3,color:'#001F6B',textTransform:'uppercase'}}>Procesando pago...</p>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:3,color:'#001F6B',textTransform:'uppercase'}}>Guardando confirmación...</p>
         </div>
     );
 
@@ -4299,7 +4286,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 // ============================================================================
 // --- ADMIN PANEL SCREEN — Panel de control completo 26/27 ---
 // ============================================================================
-const STRIPE_PK = 'pk_live_51U2xAARenKuqKQJELTRmHGPOEYvqZmRPRvloWyN5Z8DogtNRTYJBmmKa5vlzQQwTDK6r5h40JvK0OM3wUwvLm42M00OzYw8o3m'; // ← Reemplaza con pk_test_... o pk_live_...
+// (STRIPE_PK eliminada — se sustituyó Stripe por Bizum, ver configuración en el panel admin)
 
 // Herramienta admin: una sola llamada a API-Football para listar los IDs
 // reales de toda la plantilla del UDLP — para rellenar los apiId:0 que faltan
@@ -4464,6 +4451,49 @@ const ADMIN_STYLES = {
     btnDanger: { background:'#e63946', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
 };
 
+// Admin: configura el número de Bizum que se muestra a los jugadores al pagar.
+const ConfiguracionBizum = () => {
+    var [nombre, setNombre] = useState('');
+    var [telefono, setTelefono] = useState('');
+    var [guardado, setGuardado] = useState(false);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'bizum'), function(snap) {
+            if (snap.exists()) {
+                setNombre(snap.data().nombre || '');
+                setTelefono(snap.data().telefono || '');
+            }
+        });
+        return function() { unsub(); };
+    }, []);
+
+    var guardar = async function() {
+        await setDoc(doc(db, 'configuracion', 'bizum'), { nombre: nombre, telefono: telefono }, { merge: true });
+        setGuardado(true);
+        setTimeout(function(){setGuardado(false);}, 2000);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:12,fontWeight:600}}>
+                📲 Configurar Bizum
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.6)',marginBottom:14,lineHeight:1.6}}>
+                Este número es el que verán todos los jugadores al pagar. Confirma cada pago manualmente en el historial de abajo, cuando lo veas llegar a tu banco.
+            </p>
+            <label style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',display:'block',marginBottom:4}}>Tu nombre (como lo verán)</label>
+            <input value={nombre} onChange={function(e){setNombre(e.target.value);}} placeholder="Juanma"
+                style={{width:'100%',padding:'10px 12px',border:'1.5px solid rgba(0,31,107,0.15)',borderRadius:10,fontFamily:"'Inter',sans-serif",fontSize:14,marginBottom:12,background:'#f8f9ff'}} />
+            <label style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',display:'block',marginBottom:4}}>Número de teléfono (Bizum)</label>
+            <input value={telefono} onChange={function(e){setTelefono(e.target.value);}} placeholder="600 123 456"
+                style={{width:'100%',padding:'10px 12px',border:'1.5px solid rgba(0,31,107,0.15)',borderRadius:10,fontFamily:"'Inter',sans-serif",fontSize:14,marginBottom:14,background:'#f8f9ff'}} />
+            <button onClick={guardar} style={ADMIN_STYLES.btnPrimary}>
+                {guardado ? '✅ Guardado' : 'Guardar número de Bizum'}
+            </button>
+        </div>
+    );
+};
+
 const AdminPanelScreen = ({ plantilla }) => {
     var [jornadas, setJornadas] = useState([]);
     var [expandida, setExpandida] = useState(null);
@@ -4573,10 +4603,6 @@ const AdminPanelScreen = ({ plantilla }) => {
         setMsgAdmin('✅ Rifa creada');
     };
 
-    var abrirEnlaceStripe = function() {
-        window.open('https://dashboard.stripe.com', '_blank');
-    };
-
     // ── ESTILOS INTERNOS DEL ADMIN ──────────────────────────────────────────
     var A = {
         secBtn: function(id) {
@@ -4673,17 +4699,7 @@ const AdminPanelScreen = ({ plantilla }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'pagos' && (
                 <div>
-                    <div style={A.card}>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:12,fontWeight:600}}>
-                            💳 Dashboard de Stripe
-                        </p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.6)',marginBottom:12,lineHeight:1.6}}>
-                            Todos los pagos con tarjeta llegan directamente a tu cuenta Stripe. Desde ahí puedes ver el detalle de cada cobro, emitir reembolsos y transferir el dinero a tu banco.
-                        </p>
-                        <button onClick={abrirEnlaceStripe} style={A.btnPrimary}>
-                            Abrir Dashboard Stripe →
-                        </button>
-                    </div>
+                    <ConfiguracionBizum />
 
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10}}>
                         Registro de pagos en la app
@@ -4716,14 +4732,23 @@ const AdminPanelScreen = ({ plantilla }) => {
                             Aún no hay pagos registrados
                         </div>
                     ) : pagos.map(function(p) {
+                        var pendiente = p.estado === 'pendiente_confirmacion';
                         return (
-                            <div key={p.id} style={{...A.card,display:'flex',alignItems:'center',gap:10}}>
-                                <div style={{flex:1}}>
+                            <div key={p.id} style={{...A.card,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                                <div style={{flex:1,minWidth:120}}>
                                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'#001F6B',letterSpacing:1}}>{p.jugador}</p>
-                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>{p.tipo} {p.pagoBy && p.pagoBy!==p.jugador ? '· pagado por '+p.pagoBy : ''}</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>{p.tipo} {p.metodo==='bizum'?'· Bizum':''} {p.pagoBy && p.pagoBy!==p.jugador ? '· pagado por '+p.pagoBy : ''}</p>
                                 </div>
                                 <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color:'#10b981'}}>{p.importe}€</span>
-                                <span style={A.tag('#10b981')}>{p.estado || 'ok'}</span>
+                                {pendiente ? (
+                                    <button onClick={async function() {
+                                        await updateDoc(doc(db,'pagos',p.id), { estado: 'completado', confirmadoEn: serverTimestamp() });
+                                    }} style={{...A.btnSuccess,padding:'6px 14px'}}>
+                                        ✅ Confirmar
+                                    </button>
+                                ) : (
+                                    <span style={A.tag('#10b981')}>{p.estado || 'ok'}</span>
+                                )}
                             </div>
                         );
                     })}
@@ -4928,7 +4953,7 @@ const AdminPanelScreen = ({ plantilla }) => {
                             🎟️ Recordatorio privado — Rifas y eventos
                         </p>
                         <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,0,0,0.6)',lineHeight:1.6}}>
-                            Las rifas de navidad y eventos a lo largo de la temporada son la forma de compensar las comisiones de Stripe (~25-30€ en toda la temporada) y generar ingresos adicionales para reinvertir en la app y en premios. <strong>Esta sección es solo visible para ti.</strong> Los jugadores no ven nada de esto.
+                            Las rifas de navidad y eventos a lo largo de la temporada son la forma de generar ingresos adicionales para reinvertir en la app y en premios (con Bizum ya no hay comisiones que compensar). <strong>Esta sección es solo visible para ti.</strong> Los jugadores no ven nada de esto.
                         </p>
                     </div>
 
