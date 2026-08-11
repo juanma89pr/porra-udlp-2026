@@ -469,7 +469,7 @@ const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false 
                 fontFamily:"'Teko',sans-serif", fontSize: size * 0.28,
                 letterSpacing: 1, color:'#001F6B', textTransform:'uppercase',
                 maxWidth: size * 2.5, textAlign:'center', lineHeight: 1
-            }}>{name}</span>
+            }}>{(perfil && perfil.apodo) || name}</span>
         </div>
     );
 };
@@ -477,7 +477,7 @@ const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false 
 const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.lightText, isOnline = false }) => {
     const p = profile || {}; const color = p.color || defaultColor; const isG = typeof color === 'string' && color.startsWith('linear-gradient');
     const nStyle = { ...(isG ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color }), fontWeight: 'bold' };
-    return (<span style={{display: 'inline-flex', alignItems: 'center', gap: '8px' }}>{p.icon && <span>{p.icon}</span>}<span style={nStyle}>{name}</span>{isOnline && <span style={{width: '8px', height: '8px', backgroundColor: styles.colors.success, borderRadius: '50%', boxShadow: `0 0 8px ${styles.colors.success}`}}></span>}</span>);
+    return (<span style={{display: 'inline-flex', alignItems: 'center', gap: '8px' }}>{p.icon && <span>{p.icon}</span>}<span style={nStyle}>{p.apodo || name}</span>{isOnline && <span style={{width: '8px', height: '8px', backgroundColor: styles.colors.success, borderRadius: '50%', boxShadow: `0 0 8px ${styles.colors.success}`}}></span>}</span>);
 };
 
 // ============================================================================
@@ -4898,6 +4898,55 @@ const ADMIN_STYLES = {
 // código — fichajes y bajas van a pasar durante la temporada, y hasta ahora
 // esto solo se podía cambiar editando el código fuente. Guarda en el mismo
 // sitio que ya carga la app al iniciar sesión (configuracion/plantilla_udlp).
+// Admin: pone o cambia el apodo de un jugador — para cuando alguien se
+// registró con nombre y apellido y ahora aparece así por toda la app en vez
+// de solo su nombre de pila. Al guardar el apodo, se aplica al instante en
+// avatares y clasificación (los componentes ya priorizan el apodo).
+const PonerApodoAdmin = ({ jugadoresLista }) => {
+    var [nombreSeleccionado, setNombreSeleccionado] = useState('');
+    var [apodo, setApodo] = useState('');
+    var [guardando, setGuardando] = useState(false);
+    var [msg, setMsg] = useState('');
+
+    var guardar = async function() {
+        if (!nombreSeleccionado || !apodo.trim()) { setMsg('Elige un jugador y escribe el apodo.'); return; }
+        setGuardando(true);
+        try {
+            await setDoc(doc(db, 'perfiles', nombreSeleccionado), { apodo: apodo.trim() }, { merge: true });
+            setMsg('✅ ' + nombreSeleccionado + ' ahora se mostrará como "' + apodo.trim() + '" en toda la app.');
+            setApodo('');
+        } catch(e) {
+            console.error(e);
+            setMsg('❌ Error: ' + e.message);
+        }
+        setGuardando(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                🏷️ Poner apodo a un jugador
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                Si alguien se registró con nombre y apellido y aparece así en avatares o clasificación, ponle aquí su apodo (normalmente solo el nombre de pila) — se aplica al instante en toda la app.
+            </p>
+            {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msg.startsWith('✅') ? '#10b981' : '#e63946',marginBottom:10}}>{msg}</p>}
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                <select value={nombreSeleccionado} onChange={function(e){setNombreSeleccionado(e.target.value);}}
+                    style={{flex:1,minWidth:140,padding:'8px 10px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}}>
+                    <option value="">Elige jugador...</option>
+                    {jugadoresLista.map(function(j) { return <option key={j} value={j}>{j}</option>; })}
+                </select>
+                <input value={apodo} onChange={function(e){setApodo(e.target.value);}} placeholder="Apodo a mostrar"
+                    style={{flex:1,minWidth:120,padding:'8px 10px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
+                <button onClick={guardar} disabled={guardando} style={{...ADMIN_STYLES.btnPrimary,padding:'8px 16px'}}>
+                    Guardar
+                </button>
+            </div>
+        </div>
+    );
+};
+
 const GestionPlantillaAdmin = ({ plantilla }) => {
     var [nombre, setNombre] = useState('');
     var [dorsal, setDorsal] = useState('');
@@ -5756,6 +5805,8 @@ const AdminPanelScreen = ({ plantilla }) => {
                     <VerificarFotosPlantilla plantilla={plantilla} />
 
                     <GestionPlantillaAdmin plantilla={plantilla} />
+
+                    <PonerApodoAdmin jugadoresLista={JUGADORES_LISTA} />
 
                     {/* Enlace de invitación */}
                     <div style={A.card}>
@@ -6943,7 +6994,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
 // y no depende de si "ese navegador" ya la vio con otro nombre antes.
 // Requiere que presentacion_porra.html esté en /public/presentacion_porra.html
 // ============================================================================
-const AUDIO_INTRO_URL = '/intro.mp3'; // mismo mp3 usado dentro de la presentación
+const AUDIO_INTRO_URL = '/intro.mp3?v=2'; // el ?v=2 evita que el navegador sirva en caché la canción anterior
 
 // ¿Ya vio ESTE jugador la presentación? Comprueba local (rápido) + Firestore
 // (por si entra desde otro dispositivo, o el admin se la reseteó).
