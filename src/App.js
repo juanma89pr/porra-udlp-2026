@@ -91,23 +91,26 @@ const PLANTILLA_FALLBACK = [
     { dorsal:"5",  nombre:"Viti Rozada",        posicion:"Defensa",        apiId:0,       wikiImg:'' },
     { dorsal:"4",  nombre:"Álex Suárez",        posicion:"Defensa",        apiId:289254,  wikiImg:'' },
     { dorsal:"15", nombre:"Juanma Herzog",      posicion:"Defensa",        apiId:284516,  wikiImg:'' },
-    { dorsal:"23", nombre:"Valentín Pezzolesi", posicion:"Defensa",        apiId:0,       wikiImg:'' },
+    { dorsal:"?",  nombre:"Valentín Pezzolesi", posicion:"Defensa",        apiId:0,       wikiImg:'' }, // dorsal 23 que tenía aquí ahora es de Andrés Rodríguez (fichaje nuevo) — revisar dorsal real de Pezzolesi
     { dorsal:"17", nombre:"Enrique Clemente",   posicion:"Defensa",        apiId:0,       wikiImg:'' },
+    { dorsal:"23", nombre:"Andrés Rodríguez",   posicion:"Defensa",        apiId:0,       wikiImg:'' }, // NUEVO fichaje 26/27 — dorsal 23 confirmado (viene de la cesión de Cristian Gutiérrez)
+    { dorsal:"?",  nombre:"Giovanni Bonfanti",  posicion:"Defensa",        apiId:0,       wikiImg:'' }, // NUEVO — cedido por la Atalanta, dorsal aún sin confirmar
     // CENTROCAMPISTAS
-    { dorsal:"12", nombre:"Sergio Ruiz",        posicion:"Centrocampista", apiId:0,       wikiImg:'' },
+    { dorsal:"8",  nombre:"Sergio Ruiz",        posicion:"Centrocampista", apiId:0,       wikiImg:'' }, // dorsal actualizado: 8 (antes tenía 12 en esta lista)
     { dorsal:"20", nombre:"Kirian Rodríguez",   posicion:"Centrocampista", apiId:37073,   wikiImg:'' },
     { dorsal:"26", nombre:"Enzo Loiodice",      posicion:"Centrocampista", apiId:290060,  wikiImg:'' },
-    { dorsal:"8",  nombre:"Mateo Acimovic",     posicion:"Centrocampista", apiId:0,       wikiImg:'' },
+    { dorsal:"?",  nombre:"Mateo Acimovic",     posicion:"Centrocampista", apiId:0,       wikiImg:'' }, // dorsal 8 liberado (ahora es de Sergio Ruiz) — dorsal real sin confirmar todavía
     { dorsal:"11", nombre:"Iñaki González",     posicion:"Centrocampista", apiId:286026,  wikiImg:'' },
-    { dorsal:"16", nombre:"Edward Cedeño",      posicion:"Centrocampista", apiId:0,       wikiImg:'' },
+    { dorsal:"18", nombre:"Edward Cedeño",      posicion:"Centrocampista", apiId:0,       wikiImg:'' }, // dorsal actualizado: 18 (antes tenía 16 en esta lista) — OJO: puede solaparse con el de Miyashiro, revisar
     // ATACANTES / MEDIAPUNTA
     { dorsal:"14", nombre:"Manu Fuster",        posicion:"Mediapunta",     apiId:289255,  wikiImg:'' },
-    { dorsal:"22", nombre:"Taisei Miyashiro",   posicion:"Mediapunta",     apiId:320742,  wikiImg:'' },
-    { dorsal:"10", nombre:"Ale García",         posicion:"Mediapunta",     apiId:0,       wikiImg:'' },
+    { dorsal:"?",  nombre:"Taisei Miyashiro",   posicion:"Mediapunta",     apiId:320742,  wikiImg:'' }, // RESTAURADO — sigue en la plantilla (japonés, cedido por el Vissel Kobe, volvió de cesión el 30/06/2026). Dorsal en duda: fuentes de mitad de temporada lo daban con el 18, pero ese número ahora aparece asignado a Cedeño — confirmar cuál es el actual
+    { dorsal:"22", nombre:"Ale García",         posicion:"Mediapunta",     apiId:0,       wikiImg:'' }, // dorsal actualizado: 22 (antes tenía 10 en esta lista)
+    { dorsal:"7",  nombre:"Jefté Betancor",     posicion:"Delantero",      apiId:0,       wikiImg:'' }, // NUEVO fichaje 26/27 — dorsal 7 confirmado
     // DELANTEROS
     { dorsal:"9",  nombre:"Jeremía Recoba",     posicion:"Delantero",      apiId:366988,  wikiImg:'' },
     { dorsal:"19", nombre:"Jesé Rodríguez",     posicion:"Delantero",      apiId:1831,    wikiImg:'' },
-    { dorsal:"7",  nombre:"Sandro Ramírez",     posicion:"Delantero",      apiId:18892,   wikiImg:'' },
+    { dorsal:"?",  nombre:"Sandro Ramírez",     posicion:"Delantero",      apiId:18892,   wikiImg:'' }, // RESTAURADO — sigue en la plantilla según foro udlaspalmas.NET (31/07/2026). El dorsal 7 que tenía antes es ahora de Jefté Betancor — confirmar su dorsal actual
     { dorsal:"41", nombre:"Elías Romero",       posicion:"Delantero",      apiId:0,       wikiImg:'' },
 ].map(function(j) {
     // Mapa de IDs de Sofascore — CDN público, sin CORS, fotos reales
@@ -121,7 +124,8 @@ const PLANTILLA_FALLBACK = [
         'José Antonio Caro': 847993, 'Sergio Ruiz': 2045616, 'Valentín Pezzolesi': 1893819,
         'Ale García': 1130503, 'Elías Romero': 2045614,
         // Sin ID confirmado todavía — usan avatar de iniciales:
-        // Adri Suárez, Edward Cedeño, Mateo Acimovic
+        // Adri Suárez, Edward Cedeño, Mateo Acimovic, Andrés Rodríguez,
+        // Giovanni Bonfanti, Jefté Betancor
     };
     var sofaId = sofascoreIds[j.nombre];
     var foto = sofaId
