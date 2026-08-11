@@ -1638,14 +1638,23 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                         {guardado ? '✅ GUARDADO — Puedes modificar hasta el cierre' : 'GUARDAR MI APUESTA'}
                     </button>
 
-                    {/* Estadísticas agregadas — sin nombres, para evitar repetir marcador */}
+                    {/* Estadísticas agregadas — sin nombres, para evitar repetir marcador.
+                        Con pocas apuestas esto deja de ser anónimo de verdad (con 1 sola
+                        apuesta, se ve exactamente lo que puso esa persona) — por eso no se
+                        muestra nada hasta que haya un mínimo de 5 apuestas guardadas. */}
                     {(function() {
                         var stats = statsDistribucion();
-                        if (stats.total === 0) return null;
+                        if (stats.total < 5) return (
+                            <div style={{marginTop:16,background:'rgba(0,31,107,0.03)',borderRadius:14,padding:16,border:'1px dashed rgba(0,31,107,0.15)',textAlign:'center'}}>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4}}>
+                                    🔒 Las estadísticas de marcadores se desbloquean con 5 apuestas guardadas (van {stats.total}) — así nunca se puede intuir quién puso qué.
+                                </p>
+                            </div>
+                        );
                         return (
                             <div style={{marginTop:16,background:'rgba(0,31,107,0.03)',borderRadius:14,padding:16,border:'1px dashed rgba(0,31,107,0.15)'}}>
                                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:G.deepBlue,opacity:.55,textTransform:'uppercase',marginBottom:10}}>
-                                    🔒 Lo que ha marcado la gente ({stats.total} {stats.total===1?'apuesta':'apuestas'}) — sin nombres
+                                    🔒 Lo que ha marcado la gente ({stats.total} apuestas) — sin nombres
                                 </p>
                                 <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:12}}>
                                     {stats.marcadoresOrdenados.map(function(m) {
@@ -2254,7 +2263,13 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                         </div>
                     </div>
                 </div>
-                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',lineHeight:1.7,textAlign:'center'}}>🏆 <strong>Todo el dinero va a premios</strong> — entre 75€ y 100€ para el top 3.<br/>Además: experiencias, merchandising UDLP y sorpresas a lo largo de la temporada.</p></div>
+                <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',lineHeight:1.7,textAlign:'center'}}>
+                    🏆 <strong>Top 3 de la porra con premio asegurado</strong> — el bote sale de las inscripciones (5€ × jugadores), mínimo 75€ con 15 jugadores, hasta 100€ si llegamos a 20. El reparto exacto se confirma al cerrar inscripciones.<br/>
+                    ❄️ <strong>Campeón de Invierno</strong> — reconocimiento propio a mitad de temporada.<br/>
+                    🎟️ <strong>Rifas</strong> durante toda la temporada, para todos.<br/>
+                    ⭐ <strong>Liga de Estrellas</strong> — premio aparte, de alto valor, que iremos desvelando poco a poco.<br/>
+                    ✨ Y más sorpresas según avance la temporada.
+                </p></div>
             </div>
         );
 
@@ -3217,9 +3232,10 @@ const LigaRegularScreen = ({ userProfiles, onlineUsers }) => {
     );
 };
 
-const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers }) => {
+const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) => {
     const [clasificacion, setClasificacion] = useState([]); 
     const [loading, setLoading] = useState(true); 
+    const [campeonInvierno, setCampeonInvierno] = useState(null);
 
     useEffect(() => { 
         const qClasificacion = query(collection(db, "clasificacion")); 
@@ -3231,19 +3247,62 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers }) => {
         return () => unsubscribe();
     }, []);
 
+    useEffect(() => {
+        const unsub = onSnapshot(doc(db, 'configuracion', 'campeonInvierno'), (snap) => {
+            setCampeonInvierno(snap.exists() ? snap.data() : null);
+        });
+        return () => unsub();
+    }, []);
+
     if (loading) return <LoadingSkeleton />; 
+
+    // Bote real, calculado a partir de las inscripciones pagadas de verdad —
+    // no una cifra fija, porque el nº de jugadores todavía puede cambiar
+    // (mínimo 15, objetivo 20). Contamos jugadores únicos, por si alguien
+    // pagó la inscripción de varios a la vez.
+    const inscritos = Array.from(new Set(
+        (pagos || []).filter(function(p) { return p.tipo === 'inscripcion' && p.estado !== 'pendiente_confirmacion'; })
+            .map(function(p) { return p.jugador; })
+    ));
+    const boteActual = inscritos.length * 5;
 
     return (
         <div>
             <h2 style={styles.title} className="app-title">CLASIFICACIÓN GLOBAL</h2>
             
             <div style={styles.prizeBannerFinal}>
-                <h4 style={styles.prizeBannerTitle}>PREMIO FINAL ACUMULADO</h4>
+                <h4 style={styles.prizeBannerTitle}>BOTE FINAL — A REPARTIR ENTRE EL TOP 3</h4>
+                <p style={{textAlign:'center',fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:'#FFD700',letterSpacing:2,margin:'4px 0 6px'}}>
+                    {boteActual}€
+                </p>
+                <p style={{textAlign:'center',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.55)',marginBottom:10}}>
+                    Con {inscritos.length} inscritos ahora mismo — mínimo 15 jugadores (75€), objetivo 20 (100€). El reparto exacto entre 1º, 2º y 3º se confirmará según cuántos seamos al cierre de inscripciones.
+                </p>
                 <div style={styles.prizeList}>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥇</span> <span><strong>1º CLASIFICADO:</strong> Premio a elegir valorado en 40€</span></div>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥈</span> <span><strong>2º CLASIFICADO:</strong> Premio a elegir valorado en 15€</span></div>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥉</span> <span><strong>3º CLASIFICADO:</strong> Premio a elegir valorado en 5€</span></div>
+                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥇</span> <span><strong>1º CLASIFICADO:</strong> la mayor parte del bote</span></div>
+                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥈</span> <span><strong>2º CLASIFICADO:</strong> premio asegurado</span></div>
+                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥉</span> <span><strong>3º CLASIFICADO:</strong> premio asegurado</span></div>
                 </div>
+            </div>
+
+            {campeonInvierno && campeonInvierno.top3 && campeonInvierno.top3[0] && (
+                <div style={{background:'linear-gradient(135deg,#0091FF,#001F6B)',borderRadius:16,padding:'16px 18px',marginBottom:18,textAlign:'center'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:'rgba(255,255,255,0.6)',textTransform:'uppercase',marginBottom:4}}>❄️ Campeón de Invierno</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:26,fontWeight:700,color:'#fff',letterSpacing:1}}>{campeonInvierno.top3[0].nombre}</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.7)'}}>{campeonInvierno.top3[0].puntos} puntos a mitad de temporada</p>
+                </div>
+            )}
+
+            <div style={{background:'rgba(255,215,0,0.06)',border:'1px solid rgba(255,215,0,0.25)',borderRadius:16,padding:'16px 18px',marginBottom:18}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',marginBottom:8,fontWeight:700}}>
+                    🎁 Y todavía hay más en juego
+                </p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7,margin:0}}>
+                    ❄️ Habrá un <strong>Campeón de Invierno</strong> — quien vaya primero a mitad de temporada tendrá su propio reconocimiento, sin esperar a junio.<br/>
+                    🎟️ Durante la temporada se harán <strong>rifas</strong> para todos los jugadores, con sus propios premios.<br/>
+                    ⭐ El ganador de la <strong>Liga de Estrellas</strong> también tiene premio aparte — de alto valor, y lo iremos desvelando poco a poco.<br/>
+                    ✨ Y habrá más sorpresas según avance la temporada.
+                </p>
             </div>
 
             <div style={{overflowX: 'auto', backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: '20px', border: `1px solid rgba(255,215,0,0.15)`, padding: '10px', backdropFilter: 'blur(5px)'}}>
@@ -4832,6 +4891,157 @@ const ADMIN_STYLES = {
 };
 
 // Admin: configura el número de Bizum que se muestra a los jugadores al pagar.
+// Admin: congela el Campeón de Invierno cuando termine la primera vuelta.
+// Antes esto era solo un anuncio de texto sin ninguna función real detrás —
+// ahora sí guarda una foto fija de la clasificación de ese momento exacto.
+// Admin: añadir o quitar jugadores de la plantilla de Estrellas sin tocar
+// código — fichajes y bajas van a pasar durante la temporada, y hasta ahora
+// esto solo se podía cambiar editando el código fuente. Guarda en el mismo
+// sitio que ya carga la app al iniciar sesión (configuracion/plantilla_udlp).
+const GestionPlantillaAdmin = ({ plantilla }) => {
+    var [nombre, setNombre] = useState('');
+    var [dorsal, setDorsal] = useState('');
+    var [posicion, setPosicion] = useState('Delantero');
+    var [guardando, setGuardando] = useState(false);
+    var [msg, setMsg] = useState('');
+
+    var añadirJugador = async function() {
+        if (!nombre.trim()) { setMsg('Escribe el nombre del jugador.'); return; }
+        if (plantilla.some(function(j) { return j.nombre.toLowerCase() === nombre.trim().toLowerCase(); })) {
+            setMsg('Ya hay un jugador con ese nombre en la plantilla.'); return;
+        }
+        setGuardando(true);
+        try {
+            var nuevoJugador = { dorsal: dorsal.trim() || '?', nombre: nombre.trim(), posicion: posicion, apiId: 0, wikiImg: '' };
+            var plantillaNueva = plantilla.concat([nuevoJugador]);
+            await setDoc(doc(db, 'configuracion', 'plantilla_udlp'), { jugadores: plantillaNueva });
+            setMsg('✅ ' + nombre.trim() + ' añadido a la plantilla. Búscale el apiId en "Buscar y verificar IDs" para que sus Estrellas se calculen solas.');
+            setNombre(''); setDorsal('');
+        } catch(e) {
+            console.error(e);
+            setMsg('❌ Error: ' + e.message);
+        }
+        setGuardando(false);
+    };
+
+    var quitarJugador = async function(jug) {
+        if (!window.confirm('¿Quitar a ' + jug.nombre + ' de la plantilla de Estrellas? (Por baja, cesión, etc. — no afecta a la porra ni a su cuenta si es jugador de la app)')) return;
+        setGuardando(true);
+        try {
+            var plantillaNueva = plantilla.filter(function(j) { return j.nombre !== jug.nombre; });
+            await setDoc(doc(db, 'configuracion', 'plantilla_udlp'), { jugadores: plantillaNueva });
+            setMsg('✅ ' + jug.nombre + ' quitado de la plantilla.');
+        } catch(e) {
+            console.error(e);
+            setMsg('❌ Error: ' + e.message);
+        }
+        setGuardando(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                👥 Gestionar plantilla de Estrellas
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14,lineHeight:1.5}}>
+                Fichajes nuevos y bajas — añade o quita jugadores aquí mismo, sin esperar a que yo cambie código. Se aplica al instante en toda la app.
+            </p>
+            {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msg.startsWith('✅') ? '#10b981' : '#e63946',marginBottom:12}}>{msg}</p>}
+
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:16,alignItems:'flex-end'}}>
+                <div style={{flex:1,minWidth:120}}>
+                    <label style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.5)',display:'block',marginBottom:3}}>Nombre</label>
+                    <input value={nombre} onChange={function(e){setNombre(e.target.value);}} placeholder="Ej: Nuevo Fichaje"
+                        style={{width:'100%',padding:'8px 10px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
+                </div>
+                <div style={{width:70}}>
+                    <label style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.5)',display:'block',marginBottom:3}}>Dorsal</label>
+                    <input value={dorsal} onChange={function(e){setDorsal(e.target.value);}} placeholder="9"
+                        style={{width:'100%',padding:'8px 10px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
+                </div>
+                <div style={{width:150}}>
+                    <label style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.5)',display:'block',marginBottom:3}}>Posición</label>
+                    <select value={posicion} onChange={function(e){setPosicion(e.target.value);}}
+                        style={{width:'100%',padding:'8px 10px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}}>
+                        <option>Portero</option><option>Defensa</option><option>Centrocampista</option><option>Mediapunta</option><option>Delantero</option>
+                    </select>
+                </div>
+                <button onClick={añadirJugador} disabled={guardando} style={{...ADMIN_STYLES.btnPrimary,padding:'8px 16px'}}>
+                    + Añadir
+                </button>
+            </div>
+
+            <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:280,overflowY:'auto'}}>
+                {plantilla.map(function(jug) {
+                    return (
+                        <div key={jug.nombre} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 10px',background:'rgba(0,31,107,0.02)',borderRadius:8}}>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(0,31,107,0.4)',width:24}}>{jug.dorsal}</span>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#001F6B',flex:1}}>{jug.nombre}</span>
+                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)'}}>{jug.posicion}</span>
+                            <button onClick={function(){quitarJugador(jug);}} disabled={guardando}
+                                style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946',background:'none',border:'none',cursor:'pointer'}}>
+                                Quitar
+                            </button>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+const CampeonInviernoAdmin = () => {
+    var [actual, setActual] = useState(null);
+    var [guardando, setGuardando] = useState(false);
+    var [msg, setMsg] = useState('');
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'campeonInvierno'), function(snap) {
+            setActual(snap.exists() ? snap.data() : null);
+        });
+        return function() { unsub(); };
+    }, []);
+
+    var congelar = async function() {
+        if (actual && !window.confirm('Ya hay un Campeón de Invierno guardado (' + actual.top3[0].nombre + '). ¿Sobrescribirlo con la clasificación de ahora mismo?')) return;
+        setGuardando(true);
+        try {
+            var snap = await getDocs(collection(db, 'clasificacion'));
+            var todos = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+                .sort(function(a,b) { return (b.puntosTotales||0) - (a.puntosTotales||0); });
+            var top3 = todos.slice(0,3).map(function(j) { return { nombre: j.id, puntos: j.puntosTotales || 0 }; });
+            await setDoc(doc(db, 'configuracion', 'campeonInvierno'), { top3: top3, guardadoEn: serverTimestamp() });
+            setMsg('✅ Campeón de Invierno guardado: ' + (top3[0] ? top3[0].nombre : '—'));
+        } catch(e) {
+            console.error(e);
+            setMsg('❌ Error: ' + e.message);
+        }
+        setGuardando(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                ❄️ Campeón de Invierno
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                Cuando termine la primera vuelta, pulsa esto para congelar la clasificación de ese momento. Se guarda el top 3 tal cual esté en ese instante, y se muestra a todos en Clasificación — sin que los cambios de después lo toquen.
+            </p>
+            {actual && (
+                <div style={{background:'rgba(0,145,255,0.06)',borderRadius:8,padding:'10px 14px',marginBottom:12}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B'}}>
+                        Ya guardado: <strong>{actual.top3[0] ? actual.top3[0].nombre : '—'}</strong> con {actual.top3[0] ? actual.top3[0].puntos : 0} puntos
+                    </p>
+                </div>
+            )}
+            <button onClick={congelar} disabled={guardando} style={ADMIN_STYLES.btnPrimary}>
+                {guardando ? 'Guardando...' : actual ? 'Volver a congelar ahora' : 'Congelar Campeón de Invierno ahora'}
+            </button>
+            {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msg.startsWith('✅') ? '#10b981' : '#e63946',marginTop:10}}>{msg}</p>}
+        </div>
+    );
+};
+
 const ConfiguracionBizum = () => {
     var [nombre, setNombre] = useState('');
     var [telefono, setTelefono] = useState('');
@@ -5257,6 +5467,8 @@ const AdminPanelScreen = ({ plantilla }) => {
                 <div>
                     <ConfiguracionBizum />
 
+                    <CampeonInviernoAdmin />
+
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10}}>
                         Registro de pagos en la app
                     </p>
@@ -5542,6 +5754,8 @@ const AdminPanelScreen = ({ plantilla }) => {
 
                     {/* Verificación visual de fotos */}
                     <VerificarFotosPlantilla plantilla={plantilla} />
+
+                    <GestionPlantillaAdmin plantilla={plantilla} />
 
                     {/* Enlace de invitación */}
                     <div style={A.card}>
@@ -6256,6 +6470,16 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     return (
         <div style={{padding:'20px 16px'}}>
             <h2 style={styles.title}>MIS 5 ESTRELLAS</h2>
+
+            {/* Premio de la Liga de Estrellas — teaser, sin desvelar todavía */}
+            <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:'16px 18px',marginBottom:16,border:'1px solid rgba(255,215,0,0.3)'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>
+                    🏆 Premio Liga de Estrellas
+                </p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.8)',lineHeight:1.6,margin:0}}>
+                    El ganador de la Liga de Estrellas se llevará un premio <strong>a la altura de las Estrellas</strong> — de alto valor. Todavía no lo desvelamos del todo: iremos soltando pistas durante la temporada. 👀
+                </p>
+            </div>
 
             {/* Carta de puntuación — misma burbuja desplegable que en El Otro Equipo */}
             <AcordeonAyuda icono="⭐" titulo="Tabla de puntuación" abiertoPorDefecto={false}>
@@ -7011,7 +7235,7 @@ function App() {
             case 'laJornada':   return <LaJornadaScreen userProfiles={userProfiles} onlineUsers={onlineUsers} teamLogos={teamLogos} />;
             case 'elOtro':      return <ElOtroScreen currentUser={currentUser} userProfiles={userProfiles} pagos={pagosGlobal} teamLogos={teamLogos} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'estrellas':   return <MisEstrellasScreen currentUser={currentUser} plantilla={plantillaConFotos} userProfiles={userProfiles} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
-            case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} />;
+            case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} />;
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'pagos':       return <PagosScreen currentUser={currentUser} />;
