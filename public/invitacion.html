@@ -152,8 +152,8 @@ html,body{min-height:100%;background:linear-gradient(160deg,#001F6B 0%,#0a0a2e 1
     <h3>¡QUIERO ENTRAR!</h3>
     <p class="fsub" id="formSub">Rellena tus datos. Juanma te contactará por WhatsApp para confirmar tu plaza y el pago de los 5€.</p>
     <div class="field">
-      <label>Tu nombre completo *</label>
-      <input type="text" id="inp-nombre" placeholder="Ej: María García" maxlength="60">
+      <label>Tu nombre (solo el nombre, sin apellidos) *</label>
+      <input type="text" id="inp-nombre" placeholder="Ej: María" maxlength="30">
     </div>
     <div class="field">
       <label>Teléfono WhatsApp *</label>
@@ -219,12 +219,15 @@ if (invitadoPor) {
 
 window.enviarSolicitud = async function() {
   var nombre = document.getElementById('inp-nombre').value.trim();
+  // Solo nombre de pila, aunque escriban apellidos por su cuenta —
+  // nos quedamos con la primera palabra.
+  nombre = nombre.split(' ')[0];
   var telefono = document.getElementById('inp-telefono').value.trim();
   var pin = document.getElementById('inp-pin').value.trim();
   var pin2 = document.getElementById('inp-pin2').value.trim();
   var errEl = document.getElementById('ferr');
 
-  if (!nombre || nombre.length < 2) { errEl.textContent = 'Escribe tu nombre completo'; errEl.style.display = 'block'; return; }
+  if (!nombre || nombre.length < 2) { errEl.textContent = 'Escribe tu nombre'; errEl.style.display = 'block'; return; }
   if (!telefono || telefono.length < 9) { errEl.textContent = 'Escribe un teléfono válido'; errEl.style.display = 'block'; return; }
   if (!/^\d{4}$/.test(pin)) { errEl.textContent = 'El PIN debe ser de 4 números'; errEl.style.display = 'block'; return; }
   if (pin !== pin2) { errEl.textContent = 'Los dos PIN no coinciden'; errEl.style.display = 'block'; return; }
