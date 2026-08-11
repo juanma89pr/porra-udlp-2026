@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signInWithCustomToken, signOut } from "firebase/auth";
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction, serverTimestamp, addDoc } from "firebase/firestore";
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction, serverTimestamp, addDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -1311,11 +1311,15 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 </p>
                 {/* Escudos y marcador */}
                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-                    <img src={'/escudo.png'} alt="UDLP" style={{width:32,height:32,objectFit:'contain',flexShrink:0}}
-                        onError={function(e){e.target.style.display='none';}} />
+                    <img src={jornada.equipoLocal === 'UD Las Palmas' ? '/escudo.png' : getLogoEquipo(jornada.equipoLocal, teamLogos)}
+                        alt={jornada.equipoLocal} style={{width:32,height:32,objectFit:'contain',flexShrink:0}}
+                        onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoLocal||'?').substring(0,3));}} />
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700',letterSpacing:1,flex:1}}>
                         {jornada.equipoLocal} vs {jornada.equipoVisitante}
                     </p>
+                    <img src={jornada.equipoVisitante === 'UD Las Palmas' ? '/escudo.png' : getLogoEquipo(jornada.equipoVisitante, teamLogos)}
+                        alt={jornada.equipoVisitante} style={{width:32,height:32,objectFit:'contain',flexShrink:0}}
+                        onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoVisitante||'?').substring(0,3));}} />
                 </div>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.35)'}}>
                     {jornada.estadio} · {jornada.fecha}
@@ -1881,7 +1885,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                                     background:'rgba(0,31,107,0.04)',transition:'all .3s ease',
                                     display:'flex',alignItems:'center',justifyContent:'center',
                                     fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:'rgba(0,31,107,0.4)'}}>
-                                    <img src={j.imageUrl} alt={j.nombre} style={{width:'100%',height:'100%',objectFit:'cover'}}
+                                    <img src={getFotoJugador(j)} alt={j.nombre} style={{width:'100%',height:'100%',objectFit:'cover'}}
                                         onError={function(e){e.target.outerHTML='<span style="font-family:\'Bebas Neue\',sans-serif;font-size:16px;color:rgba(0,31,107,0.4)">'+j.dorsal+'</span>';}} />
                                 </div>
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:sel?'#001F6B':dest?'rgba(0,31,107,0.6)':'rgba(0,0,0,0.3)',maxWidth:56,textAlign:'center',lineHeight:1.2,fontWeight:sel?600:400}}>
@@ -2182,6 +2186,13 @@ const TABLA_PUNTOS_ESTRELLAS = [
     { accion: 'Penalti fallado', estrellas: -2 },
 ];
 
+// Foto oficial de jugador vía CDN público de API-Football (mismo apiId que
+// usamos para calcular sus puntos de Estrellas — no requiere clave para la imagen).
+function getFotoJugador(jug) {
+    if (!jug || !jug.apiId) return '';
+    return 'https://media.api-sports.io/football/players/' + jug.apiId + '.png';
+}
+
 const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
     var G = styles.colors;
     var [seleccion, setSeleccion] = useState([]);
@@ -2198,7 +2209,7 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
     }, [jornada, user]);
 
     var toggle = function(j) {
-        if (guardado) return;
+        if (jornada && jornada.estado !== 'Abierta') return; // solo bloqueado cuando la jornada realmente cierra
         var ya = seleccion.find(function(s) { return s.nombre === j.nombre; });
         if (ya) { setSeleccion(seleccion.filter(function(s) { return s.nombre !== j.nombre; })); }
         else if (seleccion.length < 5) { setSeleccion([...seleccion, j]); }
@@ -2273,14 +2284,20 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
                         </div>
                     ) : (
                         <>
-                            {/* Selección actual */}
+                            {/* Selección actual — con foto */}
                             <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:16,minHeight:36}}>
                                 {seleccion.map(function(j,i) {
                                     return (
-                                        <span key={i} onClick={function() { if (!guardado) toggle(j); }}
-                                            style={{background:G.golden,color:'#001F6B',borderRadius:20,padding:'5px 12px',
-                                                fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,cursor: guardado?'default':'pointer'}}>
-                                            ⭐ {j.nombre}
+                                        <span key={i} onClick={function() { toggle(j); }}
+                                            style={{display:'inline-flex',alignItems:'center',gap:6,
+                                                background:G.golden,color:'#001F6B',borderRadius:20,padding:'4px 12px 4px 4px',
+                                                fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
+                                                cursor: (!jornada || jornada.estado==='Abierta') ? 'pointer' : 'default'}}>
+                                            {getFotoJugador(j) ? (
+                                                <img src={getFotoJugador(j)} alt="" style={{width:20,height:20,borderRadius:'50%',objectFit:'cover',background:'#fff'}}
+                                                    onError={function(e){e.target.style.display='none';}} />
+                                            ) : <span>⭐</span>}
+                                            {j.nombre}
                                         </span>
                                     );
                                 })}
@@ -2303,7 +2320,7 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
                             </div>
 
                             {/* Jugadores */}
-                            {!guardado && (
+                            {(!jornada || jornada.estado === 'Abierta') && (
                                 <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:16}}>
                                     {plantillaFiltrada.map(function(j,i) {
                                         var sel = !!seleccion.find(function(s) { return s.nombre===j.nombre; });
@@ -2314,8 +2331,8 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
                                                     border: sel?'2px solid #FFD700':'1.5px solid rgba(0,31,107,0.1)',
                                                     background: sel?'rgba(255,215,0,0.1)':'#f8f8f8',
                                                     opacity: lleno?0.4:1,textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
-                                                {j.imageUrl ? (
-                                                    <img src={j.imageUrl} alt={j.nombre}
+                                                {getFotoJugador(j) ? (
+                                                    <img src={getFotoJugador(j)} alt={j.nombre}
                                                         style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',border: sel?'2px solid #FFD700':'2px solid rgba(0,31,107,0.1)'}}
                                                         onError={function(e){e.target.style.display='none';}} />
                                                 ) : (
@@ -2334,21 +2351,17 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
                                 </div>
                             )}
 
-                            {guardado ? (
-                                <div style={{background:'rgba(16,185,129,0.08)',border:'1px solid rgba(16,185,129,0.2)',borderRadius:12,padding:16,textAlign:'center'}}>
-                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'#10b981',letterSpacing:2}}>✅ ESTRELLAS GUARDADAS</p>
-                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Editables hasta 45 min antes del partido</p>
-                                    <button onClick={function() { setGuardado(false); }}
-                                        style={{marginTop:10,background:'none',border:'1px solid rgba(0,31,107,0.2)',borderRadius:20,
-                                            padding:'6px 16px',cursor:'pointer',fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue}}>
-                                        Modificar selección
-                                    </button>
+                            {jornada && jornada.estado !== 'Abierta' ? (
+                                <div style={{background:'rgba(0,31,107,0.05)',border:'1px solid rgba(0,31,107,0.12)',borderRadius:12,padding:16,textAlign:'center'}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:G.deepBlue,letterSpacing:2}}>🔒 JORNADA CERRADA</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Tu selección quedó fijada al cerrarse la jornada.</p>
                                 </div>
                             ) : seleccion.length > 0 && (
                                 <button onClick={guardar} disabled={guardando}
                                     style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.1rem',letterSpacing:2,
-                                        background:G.deepBlue,color:'#FFD700',border:'none',borderRadius:30,padding:14,cursor:'pointer'}}>
-                                    {guardando ? 'GUARDANDO...' : 'CONFIRMAR ' + seleccion.length + ' ESTRELLA' + (seleccion.length>1?'S':'')}
+                                        background: guardado ? '#10b981' : G.deepBlue, color: guardado ? '#fff' : '#FFD700',
+                                        border:'none',borderRadius:30,padding:14,cursor:'pointer'}}>
+                                    {guardando ? 'GUARDANDO...' : guardado ? '✅ GUARDADO — ACTUALIZAR' : 'CONFIRMAR ' + seleccion.length + ' ESTRELLA' + (seleccion.length>1?'S':'')}
                                 </button>
                             )}
                         </>
@@ -2514,6 +2527,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     if (!jornada) return <div style={{padding:40,textAlign:'center'}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:20,color:G.deepBlue,opacity:.5}}>SIN JORNADA ACTIVA</p></div>;
 
     var abierta = jornada.estado === 'Abierta';
+    var udlpEsLocal = jornada.equipoLocal === 'UD Las Palmas';
     var live = jornada.liveData;
     var isLive = jornada.estado === 'En vivo' && live && live.isLive;
     var gL = isLive ? live.golesLocal : (jornada.estado==='Finalizada' ? jornada.resultadoLocal : null);
@@ -2537,11 +2551,17 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                 {/* Marcador con escudos */}
                 <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12}}>
                     <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,flex:1}}>
-                        <img src={'/escudo.png'} alt="UDLP"
-                            style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
-                            onError={function(e){e.target.style.display='none';}} />
+                        {udlpEsLocal ? (
+                            <img src={'/escudo.png'} alt="UDLP"
+                                style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
+                                onError={function(e){e.target.style.display='none';}} />
+                        ) : (
+                            <img src={getLogoEquipo(jornada.equipoLocal, teamLogos)} alt={jornada.equipoLocal}
+                                style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
+                                onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoLocal||'?').substring(0,3));}} />
+                        )}
                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(255,255,255,0.6)',letterSpacing:1,textTransform:'uppercase'}}>
-                            {jornada.udlpEsLocal ? 'UD Las Palmas' : jornada.equipoLocal}
+                            {udlpEsLocal ? 'UD Las Palmas' : jornada.equipoLocal}
                         </span>
                     </div>
                     <div style={{textAlign:'center',flexShrink:0}}>
@@ -2558,13 +2578,17 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                         </div>
                     </div>
                     <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,flex:1}}>
-                        <div style={{width:52,height:52,background:'rgba(255,255,255,0.08)',borderRadius:'50%',
-                            display:'flex',alignItems:'center',justifyContent:'center',
-                            fontFamily:"'Teko',sans-serif",fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',letterSpacing:0.5}}>
-                            {jornada.udlpEsLocal ? jornada.equipoVisitante.split(' ').slice(-1)[0] : 'UDLP'}
-                        </div>
+                        {udlpEsLocal ? (
+                            <img src={getLogoEquipo(jornada.equipoVisitante, teamLogos)} alt={jornada.equipoVisitante}
+                                style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
+                                onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoVisitante||'?').substring(0,3));}} />
+                        ) : (
+                            <img src={'/escudo.png'} alt="UDLP"
+                                style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
+                                onError={function(e){e.target.style.display='none';}} />
+                        )}
                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(255,255,255,0.6)',letterSpacing:1,textTransform:'uppercase'}}>
-                            {jornada.udlpEsLocal ? jornada.equipoVisitante : 'UD Las Palmas'}
+                            {udlpEsLocal ? jornada.equipoVisitante : 'UD Las Palmas'}
                         </span>
                     </div>
                 </div>
@@ -3020,7 +3044,9 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers }) => {
 
 const PagosScreen = ({ currentUser }) => {
     var G = styles.colors;
-    var JUGADORES_LISTA = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var JUGADORES_TODOS = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
+    var JUGADORES_LISTA = JUGADORES_TODOS.filter(function(j) { return jugadoresInactivos.indexOf(j) === -1; });
     var [paso, setPaso] = useState('inicio');
     var [pagos, setPagos] = useState([]);
     var [jornadas, setJornadas] = useState([]);
@@ -3036,6 +3062,13 @@ const PagosScreen = ({ currentUser }) => {
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'bizum'), function(snap) {
             if (snap.exists()) setBizumInfo(snap.data());
+        });
+        return function() { unsub(); };
+    }, []);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
+            setJugadoresInactivos(snap.exists() ? (snap.data().nombres || []) : []);
         });
         return function() { unsub(); };
     }, []);
@@ -4868,6 +4901,31 @@ const AdminPanelScreen = ({ plantilla }) => {
                         </div>
                     </div>
 
+                    {/* Eliminar jugador — baja definitiva */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#e63946',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                            🗑️ Eliminar jugador
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            Si alguien deja la porra definitivamente: desaparece de la pantalla de login (ya no puede entrar), se borra su PIN, y su hueco en El Otro Equipo se marca automáticamente como "disponible" — sin que tengas que hacerlo aparte.
+                        </p>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            {JUGADORES_LISTA.map(function(j) {
+                                return (
+                                    <button key={j} onClick={async function() {
+                                        if (!window.confirm('¿Eliminar a ' + j + ' definitivamente?\n\n· Ya no podrá entrar a la app\n· Su hueco en El Otro Equipo quedará "disponible" para otro jugador\n\nEsto no borra su historial de puntos ni pagos pasados.')) return;
+                                        await setDoc(doc(db, 'configuracion', 'jugadoresInactivos'), { nombres: arrayUnion(j) }, { merge: true });
+                                        await setDoc(doc(db, 'configuracion', 'elOtroVacante'), { nombreOriginal: j, nombreNuevo: null, marcadoEn: serverTimestamp() });
+                                        await deleteDoc(doc(db, 'pines', j));
+                                        setMsgAdmin('✅ ' + j + ' eliminado. Su hueco en El Otro Equipo ya está disponible.');
+                                    }} style={{...A.btnPrimary,padding:'6px 12px',fontSize:12,background:'rgba(230,57,70,0.1)',color:'#e63946',border:'1px solid rgba(230,57,70,0.2)'}}>
+                                        🗑️ {j}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     {/* Resetear PIN */}
                     <div style={A.card}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
@@ -5342,7 +5400,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     }, [jornadaActual, currentUser]);
 
     const toggleJugador = (jugador) => {
-        if (yaGuardado) return;
+        if (jornadaActual.estado !== 'Abierta') return; // solo bloqueado cuando la jornada realmente cierra
         const maxEstrellas = miBeneficio === 'sexta_estrella' ? 6 : 5;
         if (seleccion.find(j => j.nombre === jugador.nombre)) {
             setSeleccion(seleccion.filter(j => j.nombre !== jugador.nombre));
@@ -5440,15 +5498,24 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                 <>
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6,textAlign:'center',marginBottom:16}}>
                         Jornada {jornadaActual.numeroJornada} — Elige entre 1 y {maxEstrellas} jugadores
+                        {jornadaActual.estado === 'Abierta' && yaGuardado ? ' · puedes seguir cambiando hasta el cierre' : ''}
                     </p>
 
-                    {/* Selección actual */}
+                    {/* Selección actual — con foto */}
                     <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:20,minHeight:44}}>
                         {seleccion.map((j,i) => (
                             <span key={i} onClick={() => toggleJugador(j)} style={{
-                                background:G.golden,color:'#0a0a0a',borderRadius:20,padding:'6px 14px',
-                                fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,cursor:yaGuardado?'default':'pointer'
-                            }}>⭐ {j.nombre}</span>
+                                display:'inline-flex',alignItems:'center',gap:6,
+                                background:G.golden,color:'#0a0a0a',borderRadius:20,padding:'4px 14px 4px 4px',
+                                fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
+                                cursor: jornadaActual.estado==='Abierta' ? 'pointer' : 'default'
+                            }}>
+                                {getFotoJugador(j) ? (
+                                    <img src={getFotoJugador(j)} alt="" style={{width:22,height:22,borderRadius:'50%',objectFit:'cover',background:'#fff'}}
+                                        onError={function(e){e.target.style.display='none';}} />
+                                ) : <span>⭐</span>}
+                                {j.nombre}
+                            </span>
                         ))}
                         {seleccion.length === 0 && (
                             <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.4}}>Ningún jugador seleccionado</span>
@@ -5467,42 +5534,64 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                         ))}
                     </div>
 
-                    {/* Lista de jugadores */}
-                    {!yaGuardado && (
-                        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:8,marginBottom:20}}>
+                    {/* Plantilla visual — solo bloqueada cuando la jornada realmente cierra */}
+                    {jornadaActual.estado === 'Abierta' && (
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(96px,1fr))',gap:12,marginBottom:20}}>
                             {plantillaFiltrada.map((j,i) => {
                                 const seleccionado = seleccion.find(s => s.nombre === j.nombre);
                                 const lleno = seleccion.length >= maxEstrellas && !seleccionado;
+                                const foto = getFotoJugador(j);
                                 return (
                                     <button key={i} onClick={() => toggleJugador(j)} disabled={lleno}
                                         style={{
-                                            padding:'10px 8px',borderRadius:12,cursor:lleno?'not-allowed':'pointer',
-                                            border:`2px solid ${seleccionado?G.golden:'rgba(0,31,107,0.12)'}`,
-                                            background: seleccionado?'rgba(255,215,0,0.1)':'#f8f8f8',
-                                            fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,
-                                            color:seleccionado?G.deepBlue:'rgba(0,31,107,0.6)',
-                                            opacity:lleno?0.4:1,textAlign:'center'
+                                            display:'flex',flexDirection:'column',alignItems:'center',gap:6,
+                                            padding:'12px 6px 10px',borderRadius:16,cursor:lleno?'not-allowed':'pointer',
+                                            border:`2px solid ${seleccionado?G.golden:'rgba(0,31,107,0.1)'}`,
+                                            background: seleccionado?'linear-gradient(180deg,rgba(255,215,0,0.12),rgba(255,215,0,0.03))':'#fff',
+                                            opacity:lleno?0.35:1, position:'relative', boxShadow: seleccionado?'0 4px 14px rgba(255,215,0,0.25)':'0 1px 4px rgba(0,31,107,0.06)'
                                         }}>
-                                        <span style={{fontSize:9,display:'block',opacity:.5,marginBottom:2}}>{j.posicion}</span>
-                                        {j.nombre}
-                                        {seleccionado && <span style={{display:'block',fontSize:14,marginTop:2}}>⭐</span>}
+                                        {seleccionado && (
+                                            <span style={{position:'absolute',top:-6,right:-6,fontSize:18,filter:'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'}}>⭐</span>
+                                        )}
+                                        <div style={{position:'relative'}}>
+                                            {foto ? (
+                                                <img src={foto} alt={j.nombre}
+                                                    style={{width:56,height:56,borderRadius:'50%',objectFit:'cover',
+                                                        border: seleccionado?'2.5px solid #FFD700':'2px solid rgba(0,31,107,0.1)',background:'#f0f0f0'}}
+                                                    onError={function(e){e.target.style.display='none';e.target.nextSibling.style.display='flex';}} />
+                                            ) : null}
+                                            <div style={{width:56,height:56,borderRadius:'50%',
+                                                display: foto ? 'none' : 'flex',alignItems:'center',justifyContent:'center',
+                                                background: seleccionado?'rgba(255,215,0,0.15)':'rgba(0,31,107,0.06)',
+                                                border: seleccionado?'2.5px solid #FFD700':'2px solid rgba(0,31,107,0.1)',
+                                                fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:G.deepBlue}}>
+                                                {j.dorsal}
+                                            </div>
+                                        </div>
+                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,color:'rgba(0,31,107,0.35)',
+                                            background:'rgba(0,31,107,0.06)',borderRadius:6,padding:'1px 6px'}}>{j.posicion}</span>
+                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
+                                            color:seleccionado?G.deepBlue:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.2}}>{j.nombre}</span>
                                     </button>
                                 );
                             })}
                         </div>
                     )}
 
-                    {yaGuardado ? (
-                        <div style={{background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.3)',borderRadius:12,padding:16,textAlign:'center'}}>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.success,fontWeight:600}}>✅ Selección guardada para esta jornada</p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Los puntos se calcularán automáticamente tras el partido</p>
+                    {jornadaActual.estado !== 'Abierta' ? (
+                        <div style={{background:'rgba(0,31,107,0.05)',border:'1px solid rgba(0,31,107,0.12)',borderRadius:12,padding:16,textAlign:'center'}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,fontWeight:600}}>🔒 Jornada cerrada</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Tu selección quedó fijada al cerrarse la jornada.</p>
                         </div>
-                    ) : seleccion.length > 0 && (
-                        <button onClick={guardarSeleccion} disabled={guardando} style={{
+                    ) : (
+                        <button onClick={guardarSeleccion} disabled={guardando || seleccion.length===0} style={{
                             width:'100%',fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.1rem',letterSpacing:2,
-                            background:G.deepBlue,color:G.golden,border:'none',borderRadius:30,
-                            padding:14,cursor:'pointer',boxShadow:'0 6px 20px rgba(0,31,107,0.25)'
-                        }}>{guardando ? 'GUARDANDO...' : `CONFIRMAR ${seleccion.length} ESTRELLA${seleccion.length>1?'S':''}`}</button>
+                            background: yaGuardado ? '#10b981' : G.deepBlue, color: yaGuardado ? '#fff' : G.golden,
+                            border:'none',borderRadius:30,padding:14,cursor:'pointer',boxShadow:'0 6px 20px rgba(0,31,107,0.25)',
+                            opacity: seleccion.length===0 ? 0.5 : 1
+                        }}>
+                            {guardando ? 'GUARDANDO...' : yaGuardado ? '✅ GUARDADO — ACTUALIZAR SELECCIÓN' : 'GUARDAR MIS ESTRELLAS'}
+                        </button>
                     )}
                 </>
             )}
@@ -5555,7 +5644,16 @@ const LoginScreen = ({ onLoginSuccess }) => {
         return !localStorage.getItem('aviso_reinstalar_2627_visto');
     });
 
-    var JUGADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var JUGADORES_TODOS = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
+    var JUGADORES = JUGADORES_TODOS.filter(function(j) { return jugadoresInactivos.indexOf(j) === -1; });
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
+            setJugadoresInactivos(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
 
     // Autenticamos anónimamente en cuanto se monta la pantalla, ANTES de que
     // el usuario toque nada. Así, cuando pulse su nombre, la sesión ya está
