@@ -24,6 +24,35 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 const messaging = getMessaging(app);
+
+// Notificaciones push — pide permiso y registra el token del dispositivo,
+// ligado al nombre del jugador (para poder dirigir avisos a una persona en
+// concreto, como el admin, y no solo mandar a todos siempre).
+//
+// ⚠️ IMPORTANTE — falta un dato tuyo que no puedo inventar: la clave VAPID
+// pública de tu proyecto Firebase. Se saca de Firebase Console → Configuración
+// del proyecto → Cloud Messaging → "Certificados push web" → genera un par
+// de claves si no tienes ninguna, y copia la clave pública aquí abajo, donde
+// pone VAPID_KEY_PENDIENTE.
+const VAPID_KEY = 'VAPID_KEY_PENDIENTE';
+
+async function registrarNotificacionesPush(nombreUsuario) {
+    try {
+        if (!('Notification' in window) || VAPID_KEY === 'VAPID_KEY_PENDIENTE') return;
+        var permiso = await Notification.requestPermission();
+        if (permiso !== 'granted') return;
+        var registro = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        var token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registro });
+        if (token) {
+            await setDoc(doc(db, 'notification_tokens', token), {
+                usuario: nombreUsuario, actualizadoEn: serverTimestamp(),
+            }, { merge: true });
+        }
+    } catch (e) {
+        console.warn('No se pudo registrar notificaciones push:', e.message);
+    }
+}
+
 const rtdb = getDatabase(app);
 const storage = getStorage(app);
 const functions = getFunctions(app, "europe-west1");
@@ -97,6 +126,45 @@ async function buscarPartidoPrimera(equipoNombre, fechaReferenciaStr) {
         } catch (e) { console.warn('Error buscando partido de Primera:', e.message); }
     }
     return null;
+}
+
+// Trae TODOS los partidos de Primera en una ventana de fechas — a diferencia
+// de buscarPartidoPrimera (que busca UN equipo concreto), esto da la
+// jornada entera de golpe, para poder verla completa de un vistazo (uso de
+// admin) en vez de tener que consultar equipo por equipo.
+async function buscarJornadaCompletaPrimera(fechaReferenciaStr, diasVentana) {
+    if (!API_FOOTBALL_KEY) return [];
+    var fechaBase = fechaReferenciaStr ? new Date(fechaReferenciaStr) : new Date();
+    if (isNaN(fechaBase.getTime())) fechaBase = new Date();
+    var ventana = diasVentana || 4;
+    var desde = new Date(fechaBase); desde.setDate(desde.getDate() - ventana);
+    var hasta = new Date(fechaBase); hasta.setDate(hasta.getDate() + ventana);
+    var fmt = function(d) { return d.toISOString().slice(0, 10); };
+
+    var temporadas = [2025, 2026];
+    for (var t = 0; t < temporadas.length; t++) {
+        try {
+            var url = 'https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+                '&season=' + temporadas[t] + '&from=' + fmt(desde) + '&to=' + fmt(hasta);
+            var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var data = await res.json();
+            var partidos = data.response || [];
+            if (partidos.length > 0) {
+                return partidos.map(function(p) {
+                    return {
+                        fixtureId: p.fixture.id,
+                        fecha: p.fixture.date,
+                        local: p.teams.home.name,
+                        visitante: p.teams.away.name,
+                        estadoCorto: p.fixture.status.short,
+                        golesLocal: p.goals.home,
+                        golesVisitante: p.goals.away,
+                    };
+                }).sort(function(a, b) { return new Date(a.fecha) - new Date(b.fecha); });
+            }
+        } catch (e) { console.warn('Error buscando jornada completa de Primera:', e.message); }
+    }
+    return [];
 }
 
 const SEASON = 2025; // temporada 2025-26 en API-Football = 26/27 real
@@ -514,6 +582,7 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
     var [guardado, setGuardado] = useState(false);
     var [guardando, setGuardando] = useState(false);
     var [subiendoFoto, setSubiendoFoto] = useState(false);
+    var [convirtiendoFormato, setConvirtiendoFormato] = useState(false);
     var [previewFoto, setPreviewFoto] = useState(null); // dataURL local mientras se procesa/sube
     var [errorFoto, setErrorFoto] = useState('');
     var fileInputRef = useRef(null);
@@ -528,7 +597,30 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
         });
     }, [currentUser]);
 
-    var manejarSeleccionFoto = function(e) {
+// Convierte HEIC/HEIF (el formato por defecto de fotos en iPhone) a JPEG
+// ANTES de intentar nada más — es la causa real, con diferencia, de que la
+// subida se quedara "procesando" para siempre: Chrome, Firefox y Edge no
+// saben leer HEIC de forma nativa (ni con <img>, ni con canvas), así que el
+// filtro fallaba en silencio sin ni siquiera llegar a lanzar un error claro.
+// Se carga la librería bajo demanda (solo si hace falta), así no penaliza a
+// nadie que suba JPG/PNG normal, que es la mayoría.
+async function convertirHeicSiHaceFalta(file) {
+    var pareceHeic = (file.type && (file.type === 'image/heic' || file.type === 'image/heif')) ||
+        /\.(heic|heif)$/i.test(file.name || '');
+    if (!pareceHeic) return file;
+    try {
+        var modulo = await import('https://esm.sh/heic2any@0.0.4');
+        var heic2any = modulo.default;
+        var resultado = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+        var blobFinal = Array.isArray(resultado) ? resultado[0] : resultado;
+        return new File([blobFinal], 'foto.jpg', { type: 'image/jpeg' });
+    } catch (e) {
+        console.warn('No se pudo convertir el HEIC, se sigue con el archivo original:', e.message);
+        return file; // si falla la conversión, seguimos igualmente — el resto de cerrojos ya cubren este caso
+    }
+}
+
+    var manejarSeleccionFoto = async function(e) {
         var file = e.target.files && e.target.files[0];
         if (!file) return;
         setErrorFoto('');
@@ -537,6 +629,10 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
         // por eso, solo si el navegador dice explícitamente que es OTRA cosa.
         if (file.type && !file.type.startsWith('image/')) { setErrorFoto('Elige un archivo de imagen.'); return; }
         if (file.size > 8 * 1024 * 1024) { setErrorFoto('La imagen pesa demasiado (máx. 8MB).'); return; }
+
+        setConvirtiendoFormato(true);
+        file = await convertirHeicSiHaceFalta(file);
+        setConvirtiendoFormato(false);
 
         // Cerrojo maestro: pase lo que pase (un error que no cacé, el móvil
         // que se cuelga, lo que sea), a los 35 segundos el botón se libera sí
@@ -693,11 +789,11 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
                 </p>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={manejarSeleccionFoto} style={{display:'none'}} />
                 <button onClick={function() { fileInputRef.current && fileInputRef.current.click(); }}
-                    disabled={subiendoFoto}
+                    disabled={subiendoFoto || convirtiendoFormato}
                     style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.05rem',letterSpacing:2,
                         background:'#FFD700',color:'#001F6B',border:'none',borderRadius:30,padding:14,
                         cursor: subiendoFoto ? 'default' : 'pointer', opacity: subiendoFoto ? 0.7 : 1}}>
-                    {subiendoFoto ? 'PROCESANDO...' : (perfil.foto ? 'CAMBIAR FOTO' : '📷 SUBIR FOTO')}
+                    {convirtiendoFormato ? 'CONVIRTIENDO FORMATO...' : subiendoFoto ? 'PROCESANDO...' : (perfil.foto ? 'CAMBIAR FOTO' : '📷 SUBIR FOTO')}
                 </button>
                 {errorFoto && (
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#ff8a8a',marginTop:10,textAlign:'center'}}>{errorFoto}</p>
@@ -2922,6 +3018,26 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     var [clasifEstrellas, setClasifEstrellas] = useState([]);
     var [seleccionesEstrellasJornada, setSeleccionesEstrellasJornada] = useState([]); // para la comparativa en vivo
     var [loading, setLoading] = useState(true);
+    // Lista completa de jugadores registrados — para que se vea a todo el
+    // grupo aquí, no solo a quien ya ha apostado.
+    var JUGADORES_FUNDADORES_LJ = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
+    var [jugadoresAprobadosLJ, setJugadoresAprobadosLJ] = useState([]);
+    var [jugadoresInactivosLJ, setJugadoresInactivosLJ] = useState([]);
+    var JUGADORES_TODOS_LJ = Array.from(new Set(JUGADORES_FUNDADORES_LJ.concat(jugadoresAprobadosLJ)));
+    var JUGADORES_ACTIVOS_LJ = JUGADORES_TODOS_LJ.filter(function(j) { return jugadoresInactivosLJ.indexOf(j) === -1; });
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(snap) {
+            setJugadoresAprobadosLJ(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
+            setJugadoresInactivosLJ(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
 
     useEffect(function() {
         var unsubEst = onSnapshot(collection(db, "clasificacion_estrellas"), function(snap) {
@@ -3057,32 +3173,66 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                         <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5}}>
                             Los pronósticos se revelarán cuando cierren las apuestas.
                         </p>
-                        {/* Avatares de quién ha apostado ya */}
-                        <div style={{display:'flex',flexWrap:'wrap',gap:12,justifyContent:'center',marginTop:20}}>
-                            {participantes.map(function(p) {
-                                var perf = userProfiles[p.id] || {};
-                                var otro = elOtroTodos[p.id];
+                        {/* Todo el grupo, no solo quien ya ha apostado — atenuados
+                            quienes todavía no lo han hecho, para que se vean entre
+                            ellos de un vistazo. La burbuja de El Otro Equipo aquí
+                            es la de ESTA jornada en concreto (activado o no), no
+                            si tienen equipo elegido para toda la temporada. */}
+                        <div style={{display:'flex',flexWrap:'wrap',gap:14,justifyContent:'center',marginTop:20}}>
+                            {JUGADORES_ACTIVOS_LJ.map(function(nombre) {
+                                var apuesta = participantes.find(function(p) { return p.id === nombre; });
+                                var haApostado = !!apuesta;
+                                var perf = userProfiles[nombre] || {};
+                                var otro = elOtroTodos[nombre];
+                                var tieneEquipoOtro = !!(otro && otro.equipo);
+                                var activadoEstaJornada = haApostado && apuesta.elOtroActivado;
                                 return (
-                                    <PlayerAvatar key={p.id} name={p.id} perfil={perf} elOtroData={otro} size={44} showElOtro={true} />
+                                    <div key={nombre} style={{opacity: haApostado ? 1 : 0.35, display:'flex', flexDirection:'column', alignItems:'center', gap:4, transition:'opacity .2s'}}>
+                                        <div style={{position:'relative'}}>
+                                            <div style={{border: '2px solid rgba(0,31,107,0.15)', borderRadius:'50%', boxShadow: '0 2px 8px rgba(0,31,107,0.12)'}}>
+                                                <IconoPerfil perfil={perf} size={44} />
+                                            </div>
+                                            {tieneEquipoOtro && (
+                                                <div style={{
+                                                    position:'absolute', top:-6, right:-6, width:20, height:20, borderRadius:'50%',
+                                                    background: activadoEstaJornada ? '#001F6B' : 'rgba(0,31,107,0.15)',
+                                                    border: activadoEstaJornada ? '1.5px solid #FFD700' : '1.5px solid rgba(0,31,107,0.2)',
+                                                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:9,
+                                                }} title={activadoEstaJornada ? 'Ha activado El Otro Equipo esta jornada' : 'No ha activado El Otro Equipo esta jornada'}>
+                                                    🛡️❓
+                                                </div>
+                                            )}
+                                        </div>
+                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.6,maxWidth:50,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                            {nombreVisible(nombre, perf)}
+                                        </span>
+                                    </div>
                                 );
                             })}
                         </div>
                     </div>
                 ) : (
                     <div style={{padding:'8px 0'}}>
-                        {participantes.sort(function(a,b) { return (b.puntosObtenidos||0)-(a.puntosObtenidos||0); }).map(function(p) {
+                        {JUGADORES_ACTIVOS_LJ
+                            .map(function(nombre) { return participantes.find(function(p) { return p.id === nombre; }) || { id: nombre, sinApuesta: true }; })
+                            .sort(function(a,b) { return (b.puntosObtenidos||0)-(a.puntosObtenidos||0); })
+                            .map(function(p) {
                             var ganador = ganadoresExactos.find(function(g) { return g.id === p.id; });
                             var perf = userProfiles[p.id] || {};
                             var otro = elOtroTodos[p.id];
                             var elOtroActivado = p.elOtroActivado;
                             return (
                                 <div key={p.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',
-                                    borderBottom:'1px solid rgba(0,31,107,0.05)',
+                                    borderBottom:'1px solid rgba(0,31,107,0.05)', opacity: p.sinApuesta ? 0.4 : 1,
                                     background: ganador ? 'rgba(255,215,0,0.06)' : 'transparent'}}>
                                     {/* Avatar con burbuja El Otro Equipo */}
                                     <PlayerAvatar name={p.id} perfil={perf} elOtroData={otro} size={40} showElOtro={true} />
                                     <div style={{flex:1}}>
-                                        {/* Marcador apostado */}
+                                        {p.sinApuesta ? (
+                                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.4)',fontStyle:'italic'}}>
+                                                No apostó esta jornada
+                                            </span>
+                                        ) : (
                                         <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
                                             <span style={{
                                                 fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,
@@ -3094,18 +3244,18 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                             <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>
                                                 {p.resultado1x2}
                                             </span>
-                                            {elOtroActivado && otro && (
-                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,
-                                                    background:'rgba(0,31,107,0.08)',color:G.deepBlue,
-                                                    padding:'2px 8px',borderRadius:10}}>
-                                                    El Otro {otro.revelado ? '· ' + otro.equipo : '🛡️'}
-                                                </span>
-                                            )}
+                                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,
+                                                background: elOtroActivado ? 'rgba(0,31,107,0.08)' : 'rgba(0,31,107,0.03)',
+                                                color: elOtroActivado ? G.deepBlue : 'rgba(0,31,107,0.35)',
+                                                padding:'2px 8px',borderRadius:10}}>
+                                                {elOtroActivado && otro ? ('El Otro ' + (otro.revelado ? '· ' + otro.equipo : '🛡️')) : 'El Otro sin activar'}
+                                            </span>
                                             {ganador && <span style={{fontSize:14}}>🏆</span>}
                                         </div>
+                                        )}
                                     </div>
                                     {/* Puntos */}
-                                    {(jornada.estado==='Finalizada' || isLive) && (
+                                    {!p.sinApuesta && (jornada.estado==='Finalizada' || isLive) && (
                                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color: ganador?G.golden:G.deepBlue}}>
                                             {p.puntosObtenidos||0}
                                         </span>
@@ -4723,6 +4873,34 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 } catch (eU) { console.warn('Error leyendo elOtro de', usuariosConOtroActivado[ui], eU.message); }
             }
 
+            // --- NUEVA NORMA: el multiplicador acumulado decae si te saltas
+            // una jornada sin activar El Otro. No decae por perder, solo por
+            // no activar — así no se castiga doblemente a quien tiene un
+            // equipo flojo (ya arriesga más al activar; si además decayera
+            // al perder, sería un castigo extra injusto). Se comprueba para
+            // TODOS los que ya tienen equipo elegido, no solo los que
+            // apostaron esta jornada, para pillar también a quien ni
+            // siquiera entró a la app.
+            if (!puntosYaCalculados) {
+                try {
+                    var todosConEquipoSnap = await getDocs(collection(db, "elOtro"));
+                    todosConEquipoSnap.forEach(function(d) {
+                        var datosJ = d.data();
+                        if (!datosJ.equipo) return; // sin equipo elegido, no aplica
+                        var activoEstaJornada = usuariosConOtroActivado.indexOf(d.id) !== -1;
+                        if (!activoEstaJornada && (datosJ.activaciones || 0) > 0) {
+                            batch.set(doc(db, "elOtro", d.id), {
+                                activaciones: 0,
+                                historial: arrayUnion({
+                                    jornada: jornada.numeroJornada, tipo: 'decaido',
+                                    motivo: 'No activó esta jornada — el multiplicador acumulado vuelve a ×2',
+                                }),
+                            }, { merge: true });
+                        }
+                    });
+                } catch (eDecay) { console.warn('Error aplicando la norma de decaimiento del multiplicador:', eDecay.message); }
+            }
+
             pSnap.forEach(docSnap => {
                 const p = docSnap.data();
                 const userId = docSnap.id;
@@ -5059,6 +5237,193 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
 // Equipo y cuánto tiempo efectivo le queda (respetando la pausa nocturna,
 // igual que el cronómetro real de la app) — para tener visibilidad sin
 // tener que entrar a la pantalla de El Otro Equipo como jugador.
+// Admin: botón de "desatasco" manual para El Otro Equipo. Si el sistema se
+// queda parado (por ejemplo, porque a nadie se le ha ocurrido abrir la app
+// para que el cronómetro de alguien arranque o se compruebe), esto salta al
+// jugador actual y ARRANCA YA MISMO el cronómetro de 60 minutos del
+// siguiente — sin esperar a que esa persona abra la app para que empiece a
+// contar. Usa el mismo cálculo de orden que la pantalla del jugador
+// (calcularOrdenElOtro / calcularTurnoElOtro), así nunca se contradicen.
+// Admin: muestra la jornada completa de Primera División de un vistazo —
+// todos los partidos con fecha y hora, para verificar visualmente que la
+// información que usa El Otro Equipo (el partido de cada jugador, según su
+// equipo elegido) es correcta, sin tener que consultar equipo por equipo.
+// Esto afecta a todos los jugadores que tengan equipo elegido en El Otro —
+// cuantos más elijan, más falta hace poder verlo todo junto.
+const InfoJornadaPrimeraAdmin = () => {
+    var [partidos, setPartidos] = useState([]);
+    var [cargando, setCargando] = useState(false);
+    var [errorMsg, setErrorMsg] = useState('');
+    var [ultimaConsulta, setUltimaConsulta] = useState(null);
+
+    var cargar = async function() {
+        setCargando(true);
+        setErrorMsg('');
+        try {
+            var resultado = await buscarJornadaCompletaPrimera(new Date().toISOString(), 5);
+            if (resultado.length === 0) {
+                setErrorMsg('No se encontraron partidos de Primera en esta ventana de fechas (±5 días). Puede que no haya jornada esta semana, o que la temporada aún no esté cargada en la API.');
+            }
+            setPartidos(resultado);
+            setUltimaConsulta(new Date());
+        } catch (e) {
+            setErrorMsg('Error consultando la API: ' + e.message);
+        }
+        setCargando(false);
+    };
+
+    useEffect(function() { cargar(); }, []);
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                🗓️ Jornada de Primera División
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14,lineHeight:1.5}}>
+                Todos los partidos de Primera en los próximos días — esto es lo que usa la app para saber cuándo tiene que activarse El Otro Equipo de cada jugador (antes de que empiece el partido de SU equipo, no de una fecha genérica).
+            </p>
+
+            <button onClick={cargar} disabled={cargando} style={{...ADMIN_STYLES.btnPrimary, marginBottom: 14}}>
+                {cargando ? 'Consultando API...' : '↻ Actualizar'}
+            </button>
+
+            {errorMsg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginBottom:12}}>{errorMsg}</p>}
+
+            {partidos.length > 0 && (
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {partidos.map(function(p) {
+                        var fechaObj = new Date(p.fecha);
+                        var fechaTexto = fechaObj.toLocaleString('es-ES', {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary'});
+                        return (
+                            <div key={p.fixtureId} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'rgba(0,31,107,0.02)',borderRadius:8,flexWrap:'wrap'}}>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)',minWidth:110}}>{fechaTexto}</span>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#001F6B',flex:1}}>{p.local} vs {p.visitante}</span>
+                                {(p.estadoCorto === 'FT' || p.estadoCorto === 'AET' || p.estadoCorto === 'PEN') && (
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color:'#10b981'}}>{p.golesLocal}-{p.golesVisitante}</span>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+            {ultimaConsulta && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.3)',marginTop:10}}>
+                    Última consulta: {ultimaConsulta.toLocaleTimeString('es-ES')}
+                </p>
+            )}
+        </div>
+    );
+};
+
+const SaltarTurnoAdmin = () => {
+    var [todosElOtro, setTodosElOtro] = useState({});
+    var [vacantes, setVacantes] = useState([]);
+    var [jugadoresAprobados, setJugadoresAprobados] = useState([]);
+    var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
+    var [procesando, setProcesando] = useState(false);
+    var [msg, setMsg] = useState('');
+
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, 'elOtro'), function(snap) {
+            var datos = {};
+            snap.forEach(function(d) { datos[d.id] = d.data(); });
+            setTodosElOtro(datos);
+        });
+        return function() { unsub(); };
+    }, []);
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, 'elOtroVacantes'), function(snap) {
+            var lista = [];
+            snap.forEach(function(d) { lista.push({ id: d.id, ...d.data() }); });
+            setVacantes(lista);
+        });
+        return function() { unsub(); };
+    }, []);
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(snap) {
+            setJugadoresAprobados(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
+            setJugadoresInactivos(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
+
+    var ordenConf = calcularOrdenElOtro(todosElOtro, vacantes, jugadoresAprobados, jugadoresInactivos);
+    var turnoCalculado = calcularTurnoElOtro(ordenConf, todosElOtro, jugadoresInactivos);
+    var datosDelTurno = turnoCalculado ? (todosElOtro[turnoCalculado] || {}) : null;
+    var cronometroActivo = !!(datosDelTurno && datosDelTurno.turnoIniciadoEn && !datosDelTurno.saltado);
+
+    var handleSaltarSiguiente = async function() {
+        if (!turnoCalculado) return;
+        if (!window.confirm('¿Saltar a ' + turnoCalculado + ' y arrancar ya el cronómetro del siguiente jugador?\n\nEsto es para desatascar el sistema — normalmente el cronómetro corre solo.')) return;
+        setProcesando(true);
+        setMsg('');
+        try {
+            // 1. Saltar al que tiene el turno ahora mismo.
+            await setDoc(doc(db, 'elOtro', turnoCalculado), { saltado: true }, { merge: true });
+
+            // 2. Simular el estado ya actualizado (sin esperar al listener) para
+            // saber quién es el siguiente de verdad, ahora mismo.
+            var datosSimulados = { ...todosElOtro };
+            datosSimulados[turnoCalculado] = { ...(datosSimulados[turnoCalculado] || {}), saltado: true };
+            var ordenSimulado = calcularOrdenElOtro(datosSimulados, vacantes, jugadoresAprobados, jugadoresInactivos);
+            var siguienteTurno = calcularTurnoElOtro(ordenSimulado, datosSimulados, jugadoresInactivos);
+
+            if (siguienteTurno) {
+                // 3. Arrancar el cronómetro del siguiente YA MISMO — no espera
+                // a que esa persona abra la app para empezar a contar.
+                await setDoc(doc(db, 'elOtro', siguienteTurno), {
+                    turnoIniciadoEn: serverTimestamp(), saltado: false,
+                }, { merge: true });
+                setMsg('✅ ' + turnoCalculado + ' saltado. ' + siguienteTurno + ' ya tiene sus 60 minutos corriendo — el reloj sigue avanzando pase lo que pase, tenga o no la app abierta.');
+            } else {
+                setMsg('✅ ' + turnoCalculado + ' saltado. No queda nadie más pendiente de elegir ahora mismo.');
+            }
+        } catch (e) {
+            console.error(e);
+            setMsg('❌ Error: ' + e.message);
+        }
+        setProcesando(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                ⏭️ Saltar al siguiente jugador
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14,lineHeight:1.5}}>
+                Botón de emergencia, solo para cuando el sistema se quede atascado. Salta a quien le toca ahora y arranca de inmediato el cronómetro del siguiente — no hace falta que esa persona abra la app para que empiece a correr.
+            </p>
+            {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msg.startsWith('✅') ? '#10b981' : '#e63946',marginBottom:12}}>{msg}</p>}
+
+            {!turnoCalculado ? (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.4)',textAlign:'center',padding:10}}>
+                    Nadie está pendiente de turno ahora mismo (el draft puede estar cerrado, en pausa nocturna, o ya sin nadie por elegir).
+                </p>
+            ) : (
+                <div style={{background: cronometroActivo ? 'rgba(255,215,0,0.08)' : 'rgba(230,57,70,0.06)',border: cronometroActivo ? '1px solid rgba(212,175,55,0.3)' : '1px solid rgba(230,57,70,0.25)',borderRadius:10,padding:14,marginBottom:12}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',letterSpacing:1,marginBottom:4}}>Turno actual (calculado)</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:'#001F6B',marginBottom:6}}>{turnoCalculado}</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color: cronometroActivo ? '#8a6a00' : '#e63946'}}>
+                        {cronometroActivo ? '🟡 Su cronómetro está corriendo con normalidad.' : '🔴 Su cronómetro NO ha arrancado todavía — esto es probablemente lo que está atascando el sistema.'}
+                    </p>
+                </div>
+            )}
+
+            <button onClick={handleSaltarSiguiente} disabled={!turnoCalculado || procesando} style={{
+                ...ADMIN_STYLES.btnPrimary, opacity: (!turnoCalculado || procesando) ? 0.5 : 1,
+                background:'rgba(230,57,70,0.1)', color:'#e63946', border:'1px solid rgba(230,57,70,0.2)',
+            }}>
+                {procesando ? 'Procesando...' : '⏭️ Saltar a ' + (turnoCalculado || '—') + ' y activar el siguiente'}
+            </button>
+        </div>
+    );
+};
+
 const RastreadorTiemposElOtro = ({ jugadoresLista }) => {
     var [todosElOtro, setTodosElOtro] = useState({});
     var [ahora, setAhora] = useState(new Date());
@@ -6026,14 +6391,19 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             {/* Navegación por secciones */}
             <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:4,marginBottom:20}}>
                 {[
-                    ['jornadas','⚽ Jornadas'],
-                    ['pagos','💰 Pagos'],
-                    ['solicitudes','👥 Solicitudes'],
-                    ['clasificacion','🏆 Clasificación'],
-                    ['herramientas','🔧 Herramientas'],
-                    ['rifas','🎟️ Rifas'],
+                    ['jornadas','⚽ Jornadas', 0],
+                    ['pagos','💰 Pagos', pagos.filter(function(p){return p.estado==='pendiente_confirmacion';}).length],
+                    ['solicitudes','👥 Solicitudes', solicitudes.filter(function(s){return !s.estado || s.estado==='pendiente';}).length],
+                    ['clasificacion','🏆 Clasificación', 0],
+                    ['herramientas','🔧 Herramientas', 0],
+                    ['rifas','🎟️ Rifas', 0],
                 ].map(function(s) {
-                    return <button key={s[0]} onClick={function(){setSeccion(s[0]);setMsgAdmin('');}} style={A.secBtn(s[0])}>{s[1]}</button>;
+                    return (
+                        <button key={s[0]} onClick={function(){setSeccion(s[0]);setMsgAdmin('');}} style={{...A.secBtn(s[0]),position:'relative'}}>
+                            {s[1]}
+                            {s[2] > 0 && <span style={{position:'absolute',top:-4,right:-4,fontFamily:"'Teko',sans-serif",fontSize:11,fontWeight:700,background:'#e63946',color:'#fff',padding:'1px 6px',borderRadius:8,minWidth:16,textAlign:'center'}}>{s[2]}</span>}
+                        </button>
+                    );
                 })}
             </div>
 
@@ -6425,6 +6795,11 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                     {/* Rastreador de tiempos en vivo */}
                     <RastreadorTiemposElOtro jugadoresLista={JUGADORES_LISTA} />
 
+                    <InfoJornadaPrimeraAdmin />
+
+                    {/* Botón de emergencia — saltar y arrancar el siguiente cronómetro ya mismo */}
+                    <SaltarTurnoAdmin />
+
                     {/* El Otro Equipo — hueco simbólico por baja */}
                     <GestionHuecoVacante />
 
@@ -6584,6 +6959,56 @@ function aplicarMultiplicadorOtro(puntos, resultado, mult) {
     return puntos;
 }
 
+// Calcula el orden completo de la cola de El Otro Equipo — usado tanto por
+// la pantalla del jugador como por la herramienta de admin, para que las
+// dos calculen SIEMPRE lo mismo y nunca se lleven la contraria entre sí.
+// Reglas: cada hueco vacante sustituye su posición original (con el
+// registro nuevo o con un marcador si sigue sin asignar); los aprobados por
+// invitación se añaden al final por orden real de entrada; y quien ha sido
+// saltado por agotar el tiempo pasa al final de la cola, con una segunda
+// oportunidad, en vez de quedar bloqueado para siempre.
+function esMarcadorVacanteEO(j) { return typeof j === 'string' && j.indexOf('__VACANTE_') === 0; }
+
+function calcularOrdenElOtro(datos, vacantes, jugadoresAprobados, jugadoresInactivos) {
+    var baseOrden = ORDEN_ELECCION_EL_OTRO.slice();
+    vacantes.forEach(function(v) {
+        var idxVac = baseOrden.indexOf(v.original);
+        if (idxVac !== -1) baseOrden[idxVac] = v.nuevo || ('__VACANTE_' + v.id + '__');
+    });
+
+    var nuevosAprobados = jugadoresAprobados.filter(function(j) {
+        return jugadoresInactivos.indexOf(j) === -1 && baseOrden.indexOf(j) === -1;
+    });
+    var otrosConDocumento = Object.keys(datos).filter(function(j) {
+        return baseOrden.indexOf(j) === -1 && nuevosAprobados.indexOf(j) === -1;
+    });
+    var nuevos = [].concat(nuevosAprobados, otrosConDocumento).filter(function(j) {
+        return !datos[j] || !datos[j].equipo;
+    });
+    var ordenCompleto = [].concat(baseOrden, nuevos);
+
+    var pendientesNormales = ordenCompleto.filter(function(j) {
+        return esMarcadorVacanteEO(j) || !datos[j] || (!datos[j].equipo && !datos[j].saltado);
+    });
+    var saltadosSinEquipo = ordenCompleto.filter(function(j) {
+        return !esMarcadorVacanteEO(j) && datos[j] && datos[j].saltado && !datos[j].equipo;
+    });
+    return [].concat(pendientesNormales, saltadosSinEquipo);
+}
+
+// A quién le toca de esa cola — el primero que no tenga equipo todavía,
+// saltándose marcadores de hueco vacante y jugadores eliminados (nunca
+// vuelven a recibir turno, aunque su equipo se haya quedado libre).
+function calcularTurnoElOtro(ordenConf, datos, jugadoresInactivos) {
+    for (var i = 0; i < ordenConf.length; i++) {
+        var j = ordenConf[i];
+        if (esMarcadorVacanteEO(j)) continue;
+        if (jugadoresInactivos.indexOf(j) !== -1) continue;
+        if (!datos[j] || !datos[j].equipo) return j;
+    }
+    return null;
+}
+
 const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos }) => {
     var G = styles.colors;
     var [miElOtro, setMiElOtro] = useState(null);
@@ -6656,51 +7081,12 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
     // Recalcula orden, turno y equipos disponibles cada vez que cambian los
     // datos de elección O el hueco vacante — así el "privilegio" del hueco
     // se aplica al instante en cuanto el admin asigna un nuevo nombre.
+    // Usa las funciones compartidas (calcularOrdenElOtro / calcularTurnoElOtro)
+    // para que esta pantalla y la herramienta de admin de "saltar turno"
+    // calculen exactamente lo mismo, siempre.
     useEffect(function() {
         var datos = todosElOtro;
-
-        // Orden base, con CADA hueco vacante sustituido en su propia posición
-        // (privilegio: quien lo ocupa hereda el turno original, no va al
-        // final) — cada registro es independiente, así que sustituir uno no
-        // toca a los demás en absoluto.
-        var baseOrden = ORDEN_ELECCION_EL_OTRO.slice();
-        vacantes.forEach(function(v) {
-            var idxVac = baseOrden.indexOf(v.original);
-            if (idxVac !== -1) baseOrden[idxVac] = v.nuevo || ('__VACANTE_' + v.id + '__');
-        });
-
-        // "Nuevos" ya NO se detectan mirando quién tiene ya un documento
-        // guardado en El Otro (eso era el bug: un jugador recién aprobado por
-        // invitación nunca llega a tener ese documento hasta que puede elegir,
-        // y no puede elegir si nunca aparece en la cola — círculo cerrado).
-        // Ahora se usa la lista real de aprobados por invitación, que ya
-        // viene en su orden real de entrada (arrayUnion añade siempre al
-        // final), filtrando a quien haya sido dado de baja.
-        var nuevosAprobados = jugadoresAprobados.filter(function(j) {
-            return jugadoresInactivos.indexOf(j) === -1 && baseOrden.indexOf(j) === -1;
-        });
-        // Por si alguien tiene ya un documento en El Otro sin estar en la
-        // lista de aprobados (casos antiguos) — se mantiene como red de
-        // seguridad, sin duplicar a quien ya esté contado arriba.
-        var otrosConDocumento = Object.keys(datos).filter(function(j) {
-            return baseOrden.indexOf(j) === -1 && nuevosAprobados.indexOf(j) === -1;
-        });
-        var nuevos = [].concat(nuevosAprobados, otrosConDocumento).filter(function(j) {
-            return !datos[j] || !datos[j].equipo;
-        });
-        var ordenCompleto = [].concat(baseOrden, nuevos);
-
-        // Los saltados por no responder a tiempo van al FINAL de la cola —
-        // tienen una segunda oportunidad después de que todos los demás elijan,
-        // en vez de quedar bloqueados para siempre.
-        var esMarcadorVacante = function(j) { return typeof j === 'string' && j.indexOf('__VACANTE_') === 0; };
-        var pendientesNormales = ordenCompleto.filter(function(j) {
-            return esMarcadorVacante(j) || !datos[j] || (!datos[j].equipo && !datos[j].saltado);
-        });
-        var saltadosSinEquipo = ordenCompleto.filter(function(j) {
-            return !esMarcadorVacante(j) && datos[j] && datos[j].saltado && !datos[j].equipo;
-        });
-        var ordenConf = [].concat(pendientesNormales, saltadosSinEquipo);
+        var ordenConf = calcularOrdenElOtro(datos, vacantes, jugadoresAprobados, jugadoresInactivos);
         setOrdenFinal(ordenConf);
 
         // Los equipos de jugadores ELIMINADOS no cuentan como "cogidos" — si
@@ -6716,20 +7102,10 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         // saltados — reaparecen al final, con su cronómetro reiniciado).
         // El draft no arranca hasta PLAZO_APERTURA_EL_OTRO, y se pausa cada
         // noche de 01:00 a 09:00 — nadie recibe turno nuevo en ese tramo.
-        // Un jugador ELIMINADO nunca recibe turno, aunque su equipo se haya
-        // quedado libre (evita "revivir" a alguien que ya no juega).
         var ahoraCheck = new Date();
         var draftAbierto = ahoraCheck >= PLAZO_APERTURA_EL_OTRO && !estaEnPausaNocturna(ahoraCheck);
         setEnPausaNocturna(ahoraCheck >= PLAZO_APERTURA_EL_OTRO && estaEnPausaNocturna(ahoraCheck));
-        var turno = null;
-        if (draftAbierto) {
-            for (var i = 0; i < ordenConf.length; i++) {
-                var j = ordenConf[i];
-                if (esMarcadorVacante(j)) continue;
-                if (jugadoresInactivos.indexOf(j) !== -1) continue;
-                if (!datos[j] || !datos[j].equipo) { turno = j; break; }
-            }
-        }
+        var turno = draftAbierto ? calcularTurnoElOtro(ordenConf, datos, jugadoresInactivos) : null;
         setTurnoActual(turno);
 
         // En cuanto alguien pasa a ser "el turno actual", le arrancamos el
@@ -6893,7 +7269,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
             {/* Reglas — en burbujas desplegables */}
             <AcordeonAyuda icono="📖" titulo="Cómo funciona" abiertoPorDefecto={false}>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,lineHeight:1.7,margin:0}}>
-                    Cada jugador tiene un equipo de Primera División asignado para <strong>toda la temporada</strong>. Cada jornada decides si lo activas o no — actívalo antes de que empiece la jornada de Primera de tu equipo. Si <strong>gana</strong> → multiplicas tus puntos de esa jornada (redondeo al alza). Si <strong>empata</strong> → tus puntos se quedan igual. Si <strong>pierde</strong> → tus puntos se dividen (redondeo a la baja). El multiplicador sube con el uso: <strong>×2</strong> al principio, <strong>×2.5</strong> desde tu 3ª activación, <strong>×3</strong> desde la 5ª. Tu equipo es <strong>secreto durante las 3 primeras activaciones</strong> — a partir de ahí (×2.5) se hace público para todos.
+                    Cada jugador tiene un equipo de Primera División asignado para <strong>toda la temporada</strong>. Cada jornada decides si lo activas o no — actívalo antes de que empiece la jornada de Primera de tu equipo. Si <strong>gana</strong> → multiplicas tus puntos de esa jornada (redondeo al alza). Si <strong>empata</strong> → tus puntos se quedan igual. Si <strong>pierde</strong> → tus puntos se dividen (redondeo a la baja). El multiplicador sube con el uso: <strong>×2</strong> al principio, <strong>×2.5</strong> desde tu 3ª activación, <strong>×3</strong> desde la 5ª. Tu equipo es <strong>secreto durante las 3 primeras activaciones</strong> — a partir de ahí (×2.5) se hace público para todos. <strong>Si te saltas una jornada sin activar, el acumulado se pierde y vuelves a ×2</strong> — perder una jornada activada NO te hace decaer, solo el no activar.
                 </p>
             </AcordeonAyuda>
 
@@ -7848,6 +8224,7 @@ function App() {
     const [clasificacionData, setClasificacionData] = useState([]);
     const [showTutorial, setShowTutorial] = useState(false);
     const [pagosGlobal, setPagosGlobal] = useState([]);
+    const [solicitudesGlobal, setSolicitudesGlobal] = useState([]); // para el aviso de solicitudes pendientes en el menú
     const [mostrarPresentacion, setMostrarPresentacion] = useState(false);
 
     // ── Tema visual — pizarra oscura / pizarra clara. Por defecto oscuro. ──
@@ -7912,9 +8289,20 @@ function App() {
             // Admin identificado por nombre mientras usamos login simple
             setIsAdmin(user === 'Juanma');
 
+            // Notificaciones push — se registra en segundo plano, sin
+            // bloquear el login si el navegador no las soporta o el
+            // jugador no da permiso.
+            registrarNotificacionesPush(user);
+
             // Listeners de Firestore post-login
             onSnapshot(collection(db, 'pagos'), function(snap) {
                 setPagosGlobal(snap.docs.map(function(d){return{id:d.id,...d.data()};}));
+            });
+            // Solo hace falta cargarlas para el admin (que es quien las gestiona),
+            // pero no hace daño mantenerlo simple y cargarlas siempre — el coste
+            // es mínimo y así el badge del menú funciona sin condiciones raras.
+            onSnapshot(collection(db, 'solicitudes_ingreso'), function(snap) {
+                setSolicitudesGlobal(snap.docs.map(function(d){return{id:d.id,...d.data()};}));
             });
             onSnapshot(doc(db, "configuracion", "escudos"), function(snap) {
                 if (snap.exists()) setTeamLogos(snap.data());
@@ -8028,7 +8416,13 @@ function App() {
         { id: 'pagos', label: 'Pagos', icon: 'ti-wallet' },
         { id: 'perfil', label: 'Mi Perfil', icon: 'ti-user-circle' },
     ];
-    if (isAdmin) TABS.push({ id: 'admin', label: 'Admin', icon: 'ti-settings' });
+    // Aviso para el admin: cuántas solicitudes y pagos están pendientes de
+    // gestionar, para que se vea de un vistazo en el menú sin tener que
+    // entrar a comprobarlo cada vez.
+    var solicitudesPendientesCount = solicitudesGlobal.filter(function(s) { return !s.estado || s.estado === 'pendiente'; }).length;
+    var pagosPendientesCount = pagosGlobal.filter(function(p) { return p.estado === 'pendiente_confirmacion'; }).length;
+    var avisosAdminCount = solicitudesPendientesCount + pagosPendientesCount;
+    if (isAdmin) TABS.push({ id: 'admin', label: 'Admin', icon: 'ti-settings', badge: avisosAdminCount > 0 ? avisosAdminCount : null });
 
     return (
         <div style={{ position: 'fixed', inset: 0, background: TEMA.fondoApp, overflow: 'hidden', fontFamily: "'Teko', sans-serif" }}>
@@ -8111,6 +8505,7 @@ function App() {
                                     {tab.label}
                                 </span>
                                 {tab.id === 'elOtro' && <span style={{ marginLeft: 'auto', fontFamily: "'Teko',sans-serif", fontSize: 13, background: 'rgba(255,215,0,0.15)', color: '#FFD700', padding: '2px 8px', borderRadius: 10 }}>?</span>}
+                                {tab.badge != null && <span style={{ marginLeft: 'auto', fontFamily: "'Teko',sans-serif", fontSize: 12, fontWeight: 700, background: '#e63946', color: '#fff', padding: '1px 8px', borderRadius: 10, minWidth: 18, textAlign: 'center' }}>{tab.badge}</span>}
                             </button>
                         );
                     })}
