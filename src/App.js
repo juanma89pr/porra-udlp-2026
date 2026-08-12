@@ -1315,7 +1315,15 @@ const ModoConstruccion = () => {
 // a qué hora del día se cargara. Ahora es una fecha del pasado, fija, y a
 // partir de aquí lo único que sigue pausando el draft día a día es la
 // pausa nocturna (01:00-09:00), no esto.
-const PLAZO_APERTURA_EL_OTRO = new Date('2026-08-12T23:00:00Z');
+// El draft ya lleva días abierto de verdad (turnos reales, saltos reales,
+// bajas reales ya han pasado) — así que esta fecha ya no necesita ser
+// precisa, solo tiene que quedar inequívocamente en el pasado para siempre,
+// sin que yo tenga que adivinar la fecha exacta de apertura cada vez (eso
+// es justo lo que salió mal la vez anterior: adiviné mal y puse la
+// apertura en la noche de HOY en vez de en el pasado). A partir de aquí,
+// lo único que sigue pausando el draft día a día es la pausa nocturna
+// (01:00-09:00), nunca esta fecha.
+const PLAZO_APERTURA_EL_OTRO = new Date('2020-01-01T00:00:00Z');
 const PLAZO_EL_OTRO = new Date('2026-08-14T17:00:00Z');
 // Tiempo máximo por turno antes de saltarlo: 60 minutos
 const TIMEOUT_TURNO_MINUTOS = 60;
@@ -1389,9 +1397,6 @@ function CuentaAtrasElOtro() {
             </p>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:30,fontWeight:700,color:'#FFD700',letterSpacing:2}}>
                 {pad(horas)}:{pad(minutos)}:{pad(segundos)}
-            </p>
-            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:4}}>
-                ahora: {ahora.toISOString()} · apertura: {PLAZO_APERTURA_EL_OTRO.toISOString()}
             </p>
         </div>
     );
