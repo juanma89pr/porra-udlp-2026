@@ -1341,6 +1341,9 @@ function CuentaAtrasElOtro() {
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:30,fontWeight:700,color:'#FFD700',letterSpacing:2}}>
                 {pad(horas)}:{pad(minutos)}:{pad(segundos)}
             </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:4}}>
+                ahora: {ahora.toISOString()} · apertura: {PLAZO_APERTURA_EL_OTRO.toISOString()}
+            </p>
         </div>
     );
 }
@@ -1627,7 +1630,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)',lineHeight:1.6}}>
                         Tu apuesta ya está guardada, pero <strong>no contará al cerrar la jornada</strong> hasta que pagues por Bizum. Pagar no bloquea que sigas cambiando tu resultado — solo confirma tu participación.
                     </p>
-                    <button onClick={onIrAPagos} style={{marginTop:10,fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,
+                    <button onClick={function(){ onIrAPagos(jornadaCodigo, jornada.esVip); }} style={{marginTop:10,fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,
                         background:'#001F6B',color:'#FFD700',border:'none',borderRadius:20,padding:'8px 18px',cursor:'pointer'}}>
                         Ir a pagar →
                     </button>
@@ -3464,7 +3467,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
     );
 };
 
-const PagosScreen = ({ currentUser }) => {
+const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
     var G = styles.colors;
     var JUGADORES_FUNDADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
@@ -3489,6 +3492,19 @@ const PagosScreen = ({ currentUser }) => {
         });
         return function() { unsub(); };
     }, []);
+
+    // Si llegamos aquí desde el aviso de "falta pagar esta jornada" en Mi
+    // Jornada, viene con el tipo y la jornada ya decididos — saltamos
+    // directos al paso de selección, ya rellena, en vez de obligar a elegir
+    // todo desde cero otra vez.
+    useEffect(function() {
+        if (!contextoPago) return;
+        setTipoPago(contextoPago.tipo);
+        setJornadaSel(contextoPago.jornada);
+        setJugadoresPagando([currentUser]);
+        setPaso('seleccion');
+        if (onContextoPagoUsado) onContextoPagoUsado();
+    }, [contextoPago]);
 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
@@ -4997,12 +5013,29 @@ const GestionHuecoVacante = () => {
 
     var marcarBaja = async function() {
         if (!nombreOriginal.trim()) { setMsg('Escribe el nombre exacto de quien se da de baja.'); return; }
-        var yaExiste = vacantes.some(function(v) { return v.id === nombreOriginal.trim(); });
+        var nombre = nombreOriginal.trim();
+        var yaExiste = vacantes.some(function(v) { return v.id === nombre; });
         if (yaExiste) { setMsg('Ya hay un hueco registrado para ese nombre — mira la lista de abajo.'); return; }
-        await setDoc(doc(db, 'elOtroVacantes', nombreOriginal.trim()), {
-            original: nombreOriginal.trim(), nuevo: null, marcadoEn: serverTimestamp(), resueltoEn: null,
+
+        // Comprobación clave: si ya había elegido equipo antes de irse, NO se
+        // crea un hueco "para comprar" — ya usó su turno, así que no hay
+        // ninguna posición que ofrecer. Solo se libera su equipo (para que
+        // otro lo pueda elegir) y queda fuera del orden, sin más.
+        var elOtroSnap = await getDoc(doc(db, 'elOtro', nombre));
+        var yaTeniaEquipo = elOtroSnap.exists() && elOtroSnap.data().equipo;
+        if (yaTeniaEquipo) {
+            await setDoc(doc(db, 'elOtro', nombre), {
+                equipoAbandonado: elOtroSnap.data().equipo, equipo: null,
+            }, { merge: true });
+            setMsg('✅ ' + nombre + ' ya había elegido equipo (' + elOtroSnap.data().equipo + ') — se libera ese equipo para que otro lo elija, pero NO se crea ningún hueco para comprar, porque ' + nombre + ' ya usó su turno.');
+            setNombreOriginal('');
+            return;
+        }
+
+        await setDoc(doc(db, 'elOtroVacantes', nombre), {
+            original: nombre, nuevo: null, marcadoEn: serverTimestamp(), resueltoEn: null,
         });
-        setMsg('✅ Hueco de ' + nombreOriginal.trim() + ' registrado, pendiente de asignar.');
+        setMsg('✅ Hueco de ' + nombre + ' registrado, pendiente de asignar (no había elegido equipo todavía).');
         setNombreOriginal('');
     };
 
@@ -5547,8 +5580,8 @@ const NormativaScreen = () => {
 
             <AcordeonAyuda icono="⚽" titulo="La Porra" abiertoPorDefecto={true}>
                 <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
-                    <p style={{marginBottom:8}}>Cada jornada de la UDLP, adivinas el <strong>marcador exacto</strong> y el <strong>1X2</strong> (quién gana, pierde o empata), y opcionalmente el <strong>primer goleador</strong>.</p>
-                    <p style={{marginBottom:8}}><strong>Puntos:</strong> marcador exacto +3 (jornada VIP +6) · 1X2 acertado +1 (VIP +2) · goleador acertado +2 (VIP +4) · sin goleador acertado ("SG") +1.</p>
+                    <p style={{marginBottom:8}}>Cada jornada de la UDLP, adivinas el <strong>marcador exacto</strong> y el <strong>1X2</strong> (quién gana, pierde o empata).</p>
+                    <p style={{marginBottom:8}}><strong>Puntos:</strong> marcador exacto +3 (jornada VIP +6) · 1X2 acertado +1 (VIP +2).</p>
                     <p style={{marginBottom:8}}><strong>Cierre:</strong> las apuestas se cierran <strong>5 minutos antes</strong> del partido de la UDLP. Puedes cambiar tu apuesta cuantas veces quieras hasta ese momento.</p>
                     <p style={{marginBottom:8}}><strong>Secreto hasta el cierre:</strong> nadie ve el resultado de nadie mientras la jornada está abierta. Solo se ven estadísticas agregadas (qué marcadores se repiten, cuántos Local/Empate/Visitante) — y solo a partir de <strong>5 apuestas guardadas</strong>, para que nunca se pueda intuir quién puso qué con pocos datos.</p>
                     <p style={{margin:0}}><strong>⚠️ Pago obligatorio por jornada:</strong> el sistema te deja apostar siempre, pero tu resultado <strong>solo cuenta si pagas esa jornada por Bizum</strong> antes del cierre. Pagar no bloquea que sigas cambiando tu apuesta — solo confirma tu participación. Si no pagas, tu apuesta se guarda pero no puntúa.</p>
@@ -6671,6 +6704,16 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
     };
 
     var esMiTurno = turnoActual === currentUser;
+
+    // Aviso de "ya te toca" — vibra el móvil una sola vez en cuanto pasa a
+    // ser tu turno (no repite en cada repintado). No hace falta ningún
+    // permiso nuevo para esto, funciona directo en cualquier navegador móvil
+    // que lo soporte.
+    useEffect(function() {
+        if (esMiTurno && !yoElegí && navigator.vibrate) {
+            navigator.vibrate([200, 100, 200, 100, 200]);
+        }
+    }, [esMiTurno]);
     var yoElegí = miElOtro && miElOtro.equipo;
     var plazoSuperado = new Date() > PLAZO_EL_OTRO;
 
@@ -6707,17 +6750,8 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                 </p>
             </AcordeonAyuda>
 
-            {/* Aviso: el draft todavía no ha empezado */}
-            {new Date() < PLAZO_APERTURA_EL_OTRO && (
-                <div style={{background:'rgba(0,31,107,0.06)',borderRadius:14,padding:18,marginBottom:16,textAlign:'center',border:'1px dashed rgba(0,31,107,0.2)'}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:G.deepBlue,marginBottom:4}}>
-                        🕛 El draft todavía no ha empezado
-                    </p>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6}}>
-                        Arranca esta noche a las 00:00 — Pedrito, el primero de la cola, podrá elegir a partir de ese momento.
-                    </p>
-                </div>
-            )}
+            {/* Cuenta atrás — apertura de temporada, o pausa nocturna */}
+            <CuentaAtrasElOtro />
 
             {/* Aviso: pausa nocturna — por igualdad de condiciones, ya que hay gente durmiendo */}
             {enPausaNocturna && (
@@ -7642,6 +7676,7 @@ const IntroPresentacionGate = ({ onFinish, user }) => {
 function App() {
     const [screen, setScreen] = useState('login');
     const [activeTab, setActiveTab] = useState('miJornada');
+    const [contextoPago, setContextoPago] = useState(null); // { tipo, jornada } — para llegar a Pagos ya con todo relleno
     const [drawerOpen, setDrawerOpen] = useState(true);
     const [drawerHintShown, setDrawerHintShown] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
@@ -7817,7 +7852,7 @@ function App() {
 
     var renderContent = function() {
         switch (activeTab) {
-            case 'miJornada':    return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantillaConFotos} userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
+            case 'miJornada':    return <MiJornadaScreen user={currentUser} teamLogos={teamLogos} plantilla={plantillaConFotos} userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} onIrAPagos={function(jornadaCodigo, esVip){ setContextoPago({ tipo: esVip ? 'jornada_vip' : 'jornada_normal', jornada: jornadaCodigo }); setActiveTab('pagos'); }} />;
             case 'laJornada':   return <LaJornadaScreen userProfiles={userProfiles} onlineUsers={onlineUsers} teamLogos={teamLogos} />;
             case 'elOtro':      return <ElOtroScreen currentUser={currentUser} userProfiles={userProfiles} pagos={pagosGlobal} teamLogos={teamLogos} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'estrellas':   return <MisEstrellasScreen currentUser={currentUser} plantilla={plantillaConFotos} userProfiles={userProfiles} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
@@ -7825,7 +7860,7 @@ function App() {
             case 'normativa':     return <NormativaScreen />;
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
-            case 'pagos':       return <PagosScreen currentUser={currentUser} />;
+            case 'pagos':       return <PagosScreen currentUser={currentUser} contextoPago={contextoPago} onContextoPagoUsado={function(){setContextoPago(null);}} />;
             case 'perfil':      return <PerfilScreen currentUser={currentUser} tema={tema} cambiarTema={cambiarTema} />;
             case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantillaConFotos} teamLogos={teamLogos} /> : null;
             default:            return null;
