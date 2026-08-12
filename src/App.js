@@ -5055,6 +5055,104 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
 // se perdía y Pedro "reaparecía". Ahora cada baja vive en su propio
 // documento — Óscar queda fijo en el puesto de Pedro para siempre, y
 // Carmelo es un hueco totalmente aparte, sin tocar lo de Pedro/Óscar.
+// Admin: rastrea en tiempo real quién tiene el turno activo en El Otro
+// Equipo y cuánto tiempo efectivo le queda (respetando la pausa nocturna,
+// igual que el cronómetro real de la app) — para tener visibilidad sin
+// tener que entrar a la pantalla de El Otro Equipo como jugador.
+const RastreadorTiemposElOtro = ({ jugadoresLista }) => {
+    var [todosElOtro, setTodosElOtro] = useState({});
+    var [ahora, setAhora] = useState(new Date());
+
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, 'elOtro'), function(snap) {
+            var datos = {};
+            snap.forEach(function(d) { datos[d.id] = d.data(); });
+            setTodosElOtro(datos);
+        });
+        return function() { unsub(); };
+    }, []);
+
+    useEffect(function() {
+        var t = setInterval(function() { setAhora(new Date()); }, 1000);
+        return function() { clearInterval(t); };
+    }, []);
+
+    // Quién tiene el turno activo ahora mismo: ya empezó su cronómetro, no
+    // tiene equipo todavía, y no ha sido saltado.
+    var turnoActivo = null;
+    Object.keys(todosElOtro).forEach(function(nombre) {
+        var d = todosElOtro[nombre];
+        if (d.turnoIniciadoEn && !d.equipo && !d.saltado) turnoActivo = nombre;
+    });
+
+    var minutosRestantes = null;
+    if (turnoActivo) {
+        var d = todosElOtro[turnoActivo];
+        var inicio = d.turnoIniciadoEn.toDate ? d.turnoIniciadoEn.toDate() : new Date(d.turnoIniciadoEn);
+        var transcurrido = minutosEfectivosTranscurridos(inicio, ahora);
+        minutosRestantes = Math.max(0, TIMEOUT_TURNO_MINUTOS - transcurrido);
+    }
+
+    // El resto de jugadores que todavía no han elegido equipo — sin
+    // cronómetro corriendo aún, solo para tener el contexto completo.
+    var pendientesSinTurno = jugadoresLista.filter(function(j) {
+        var d = todosElOtro[j];
+        return (!d || !d.equipo) && j !== turnoActivo;
+    });
+
+    var pad = function(n) { return String(Math.floor(n)).padStart(2, '0'); };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                ⏱️ Tiempos de El Otro Equipo
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14,lineHeight:1.5}}>
+                Quién tiene el turno activo ahora mismo y cuánto le queda — con el mismo cálculo que ve el jugador (descuenta la pausa nocturna 01:00-09:00 automáticamente).
+            </p>
+
+            {estaEnPausaNocturna(ahora) ? (
+                <div style={{background:'rgba(0,31,107,0.05)',borderRadius:10,padding:14,textAlign:'center'}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)'}}>
+                        🌙 En pausa nocturna ahora mismo — los cronómetros están congelados hasta las 09:00.
+                    </p>
+                </div>
+            ) : turnoActivo ? (
+                <div style={{background:'rgba(255,215,0,0.1)',border:'1px solid rgba(212,175,55,0.3)',borderRadius:10,padding:14,marginBottom:14,textAlign:'center'}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#8a6a00',textTransform:'uppercase',letterSpacing:1,marginBottom:4}}>Turno activo</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#001F6B'}}>{turnoActivo}</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color: minutosRestantes < 10 ? '#e63946' : '#8a6a00'}}>
+                        {pad(minutosRestantes)}:{pad((minutosRestantes % 1) * 60)} restantes
+                    </p>
+                </div>
+            ) : (
+                <div style={{background:'rgba(0,31,107,0.05)',borderRadius:10,padding:14,textAlign:'center',marginBottom:14}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)'}}>
+                        Nadie tiene el turno activo ahora mismo.
+                    </p>
+                </div>
+            )}
+
+            {pendientesSinTurno.length > 0 && (
+                <div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>
+                        Todavía sin elegir ({pendientesSinTurno.length})
+                    </p>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                        {pendientesSinTurno.map(function(j) {
+                            return (
+                                <span key={j} style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(0,31,107,0.05)',color:'rgba(0,31,107,0.6)',padding:'4px 10px',borderRadius:10}}>
+                                    {j}
+                                </span>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const GestionHuecoVacante = () => {
     var [vacantes, setVacantes] = useState([]);
     var [nombreOriginal, setNombreOriginal] = useState('');
@@ -6198,6 +6296,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'herramientas' && (
                 <div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>👤 Gestión de jugadores</p>
                     {/* Resetear tutorial */}
                     <div style={A.card}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
@@ -6210,6 +6309,29 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                             {JUGADORES_LISTA.map(function(j) {
                                 return (
                                     <button key={j} onClick={function(){resetearTutorial(j);}} style={{...A.btnPrimary,padding:'6px 12px',fontSize:12,background:'rgba(0,31,107,0.08)',color:'#001F6B'}}>
+                                        {j}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Resetear PIN */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                            🔑 Resetear PIN de jugador
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            Si un jugador ha olvidado su PIN, bórralo aquí. La próxima vez que entre podrá crear uno nuevo.
+                        </p>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            {JUGADORES_LISTA.map(function(j) {
+                                return (
+                                    <button key={j} onClick={async function() {
+                                        if (!window.confirm('¿Borrar el PIN de ' + j + '? Tendrá que crear uno nuevo.')) return;
+                                        await deleteDoc(doc(db, 'pines', j));
+                                        setMsgAdmin('✅ PIN de ' + j + ' eliminado');
+                                    }} style={{...A.btnPrimary,padding:'6px 12px',fontSize:12,background:'rgba(230,57,70,0.08)',color:'#e63946'}}>
                                         {j}
                                     </button>
                                 );
@@ -6275,29 +6397,11 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                         </div>
                     </div>
 
-                    {/* Resetear PIN */}
-                    <div style={A.card}>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
-                            🔑 Resetear PIN de jugador
-                        </p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
-                            Si un jugador ha olvidado su PIN, bórralo aquí. La próxima vez que entre podrá crear uno nuevo.
-                        </p>
-                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                            {JUGADORES_LISTA.map(function(j) {
-                                return (
-                                    <button key={j} onClick={async function() {
-                                        if (!window.confirm('¿Borrar el PIN de ' + j + '? Tendrá que crear uno nuevo.')) return;
-                                        await deleteDoc(doc(db, 'pines', j));
-                                        setMsgAdmin('✅ PIN de ' + j + ' eliminado');
-                                    }} style={{...A.btnPrimary,padding:'6px 12px',fontSize:12,background:'rgba(230,57,70,0.08)',color:'#e63946'}}>
-                                        {j}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
+                    <PonerApodoAdmin jugadoresLista={JUGADORES_LISTA} />
 
+                    <MostrarApellidosAdmin />
+
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>🛡️ El Otro Equipo</p>
                     {/* El Otro Equipo — gestión de turnos */}
                     <div style={A.card}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
@@ -6318,19 +6422,13 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                         </div>
                     </div>
 
+                    {/* Rastreador de tiempos en vivo */}
+                    <RastreadorTiemposElOtro jugadoresLista={JUGADORES_LISTA} />
+
                     {/* El Otro Equipo — hueco simbólico por baja */}
                     <GestionHuecoVacante />
 
-                    {/* App lanzada al público */}
-                    <div style={A.card}>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
-                            ✅ App lanzada
-                        </p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
-                            El modo construcción está desactivado — la app es pública desde el 11 de agosto de 2026. Todos los jugadores ven la presentación de bienvenida la primera vez que entran.
-                        </p>
-                    </div>
-
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>⭐ Plantilla y Estrellas</p>
                     {/* Buscador de IDs de API-Football para la plantilla */}
                     <BuscadorApiIdsPlantilla plantilla={plantilla} />
 
@@ -6341,9 +6439,16 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
 
                     <GestionPlantillaAdmin plantilla={plantilla} />
 
-                    <PonerApodoAdmin jugadoresLista={JUGADORES_LISTA} />
-
-                    <MostrarApellidosAdmin />
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>⚙️ General</p>
+                    {/* App lanzada al público */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                            ✅ App lanzada
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            El modo construcción está desactivado — la app es pública desde el 11 de agosto de 2026. Todos los jugadores ven la presentación de bienvenida la primera vez que entran.
+                        </p>
+                    </div>
 
                     {/* Enlace de invitación */}
                     <div style={A.card}>
