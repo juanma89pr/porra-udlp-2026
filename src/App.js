@@ -5081,17 +5081,33 @@ const GestionHuecoVacante = () => {
         var yaExiste = vacantes.some(function(v) { return v.id === nombre; });
         if (yaExiste) { setMsg('Ya hay un hueco registrado para ese nombre — mira la lista de abajo.'); return; }
 
-        // Comprobación clave: si ya había elegido equipo antes de irse, NO se
-        // crea un hueco "para comprar" — ya usó su turno, así que no hay
-        // ninguna posición que ofrecer. Solo se libera su equipo (para que
-        // otro lo pueda elegir) y queda fuera del orden, sin más.
+        // Si ya había elegido equipo antes de irse, se pregunta qué hacer —
+        // ya no es una regla fija: puede que quieras dejar su plaza cerrada
+        // sin más, o puede que quieras dejarla abierta para que alguien pague
+        // por saltarse la cola y elegir antes que el resto. Tú decides cada
+        // vez, caso por caso.
         var elOtroSnap = await getDoc(doc(db, 'elOtro', nombre));
         var yaTeniaEquipo = elOtroSnap.exists() && elOtroSnap.data().equipo;
         if (yaTeniaEquipo) {
-            await setDoc(doc(db, 'elOtro', nombre), {
-                equipoAbandonado: elOtroSnap.data().equipo, equipo: null,
-            }, { merge: true });
-            setMsg('✅ ' + nombre + ' ya había elegido equipo (' + elOtroSnap.data().equipo + ') — se libera ese equipo para que otro lo elija, pero NO se crea ningún hueco para comprar, porque ' + nombre + ' ya usó su turno.');
+            var dejarComprable = window.confirm(
+                nombre + ' ya había elegido equipo (' + elOtroSnap.data().equipo + ').\n\n' +
+                'Pulsa ACEPTAR si quieres dejar su plaza pendiente para que alguien la pague (2€) y se salte la cola, eligiendo antes que el resto.\n\n' +
+                'Pulsa CANCELAR si solo quieres liberar su equipo, sin ofrecer la plaza a nadie.'
+            );
+            if (dejarComprable) {
+                await setDoc(doc(db, 'elOtro', nombre), {
+                    equipoAbandonado: elOtroSnap.data().equipo, equipo: null,
+                }, { merge: true });
+                await setDoc(doc(db, 'elOtroVacantes', nombre), {
+                    original: nombre, nuevo: null, marcadoEn: serverTimestamp(), resueltoEn: null,
+                });
+                setMsg('✅ ' + nombre + ' — equipo liberado y plaza pendiente de comprar, saltándose la cola.');
+            } else {
+                await setDoc(doc(db, 'elOtro', nombre), {
+                    equipoAbandonado: elOtroSnap.data().equipo, equipo: null,
+                }, { merge: true });
+                setMsg('✅ ' + nombre + ' — equipo liberado, sin ofrecer la plaza a nadie.');
+            }
             setNombreOriginal('');
             return;
         }
@@ -6213,24 +6229,35 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                             {JUGADORES_LISTA.map(function(j) {
                                 return (
                                     <button key={j} onClick={async function() {
-                                        if (!window.confirm('¿Eliminar a ' + j + ' definitivamente?\n\n· Ya no podrá entrar a la app\n· Si aún no había elegido equipo en El Otro, su hueco en la cola quedará "disponible"\n· Si YA había elegido equipo, ese equipo queda libre para que otro lo pueda elegir\n\nEsto no borra su historial de puntos ni pagos pasados.')) return;
+                                        if (!window.confirm('¿Eliminar a ' + j + ' definitivamente?\n\n· Ya no podrá entrar a la app\n· Si aún no había elegido equipo en El Otro, su hueco en la cola quedará "disponible"\n· Si YA había elegido equipo, se te preguntará si quieres dejar su plaza pendiente de comprar o cerrarla del todo\n\nEsto no borra su historial de puntos ni pagos pasados.')) return;
                                         try {
                                             await setDoc(doc(db, 'configuracion', 'jugadoresInactivos'), { nombres: arrayUnion(j) }, { merge: true });
                                             await deleteDoc(doc(db, 'pines', j));
 
-                                            // ¿Ya había elegido equipo en El Otro? Si sí, se libera el equipo
-                                            // (sin tocar su historial de activaciones ya calculadas) en vez de
-                                            // marcar el hueco de la cola como vacante — ese hueco ya no aplica
-                                            // porque su turno ya pasó.
+                                            // ¿Ya había elegido equipo en El Otro? Si sí, se pregunta qué
+                                            // hacer con la plaza — dejarla pendiente de comprar (se salta la
+                                            // cola quien la pague) o cerrarla sin ofrecerla a nadie. Ya no es
+                                            // una regla fija, se decide caso por caso.
                                             var elOtroSnap = await getDoc(doc(db, 'elOtro', j));
                                             var yaTeniaEquipo = elOtroSnap.exists() && elOtroSnap.data().equipo;
                                             if (yaTeniaEquipo) {
+                                                var dejarComprable = window.confirm(
+                                                    j + ' ya había elegido equipo (' + elOtroSnap.data().equipo + ').\n\n' +
+                                                    'Pulsa ACEPTAR si quieres dejar su plaza pendiente para que alguien la pague (2€) y se salte la cola.\n\n' +
+                                                    'Pulsa CANCELAR si solo quieres liberar su equipo, sin ofrecer la plaza a nadie.'
+                                                );
                                                 await setDoc(doc(db, 'elOtro', j), {
                                                     equipoAbandonado: elOtroSnap.data().equipo, // se guarda para el historial
                                                     equipo: null, // libera el equipo para que otro lo pueda elegir
                                                 }, { merge: true });
-                                                setMsgAdmin('✅ ' + j + ' eliminado. Su equipo (' + elOtroSnap.data().equipo + ') ya está libre para otro jugador.');
-                                                alert('✅ ' + j + ' eliminado correctamente.\n\nYa no podrá entrar a la app. Su equipo de El Otro (' + elOtroSnap.data().equipo + ') ya está libre — cualquiera puede elegirlo ahora, sin que a ' + j + ' se le vuelva a asignar turno.');
+                                                if (dejarComprable) {
+                                                    await setDoc(doc(db, 'elOtroVacantes', j), { original: j, nuevo: null, marcadoEn: serverTimestamp(), resueltoEn: null });
+                                                    setMsgAdmin('✅ ' + j + ' eliminado. Equipo liberado y plaza pendiente de comprar.');
+                                                    alert('✅ ' + j + ' eliminado correctamente.\n\nSu equipo (' + elOtroSnap.data().equipo + ') está libre, y además su plaza queda pendiente de que alguien la pague para saltarse la cola.');
+                                                } else {
+                                                    setMsgAdmin('✅ ' + j + ' eliminado. Su equipo (' + elOtroSnap.data().equipo + ') ya está libre para otro jugador.');
+                                                    alert('✅ ' + j + ' eliminado correctamente.\n\nYa no podrá entrar a la app. Su equipo de El Otro (' + elOtroSnap.data().equipo + ') ya está libre — cualquiera puede elegirlo ahora, sin que a ' + j + ' se le vuelva a asignar turno.');
+                                                }
                                             } else {
                                                 await setDoc(doc(db, 'elOtroVacantes', j), { original: j, nuevo: null, marcadoEn: serverTimestamp(), resueltoEn: null });
                                                 setMsgAdmin('✅ ' + j + ' eliminado. Su hueco en El Otro Equipo ya está disponible.');
