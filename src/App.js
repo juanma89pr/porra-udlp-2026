@@ -6336,18 +6336,15 @@ const ORDEN_ELECCION_EL_OTRO = [
 // Hora canaria = UTC+1 en verano
 // Apertura: lunes 11 agosto 12:00 WEST = 11:00 UTC
 // Cierre: viernes 14 agosto 18:00 WEST = 17:00 UTC
-// Plazo del draft de El Otro Equipo — arranca esta noche a las 00:00 hora
-// canaria (medianoche de hoy a mañana). Antes esta fecha solo se mostraba en
-// el texto informativo pero no bloqueaba nada de verdad — ahora sí impide
-// que se asigne turno a nadie (ni a Pedrito, el primero de la cola) antes de
-// esa hora exacta.
-function calcularAperturaMedianocheHoy() {
-    var hoy = new Date();
-    // 00:00 hora canaria (inicio de "mañana" en local) = 23:00 UTC de HOY
-    // (UTC+1 en agosto, horario de verano canario)
-    return new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate(), 23, 0, 0));
-}
-const PLAZO_APERTURA_EL_OTRO = calcularAperturaMedianocheHoy();
+// Plazo de APERTURA del draft de El Otro Equipo — fecha FIJA de la primera
+// noche real de apertura, no recalculada. El fallo real que había: esta
+// constante se calculaba como "medianoche de HOY" cada vez que alguien
+// cargaba la app — como el draft ya lleva días abierto, seguía diciendo
+// "abre esta noche" para siempre, con un número de horas sin sentido según
+// a qué hora del día se cargara. Ahora es una fecha del pasado, fija, y a
+// partir de aquí lo único que sigue pausando el draft día a día es la
+// pausa nocturna (01:00-09:00), no esto.
+const PLAZO_APERTURA_EL_OTRO = new Date('2026-08-12T23:00:00Z');
 const PLAZO_EL_OTRO = new Date('2026-08-14T17:00:00Z');
 // Tiempo máximo por turno antes de saltarlo: 60 minutos
 const TIMEOUT_TURNO_MINUTOS = 60;
@@ -6564,13 +6561,17 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         }
     }, [todosElOtro, vacantes, currentUser, jugadoresAprobados, jugadoresInactivos]);
 
-    // Temporizador: si es mi turno, cuenta atrás de 60 minutos — y si se agota,
-    // me marco a mí mismo como "saltado" (paso al final de la cola) para que
-    // el draft nunca se quede bloqueado esperando a una sola persona.
+    // Temporizador: cuenta atrás de 60 minutos del turno ACTUAL (sea de quien
+    // sea) — antes solo corría en el móvil de la propia persona a la que le
+    // tocaba, así que si cerraba la app o se dormía, nadie más comprobaba su
+    // tiempo y el salto automático nunca llegaba a dispararse. Ahora corre en
+    // CUALQUIER dispositivo que tenga esta pantalla abierta — basta con que
+    // una sola persona del grupo tenga la app abierta en algún momento para
+    // que el salto se aplique a quien corresponda, sea quien sea.
     useEffect(function() {
-        if (turnoActual !== currentUser) { setTiempoRestante(null); return; }
-        var datos = todosElOtro[currentUser];
-        if (!datos || !datos.turnoIniciadoEn) return;
+        if (!turnoActual) { setTiempoRestante(null); return; }
+        var datos = todosElOtro[turnoActual];
+        if (!datos || !datos.turnoIniciadoEn) { setTiempoRestante(null); return; }
 
         var intervalo = setInterval(function() {
             var ahora = new Date();
@@ -6578,10 +6579,14 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
             var transcurrido = minutosEfectivosTranscurridos(inicio, ahora); // descuenta la pausa nocturna
             var restante = TIMEOUT_TURNO_MINUTOS - transcurrido;
             if (restante <= 0) {
-                setTiempoRestante(0);
+                if (turnoActual === currentUser) setTiempoRestante(0);
                 clearInterval(intervalo);
-                setDoc(doc(db, "elOtro", currentUser), { saltado: true }, { merge: true }).catch(function(){});
-            } else {
+                // Cualquiera que tenga la pantalla abierta puede escribir el
+                // salto de quien le tocaba — no hace falta que sea la propia
+                // persona, así nunca se queda el draft bloqueado esperando a
+                // alguien que no está mirando el móvil.
+                setDoc(doc(db, "elOtro", turnoActual), { saltado: true }, { merge: true }).catch(function(){});
+            } else if (turnoActual === currentUser) {
                 setTiempoRestante(Math.ceil(restante));
             }
         }, 10000);
