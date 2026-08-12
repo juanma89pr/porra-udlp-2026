@@ -461,6 +461,12 @@ function nombreVisible(nombreCrudo, perfil) {
     return nombreCrudo.trim().split(/\s+/)[0];
 }
 
+var hashPin = async function(nombre, pin) {
+    var str = nombre.toLowerCase().trim() + ':' + pin;
+    var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
+};
+
 const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false }) => {
     var elOtroEquipo = elOtroData && elOtroData.equipo;
     var elOtroRevelado = elOtroData && elOtroData.revelado;
@@ -1301,6 +1307,49 @@ const ModoConstruccion = () => {
 // --- PANTALLAS DE USUARIO ---
 // ============================================================================
 
+// Plazo de APERTURA del draft de El Otro Equipo — fecha FIJA de la primera
+// noche real de apertura, no recalculada. El fallo real que había: esta
+// constante se calculaba como "medianoche de HOY" cada vez que alguien
+// cargaba la app — como el draft ya lleva días abierto, seguía diciendo
+// "abre esta noche" para siempre, con un número de horas sin sentido según
+// a qué hora del día se cargara. Ahora es una fecha del pasado, fija, y a
+// partir de aquí lo único que sigue pausando el draft día a día es la
+// pausa nocturna (01:00-09:00), no esto.
+const PLAZO_APERTURA_EL_OTRO = new Date('2026-08-12T23:00:00Z');
+const PLAZO_EL_OTRO = new Date('2026-08-14T17:00:00Z');
+// Tiempo máximo por turno antes de saltarlo: 60 minutos
+const TIMEOUT_TURNO_MINUTOS = 60;
+
+// Pausa nocturna del draft de El Otro Equipo — de 01:00 a 09:00 hora canaria,
+// todos los días mientras dure el draft (por igualdad de condiciones, ya que
+// hay gente durmiendo). Nadie recibe turno nuevo durante la pausa, y a quien
+// ya le tocaba se le "congela" el cronómetro — al reanudar sigue exactamente
+// donde se quedó, sin que las horas de sueño le coman su tiempo de turno.
+function estaEnPausaNocturna(fecha) {
+    // 01:00-09:00 hora canaria (UTC+1 en agosto) = 00:00-08:00 UTC
+    var h = fecha.getUTCHours();
+    return h >= 0 && h < 8;
+}
+
+function minutosPausaEnRango(inicio, fin) {
+    var minutosPausa = 0;
+    var cursor = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth(), inicio.getUTCDate(), 0, 0, 0));
+    while (cursor < fin) {
+        var pausaInicio = new Date(cursor.getTime());
+        var pausaFin = new Date(cursor.getTime() + 8 * 60 * 60 * 1000);
+        var solapaInicio = new Date(Math.max(pausaInicio.getTime(), inicio.getTime()));
+        var solapaFin = new Date(Math.min(pausaFin.getTime(), fin.getTime()));
+        if (solapaFin > solapaInicio) minutosPausa += (solapaFin - solapaInicio) / 60000;
+        cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+    }
+    return minutosPausa;
+}
+
+function minutosEfectivosTranscurridos(inicio, fin) {
+    var totalBruto = (fin - inicio) / 60000;
+    return Math.max(0, totalBruto - minutosPausaEnRango(inicio, fin));
+}
+
 // Cuenta atrás de El Otro Equipo en la pantalla principal — antes de que
 // abra la temporada, cuenta hasta PLAZO_APERTURA_EL_OTRO; durante la pausa
 // nocturna (01:00-09:00), cuenta hasta que se reanude a las 09:00. Si está
@@ -1347,6 +1396,302 @@ function CuentaAtrasElOtro() {
         </div>
     );
 }
+
+const TABLA_PUNTOS_ESTRELLAS = [
+    { accion: 'Gol (portero/defensa)', estrellas: 8 },
+    { accion: 'Gol (centrocampista)', estrellas: 6 },
+    { accion: 'Gol (delantero)', estrellas: 5 },
+    { accion: 'Asistencia', estrellas: 3 },
+    { accion: 'Portería a cero (portero)', estrellas: 4 },
+    { accion: 'Portería a cero (defensa)', estrellas: 2 },
+    { accion: 'Ser titular', estrellas: 2 },
+    { accion: 'Entrar como suplente', estrellas: 1 },
+    { accion: 'Tarjeta amarilla', estrellas: -1 },
+    { accion: 'Tarjeta roja', estrellas: -3 },
+    { accion: 'Penalti fallado', estrellas: -2 },
+];
+
+const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
+    var G = styles.colors;
+    var [seleccion, setSeleccion] = useState([]);
+    var [guardado, setGuardado] = useState(false);
+    var [guardando, setGuardando] = useState(false);
+    var [posFiltro, setPosicion] = useState('Todos');
+    var [tab, setTab] = useState('elegir'); // 'elegir' | 'puntos'
+
+    useEffect(function() {
+        if (!jornada) return;
+        getDoc(doc(db, "estrellas_seleccion", jornada.id, "jugadores", user)).then(function(snap) {
+            if (snap.exists()) { setSeleccion(snap.data().jugadores || []); setGuardado(true); }
+        });
+    }, [jornada, user]);
+
+    var toggle = function(j) {
+        if (jornada && jornada.estado !== 'Abierta') return; // solo bloqueado cuando la jornada realmente cierra
+        var ya = seleccion.find(function(s) { return s.nombre === j.nombre; });
+        if (ya) { setSeleccion(seleccion.filter(function(s) { return s.nombre !== j.nombre; })); }
+        else if (seleccion.length < 5) { setSeleccion([...seleccion, j]); }
+    };
+
+    var guardar = async function() {
+        if (!jornada || seleccion.length === 0) return;
+        setGuardando(true);
+        try {
+            await setDoc(doc(db, "estrellas_seleccion", jornada.id, "jugadores", user), {
+                jugadores: seleccion, guardadoEn: serverTimestamp(), usuario: user
+            }, { merge: true });
+            setGuardado(true);
+        } catch(e) { console.error(e); }
+        setGuardando(false);
+    };
+
+    var posiciones = ['Todos','Portero','Defensa','Centrocampista','Mediapunta','Delantero'];
+    var plantillaFiltrada = posFiltro === 'Todos' ? plantilla : plantilla.filter(function(j) { return j.posicion === posFiltro; });
+
+    return (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,10,40,0.75)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center'}}
+            onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
+            <div style={{background:'#fff',borderRadius:'24px 24px 0 0',width:'100%',maxWidth:520,
+                maxHeight:'90vh',display:'flex',flexDirection:'column',animation:'slideIn .3s ease'}}>
+
+                {/* Header */}
+                <div style={{background:'#001F6B',borderRadius:'24px 24px 0 0',padding:'18px 20px 0'}}>
+                    <div style={{display:'flex',alignItems:'center',marginBottom:12}}>
+                        <div>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700',letterSpacing:2}}>MIS 5 ESTRELLAS</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.4)'}}>
+                                J{jornada && jornada.numeroJornada} · {seleccion.length}/5 seleccionados
+                            </p>
+                        </div>
+                        <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'rgba(255,255,255,0.3)',fontSize:22,cursor:'pointer'}}>✕</button>
+                    </div>
+                    {/* Tabs */}
+                    <div style={{display:'flex',gap:0}}>
+                        {[['elegir','Elegir jugadores'],['puntos','Tabla de ⭐']].map(function(t) {
+                            return (
+                                <button key={t[0]} onClick={function() { setTab(t[0]); }}
+                                    style={{flex:1,padding:'10px 0',border:'none',cursor:'pointer',
+                                        background:'transparent',borderBottom: tab===t[0] ? '3px solid #FFD700' : '3px solid transparent',
+                                        fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,textTransform:'uppercase',
+                                        color: tab===t[0] ? '#FFD700' : 'rgba(255,255,255,0.35)'}}>
+                                    {t[1]}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Contenido */}
+                <div style={{flex:1,overflowY:'auto',padding:'16px'}}>
+                    {tab === 'puntos' ? (
+                        <div>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6,marginBottom:16,lineHeight:1.6}}>
+                                Cada acción de tus jugadores elegidos suma o resta estrellas. El ranking de estrellas de la jornada determina cuántos puntos ganas para la clasificación general (1º→5pts, 2º→4pts, ...).
+                            </p>
+                            {TABLA_PUNTOS_ESTRELLAS.map(function(r,i) {
+                                return (
+                                    <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,flex:1}}>{r.accion}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,
+                                            color: r.estrellas > 0 ? '#FFD700' : G.danger}}>
+                                            {r.estrellas > 0 ? '+' : ''}{r.estrellas} ⭐
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <>
+                            {/* Selección actual — con foto */}
+                            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:16,minHeight:36}}>
+                                {seleccion.map(function(j,i) {
+                                    return (
+                                        <span key={i} onClick={function() { toggle(j); }}
+                                            style={{display:'inline-flex',alignItems:'center',gap:6,
+                                                background:G.golden,color:'#001F6B',borderRadius:20,padding:'4px 12px 4px 4px',
+                                                fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
+                                                cursor: (!jornada || jornada.estado==='Abierta') ? 'pointer' : 'default'}}>
+                                            {getFotoJugador(j) ? (
+                                                <img src={getFotoJugador(j)} alt="" style={{width:20,height:20,borderRadius:'50%',objectFit:'cover',background:'#fff'}}
+                                                    onError={function(e){e.target.style.display='none';}} />
+                                            ) : <span>⭐</span>}
+                                            {j.nombre}
+                                        </span>
+                                    );
+                                })}
+                                {seleccion.length === 0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.35)'}}>Ningún jugador seleccionado aún</span>}
+                            </div>
+
+                            {/* Filtro posición */}
+                            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>
+                                {posiciones.map(function(p) {
+                                    return (
+                                        <button key={p} onClick={function() { setPosicion(p); }}
+                                            style={{padding:'5px 12px',borderRadius:20,border:'none',cursor:'pointer',
+                                                fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,
+                                                background: posFiltro===p ? G.deepBlue : '#f0f0f0',
+                                                color: posFiltro===p ? '#FFD700' : G.deepBlue}}>
+                                            {p}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Jugadores */}
+                            {(!jornada || jornada.estado === 'Abierta') && (
+                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:16}}>
+                                    {plantillaFiltrada.map(function(j,i) {
+                                        var sel = !!seleccion.find(function(s) { return s.nombre===j.nombre; });
+                                        var lleno = seleccion.length >= 5 && !sel;
+                                        return (
+                                            <button key={i} onClick={function() { toggle(j); }} disabled={lleno}
+                                                style={{padding:'12px 8px',borderRadius:14,cursor:lleno?'not-allowed':'pointer',
+                                                    border: sel?'2px solid #FFD700':'1.5px solid rgba(0,31,107,0.1)',
+                                                    background: sel?'rgba(255,215,0,0.1)':'#f8f8f8',
+                                                    opacity: lleno?0.4:1,textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+                                                {getFotoJugador(j) ? (
+                                                    <img src={getFotoJugador(j)} alt={j.nombre}
+                                                        style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',border: sel?'2px solid #FFD700':'2px solid rgba(0,31,107,0.1)'}}
+                                                        onError={function(e){e.target.style.display='none';}} />
+                                                ) : (
+                                                    <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(0,31,107,0.08)',
+                                                        display:'flex',alignItems:'center',justifyContent:'center',
+                                                        fontFamily:"'Teko',sans-serif",fontSize:16,color:G.deepBlue}}>
+                                                        {j.dorsal}
+                                                    </div>
+                                                )}
+                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,color:G.deepBlue,lineHeight:1.2}}>{j.nombre}</span>
+                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)'}}>{j.posicion}</span>
+                                                {sel && <span style={{fontSize:14}}>⭐</span>}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {jornada && jornada.estado !== 'Abierta' ? (
+                                <div style={{background:'rgba(0,31,107,0.05)',border:'1px solid rgba(0,31,107,0.12)',borderRadius:12,padding:16,textAlign:'center'}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:G.deepBlue,letterSpacing:2}}>🔒 JORNADA CERRADA</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Tu selección quedó fijada al cerrarse la jornada.</p>
+                                </div>
+                            ) : seleccion.length > 0 && (
+                                <button onClick={guardar} disabled={guardando}
+                                    style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.1rem',letterSpacing:2,
+                                        background: guardado ? '#10b981' : G.deepBlue, color: guardado ? '#fff' : '#FFD700',
+                                        border:'none',borderRadius:30,padding:14,cursor:'pointer'}}>
+                                    {guardando ? 'GUARDANDO...' : guardado ? '✅ GUARDADO — ACTUALIZAR' : 'CONFIRMAR ' + seleccion.length + ' ESTRELLA' + (seleccion.length>1?'S':'')}
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const PorraAnualModal = ({ user, onClose }) => {
+    var G = styles.colors;
+    var [ascenso, setAscenso] = useState('');
+    var [puesto, setPuesto] = useState('');
+    var [guardado, setGuardado] = useState(false);
+    var [cargando, setCargando] = useState(true);
+    var [mensaje, setMensaje] = useState('');
+
+    useEffect(function() {
+        getDoc(doc(db, "porraAnual2627", user)).then(function(snap) {
+            if (snap.exists()) {
+                var d = snap.data();
+                setAscenso(d.ascenso || '');
+                setPuesto(d.puesto || '');
+                setGuardado(true);
+            }
+            setCargando(false);
+        });
+    }, [user]);
+
+    var guardar = async function() {
+        if (!ascenso || !puesto) { setMensaje('Rellena ambas opciones.'); return; }
+        try {
+            await setDoc(doc(db, "porraAnual2627", user), {
+                ascenso: ascenso, puesto: Number(puesto), usuario: user, guardadoEn: serverTimestamp()
+            }, { merge: true });
+            setGuardado(true);
+            setMensaje('✅ Porra anual guardada. Puedes modificarla hasta que empiece la J6.');
+        } catch(e) { setMensaje('❌ Error: ' + e.message); }
+    };
+
+    return (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,10,40,0.7)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center'}}
+            onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
+            <div style={{background:'#fff',borderRadius:'24px 24px 0 0',padding:'28px 24px 40px',width:'100%',maxWidth:500,animation:'slideIn .3s ease'}}>
+                <div style={{display:'flex',alignItems:'center',marginBottom:20}}>
+                    <div>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:G.deepBlue,letterSpacing:2}}>PORRA ANUAL 26/27</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5}}>Hasta 20 puntos extra · Cierra antes de la Jornada 6</p>
+                    </div>
+                    <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',fontSize:22,color:'rgba(0,31,107,0.3)',cursor:'pointer'}}>✕</button>
+                </div>
+
+                {cargando ? <p style={{textAlign:'center',color:G.deepBlue,fontFamily:"'Teko',sans-serif",letterSpacing:2}}>CARGANDO...</p> : (
+                    <>
+                        {/* Pregunta 1: ¿Asciende? */}
+                        <div style={{marginBottom:20}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',flex:1}}>¿Asciende la UDLP?</p>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(0,31,107,0.08)',color:G.deepBlue,padding:'3px 10px',borderRadius:10}}>5 PTS</span>
+                            </div>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.45,marginBottom:10}}>
+                                Si asciende por playoff, se cuenta la posición antes del playoff.
+                            </p>
+                            <div style={{display:'flex',gap:10}}>
+                                {['Sí asciende','No asciende'].map(function(op) {
+                                    var sel = ascenso === op;
+                                    return (
+                                        <button key={op} onClick={function() { setAscenso(op); setGuardado(false); }}
+                                            style={{flex:1,padding:'14px 0',borderRadius:12,border: sel ? 'none' : '1.5px solid rgba(0,31,107,0.15)',
+                                                background: sel ? '#001F6B' : '#f8f8f8',fontFamily:"'Teko',sans-serif",
+                                                fontSize:16,fontWeight:700,letterSpacing:1,color: sel ? '#FFD700' : 'rgba(0,31,107,0.4)',cursor:'pointer'}}>
+                                            {op}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Pregunta 2: Puesto */}
+                        <div style={{marginBottom:20}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',flex:1}}>Puesto final en liga</p>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(0,31,107,0.08)',color:G.deepBlue,padding:'3px 10px',borderRadius:10}}>10 PTS · o 20 si aciertas ambas</span>
+                            </div>
+                            <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:6}}>
+                                {Array.from({length:22},function(_,i) { return i+1; }).map(function(n) {
+                                    var sel = Number(puesto) === n;
+                                    return (
+                                        <button key={n} onClick={function() { setPuesto(n); setGuardado(false); }}
+                                            style={{padding:'10px 0',borderRadius:10,border: sel ? 'none' : '1px solid rgba(0,31,107,0.12)',
+                                                background: sel ? '#001F6B' : '#f8f8f8',fontFamily:"'Teko',sans-serif",
+                                                fontSize:16,fontWeight:700,color: sel ? '#FFD700' : 'rgba(0,31,107,0.5)',cursor:'pointer'}}>
+                                            {n}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {mensaje && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: mensaje.startsWith('✅') ? '#10b981' : G.danger,marginBottom:12,textAlign:'center'}}>{mensaje}</p>}
+                        <button onClick={guardar}
+                            style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.1rem',letterSpacing:2,
+                                background: guardado ? '#10b981' : G.deepBlue,color:'#fff',border:'none',borderRadius:30,padding:14,cursor:'pointer'}}>
+                            {guardado ? '✅ GUARDADO' : 'GUARDAR PORRA ANUAL'}
+                        </button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
 
 const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers, pagos, onIrAPagos }) => {
     var G = styles.colors;
@@ -1941,17 +2286,17 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
         return function(){clearInterval(t);};
     }, [slide]);
 
-    var siguiente = function() {
-        if (slide < TOTAL_SLIDES-1) setSlide(function(v){return v+1;});
-        else cerrar();
-    };
-
     var cerrar = function() {
         setSaliendo(true);
         setTimeout(function() {
             localStorage.setItem('tutorial_2627_'+user, '1');
             onClose();
         }, 400);
+    };
+
+    var siguiente = function() {
+        if (slide < TOTAL_SLIDES-1) setSlide(function(v){return v+1;});
+        else cerrar();
     };
 
     var toggleJugador = function(j) {
@@ -2548,19 +2893,6 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
 // ============================================================================
 // --- MIS 5 ESTRELLAS MODAL — acceso flotante desde Mi Jornada ---
 // ============================================================================
-const TABLA_PUNTOS_ESTRELLAS = [
-    { accion: 'Gol (portero/defensa)', estrellas: 8 },
-    { accion: 'Gol (centrocampista)', estrellas: 6 },
-    { accion: 'Gol (delantero)', estrellas: 5 },
-    { accion: 'Asistencia', estrellas: 3 },
-    { accion: 'Portería a cero (portero)', estrellas: 4 },
-    { accion: 'Portería a cero (defensa)', estrellas: 2 },
-    { accion: 'Ser titular', estrellas: 2 },
-    { accion: 'Entrar como suplente', estrellas: 1 },
-    { accion: 'Tarjeta amarilla', estrellas: -1 },
-    { accion: 'Tarjeta roja', estrellas: -3 },
-    { accion: 'Penalti fallado', estrellas: -2 },
-];
 
 // Foto oficial de jugador vía CDN público de API-Football (mismo apiId que
 // usamos para calcular sus puntos de Estrellas — no requiere clave para la imagen).
@@ -2571,290 +2903,10 @@ function getFotoJugador(jug) {
     return 'https://media.api-sports.io/football/players/' + jug.apiId + '.png';
 }
 
-const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
-    var G = styles.colors;
-    var [seleccion, setSeleccion] = useState([]);
-    var [guardado, setGuardado] = useState(false);
-    var [guardando, setGuardando] = useState(false);
-    var [posFiltro, setPosicion] = useState('Todos');
-    var [tab, setTab] = useState('elegir'); // 'elegir' | 'puntos'
-
-    useEffect(function() {
-        if (!jornada) return;
-        getDoc(doc(db, "estrellas_seleccion", jornada.id, "jugadores", user)).then(function(snap) {
-            if (snap.exists()) { setSeleccion(snap.data().jugadores || []); setGuardado(true); }
-        });
-    }, [jornada, user]);
-
-    var toggle = function(j) {
-        if (jornada && jornada.estado !== 'Abierta') return; // solo bloqueado cuando la jornada realmente cierra
-        var ya = seleccion.find(function(s) { return s.nombre === j.nombre; });
-        if (ya) { setSeleccion(seleccion.filter(function(s) { return s.nombre !== j.nombre; })); }
-        else if (seleccion.length < 5) { setSeleccion([...seleccion, j]); }
-    };
-
-    var guardar = async function() {
-        if (!jornada || seleccion.length === 0) return;
-        setGuardando(true);
-        try {
-            await setDoc(doc(db, "estrellas_seleccion", jornada.id, "jugadores", user), {
-                jugadores: seleccion, guardadoEn: serverTimestamp(), usuario: user
-            }, { merge: true });
-            setGuardado(true);
-        } catch(e) { console.error(e); }
-        setGuardando(false);
-    };
-
-    var posiciones = ['Todos','Portero','Defensa','Centrocampista','Mediapunta','Delantero'];
-    var plantillaFiltrada = posFiltro === 'Todos' ? plantilla : plantilla.filter(function(j) { return j.posicion === posFiltro; });
-
-    return (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,10,40,0.75)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center'}}
-            onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
-            <div style={{background:'#fff',borderRadius:'24px 24px 0 0',width:'100%',maxWidth:520,
-                maxHeight:'90vh',display:'flex',flexDirection:'column',animation:'slideIn .3s ease'}}>
-
-                {/* Header */}
-                <div style={{background:'#001F6B',borderRadius:'24px 24px 0 0',padding:'18px 20px 0'}}>
-                    <div style={{display:'flex',alignItems:'center',marginBottom:12}}>
-                        <div>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700',letterSpacing:2}}>MIS 5 ESTRELLAS</p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.4)'}}>
-                                J{jornada && jornada.numeroJornada} · {seleccion.length}/5 seleccionados
-                            </p>
-                        </div>
-                        <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'rgba(255,255,255,0.3)',fontSize:22,cursor:'pointer'}}>✕</button>
-                    </div>
-                    {/* Tabs */}
-                    <div style={{display:'flex',gap:0}}>
-                        {[['elegir','Elegir jugadores'],['puntos','Tabla de ⭐']].map(function(t) {
-                            return (
-                                <button key={t[0]} onClick={function() { setTab(t[0]); }}
-                                    style={{flex:1,padding:'10px 0',border:'none',cursor:'pointer',
-                                        background:'transparent',borderBottom: tab===t[0] ? '3px solid #FFD700' : '3px solid transparent',
-                                        fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,textTransform:'uppercase',
-                                        color: tab===t[0] ? '#FFD700' : 'rgba(255,255,255,0.35)'}}>
-                                    {t[1]}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* Contenido */}
-                <div style={{flex:1,overflowY:'auto',padding:'16px'}}>
-                    {tab === 'puntos' ? (
-                        <div>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6,marginBottom:16,lineHeight:1.6}}>
-                                Cada acción de tus jugadores elegidos suma o resta estrellas. El ranking de estrellas de la jornada determina cuántos puntos ganas para la clasificación general (1º→5pts, 2º→4pts, ...).
-                            </p>
-                            {TABLA_PUNTOS_ESTRELLAS.map(function(r,i) {
-                                return (
-                                    <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
-                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,flex:1}}>{r.accion}</span>
-                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,
-                                            color: r.estrellas > 0 ? '#FFD700' : G.danger}}>
-                                            {r.estrellas > 0 ? '+' : ''}{r.estrellas} ⭐
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        <>
-                            {/* Selección actual — con foto */}
-                            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:16,minHeight:36}}>
-                                {seleccion.map(function(j,i) {
-                                    return (
-                                        <span key={i} onClick={function() { toggle(j); }}
-                                            style={{display:'inline-flex',alignItems:'center',gap:6,
-                                                background:G.golden,color:'#001F6B',borderRadius:20,padding:'4px 12px 4px 4px',
-                                                fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
-                                                cursor: (!jornada || jornada.estado==='Abierta') ? 'pointer' : 'default'}}>
-                                            {getFotoJugador(j) ? (
-                                                <img src={getFotoJugador(j)} alt="" style={{width:20,height:20,borderRadius:'50%',objectFit:'cover',background:'#fff'}}
-                                                    onError={function(e){e.target.style.display='none';}} />
-                                            ) : <span>⭐</span>}
-                                            {j.nombre}
-                                        </span>
-                                    );
-                                })}
-                                {seleccion.length === 0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.35)'}}>Ningún jugador seleccionado aún</span>}
-                            </div>
-
-                            {/* Filtro posición */}
-                            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>
-                                {posiciones.map(function(p) {
-                                    return (
-                                        <button key={p} onClick={function() { setPosicion(p); }}
-                                            style={{padding:'5px 12px',borderRadius:20,border:'none',cursor:'pointer',
-                                                fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,
-                                                background: posFiltro===p ? G.deepBlue : '#f0f0f0',
-                                                color: posFiltro===p ? '#FFD700' : G.deepBlue}}>
-                                            {p}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Jugadores */}
-                            {(!jornada || jornada.estado === 'Abierta') && (
-                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:16}}>
-                                    {plantillaFiltrada.map(function(j,i) {
-                                        var sel = !!seleccion.find(function(s) { return s.nombre===j.nombre; });
-                                        var lleno = seleccion.length >= 5 && !sel;
-                                        return (
-                                            <button key={i} onClick={function() { toggle(j); }} disabled={lleno}
-                                                style={{padding:'12px 8px',borderRadius:14,cursor:lleno?'not-allowed':'pointer',
-                                                    border: sel?'2px solid #FFD700':'1.5px solid rgba(0,31,107,0.1)',
-                                                    background: sel?'rgba(255,215,0,0.1)':'#f8f8f8',
-                                                    opacity: lleno?0.4:1,textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
-                                                {getFotoJugador(j) ? (
-                                                    <img src={getFotoJugador(j)} alt={j.nombre}
-                                                        style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',border: sel?'2px solid #FFD700':'2px solid rgba(0,31,107,0.1)'}}
-                                                        onError={function(e){e.target.style.display='none';}} />
-                                                ) : (
-                                                    <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(0,31,107,0.08)',
-                                                        display:'flex',alignItems:'center',justifyContent:'center',
-                                                        fontFamily:"'Teko',sans-serif",fontSize:16,color:G.deepBlue}}>
-                                                        {j.dorsal}
-                                                    </div>
-                                                )}
-                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,color:G.deepBlue,lineHeight:1.2}}>{j.nombre}</span>
-                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)'}}>{j.posicion}</span>
-                                                {sel && <span style={{fontSize:14}}>⭐</span>}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
-
-                            {jornada && jornada.estado !== 'Abierta' ? (
-                                <div style={{background:'rgba(0,31,107,0.05)',border:'1px solid rgba(0,31,107,0.12)',borderRadius:12,padding:16,textAlign:'center'}}>
-                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:G.deepBlue,letterSpacing:2}}>🔒 JORNADA CERRADA</p>
-                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Tu selección quedó fijada al cerrarse la jornada.</p>
-                                </div>
-                            ) : seleccion.length > 0 && (
-                                <button onClick={guardar} disabled={guardando}
-                                    style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.1rem',letterSpacing:2,
-                                        background: guardado ? '#10b981' : G.deepBlue, color: guardado ? '#fff' : '#FFD700',
-                                        border:'none',borderRadius:30,padding:14,cursor:'pointer'}}>
-                                    {guardando ? 'GUARDANDO...' : guardado ? '✅ GUARDADO — ACTUALIZAR' : 'CONFIRMAR ' + seleccion.length + ' ESTRELLA' + (seleccion.length>1?'S':'')}
-                                </button>
-                            )}
-                        </>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
 
 // ============================================================================
 // --- PORRA ANUAL MODAL ---
 // ============================================================================
-const PorraAnualModal = ({ user, onClose }) => {
-    var G = styles.colors;
-    var [ascenso, setAscenso] = useState('');
-    var [puesto, setPuesto] = useState('');
-    var [guardado, setGuardado] = useState(false);
-    var [cargando, setCargando] = useState(true);
-    var [mensaje, setMensaje] = useState('');
-
-    useEffect(function() {
-        getDoc(doc(db, "porraAnual2627", user)).then(function(snap) {
-            if (snap.exists()) {
-                var d = snap.data();
-                setAscenso(d.ascenso || '');
-                setPuesto(d.puesto || '');
-                setGuardado(true);
-            }
-            setCargando(false);
-        });
-    }, [user]);
-
-    var guardar = async function() {
-        if (!ascenso || !puesto) { setMensaje('Rellena ambas opciones.'); return; }
-        try {
-            await setDoc(doc(db, "porraAnual2627", user), {
-                ascenso: ascenso, puesto: Number(puesto), usuario: user, guardadoEn: serverTimestamp()
-            }, { merge: true });
-            setGuardado(true);
-            setMensaje('✅ Porra anual guardada. Puedes modificarla hasta que empiece la J6.');
-        } catch(e) { setMensaje('❌ Error: ' + e.message); }
-    };
-
-    return (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,10,40,0.7)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center'}}
-            onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
-            <div style={{background:'#fff',borderRadius:'24px 24px 0 0',padding:'28px 24px 40px',width:'100%',maxWidth:500,animation:'slideIn .3s ease'}}>
-                <div style={{display:'flex',alignItems:'center',marginBottom:20}}>
-                    <div>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:G.deepBlue,letterSpacing:2}}>PORRA ANUAL 26/27</p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5}}>Hasta 20 puntos extra · Cierra antes de la Jornada 6</p>
-                    </div>
-                    <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',fontSize:22,color:'rgba(0,31,107,0.3)',cursor:'pointer'}}>✕</button>
-                </div>
-
-                {cargando ? <p style={{textAlign:'center',color:G.deepBlue,fontFamily:"'Teko',sans-serif",letterSpacing:2}}>CARGANDO...</p> : (
-                    <>
-                        {/* Pregunta 1: ¿Asciende? */}
-                        <div style={{marginBottom:20}}>
-                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',flex:1}}>¿Asciende la UDLP?</p>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(0,31,107,0.08)',color:G.deepBlue,padding:'3px 10px',borderRadius:10}}>5 PTS</span>
-                            </div>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.45,marginBottom:10}}>
-                                Si asciende por playoff, se cuenta la posición antes del playoff.
-                            </p>
-                            <div style={{display:'flex',gap:10}}>
-                                {['Sí asciende','No asciende'].map(function(op) {
-                                    var sel = ascenso === op;
-                                    return (
-                                        <button key={op} onClick={function() { setAscenso(op); setGuardado(false); }}
-                                            style={{flex:1,padding:'14px 0',borderRadius:12,border: sel ? 'none' : '1.5px solid rgba(0,31,107,0.15)',
-                                                background: sel ? '#001F6B' : '#f8f8f8',fontFamily:"'Teko',sans-serif",
-                                                fontSize:16,fontWeight:700,letterSpacing:1,color: sel ? '#FFD700' : 'rgba(0,31,107,0.4)',cursor:'pointer'}}>
-                                            {op}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Pregunta 2: Puesto */}
-                        <div style={{marginBottom:20}}>
-                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',flex:1}}>Puesto final en liga</p>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(0,31,107,0.08)',color:G.deepBlue,padding:'3px 10px',borderRadius:10}}>10 PTS · o 20 si aciertas ambas</span>
-                            </div>
-                            <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:6}}>
-                                {Array.from({length:22},function(_,i) { return i+1; }).map(function(n) {
-                                    var sel = Number(puesto) === n;
-                                    return (
-                                        <button key={n} onClick={function() { setPuesto(n); setGuardado(false); }}
-                                            style={{padding:'10px 0',borderRadius:10,border: sel ? 'none' : '1px solid rgba(0,31,107,0.12)',
-                                                background: sel ? '#001F6B' : '#f8f8f8',fontFamily:"'Teko',sans-serif",
-                                                fontSize:16,fontWeight:700,color: sel ? '#FFD700' : 'rgba(0,31,107,0.5)',cursor:'pointer'}}>
-                                            {n}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {mensaje && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: mensaje.startsWith('✅') ? '#10b981' : G.danger,marginBottom:12,textAlign:'center'}}>{mensaje}</p>}
-                        <button onClick={guardar}
-                            style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.1rem',letterSpacing:2,
-                                background: guardado ? '#10b981' : G.deepBlue,color:'#fff',border:'none',borderRadius:30,padding:14,cursor:'pointer'}}>
-                            {guardado ? '✅ GUARDADO' : 'GUARDAR PORRA ANUAL'}
-                        </button>
-                    </>
-                )}
-            </div>
-        </div>
-    );
-};
 
 
 const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
@@ -4869,6 +4921,13 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 // Herramienta admin: una sola llamada a API-Football para listar los IDs
 // reales de toda la plantilla del UDLP — para rellenar los apiId:0 que faltan
 // en PLANTILLA_FALLBACK y que el cálculo automático de Estrellas les alcance.
+const ADMIN_STYLES = {
+    card: { background:'#fff', border:'1px solid rgba(0,31,107,0.1)', borderRadius:14, padding:16, marginBottom:12 },
+    btnPrimary: { background:'#001F6B', color:'#FFD700', border:'none', borderRadius:10, padding:'11px 20px', fontFamily:"'Teko',sans-serif", fontSize:14, letterSpacing:2, cursor:'pointer', textTransform:'uppercase' },
+    btnSuccess: { background:'#10b981', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
+    btnDanger: { background:'#e63946', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
+};
+
 const BuscadorApiIdsPlantilla = ({ plantilla }) => {
     var [resultado, setResultado] = useState(null);
     var [buscando, setBuscando] = useState(false);
@@ -5103,12 +5162,6 @@ const GestionHuecoVacante = () => {
 
 // Estilos reutilizables para tarjetas/botones del panel admin — usados también
 // por componentes fuera de AdminPanelScreen (que antes solo tenía su copia local).
-const ADMIN_STYLES = {
-    card: { background:'#fff', border:'1px solid rgba(0,31,107,0.1)', borderRadius:14, padding:16, marginBottom:12 },
-    btnPrimary: { background:'#001F6B', color:'#FFD700', border:'none', borderRadius:10, padding:'11px 20px', fontFamily:"'Teko',sans-serif", fontSize:14, letterSpacing:2, cursor:'pointer', textTransform:'uppercase' },
-    btnSuccess: { background:'#10b981', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
-    btnDanger: { background:'#e63946', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
-};
 
 // Admin: configura el número de Bizum que se muestra a los jugadores al pagar.
 // Admin: congela el Campeón de Invierno cuando termine la primera vuelta.
@@ -6369,48 +6422,11 @@ const ORDEN_ELECCION_EL_OTRO = [
 // Hora canaria = UTC+1 en verano
 // Apertura: lunes 11 agosto 12:00 WEST = 11:00 UTC
 // Cierre: viernes 14 agosto 18:00 WEST = 17:00 UTC
-// Plazo de APERTURA del draft de El Otro Equipo — fecha FIJA de la primera
-// noche real de apertura, no recalculada. El fallo real que había: esta
-// constante se calculaba como "medianoche de HOY" cada vez que alguien
-// cargaba la app — como el draft ya lleva días abierto, seguía diciendo
-// "abre esta noche" para siempre, con un número de horas sin sentido según
-// a qué hora del día se cargara. Ahora es una fecha del pasado, fija, y a
-// partir de aquí lo único que sigue pausando el draft día a día es la
-// pausa nocturna (01:00-09:00), no esto.
-const PLAZO_APERTURA_EL_OTRO = new Date('2026-08-12T23:00:00Z');
-const PLAZO_EL_OTRO = new Date('2026-08-14T17:00:00Z');
-// Tiempo máximo por turno antes de saltarlo: 60 minutos
-const TIMEOUT_TURNO_MINUTOS = 60;
-
-// Pausa nocturna del draft de El Otro Equipo — de 01:00 a 09:00 hora canaria,
-// todos los días mientras dure el draft (por igualdad de condiciones, ya que
-// hay gente durmiendo). Nadie recibe turno nuevo durante la pausa, y a quien
-// ya le tocaba se le "congela" el cronómetro — al reanudar sigue exactamente
-// donde se quedó, sin que las horas de sueño le coman su tiempo de turno.
-function estaEnPausaNocturna(fecha) {
-    // 01:00-09:00 hora canaria (UTC+1 en agosto) = 00:00-08:00 UTC
-    var h = fecha.getUTCHours();
-    return h >= 0 && h < 8;
-}
-
-function minutosPausaEnRango(inicio, fin) {
-    var minutosPausa = 0;
-    var cursor = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth(), inicio.getUTCDate(), 0, 0, 0));
-    while (cursor < fin) {
-        var pausaInicio = new Date(cursor.getTime());
-        var pausaFin = new Date(cursor.getTime() + 8 * 60 * 60 * 1000);
-        var solapaInicio = new Date(Math.max(pausaInicio.getTime(), inicio.getTime()));
-        var solapaFin = new Date(Math.min(pausaFin.getTime(), fin.getTime()));
-        if (solapaFin > solapaInicio) minutosPausa += (solapaFin - solapaInicio) / 60000;
-        cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
-    }
-    return minutosPausa;
-}
-
-function minutosEfectivosTranscurridos(inicio, fin) {
-    var totalBruto = (fin - inicio) / 60000;
-    return Math.max(0, totalBruto - minutosPausaEnRango(inicio, fin));
-}
+// (PLAZO_APERTURA_EL_OTRO, PLAZO_EL_OTRO, TIMEOUT_TURNO_MINUTOS,
+// estaEnPausaNocturna, minutosPausaEnRango y minutosEfectivosTranscurridos
+// se movieron arriba del todo del archivo, junto a CuentaAtrasElOtro, que
+// es quien primero los necesita — antes estaban aquí abajo y el propio
+// build de Netlify lo bloqueaba por "usado antes de definirse".)
 
 // Multiplicador de El Otro según nº de activaciones acumuladas en la
 // temporada — a partir de la 3ª (×2.5) el equipo deja de ser secreto.
@@ -6704,6 +6720,8 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
     };
 
     var esMiTurno = turnoActual === currentUser;
+    var yoElegí = miElOtro && miElOtro.equipo;
+    var plazoSuperado = new Date() > PLAZO_EL_OTRO;
 
     // Aviso de "ya te toca" — vibra el móvil una sola vez en cuanto pasa a
     // ser tu turno (no repite en cada repintado). No hace falta ningún
@@ -6714,8 +6732,6 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
             navigator.vibrate([200, 100, 200, 100, 200]);
         }
     }, [esMiTurno, yoElegí]);
-    var yoElegí = miElOtro && miElOtro.equipo;
-    var plazoSuperado = new Date() > PLAZO_EL_OTRO;
 
     if (loading) return <div style={{padding:40,textAlign:'center',color:G.deepBlue,fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:2}}>CARGANDO...</div>;
 
@@ -7249,11 +7265,6 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
 // siempre que sepas el código. Si Mari le dice su PIN a Pedro, Pedro puede entrar.
 // ============================================================================
 
-var hashPin = async function(nombre, pin) {
-    var str = nombre.toLowerCase().trim() + ':' + pin;
-    var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-    return Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
-};
 
 const LoginScreen = ({ onLoginSuccess }) => {
     var G = styles.colors;
@@ -7320,34 +7331,6 @@ const LoginScreen = ({ onLoginSuccess }) => {
         setCargando(false);
     };
 
-    var pulsarDigito = function(d) {
-        if (cargando) return;
-        if (paso === 'pin_nuevo') {
-            if (pin.length < 4) {
-                var nuevo = pin + d;
-                setPin(nuevo);
-                if (nuevo.length === 4) setPaso('confirmando');
-            }
-        } else if (paso === 'confirmando') {
-            if (pinConfirm.length < 4) {
-                var nc = pinConfirm + d;
-                setPinConfirm(nc);
-                if (nc.length === 4) verificarNuevoPin(nc);
-            }
-        } else if (paso === 'pin_existente') {
-            if (pin.length < 4) {
-                var np = pin + d;
-                setPin(np);
-                if (np.length === 4) validarPin(np);
-            }
-        }
-    };
-
-    var borrar = function() {
-        if (paso === 'confirmando') setPinConfirm(function(p) { return p.slice(0,-1); });
-        else setPin(function(p) { return p.slice(0,-1); });
-    };
-
     var verificarNuevoPin = async function(confirmado) {
         if (confirmado !== pin) {
             setError('Los PINs no coinciden. Inténtalo de nuevo.');
@@ -7385,6 +7368,35 @@ const LoginScreen = ({ onLoginSuccess }) => {
             setError('Error de conexión.'); setCargando(false);
         }
     };
+
+    var pulsarDigito = function(d) {
+        if (cargando) return;
+        if (paso === 'pin_nuevo') {
+            if (pin.length < 4) {
+                var nuevo = pin + d;
+                setPin(nuevo);
+                if (nuevo.length === 4) setPaso('confirmando');
+            }
+        } else if (paso === 'confirmando') {
+            if (pinConfirm.length < 4) {
+                var nc = pinConfirm + d;
+                setPinConfirm(nc);
+                if (nc.length === 4) verificarNuevoPin(nc);
+            }
+        } else if (paso === 'pin_existente') {
+            if (pin.length < 4) {
+                var np = pin + d;
+                setPin(np);
+                if (np.length === 4) validarPin(np);
+            }
+        }
+    };
+
+    var borrar = function() {
+        if (paso === 'confirmando') setPinConfirm(function(p) { return p.slice(0,-1); });
+        else setPin(function(p) { return p.slice(0,-1); });
+    };
+
 
     var pinActivo = paso === 'confirmando' ? pinConfirm : pin;
     var tituloPaso = {
