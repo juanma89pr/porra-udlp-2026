@@ -4968,78 +4968,102 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
     );
 };
 
-// Admin: gestiona el hueco simbólico de una baja voluntaria en El Otro Equipo.
-// Quien lo ocupa hereda el turno original (privilegio) en vez de ir al final
-// de la cola. Mientras no se asigna sustituto, se ve como "hueco disponible"
-// sin revelar quién se marchó.
+// Admin: gestiona los huecos de bajas voluntarias en El Otro Equipo — cada
+// baja es su PROPIO registro independiente y permanente (antes era un único
+// documento que se pisaba con cada baja nueva: si Pedro se iba y Óscar lo
+// sustituía, y luego se marcaba la baja de Carmelo, la sustitución de Óscar
+// se perdía y Pedro "reaparecía". Ahora cada baja vive en su propio
+// documento — Óscar queda fijo en el puesto de Pedro para siempre, y
+// Carmelo es un hueco totalmente aparte, sin tocar lo de Pedro/Óscar.
 const GestionHuecoVacante = () => {
-    var [vacante, setVacante] = useState(null);
+    var [vacantes, setVacantes] = useState([]);
     var [nombreOriginal, setNombreOriginal] = useState('');
-    var [nombreNuevo, setNombreNuevo] = useState('');
+    var [asignaciones, setAsignaciones] = useState({}); // original -> nombre en edición
     var [msg, setMsg] = useState('');
 
     useEffect(function() {
-        var unsub = onSnapshot(doc(db, 'configuracion', 'elOtroVacante'), function(snap) {
-            if (snap.exists()) {
-                setVacante(snap.data());
-                setNombreOriginal(snap.data().nombreOriginal || '');
-                setNombreNuevo(snap.data().nombreNuevo || '');
-            } else {
-                setVacante(null);
-            }
+        var unsub = onSnapshot(collection(db, 'elOtroVacantes'), function(snap) {
+            var lista = [];
+            snap.forEach(function(d) { lista.push({ id: d.id, ...d.data() }); });
+            lista.sort(function(a,b) {
+                var ta = a.marcadoEn && a.marcadoEn.toMillis ? a.marcadoEn.toMillis() : 0;
+                var tb = b.marcadoEn && b.marcadoEn.toMillis ? b.marcadoEn.toMillis() : 0;
+                return ta - tb;
+            });
+            setVacantes(lista);
         });
         return function() { unsub(); };
     }, []);
 
     var marcarBaja = async function() {
-        if (!nombreOriginal) { setMsg('Escribe el nombre exacto de quien se da de baja.'); return; }
-        await setDoc(doc(db, 'configuracion', 'elOtroVacante'), {
-            nombreOriginal: nombreOriginal, nombreNuevo: null, marcadoEn: serverTimestamp()
+        if (!nombreOriginal.trim()) { setMsg('Escribe el nombre exacto de quien se da de baja.'); return; }
+        var yaExiste = vacantes.some(function(v) { return v.id === nombreOriginal.trim(); });
+        if (yaExiste) { setMsg('Ya hay un hueco registrado para ese nombre — mira la lista de abajo.'); return; }
+        await setDoc(doc(db, 'elOtroVacantes', nombreOriginal.trim()), {
+            original: nombreOriginal.trim(), nuevo: null, marcadoEn: serverTimestamp(), resueltoEn: null,
         });
-        setMsg('✅ Hueco marcado. En el draft se verá "🎟️ Hueco disponible" sin el nombre.');
+        setMsg('✅ Hueco de ' + nombreOriginal.trim() + ' registrado, pendiente de asignar.');
+        setNombreOriginal('');
     };
 
-    var asignarSustituto = async function() {
-        if (!nombreNuevo) { setMsg('Escribe el nombre exacto de quien va a ocupar el hueco.'); return; }
-        await setDoc(doc(db, 'configuracion', 'elOtroVacante'), {
-            nombreOriginal: nombreOriginal, nombreNuevo: nombreNuevo, asignadoEn: serverTimestamp()
+    var asignarSustituto = async function(v) {
+        var nombreNuevo = (asignaciones[v.id] || '').trim();
+        if (!nombreNuevo) { setMsg('Escribe el nombre de quien va a ocupar el hueco de ' + v.original + '.'); return; }
+        await setDoc(doc(db, 'elOtroVacantes', v.id), {
+            nuevo: nombreNuevo, resueltoEn: serverTimestamp(),
         }, { merge: true });
-        setMsg('✅ ' + nombreNuevo + ' hereda el turno de esa posición.');
+        setMsg('✅ ' + nombreNuevo + ' hereda el turno de ' + v.original + ' — esto ya no se vuelve a mover.');
+        setAsignaciones(function(p) { var c = { ...p }; delete c[v.id]; return c; });
     };
 
-    var limpiar = async function() {
-        if (!window.confirm('¿Borrar el hueco vacante? Volverá al estado normal.')) return;
-        await deleteDoc(doc(db, 'configuracion', 'elOtroVacante'));
-        setNombreOriginal(''); setNombreNuevo(''); setMsg('');
+    var borrarRegistro = async function(v) {
+        if (!window.confirm('¿Borrar por completo el registro de baja de ' + v.original + (v.nuevo ? (' (ya asignado a ' + v.nuevo + ')') : '') + '?\n\nSolo hazlo si fue un error al crearlo — esto no es para "deshacer" una sustitución ya confirmada.')) return;
+        await deleteDoc(doc(db, 'elOtroVacantes', v.id));
+        setMsg('Registro de ' + v.original + ' borrado.');
     };
 
     return (
         <div style={ADMIN_STYLES.card}>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
-                🎟️ Hueco simbólico — baja voluntaria
+                🎟️ Huecos por baja voluntaria
             </p>
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
-                Si alguien se da de baja de El Otro Equipo, marca su nombre aquí. En el draft público se verá el hueco disponible sin decir quién era. Cuando asignes un sustituto, hereda esa misma posición en la cola (no va al final).
+                Cada baja es un registro independiente y permanente. Cuando asignas un sustituto, hereda ese puesto en la cola para siempre — marcar una baja nueva de otra persona no toca esta asignación.
             </p>
-            {vacante && (
-                <div style={{background:'rgba(255,215,0,0.08)',borderRadius:8,padding:'10px 14px',marginBottom:12}}>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B'}}>
-                        Hueco activo — original: <strong>{vacante.nombreOriginal}</strong>{vacante.nombreNuevo ? (' → asignado a: ' + vacante.nombreNuevo) : ' (sin asignar todavía)'}
-                    </p>
-                </div>
-            )}
-            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
+            {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#10b981',marginBottom:10}}>{msg}</p>}
+
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:16}}>
                 <input value={nombreOriginal} onChange={function(e){setNombreOriginal(e.target.value);}} placeholder="Nombre de quien se da de baja"
                     style={{flex:1,minWidth:160,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
-                <button onClick={marcarBaja} style={{...ADMIN_STYLES.btnPrimary,padding:'8px 14px',fontSize:12}}>Marcar hueco</button>
+                <button onClick={marcarBaja} style={{...ADMIN_STYLES.btnPrimary,padding:'8px 14px',fontSize:12}}>Marcar hueco nuevo</button>
             </div>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
-                <input value={nombreNuevo} onChange={function(e){setNombreNuevo(e.target.value);}} placeholder="Nombre de quien lo ocupa (cuando lo sepas)"
-                    style={{flex:1,minWidth:160,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
-                <button onClick={asignarSustituto} style={ADMIN_STYLES.btnSuccess}>Asignar</button>
-            </div>
-            <button onClick={limpiar} style={{...ADMIN_STYLES.btnPrimary,background:'rgba(230,57,70,0.08)',color:'#e63946',padding:'6px 14px',fontSize:12}}>Borrar hueco</button>
-            {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#10b981',marginTop:10}}>{msg}</p>}
+
+            {vacantes.length === 0 ? (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.4)',textAlign:'center'}}>Ningún hueco registrado todavía.</p>
+            ) : (
+                <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                    {vacantes.map(function(v) {
+                        return (
+                            <div key={v.id} style={{background: v.nuevo ? 'rgba(16,185,129,0.06)' : 'rgba(255,215,0,0.08)',borderRadius:8,padding:'10px 14px'}}>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginBottom:6}}>
+                                    <strong>{v.original}</strong> {v.nuevo ? ('→ ✅ ' + v.nuevo + ' (fijo, no se vuelve a mover)') : '(sin asignar todavía)'}
+                                </p>
+                                {!v.nuevo && (
+                                    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:6}}>
+                                        <input value={asignaciones[v.id] || ''} onChange={function(e){setAsignaciones(function(p){var c={...p};c[v.id]=e.target.value;return c;});}}
+                                            placeholder="Nombre de quien lo ocupa"
+                                            style={{flex:1,minWidth:140,padding:'6px 10px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:11}} />
+                                        <button onClick={function(){asignarSustituto(v);}} style={{...ADMIN_STYLES.btnSuccess,padding:'6px 12px',fontSize:11}}>Asignar</button>
+                                    </div>
+                                )}
+                                <button onClick={function(){borrarRegistro(v);}} style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946',background:'none',border:'none',cursor:'pointer'}}>
+                                    Borrar este registro (solo si fue un error)
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 };
@@ -5902,14 +5926,23 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                         <button onClick={async function() {
                                             await updateDoc(doc(db,'pagos',p.id), { estado: 'completado', confirmadoEn: serverTimestamp() });
                                             // Si es una compra de plaza vacante en El Otro Equipo, al confirmar el
-                                            // pago se asigna automáticamente el hueco a este jugador.
+                                            // pago se asigna automáticamente al hueco PENDIENTE más antiguo — cada
+                                            // baja es su propio registro independiente y permanente, así que esto
+                                            // nunca toca sustituciones de otras bajas ya resueltas.
                                             if (p.tipo === 'plaza_otro') {
-                                                var vacanteSnap = await getDoc(doc(db, 'configuracion', 'elOtroVacante'));
-                                                if (vacanteSnap.exists() && !vacanteSnap.data().nombreNuevo) {
-                                                    await setDoc(doc(db, 'configuracion', 'elOtroVacante'), { nombreNuevo: p.jugador }, { merge: true });
-                                                    alert('✅ Pago confirmado. ' + p.jugador + ' ya tiene el hueco de El Otro Equipo asignado.');
+                                                var vacantesSnap = await getDocs(collection(db, 'elOtroVacantes'));
+                                                var pendientes = [];
+                                                vacantesSnap.forEach(function(d) { var v = d.data(); if (!v.nuevo) pendientes.push({ id: d.id, ...v }); });
+                                                pendientes.sort(function(a,b) {
+                                                    var ta = a.marcadoEn && a.marcadoEn.toMillis ? a.marcadoEn.toMillis() : 0;
+                                                    var tb = b.marcadoEn && b.marcadoEn.toMillis ? b.marcadoEn.toMillis() : 0;
+                                                    return ta - tb;
+                                                });
+                                                if (pendientes.length > 0) {
+                                                    await setDoc(doc(db, 'elOtroVacantes', pendientes[0].id), { nuevo: p.jugador, resueltoEn: serverTimestamp() }, { merge: true });
+                                                    alert('✅ Pago confirmado. ' + p.jugador + ' ya tiene el hueco de ' + pendientes[0].original + ' asignado — fijo, no se vuelve a mover.');
                                                 } else {
-                                                    alert('✅ Pago confirmado, pero el hueco ya no está disponible (puede que otro pago se confirmara antes). Revísalo en El Otro Equipo.');
+                                                    alert('✅ Pago confirmado, pero no hay ningún hueco pendiente ahora mismo (puede que otro pago se confirmara antes). Revísalo en El Otro Equipo.');
                                                 }
                                             }
                                         }} style={{...A.btnSuccess,padding:'6px 14px'}}>
@@ -6099,7 +6132,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                                 setMsgAdmin('✅ ' + j + ' eliminado. Su equipo (' + elOtroSnap.data().equipo + ') ya está libre para otro jugador.');
                                                 alert('✅ ' + j + ' eliminado correctamente.\n\nYa no podrá entrar a la app. Su equipo de El Otro (' + elOtroSnap.data().equipo + ') ya está libre — cualquiera puede elegirlo ahora, sin que a ' + j + ' se le vuelva a asignar turno.');
                                             } else {
-                                                await setDoc(doc(db, 'configuracion', 'elOtroVacante'), { nombreOriginal: j, nombreNuevo: null, marcadoEn: serverTimestamp() });
+                                                await setDoc(doc(db, 'elOtroVacantes', j), { original: j, nuevo: null, marcadoEn: serverTimestamp(), resueltoEn: null });
                                                 setMsgAdmin('✅ ' + j + ' eliminado. Su hueco en El Otro Equipo ya está disponible.');
                                                 alert('✅ ' + j + ' eliminado correctamente.\n\nYa no podrá entrar a la app, y su hueco en El Otro Equipo está marcado como disponible.');
                                             }
@@ -6370,7 +6403,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
     var [loading, setLoading] = useState(true);
     var [equiposDisponibles, setEquiposDisponibles] = useState(EQUIPOS_PRIMERA_DIVISION);
     var [enPausaNocturna, setEnPausaNocturna] = useState(false);
-    var [vacante, setVacante] = useState(null); // { nombreOriginal, nombreNuevo } — hueco simbólico de baja
+    var [vacantes, setVacantes] = useState([]); // lista de { id, original, nuevo, marcadoEn, resueltoEn } — cada baja es su propio registro permanente
     var [comprandoPlaza, setComprandoPlaza] = useState(false);
     var [bizumInfo, setBizumInfo] = useState({ nombre: 'Juanma', telefono: '' });
     var [copiadoPlaza, setCopiadoPlaza] = useState(false);
@@ -6401,8 +6434,15 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
     }, []);
 
     useEffect(function() {
-        var unsub = onSnapshot(doc(db, 'configuracion', 'elOtroVacante'), function(snap) {
-            setVacante(snap.exists() ? snap.data() : null);
+        var unsub = onSnapshot(collection(db, 'elOtroVacantes'), function(snap) {
+            var lista = [];
+            snap.forEach(function(d) { lista.push({ id: d.id, ...d.data() }); });
+            lista.sort(function(a,b) {
+                var ta = a.marcadoEn && a.marcadoEn.toMillis ? a.marcadoEn.toMillis() : 0;
+                var tb = b.marcadoEn && b.marcadoEn.toMillis ? b.marcadoEn.toMillis() : 0;
+                return ta - tb;
+            });
+            setVacantes(lista);
         });
         return function() { unsub(); };
     }, []);
@@ -6427,13 +6467,15 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
     useEffect(function() {
         var datos = todosElOtro;
 
-        // Orden base, con el hueco vacante sustituido en su misma posición
-        // (privilegio: quien lo ocupa hereda el turno original, no va al final)
+        // Orden base, con CADA hueco vacante sustituido en su propia posición
+        // (privilegio: quien lo ocupa hereda el turno original, no va al
+        // final) — cada registro es independiente, así que sustituir uno no
+        // toca a los demás en absoluto.
         var baseOrden = ORDEN_ELECCION_EL_OTRO.slice();
-        if (vacante && vacante.nombreOriginal) {
-            var idxVac = baseOrden.indexOf(vacante.nombreOriginal);
-            if (idxVac !== -1) baseOrden[idxVac] = vacante.nombreNuevo || '__VACANTE__';
-        }
+        vacantes.forEach(function(v) {
+            var idxVac = baseOrden.indexOf(v.original);
+            if (idxVac !== -1) baseOrden[idxVac] = v.nuevo || ('__VACANTE_' + v.id + '__');
+        });
 
         // "Nuevos" ya NO se detectan mirando quién tiene ya un documento
         // guardado en El Otro (eso era el bug: un jugador recién aprobado por
@@ -6459,11 +6501,12 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         // Los saltados por no responder a tiempo van al FINAL de la cola —
         // tienen una segunda oportunidad después de que todos los demás elijan,
         // en vez de quedar bloqueados para siempre.
+        var esMarcadorVacante = function(j) { return typeof j === 'string' && j.indexOf('__VACANTE_') === 0; };
         var pendientesNormales = ordenCompleto.filter(function(j) {
-            return j === '__VACANTE__' || !datos[j] || (!datos[j].equipo && !datos[j].saltado);
+            return esMarcadorVacante(j) || !datos[j] || (!datos[j].equipo && !datos[j].saltado);
         });
         var saltadosSinEquipo = ordenCompleto.filter(function(j) {
-            return j !== '__VACANTE__' && datos[j] && datos[j].saltado && !datos[j].equipo;
+            return !esMarcadorVacante(j) && datos[j] && datos[j].saltado && !datos[j].equipo;
         });
         var ordenConf = [].concat(pendientesNormales, saltadosSinEquipo);
         setOrdenFinal(ordenConf);
@@ -6490,7 +6533,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         if (draftAbierto) {
             for (var i = 0; i < ordenConf.length; i++) {
                 var j = ordenConf[i];
-                if (j === '__VACANTE__') continue;
+                if (esMarcadorVacante(j)) continue;
                 if (jugadoresInactivos.indexOf(j) !== -1) continue;
                 if (!datos[j] || !datos[j].equipo) { turno = j; break; }
             }
@@ -6510,7 +6553,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                 }, { merge: true }).catch(function(){});
             }
         }
-    }, [todosElOtro, vacante, currentUser, jugadoresAprobados, jugadoresInactivos]);
+    }, [todosElOtro, vacantes, currentUser, jugadoresAprobados, jugadoresInactivos]);
 
     // Temporizador: si es mi turno, cuenta atrás de 60 minutos — y si se agota,
     // me marco a mí mismo como "saltado" (paso al final de la cola) para que
@@ -6750,8 +6793,12 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                 </div>
             )}
 
-            {/* Comprar el hueco vacante — opcional, no obligatorio */}
-            {vacante && vacante.nombreOriginal && !vacante.nombreNuevo && !(miElOtro && miElOtro.equipo) && (
+            {/* Comprar el hueco vacante — se mantiene activo (genera ingresos
+                reales, ya hubo una compra). Lo que se quitó fue solo la fila
+                de "Baja"/"hueco libre" en la lista de Estado del draft más
+                abajo, no este botón de compra. Si hay varios huecos pendientes
+                a la vez, el pago se asigna siempre al más antiguo (FIFO). */}
+            {vacantes.some(function(v){return !v.nuevo;}) && !(miElOtro && miElOtro.equipo) && (
                 <div style={{marginTop:12,background:'rgba(255,215,0,0.06)',border:'1px dashed rgba(255,215,0,0.35)',borderRadius:14,padding:16}}>
                     {!comprandoPlaza && !yaSolicitePlaza && (
                         <>
@@ -6816,24 +6863,19 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                 </div>
             )}
 
-            {/* Estado del draft — quién ha elegido ya */}
+            {/* Estado del draft — quién ha elegido ya. Los que se han dado de
+                baja (activos o no) no se muestran — ni como "baja" ni como
+                "hueco libre": simplemente desaparecen de la lista, y su
+                posición la ocupa quien corresponda de forma natural. */}
             <div style={{marginTop:24}}>
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.4,textTransform:'uppercase',marginBottom:12}}>Estado del draft</p>
-                {ordenFinal.map(function(jugador, i) {
-                    if (jugador === '__VACANTE__') {
-                        return (
-                            <div key={'vacante-'+i} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px dashed rgba(0,31,107,0.15)'}}>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'rgba(0,31,107,0.25)',width:24,textAlign:'center',fontWeight:700}}>{i+1}</span>
-                                <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'rgba(0,31,107,0.4)',fontStyle:'italic',textTransform:'uppercase'}}>🎟️ Hueco disponible</span>
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(255,215,0,0.12)',color:'#b8860b',padding:'3px 10px',borderRadius:10}}>Privilegio libre</span>
-                            </div>
-                        );
-                    }
+                {ordenFinal.filter(function(jugador) {
+                    return jugador !== '__VACANTE__' && jugadoresInactivos.indexOf(jugador) === -1;
+                }).map(function(jugador, i) {
                     var datos = todosElOtro[jugador] || {};
                     var eligió = !!datos.equipo;
                     var esTurno = turnoActual === jugador;
                     var esSaltado = !!datos.saltado;
-                    var estaEliminado = jugadoresInactivos.indexOf(jugador) !== -1;
                     // Secretismo: solo se ve el escudo real a partir de la 3ª
                     // activación (cuando el multiplicador llega a ×2.5). Antes
                     // de eso, un icono de persona genérico — nadie sabe qué
@@ -6841,7 +6883,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                     var revelablePorUso = (datos.activaciones || 0) >= 3;
                     var muestraEscudo = eligió && (datos.revelado || revelablePorUso);
                     return (
-                        <div key={jugador} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.05)',opacity:estaEliminado?0.5:1}}>
+                        <div key={jugador} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
                             <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:esTurno ? '#FFD700' : 'rgba(0,31,107,0.3)',width:24,textAlign:'center',fontWeight:700}}>{i+1}</span>
                             {eligió ? (
                                 muestraEscudo ? (
@@ -6854,9 +6896,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                                 <span style={{width:26,flexShrink:0}} />
                             )}
                             <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color: eligió ? G.deepBlue : esTurno ? G.deepBlue : 'rgba(0,31,107,0.4)',textTransform:'uppercase'}}>{nombreVisible(jugador, userProfiles[jugador])}</span>
-                            {estaEliminado ? (
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(0,31,107,0.06)',color:'rgba(0,31,107,0.4)',padding:'3px 10px',borderRadius:10}}>Baja{datos.equipoAbandonado ? ' — equipo libre' : ''}</span>
-                            ) : eligió ? (
+                            {eligió ? (
                                 <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(16,185,129,0.1)',color:'#10b981',padding:'3px 10px',borderRadius:10}}>{muestraEscudo ? '✓ '+datos.equipo : '✓ Equipo elegido'}</span>
                             ) : esTurno && !esSaltado ? (
                                 <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(255,215,0,0.15)',color:'#d4af37',padding:'3px 10px',borderRadius:10}}>← Turno</span>
