@@ -3504,7 +3504,7 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
         setJugadoresPagando([currentUser]);
         setPaso('seleccion');
         if (onContextoPagoUsado) onContextoPagoUsado();
-    }, [contextoPago]);
+    }, [contextoPago, currentUser, onContextoPagoUsado]);
 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
@@ -6713,7 +6713,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         if (esMiTurno && !yoElegí && navigator.vibrate) {
             navigator.vibrate([200, 100, 200, 100, 200]);
         }
-    }, [esMiTurno]);
+    }, [esMiTurno, yoElegí]);
     var yoElegí = miElOtro && miElOtro.equipo;
     var plazoSuperado = new Date() > PLAZO_EL_OTRO;
 
