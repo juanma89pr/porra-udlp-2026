@@ -496,7 +496,7 @@ const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false 
 const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.lightText, isOnline = false }) => {
     const p = profile || {}; const color = p.color || defaultColor; const isG = typeof color === 'string' && color.startsWith('linear-gradient');
     const nStyle = { ...(isG ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color }), fontWeight: 'bold' };
-    return (<span style={{display: 'inline-flex', alignItems: 'center', gap: '8px' }}>{p.icon && <span>{p.icon}</span>}<span style={nStyle}>{nombreVisible(name, p)}</span>{isOnline && <span style={{width: '8px', height: '8px', backgroundColor: styles.colors.success, borderRadius: '50%', boxShadow: `0 0 8px ${styles.colors.success}`}}></span>}</span>);
+    return (<span style={{display: 'inline-flex', alignItems: 'center', gap: '8px' }}><IconoPerfil perfil={p} size={26} /><span style={nStyle}>{nombreVisible(name, p)}</span>{isOnline && <span style={{width: '8px', height: '8px', backgroundColor: styles.colors.success, borderRadius: '50%', boxShadow: `0 0 8px ${styles.colors.success}`}}></span>}</span>);
 };
 
 // ============================================================================
@@ -532,6 +532,25 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
         if (file.type && !file.type.startsWith('image/')) { setErrorFoto('Elige un archivo de imagen.'); return; }
         if (file.size > 8 * 1024 * 1024) { setErrorFoto('La imagen pesa demasiado (máx. 8MB).'); return; }
 
+        // Cerrojo maestro: pase lo que pase (un error que no cacé, el móvil
+        // que se cuelga, lo que sea), a los 35 segundos el botón se libera sí
+        // o sí. Es la garantía definitiva de que nunca más se quede colgado
+        // en "Procesando" para siempre.
+        var yaTerminado = false;
+        var candadoMaestro = setTimeout(function() {
+            if (yaTerminado) return;
+            yaTerminado = true;
+            setSubiendoFoto(false);
+            setErrorFoto('Esto está tardando demasiado. Prueba con otra foto, o hazle una captura de pantalla y sube esa captura en su lugar.');
+        }, 35000);
+        var terminar = function(errorMsg) {
+            if (yaTerminado) return;
+            yaTerminado = true;
+            clearTimeout(candadoMaestro);
+            setSubiendoFoto(false);
+            if (errorMsg) setErrorFoto(errorMsg);
+        };
+
         var subirBlobFinal = async function(blob, tipo) {
             var ref = storageRef(storage, 'perfiles/' + currentUser + '/foto.jpg');
             await conTimeout(uploadBytes(ref, blob, { contentType: tipo }), 20000, 'La subida está tardando demasiado. Comprueba tu conexión e inténtalo de nuevo.');
@@ -550,8 +569,7 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
         var timeoutCarga = setTimeout(function() {
             if (yaResuelto) return;
             yaResuelto = true;
-            setErrorFoto('Este formato de foto no se puede procesar en tu navegador. Prueba a hacer una captura de pantalla de la foto y sube esa captura.');
-            setSubiendoFoto(false);
+            terminar('Este formato de foto no se puede procesar en tu navegador. Prueba a hacer una captura de pantalla de la foto y sube esa captura.');
         }, 12000); // si ni onload ni onerror disparan en 12s (pasa con algunos HEIC), no nos quedamos colgados
 
         img.onload = async function() {
@@ -564,6 +582,7 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
                 var previewUrl = URL.createObjectURL(blob);
                 setPreviewFoto(previewUrl);
                 await subirBlobFinal(blob, 'image/jpeg');
+                terminar('');
             } catch (err) {
                 console.warn('Filtro UDLP falló, subiendo foto original sin filtro:', err.message);
                 // No bloqueamos al jugador por un fallo del filtro — mejor una
@@ -571,19 +590,18 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
                 try {
                     setPreviewFoto(objectUrl);
                     await subirBlobFinal(file, file.type || 'image/jpeg');
-                    setErrorFoto('');
+                    terminar('');
                 } catch (err2) {
                     console.error(err2);
-                    setErrorFoto('No se pudo subir la foto. Inténtalo de nuevo o prueba con otra imagen.');
+                    terminar('No se pudo subir la foto: ' + err2.message + '. Si sigue fallando, puede ser que Firebase Storage no tenga las reglas de acceso subidas — avisa a Juanma.');
                 }
             }
-            setSubiendoFoto(false);
         };
         img.onerror = function() {
             if (yaResuelto) return;
             yaResuelto = true;
             clearTimeout(timeoutCarga);
-            setErrorFoto('No se pudo leer esa imagen. Prueba con otro archivo (JPG o PNG van siempre bien).');
+            terminar('No se pudo leer esa imagen. Prueba con otro archivo (JPG o PNG van siempre bien).');
         };
         img.src = objectUrl;
     };
@@ -6062,13 +6080,29 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                             {JUGADORES_LISTA.map(function(j) {
                                 return (
                                     <button key={j} onClick={async function() {
-                                        if (!window.confirm('¿Eliminar a ' + j + ' definitivamente?\n\n· Ya no podrá entrar a la app\n· Su hueco en El Otro Equipo quedará "disponible" para otro jugador\n\nEsto no borra su historial de puntos ni pagos pasados.')) return;
+                                        if (!window.confirm('¿Eliminar a ' + j + ' definitivamente?\n\n· Ya no podrá entrar a la app\n· Si aún no había elegido equipo en El Otro, su hueco en la cola quedará "disponible"\n· Si YA había elegido equipo, ese equipo queda libre para que otro lo pueda elegir\n\nEsto no borra su historial de puntos ni pagos pasados.')) return;
                                         try {
                                             await setDoc(doc(db, 'configuracion', 'jugadoresInactivos'), { nombres: arrayUnion(j) }, { merge: true });
-                                            await setDoc(doc(db, 'configuracion', 'elOtroVacante'), { nombreOriginal: j, nombreNuevo: null, marcadoEn: serverTimestamp() });
                                             await deleteDoc(doc(db, 'pines', j));
-                                            setMsgAdmin('✅ ' + j + ' eliminado. Su hueco en El Otro Equipo ya está disponible.');
-                                            alert('✅ ' + j + ' eliminado correctamente.\n\nYa no podrá entrar a la app, y su hueco en El Otro Equipo está marcado como disponible.');
+
+                                            // ¿Ya había elegido equipo en El Otro? Si sí, se libera el equipo
+                                            // (sin tocar su historial de activaciones ya calculadas) en vez de
+                                            // marcar el hueco de la cola como vacante — ese hueco ya no aplica
+                                            // porque su turno ya pasó.
+                                            var elOtroSnap = await getDoc(doc(db, 'elOtro', j));
+                                            var yaTeniaEquipo = elOtroSnap.exists() && elOtroSnap.data().equipo;
+                                            if (yaTeniaEquipo) {
+                                                await setDoc(doc(db, 'elOtro', j), {
+                                                    equipoAbandonado: elOtroSnap.data().equipo, // se guarda para el historial
+                                                    equipo: null, // libera el equipo para que otro lo pueda elegir
+                                                }, { merge: true });
+                                                setMsgAdmin('✅ ' + j + ' eliminado. Su equipo (' + elOtroSnap.data().equipo + ') ya está libre para otro jugador.');
+                                                alert('✅ ' + j + ' eliminado correctamente.\n\nYa no podrá entrar a la app. Su equipo de El Otro (' + elOtroSnap.data().equipo + ') ya está libre — cualquiera puede elegirlo ahora, sin que a ' + j + ' se le vuelva a asignar turno.');
+                                            } else {
+                                                await setDoc(doc(db, 'configuracion', 'elOtroVacante'), { nombreOriginal: j, nombreNuevo: null, marcadoEn: serverTimestamp() });
+                                                setMsgAdmin('✅ ' + j + ' eliminado. Su hueco en El Otro Equipo ya está disponible.');
+                                                alert('✅ ' + j + ' eliminado correctamente.\n\nYa no podrá entrar a la app, y su hueco en El Otro Equipo está marcado como disponible.');
+                                            }
                                         } catch(e) {
                                             console.error('Error eliminando jugador:', e);
                                             alert('❌ No se pudo eliminar a ' + j + '.\n\nError: ' + e.message + '\n\nProbablemente sea un problema de permisos en las reglas de Firestore — revisa que la colección "configuracion" permita escritura.');
@@ -6434,13 +6468,21 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         var ordenConf = [].concat(pendientesNormales, saltadosSinEquipo);
         setOrdenFinal(ordenConf);
 
-        var equiposTomados = Object.values(datos).map(function(d) { return d.equipo; }).filter(Boolean);
+        // Los equipos de jugadores ELIMINADOS no cuentan como "cogidos" — si
+        // alguien abandona tras haber elegido, su equipo vuelve a estar libre
+        // para el resto (el campo equipo se limpia al eliminarlo, más abajo).
+        var equiposTomados = Object.keys(datos)
+            .filter(function(j) { return jugadoresInactivos.indexOf(j) === -1; })
+            .map(function(j) { return datos[j].equipo; })
+            .filter(Boolean);
         setEquiposDisponibles(EQUIPOS_PRIMERA_DIVISION.filter(function(e) { return equiposTomados.indexOf(e) === -1; }));
 
         // El turno es del primer jugador en el orden (ya sin bloquear a los
         // saltados — reaparecen al final, con su cronómetro reiniciado).
         // El draft no arranca hasta PLAZO_APERTURA_EL_OTRO, y se pausa cada
         // noche de 01:00 a 09:00 — nadie recibe turno nuevo en ese tramo.
+        // Un jugador ELIMINADO nunca recibe turno, aunque su equipo se haya
+        // quedado libre (evita "revivir" a alguien que ya no juega).
         var ahoraCheck = new Date();
         var draftAbierto = ahoraCheck >= PLAZO_APERTURA_EL_OTRO && !estaEnPausaNocturna(ahoraCheck);
         setEnPausaNocturna(ahoraCheck >= PLAZO_APERTURA_EL_OTRO && estaEnPausaNocturna(ahoraCheck));
@@ -6449,6 +6491,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
             for (var i = 0; i < ordenConf.length; i++) {
                 var j = ordenConf[i];
                 if (j === '__VACANTE__') continue;
+                if (jugadoresInactivos.indexOf(j) !== -1) continue;
                 if (!datos[j] || !datos[j].equipo) { turno = j; break; }
             }
         }
@@ -6790,6 +6833,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                     var eligió = !!datos.equipo;
                     var esTurno = turnoActual === jugador;
                     var esSaltado = !!datos.saltado;
+                    var estaEliminado = jugadoresInactivos.indexOf(jugador) !== -1;
                     // Secretismo: solo se ve el escudo real a partir de la 3ª
                     // activación (cuando el multiplicador llega a ×2.5). Antes
                     // de eso, un icono de persona genérico — nadie sabe qué
@@ -6797,7 +6841,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                     var revelablePorUso = (datos.activaciones || 0) >= 3;
                     var muestraEscudo = eligió && (datos.revelado || revelablePorUso);
                     return (
-                        <div key={jugador} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                        <div key={jugador} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.05)',opacity:estaEliminado?0.5:1}}>
                             <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:esTurno ? '#FFD700' : 'rgba(0,31,107,0.3)',width:24,textAlign:'center',fontWeight:700}}>{i+1}</span>
                             {eligió ? (
                                 muestraEscudo ? (
@@ -6810,10 +6854,17 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                                 <span style={{width:26,flexShrink:0}} />
                             )}
                             <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color: eligió ? G.deepBlue : esTurno ? G.deepBlue : 'rgba(0,31,107,0.4)',textTransform:'uppercase'}}>{nombreVisible(jugador, userProfiles[jugador])}</span>
-                            {eligió && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(16,185,129,0.1)',color:'#10b981',padding:'3px 10px',borderRadius:10}}>{muestraEscudo ? '✓ '+datos.equipo : '✓ Equipo elegido'}</span>}
-                            {!eligió && esTurno && !esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(255,215,0,0.15)',color:'#d4af37',padding:'3px 10px',borderRadius:10}}>← Turno</span>}
-                            {esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(230,57,70,0.1)',color:G.danger,padding:'3px 10px',borderRadius:10}}>Saltado</span>}
-                            {!eligió && !esTurno && !esSaltado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.25)'}}>Pendiente</span>}
+                            {estaEliminado ? (
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(0,31,107,0.06)',color:'rgba(0,31,107,0.4)',padding:'3px 10px',borderRadius:10}}>Baja{datos.equipoAbandonado ? ' — equipo libre' : ''}</span>
+                            ) : eligió ? (
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(16,185,129,0.1)',color:'#10b981',padding:'3px 10px',borderRadius:10}}>{muestraEscudo ? '✓ '+datos.equipo : '✓ Equipo elegido'}</span>
+                            ) : esTurno && !esSaltado ? (
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(255,215,0,0.15)',color:'#d4af37',padding:'3px 10px',borderRadius:10}}>← Turno</span>
+                            ) : esSaltado ? (
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(230,57,70,0.1)',color:G.danger,padding:'3px 10px',borderRadius:10}}>Saltado</span>
+                            ) : (
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.25)'}}>Pendiente</span>
+                            )}
                         </div>
                     );
                 })}
@@ -7621,11 +7672,33 @@ function App() {
                 if (snap.exists()) setTeamLogos(snap.data());
             });
             onSnapshot(collection(db, "clasificacion"), function(snap) {
-                var profiles = {};
                 var clasif = [];
-                snap.forEach(function(d) { profiles[d.id] = d.data(); clasif.push({ id: d.id, ...d.data() }); });
-                setUserProfiles(profiles);
+                snap.forEach(function(d) { clasif.push({ id: d.id, ...d.data() }); });
                 setClasificacionData(clasif);
+                // Fusiona los puntos dentro de userProfiles sin borrar lo que
+                // ya hubiera (fotos, apodo, emoji) — antes esto SOBRESCRIBÍA
+                // userProfiles entero solo con puntos, y la colección real de
+                // perfiles (fotos) nunca se llegaba a leer en ningún sitio.
+                setUserProfiles(function(prev) {
+                    var copia = { ...prev };
+                    snap.forEach(function(d) {
+                        copia[d.id] = { ...(copia[d.id] || {}), ...d.data() };
+                    });
+                    return copia;
+                });
+            });
+            // Perfiles reales — foto, apodo, emoji. Antes nunca se leía esta
+            // colección para el resto de la app, solo la usaba cada uno en su
+            // propia pantalla de Perfil — por eso las fotos no se veían en
+            // ningún otro sitio (avatares, clasificación, quién ha apostado).
+            onSnapshot(collection(db, "perfiles"), function(snap) {
+                setUserProfiles(function(prev) {
+                    var copia = { ...prev };
+                    snap.forEach(function(d) {
+                        copia[d.id] = { ...(copia[d.id] || {}), ...d.data() };
+                    });
+                    return copia;
+                });
             });
             // Fotos verificadas a mano desde Admin — un documento por jugador,
             // en vivo, para que un cambio se vea al instante en toda la app.
