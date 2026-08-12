@@ -5925,24 +5925,33 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                     <div style={{display:'flex',gap:6}}>
                                         <button onClick={async function() {
                                             await updateDoc(doc(db,'pagos',p.id), { estado: 'completado', confirmadoEn: serverTimestamp() });
-                                            // Si es una compra de plaza vacante en El Otro Equipo, al confirmar el
-                                            // pago se asigna automáticamente al hueco PENDIENTE más antiguo — cada
+                                            // Si es una compra de plaza vacante en El Otro Equipo, se asigna al
+                                            // hueco EXACTO que el jugador eligió al pedirlo (p.vacanteId) — cada
                                             // baja es su propio registro independiente y permanente, así que esto
-                                            // nunca toca sustituciones de otras bajas ya resueltas.
+                                            // nunca toca sustituciones de otras bajas ya resueltas. Si la solicitud
+                                            // es de antes de que existiera este campo, se usa el pendiente más
+                                            // antiguo como respaldo.
                                             if (p.tipo === 'plaza_otro') {
-                                                var vacantesSnap = await getDocs(collection(db, 'elOtroVacantes'));
-                                                var pendientes = [];
-                                                vacantesSnap.forEach(function(d) { var v = d.data(); if (!v.nuevo) pendientes.push({ id: d.id, ...v }); });
-                                                pendientes.sort(function(a,b) {
-                                                    var ta = a.marcadoEn && a.marcadoEn.toMillis ? a.marcadoEn.toMillis() : 0;
-                                                    var tb = b.marcadoEn && b.marcadoEn.toMillis ? b.marcadoEn.toMillis() : 0;
-                                                    return ta - tb;
-                                                });
-                                                if (pendientes.length > 0) {
-                                                    await setDoc(doc(db, 'elOtroVacantes', pendientes[0].id), { nuevo: p.jugador, resueltoEn: serverTimestamp() }, { merge: true });
-                                                    alert('✅ Pago confirmado. ' + p.jugador + ' ya tiene el hueco de ' + pendientes[0].original + ' asignado — fijo, no se vuelve a mover.');
+                                                var vacanteObjetivo = null;
+                                                if (p.vacanteId) {
+                                                    var vSnap = await getDoc(doc(db, 'elOtroVacantes', p.vacanteId));
+                                                    if (vSnap.exists() && !vSnap.data().nuevo) vacanteObjetivo = { id: vSnap.id, ...vSnap.data() };
                                                 } else {
-                                                    alert('✅ Pago confirmado, pero no hay ningún hueco pendiente ahora mismo (puede que otro pago se confirmara antes). Revísalo en El Otro Equipo.');
+                                                    var vacantesSnap = await getDocs(collection(db, 'elOtroVacantes'));
+                                                    var pendientes = [];
+                                                    vacantesSnap.forEach(function(d) { var v = d.data(); if (!v.nuevo) pendientes.push({ id: d.id, ...v }); });
+                                                    pendientes.sort(function(a,b) {
+                                                        var ta = a.marcadoEn && a.marcadoEn.toMillis ? a.marcadoEn.toMillis() : 0;
+                                                        var tb = b.marcadoEn && b.marcadoEn.toMillis ? b.marcadoEn.toMillis() : 0;
+                                                        return ta - tb;
+                                                    });
+                                                    if (pendientes.length > 0) vacanteObjetivo = pendientes[0];
+                                                }
+                                                if (vacanteObjetivo) {
+                                                    await setDoc(doc(db, 'elOtroVacantes', vacanteObjetivo.id), { nuevo: p.jugador, resueltoEn: serverTimestamp() }, { merge: true });
+                                                    alert('✅ Pago confirmado. ' + p.jugador + ' ya tiene el hueco de ' + vacanteObjetivo.original + ' asignado — fijo, no se vuelve a mover.');
+                                                } else {
+                                                    alert('✅ Pago confirmado, pero ese hueco ya no está disponible (puede que otro pago se confirmara antes). Revísalo en El Otro Equipo.');
                                                 }
                                             }
                                         }} style={{...A.btnSuccess,padding:'6px 14px'}}>
@@ -6404,7 +6413,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
     var [equiposDisponibles, setEquiposDisponibles] = useState(EQUIPOS_PRIMERA_DIVISION);
     var [enPausaNocturna, setEnPausaNocturna] = useState(false);
     var [vacantes, setVacantes] = useState([]); // lista de { id, original, nuevo, marcadoEn, resueltoEn } — cada baja es su propio registro permanente
-    var [comprandoPlaza, setComprandoPlaza] = useState(false);
+    var [comprandoPlazaId, setComprandoPlazaId] = useState(null); // id de la vacante que se está comprando ahora mismo
     var [bizumInfo, setBizumInfo] = useState({ nombre: 'Juanma', telefono: '' });
     var [copiadoPlaza, setCopiadoPlaza] = useState(false);
     var [heEnviadoPlaza, setHeEnviadoPlaza] = useState(false);
@@ -6614,28 +6623,33 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         });
     };
 
-    // Comprar el hueco vacante por 2€ — no obligatorio, cualquiera que aún no
+    // Comprar un hueco vacante por 2€ — no obligatorio, cualquiera que aún no
     // haya elegido equipo puede pedirlo. Usa el mismo circuito de Bizum +
     // aprobación manual que el resto de pagos. Cuando el admin confirma este
-    // pago concreto, la app asigna automáticamente el hueco a este jugador.
-    var yaSolicitePlaza = (pagos || []).some(function(p) {
-        return p.tipo === 'plaza_otro' && p.jugador === currentUser && p.estado !== 'fallido';
-    });
+    // pago concreto, la app asigna automáticamente ESE hueco (por su id) a
+    // este jugador — nunca toca ningún otro hueco, aunque haya varios a la vez.
+    var yaSolicitePlaza = function(vacanteId) {
+        return (pagos || []).some(function(p) {
+            return p.tipo === 'plaza_otro' && p.jugador === currentUser && p.estado !== 'fallido' &&
+                (p.vacanteId === vacanteId || (!p.vacanteId && !vacanteId));
+        });
+    };
 
-    var confirmarCompraPlaza = async function() {
+    var confirmarCompraPlaza = async function(vacanteId, nombreOriginal) {
         setEnviandoPlaza(true);
         try {
             await addDoc(collection(db, 'pagos'), {
                 jugador: currentUser,
                 pagoBy: currentUser,
                 tipo: 'plaza_otro',
+                vacanteId: vacanteId,
                 importe: 2,
-                descripcion: 'Plaza en El Otro Equipo (hueco vacante)',
+                descripcion: 'Plaza en El Otro Equipo (hueco de ' + nombreOriginal + ')',
                 metodo: 'bizum',
                 estado: 'pendiente_confirmacion',
                 creadoEn: serverTimestamp(),
             });
-            setComprandoPlaza(false);
+            setComprandoPlazaId(null);
             setHeEnviadoPlaza(false);
         } catch(e) {
             console.error(e);
@@ -6793,75 +6807,10 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                 </div>
             )}
 
-            {/* Comprar el hueco vacante — se mantiene activo (genera ingresos
-                reales, ya hubo una compra). Lo que se quitó fue solo la fila
-                de "Baja"/"hueco libre" en la lista de Estado del draft más
-                abajo, no este botón de compra. Si hay varios huecos pendientes
-                a la vez, el pago se asigna siempre al más antiguo (FIFO). */}
-            {vacantes.some(function(v){return !v.nuevo;}) && !(miElOtro && miElOtro.equipo) && (
-                <div style={{marginTop:12,background:'rgba(255,215,0,0.06)',border:'1px dashed rgba(255,215,0,0.35)',borderRadius:14,padding:16}}>
-                    {!comprandoPlaza && !yaSolicitePlaza && (
-                        <>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,color:G.deepBlue,marginBottom:6}}>
-                                🎟️ ¿Quieres ese hueco?
-                            </p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,marginBottom:10,lineHeight:1.5}}>
-                                Págalo por <strong>2€</strong> y pasas a ocupar esa posición en la cola — eliges tu equipo antes que el resto de gente por detrás tuya. No es obligatorio, es solo una opción.
-                            </p>
-                            <button onClick={function() { setComprandoPlaza(true); }} style={{
-                                fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,background:'#001F6B',color:'#FFD700',
-                                border:'none',borderRadius:20,padding:'8px 18px',cursor:'pointer'}}>
-                                Quiero esta plaza — 2€
-                            </button>
-                        </>
-                    )}
-
-                    {yaSolicitePlaza && !comprandoPlaza && (
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#b8860b'}}>
-                            ⏳ Ya has pedido este hueco — en cuanto se confirme tu Bizum de 2€, pasarás a ocuparlo.
-                        </p>
-                    )}
-
-                    {comprandoPlaza && (
-                        <div>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,color:G.deepBlue,marginBottom:8}}>
-                                1 · Envía 2€ por Bizum a
-                            </p>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:G.deepBlue,marginBottom:2}}>
-                                {bizumInfo.telefono || '(número pendiente de configurar)'}
-                            </p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginBottom:10}}>{bizumInfo.nombre}</p>
-                            {bizumInfo.telefono && (
-                                <button onClick={function() {
-                                    navigator.clipboard.writeText(bizumInfo.telefono);
-                                    setCopiadoPlaza(true); setTimeout(function(){setCopiadoPlaza(false);}, 2000);
-                                }} style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,background:'#0091FF',color:'#fff',
-                                    border:'none',borderRadius:20,padding:'6px 16px',cursor:'pointer',marginBottom:14}}>
-                                    {copiadoPlaza ? '✓ Copiado' : '📋 Copiar número'}
-                                </button>
-                            )}
-                            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginBottom:12}}>
-                                <input type="checkbox" checked={heEnviadoPlaza} onChange={function(e){setHeEnviadoPlaza(e.target.checked);}}
-                                    style={{width:18,height:18,accentColor:G.deepBlue}} />
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue}}>Ya he enviado los 2€</span>
-                            </label>
-                            <div style={{display:'flex',gap:8}}>
-                                <button onClick={confirmarCompraPlaza} disabled={!heEnviadoPlaza || enviandoPlaza} style={{
-                                    fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,background:G.deepBlue,color:'#FFD700',
-                                    border:'none',borderRadius:20,padding:'8px 18px',cursor:'pointer',opacity:heEnviadoPlaza?1:0.5}}>
-                                    {enviandoPlaza ? 'Enviando...' : 'Confirmar solicitud'}
-                                </button>
-                                <button onClick={function(){setComprandoPlaza(false);}} style={{
-                                    fontFamily:"'Inter',sans-serif",fontSize:12,background:'none',color:'rgba(0,31,107,0.5)',
-                                    border:'none',cursor:'pointer'}}>Cancelar</button>
-                            </div>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:10}}>
-                                Tu solicitud queda pendiente hasta que {bizumInfo.nombre} confirme el pago — entonces pasarás a ocupar el hueco automáticamente.
-                            </p>
-                        </div>
-                    )}
-                </div>
-            )}
+            {/* La compra de hueco vacante ya no vive aquí como tarjeta aparte —
+                ahora aparece integrada en su sitio exacto dentro de la lista
+                de "Estado del draft" justo abajo, para que quede claro en
+                qué posición de la cola está cada hueco disponible. */}
 
             {/* Estado del draft — quién ha elegido ya. Los que se han dado de
                 baja (activos o no) no se muestran — ni como "baja" ni como
@@ -6870,8 +6819,78 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
             <div style={{marginTop:24}}>
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.4,textTransform:'uppercase',marginBottom:12}}>Estado del draft</p>
                 {ordenFinal.filter(function(jugador) {
-                    return jugador !== '__VACANTE__' && jugadoresInactivos.indexOf(jugador) === -1;
+                    return jugadoresInactivos.indexOf(jugador) === -1;
                 }).map(function(jugador, i) {
+                    // Hueco vacante en esta posición — cada uno con su propio
+                    // marcador (__VACANTE_<id>__), así que nunca se confunden
+                    // entre sí. Si está sin asignar, aquí mismo se puede pagar
+                    // 2€ para ocuparlo — ligado a ESTE hueco en concreto.
+                    if (typeof jugador === 'string' && jugador.indexOf('__VACANTE_') === 0) {
+                        var vacanteId = jugador.slice('__VACANTE_'.length, -2);
+                        var v = vacantes.find(function(vv) { return vv.id === vacanteId; });
+                        if (!v) return null;
+                        var puedoComprar = !(miElOtro && miElOtro.equipo);
+                        var yaPedida = yaSolicitePlaza(v.id);
+                        var comprandoEste = comprandoPlazaId === v.id;
+                        return (
+                            <div key={'vac-'+v.id} style={{padding:'10px 0',borderBottom:'1px dashed rgba(255,215,0,0.35)'}}>
+                                <div style={{display:'flex',alignItems:'center',gap:12}}>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'rgba(0,31,107,0.25)',width:24,textAlign:'center',fontWeight:700}}>{i+1}</span>
+                                    <span style={{width:26,height:26,borderRadius:'50%',background:'rgba(255,215,0,0.12)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:13}}>🎟️</span>
+                                    <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:1,color:'rgba(0,31,107,0.4)',fontStyle:'italic',textTransform:'uppercase'}}>Hueco disponible</span>
+                                    {puedoComprar && !yaPedida && !comprandoEste && (
+                                        <button onClick={function(){ setComprandoPlazaId(v.id); }} style={{
+                                            fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,background:'#001F6B',color:'#FFD700',
+                                            border:'none',borderRadius:16,padding:'6px 14px',cursor:'pointer'}}>
+                                            Comprar — 2€
+                                        </button>
+                                    )}
+                                    {yaPedida && !comprandoEste && (
+                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,background:'rgba(255,215,0,0.15)',color:'#b8860b',padding:'3px 10px',borderRadius:10}}>⏳ Pendiente de pago</span>
+                                    )}
+                                </div>
+                                {comprandoEste && (
+                                    <div style={{marginTop:10,marginLeft:38,background:'rgba(255,215,0,0.06)',border:'1px dashed rgba(255,215,0,0.35)',borderRadius:12,padding:14}}>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,marginBottom:10,lineHeight:1.5}}>
+                                            Págalo por <strong>2€</strong> y pasas a ocupar esa posición en la cola — eliges tu equipo antes que el resto de gente por detrás tuya. No es obligatorio.
+                                        </p>
+                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,color:G.deepBlue,marginBottom:6}}>1 · Envía 2€ por Bizum a</p>
+                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:G.deepBlue,marginBottom:2}}>
+                                            {bizumInfo.telefono || '(número pendiente de configurar)'}
+                                        </p>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginBottom:10}}>{bizumInfo.nombre}</p>
+                                        {bizumInfo.telefono && (
+                                            <button onClick={function() {
+                                                navigator.clipboard.writeText(bizumInfo.telefono);
+                                                setCopiadoPlaza(true); setTimeout(function(){setCopiadoPlaza(false);}, 2000);
+                                            }} style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,background:'#0091FF',color:'#fff',
+                                                border:'none',borderRadius:20,padding:'6px 16px',cursor:'pointer',marginBottom:14}}>
+                                                {copiadoPlaza ? '✓ Copiado' : '📋 Copiar número'}
+                                            </button>
+                                        )}
+                                        <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginBottom:12}}>
+                                            <input type="checkbox" checked={heEnviadoPlaza} onChange={function(e){setHeEnviadoPlaza(e.target.checked);}}
+                                                style={{width:18,height:18,accentColor:G.deepBlue}} />
+                                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue}}>Ya he enviado los 2€</span>
+                                        </label>
+                                        <div style={{display:'flex',gap:8}}>
+                                            <button onClick={function(){ confirmarCompraPlaza(v.id, v.original); }} disabled={!heEnviadoPlaza || enviandoPlaza} style={{
+                                                fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,background:G.deepBlue,color:'#FFD700',
+                                                border:'none',borderRadius:20,padding:'8px 18px',cursor:'pointer',opacity:heEnviadoPlaza?1:0.5}}>
+                                                {enviandoPlaza ? 'Enviando...' : 'Confirmar solicitud'}
+                                            </button>
+                                            <button onClick={function(){setComprandoPlazaId(null);}} style={{
+                                                fontFamily:"'Inter',sans-serif",fontSize:12,background:'none',color:'rgba(0,31,107,0.5)',
+                                                border:'none',cursor:'pointer'}}>Cancelar</button>
+                                        </div>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.4,marginTop:10}}>
+                                            Tu solicitud queda pendiente hasta que {bizumInfo.nombre} confirme el pago — entonces pasarás a ocupar el hueco automáticamente.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    }
                     var datos = todosElOtro[jugador] || {};
                     var eligió = !!datos.equipo;
                     var esTurno = turnoActual === jugador;
