@@ -98,33 +98,33 @@ async function buscarPartidoPrimera(equipoNombre, fechaReferenciaStr) {
     var fmt = function(d) { return d.toISOString().slice(0, 10); };
     var ultimoNombre = equipoNombre.toLowerCase().split(' ').pop();
 
-    var temporadas = [2025, 2026];
-    for (var t = 0; t < temporadas.length; t++) {
-        try {
-            var url = 'https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
-                '&season=' + temporadas[t] + '&from=' + fmt(desde) + '&to=' + fmt(hasta);
-            var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
-            var data = await res.json();
-            var partidos = data.response || [];
-            var encontrado = partidos.find(function(p) {
-                var local = p.teams.home.name.toLowerCase();
-                var visitante = p.teams.away.name.toLowerCase();
-                return local.indexOf(ultimoNombre) !== -1 || visitante.indexOf(ultimoNombre) !== -1;
-            });
-            if (encontrado) {
-                var esLocal = encontrado.teams.home.name.toLowerCase().indexOf(ultimoNombre) !== -1;
-                return {
-                    fixtureId: encontrado.fixture.id,
-                    fecha: encontrado.fixture.date,
-                    rival: esLocal ? encontrado.teams.away.name : encontrado.teams.home.name,
-                    esLocal: esLocal,
-                    estadoCorto: encontrado.fixture.status.short,
-                    golesEquipo: esLocal ? encontrado.goals.home : encontrado.goals.away,
-                    golesRival: esLocal ? encontrado.goals.away : encontrado.goals.home,
-                };
-            }
-        } catch (e) { console.warn('Error buscando partido de Primera:', e.message); }
-    }
+    // season=2026 confirmado directamente en el panel de API-Football para
+    // La Liga 26/27 (temporada activa: 2026-08-15 a 2027-05-30) — ya no hace
+    // falta probar varias, era justo lo único que quedaba por confirmar.
+    try {
+        var url = 'https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+            '&season=2026&from=' + fmt(desde) + '&to=' + fmt(hasta);
+        var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+        var data = await res.json();
+        var partidos = data.response || [];
+        var encontrado = partidos.find(function(p) {
+            var local = p.teams.home.name.toLowerCase();
+            var visitante = p.teams.away.name.toLowerCase();
+            return local.indexOf(ultimoNombre) !== -1 || visitante.indexOf(ultimoNombre) !== -1;
+        });
+        if (encontrado) {
+            var esLocal = encontrado.teams.home.name.toLowerCase().indexOf(ultimoNombre) !== -1;
+            return {
+                fixtureId: encontrado.fixture.id,
+                fecha: encontrado.fixture.date,
+                rival: esLocal ? encontrado.teams.away.name : encontrado.teams.home.name,
+                esLocal: esLocal,
+                estadoCorto: encontrado.fixture.status.short,
+                golesEquipo: esLocal ? encontrado.goals.home : encontrado.goals.away,
+                golesRival: esLocal ? encontrado.goals.away : encontrado.goals.home,
+            };
+        }
+    } catch (e) { console.warn('Error buscando partido de Primera:', e.message); }
     return null;
 }
 
@@ -141,33 +141,29 @@ async function buscarJornadaCompletaPrimera(fechaReferenciaStr, diasVentana) {
     var hasta = new Date(fechaBase); hasta.setDate(hasta.getDate() + ventana);
     var fmt = function(d) { return d.toISOString().slice(0, 10); };
 
-    var temporadas = [2025, 2026];
-    for (var t = 0; t < temporadas.length; t++) {
-        try {
-            var url = 'https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
-                '&season=' + temporadas[t] + '&from=' + fmt(desde) + '&to=' + fmt(hasta);
-            var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
-            var data = await res.json();
-            var partidos = data.response || [];
-            if (partidos.length > 0) {
-                return partidos.map(function(p) {
-                    return {
-                        fixtureId: p.fixture.id,
-                        fecha: p.fixture.date,
-                        local: p.teams.home.name,
-                        visitante: p.teams.away.name,
-                        estadoCorto: p.fixture.status.short,
-                        golesLocal: p.goals.home,
-                        golesVisitante: p.goals.away,
-                    };
-                }).sort(function(a, b) { return new Date(a.fecha) - new Date(b.fecha); });
-            }
-        } catch (e) { console.warn('Error buscando jornada completa de Primera:', e.message); }
-    }
+    // season=2026 confirmado directamente en el panel de API-Football.
+    try {
+        var url = 'https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+            '&season=2026&from=' + fmt(desde) + '&to=' + fmt(hasta);
+        var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+        var data = await res.json();
+        var partidos = data.response || [];
+        if (partidos.length > 0) {
+            return partidos.map(function(p) {
+                return {
+                    fixtureId: p.fixture.id,
+                    fecha: p.fixture.date,
+                    local: p.teams.home.name,
+                    visitante: p.teams.away.name,
+                    estadoCorto: p.fixture.status.short,
+                    golesLocal: p.goals.home,
+                    golesVisitante: p.goals.away,
+                };
+            }).sort(function(a, b) { return new Date(a.fecha) - new Date(b.fecha); });
+        }
+    } catch (e) { console.warn('Error buscando jornada completa de Primera:', e.message); }
     return [];
 }
-
-const SEASON = 2025; // temporada 2025-26 en API-Football = 26/27 real
 
 // Tabla de puntuación Mis 5 Estrellas (calculada vía API)
 const PUNTOS_ESTRELLAS = {
@@ -1817,7 +1813,9 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         if (!API_FOOTBALL_KEY) return;
         var sincronizar = async function() {
             try {
-                var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2025&date=' + jornada.fecha + '&team=' + API_TEAM_ID_UDLP;
+                // season=2026 confirmado directamente en el panel de API-Football
+                // para la Segunda División 26/27 — ya no hace falta probar dos.
+                var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + jornada.fecha + '&team=' + API_TEAM_ID_UDLP;
                 var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
                 var data = await res.json();
                 if (data.response && data.response.length > 0) {
@@ -6254,7 +6252,8 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
         if (!API_FOOTBALL_KEY) { setMsgSync('⚠️ Configura REACT_APP_API_FOOTBALL_KEY en .env'); return; }
         setSincronizando(true); setMsgSync('Consultando API-Football...');
         try {
-            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2025&date=' + jornada.fecha + '&team=275';
+            // season=2026 confirmado directamente en el panel de API-Football.
+            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + jornada.fecha + '&team=275';
             var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
             var data = await res.json();
             if (data.response && data.response.length > 0) {
