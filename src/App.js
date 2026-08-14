@@ -5251,6 +5251,119 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
 // equipo elegido) es correcta, sin tener que consultar equipo por equipo.
 // Esto afecta a todos los jugadores que tengan equipo elegido en El Otro —
 // cuantos más elijan, más falta hace poder verlo todo junto.
+// Admin: verificación real y visual de si los apiId de la plantilla
+// realmente enlazan con la API — en vez de fiarnos de palabra, esto pide un
+// partido concreto (el fixtureId, autodetectado de la última jornada si ya
+// se sincronizó) y cruza cada jugador de la plantilla contra las
+// estadísticas reales de ESE partido, mostrando encontrado/no encontrado
+// con datos de verdad, no una suposición.
+const VerificarEstadisticasJugadoresAdmin = ({ plantilla }) => {
+    var [fixtureIdInput, setFixtureIdInput] = useState('');
+    var [resultado, setResultado] = useState(null);
+    var [cargando, setCargando] = useState(false);
+    var [errorMsg, setErrorMsg] = useState('');
+
+    useEffect(function() {
+        var cargarJornadaReciente = async function() {
+            try {
+                var q = query(collection(db, 'jornadas'), orderBy('numeroJornada', 'desc'), limit(1));
+                var snap = await getDocs(q);
+                if (!snap.empty) {
+                    var j = snap.docs[0].data();
+                    if (j.fixtureId) setFixtureIdInput(String(j.fixtureId));
+                }
+            } catch (e) { console.warn('No se pudo autodetectar el fixtureId:', e.message); }
+        };
+        cargarJornadaReciente();
+    }, []);
+
+    var verificar = async function() {
+        if (!fixtureIdInput.trim()) { setErrorMsg('Escribe o autodetecta un fixtureId antes de comprobar.'); return; }
+        if (!API_FOOTBALL_KEY) { setErrorMsg('Falta configurar REACT_APP_API_FOOTBALL_KEY.'); return; }
+        setCargando(true); setErrorMsg(''); setResultado(null);
+        try {
+            var url = 'https://v3.football.api-sports.io/fixtures/players?fixture=' + fixtureIdInput.trim();
+            var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var data = await res.json();
+            var response = data.response || [];
+            if (response.length === 0) {
+                setErrorMsg('La API no devolvió estadísticas para ese partido — normal si todavía no se ha jugado. Si ya terminó y sigue vacío, comprueba el fixtureId.');
+                setCargando(false); return;
+            }
+            var bloqueUdlp = response.find(function(eq) { return eq.team && eq.team.id === API_TEAM_ID_UDLP; });
+            var jugadoresApi = bloqueUdlp ? bloqueUdlp.players : [];
+
+            var cruce = plantilla.map(function(jug) {
+                var match = jugadoresApi.find(function(pj) { return pj.player.id === jug.apiId; });
+                var stats = match && match.statistics && match.statistics[0];
+                return {
+                    nombre: jug.nombre, apiId: jug.apiId,
+                    encontrado: !!match,
+                    nombreApi: match ? match.player.name : null,
+                    minutos: stats ? stats.games.minutes : null,
+                    goles: stats ? stats.goals.total : null,
+                };
+            });
+
+            setResultado({ totalJugadoresApi: jugadoresApi.length, cruce: cruce, equipoEncontrado: !!bloqueUdlp, nombreEquipoApi: bloqueUdlp ? bloqueUdlp.team.name : null });
+        } catch (e) {
+            setErrorMsg('Error consultando la API: ' + e.message);
+        }
+        setCargando(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                🔬 Verificar enlace real: plantilla ↔ estadísticas API
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:14,lineHeight:1.5}}>
+                Prueba de verdad, con un partido real: pega el ID de un partido ya jugado (o deja el autodetectado de la última jornada) y te enseño, jugador por jugador, si tu plantilla encuentra sus estadísticas reales en la API o no. Esto es justo lo que usa el cálculo de Estrellas por debajo.
+            </p>
+
+            <div style={{display:'flex',gap:8,marginBottom:14}}>
+                <input value={fixtureIdInput} onChange={function(e){setFixtureIdInput(e.target.value);}} placeholder="fixtureId (ej: 1569878)"
+                    style={{flex:1,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
+                <button onClick={verificar} disabled={cargando} style={ADMIN_STYLES.btnPrimary}>
+                    {cargando ? 'Consultando...' : 'Verificar'}
+                </button>
+            </div>
+
+            {errorMsg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginBottom:12}}>{errorMsg}</p>}
+
+            {resultado && (
+                <div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: resultado.equipoEncontrado ? '#10b981' : '#e63946',marginBottom:10}}>
+                        {resultado.equipoEncontrado
+                            ? '✅ Encontrado el equipo en ese partido: "' + resultado.nombreEquipoApi + '" con ' + resultado.totalJugadoresApi + ' jugadores con estadísticas.'
+                            : '❌ En ese partido no aparece ningún equipo con el ID ' + API_TEAM_ID_UDLP + ' — revisa el fixtureId.'}
+                    </p>
+                    <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                        {resultado.cruce.map(function(r) {
+                            return (
+                                <div key={r.nombre} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',
+                                    background: r.encontrado ? 'rgba(16,185,129,0.06)' : 'rgba(230,57,70,0.06)',borderRadius:8,flexWrap:'wrap'}}>
+                                    <span style={{fontSize:14}}>{r.encontrado ? '✅' : '❌'}</span>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#001F6B',width:130,flexShrink:0}}>{r.nombre}</span>
+                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)'}}>apiId: {r.apiId || '(sin poner)'}</span>
+                                    {r.encontrado && (
+                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)'}}>
+                                            {r.nombreApi} · {r.minutos ?? 0}' jugados · {r.goles || 0} goles
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',marginTop:10}}>
+                        Los que salgan en rojo o sin apiId no van a puntuar en Estrellas hasta que les pongas su ID real desde "Buscar y verificar IDs" más abajo.
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const InfoJornadaPrimeraAdmin = () => {
     var [partidos, setPartidos] = useState([]);
     var [cargando, setCargando] = useState(false);
@@ -6807,6 +6920,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
 
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>⭐ Plantilla y Estrellas</p>
                     {/* Buscador de IDs de API-Football para la plantilla */}
+                    {/* Verificación real del enlace plantilla ↔ estadísticas */}
+                    <VerificarEstadisticasJugadoresAdmin plantilla={plantilla} />
+
                     <BuscadorApiIdsPlantilla plantilla={plantilla} />
 
                     {/* Verificación visual de fotos */}
