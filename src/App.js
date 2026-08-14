@@ -185,8 +185,11 @@ const PUNTOS_ESTRELLAS = {
 // Se actualiza automáticamente desde API-Football al cargar la app
 // Plantilla real UD Las Palmas 26/27 — pretemporada Marbella (22/07/2026)
 // Fotos: se cargan desde API-Football o ESPN CDN como fallback
-// Team ID en API-Football: 275 (UD Las Palmas)
-const API_TEAM_ID_UDLP = 275;
+// Team ID en API-Football: 534 (UD Las Palmas) — confirmado en directo por
+// el admin desde el Live Tester del panel de API-Football (antes tenía un
+// 275 mal puesto desde el principio, que era otro equipo distinto; por eso
+// nunca cruzaba ningún nombre de jugador con la plantilla real).
+const API_TEAM_ID_UDLP = 534;
 // Plantilla oficial UD Las Palmas 26/27
 // Fotos: API-Football media CDN (confirmados) + ui-avatars fallback
 // Para jugadores sin apiId usamos foto de Wikipedia cuando disponible
@@ -6253,7 +6256,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
         setSincronizando(true); setMsgSync('Consultando API-Football...');
         try {
             // season=2026 confirmado directamente en el panel de API-Football.
-            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + jornada.fecha + '&team=275';
+            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + jornada.fecha + '&team=' + API_TEAM_ID_UDLP;
             var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
             var data = await res.json();
             if (data.response && data.response.length > 0) {
