@@ -767,16 +767,19 @@ async function convertirHeicSiHaceFalta(file) {
         setConvirtiendoFormato(false);
 
         // Cerrojo maestro: pase lo que pase (un error que no cacé, el móvil
-        // que se cuelga, lo que sea), a los 35 segundos el botón se libera sí
-        // o sí. Es la garantía definitiva de que nunca más se quede colgado
-        // en "Procesando" para siempre.
+        // que se cuelga, lo que sea), a los 60 segundos el botón se libera sí
+        // o sí. Antes era 35s, que resultó ser JUSTO la suma de los timeouts
+        // internos (15 filtro + 20 subida), sin margen real — ahora es 60
+        // para que haya un colchón de verdad.
         var yaTerminado = false;
         var candadoMaestro = setTimeout(function() {
             if (yaTerminado) return;
             yaTerminado = true;
             setSubiendoFoto(false);
-            setErrorFoto('Esto está tardando demasiado. Prueba con otra foto, o hazle una captura de pantalla y sube esa captura en su lugar.');
-        }, 35000);
+            setConvirtiendoFormato(false);
+            alert('La subida de foto ha tardado demasiado. Prueba con otra foto más ligera (JPG o PNG), o hazle una captura de pantalla y sube esa captura.');
+            setErrorFoto('Tiempo agotado. Prueba con otra foto.');
+        }, 60000);
         var terminar = function(errorMsg) {
             if (yaTerminado) return;
             yaTerminado = true;
@@ -826,14 +829,14 @@ async function convertirHeicSiHaceFalta(file) {
                 terminar('');
             } catch (err) {
                 console.warn('Filtro UDLP falló, subiendo foto original sin filtro:', err.message);
-                // No bloqueamos al jugador por un fallo del filtro — mejor una
-                // foto sin el efecto azul/dorado que ninguna foto.
+                alert('Paso 1 (filtro) falló: ' + err.message + ' — intentando subir sin filtro...');
                 try {
                     setPreviewFoto(objectUrl);
                     await subirBlobFinal(file, file.type || 'image/jpeg');
                     terminar('');
                 } catch (err2) {
                     console.error(err2);
+                    alert('Paso 2 (subida) también falló: ' + err2.message);
                     terminar('No se pudo subir la foto: ' + err2.message + '.\n\nSi dice "storage/unauthorized" o "permission", las reglas de Firebase Storage NO están publicadas — ve a Firebase Console → Storage → Rules y pega las reglas del archivo storage.rules que te di.');
                 }
             }
