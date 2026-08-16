@@ -13,7 +13,7 @@ const firebaseConfig = {
     apiKey: "AIzaSyDyxwLEkH36_7uXNeBYayIwZYI8IuAsDm4",
     authDomain: "porra-udlp-2026-v2.firebaseapp.com",
     projectId: "porra-udlp-2026-v2",
-    storageBucket: "porra-udlp-2026-v2.appspot.com",
+    storageBucket: "porra-udlp-2026-v2.firebasestorage.app",
     messagingSenderId: "611441868159",
     appId: "1:611441868159:web:13008731a05c4321946e4a",
     measurementId: "G-J9T3S8SZT6",
