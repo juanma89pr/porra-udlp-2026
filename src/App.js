@@ -756,98 +756,69 @@ async function convertirHeicSiHaceFalta(file) {
         var file = e.target.files && e.target.files[0];
         if (!file) return;
         setErrorFoto('');
-        // Comprobación permisiva: en muchos móviles (sobre todo HEIC de iPhone)
-        // file.type llega vacío aunque SÍ sea una imagen válida — no bloqueamos
-        // por eso, solo si el navegador dice explícitamente que es OTRA cosa.
         if (file.type && !file.type.startsWith('image/')) { setErrorFoto('Elige un archivo de imagen.'); return; }
         if (file.size > 8 * 1024 * 1024) { setErrorFoto('La imagen pesa demasiado (máx. 8MB).'); return; }
 
-        setConvirtiendoFormato(true);
-        file = await convertirHeicSiHaceFalta(file);
-        setConvirtiendoFormato(false);
+        // === FILOSOFÍA: subir primero, filtro después ===
+        // Antes el flujo era: convertir HEIC → cargar en <img> → aplicar
+        // filtro en canvas → subir el resultado. Demasiados pasos que pueden
+        // fallar en silencio en distintos navegadores. Ahora: se sube la foto
+        // TAL CUAL primero (garantiza que al menos la foto se guarde), y
+        // LUEGO se intenta aplicar el filtro y resubir la versión filtrada.
+        // Si el filtro falla por lo que sea, la foto sin filtro ya está guardada.
 
-        // Cerrojo maestro: pase lo que pase (un error que no cacé, el móvil
-        // que se cuelga, lo que sea), a los 60 segundos el botón se libera sí
-        // o sí. Antes era 35s, que resultó ser JUSTO la suma de los timeouts
-        // internos (15 filtro + 20 subida), sin margen real — ahora es 60
-        // para que haya un colchón de verdad.
-        var yaTerminado = false;
-        var candadoMaestro = setTimeout(function() {
-            if (yaTerminado) return;
-            yaTerminado = true;
-            setSubiendoFoto(false);
-            setConvirtiendoFormato(false);
-            alert('La subida de foto ha tardado demasiado. Prueba con otra foto más ligera (JPG o PNG), o hazle una captura de pantalla y sube esa captura.');
-            setErrorFoto('Tiempo agotado. Prueba con otra foto.');
-        }, 60000);
-        var terminar = function(errorMsg) {
-            if (yaTerminado) return;
-            yaTerminado = true;
-            clearTimeout(candadoMaestro);
-            setSubiendoFoto(false);
-            if (errorMsg) setErrorFoto(errorMsg);
-        };
-
-        var subirBlobFinal = async function(blob, tipo) {
+        setSubiendoFoto(true);
+        try {
+            // Paso 1: subir la foto original directamente, sin tocar nada
             var ref = storageRef(storage, 'perfiles/' + currentUser + '/foto.jpg');
-            try {
-                await conTimeout(uploadBytes(ref, blob, { contentType: tipo }), 20000, 'La subida está tardando demasiado. Comprueba tu conexión e inténtalo de nuevo.');
-            } catch (uploadErr) {
-                if (uploadErr.code === 'storage/unauthorized' || (uploadErr.message && uploadErr.message.indexOf('unauthorized') !== -1)) {
-                    throw new Error('PERMISOS: Las reglas de Firebase Storage NO están publicadas. Ve a Firebase Console → Storage → Rules y pega las reglas del archivo storage.rules.');
-                }
-                throw uploadErr;
-            }
-            var url = await conTimeout(getDownloadURL(ref), 10000, 'No se pudo obtener el enlace de la foto. Inténtalo de nuevo.');
+            await uploadBytes(ref, file, { contentType: file.type || 'image/jpeg' });
+            var url = await getDownloadURL(ref);
             await setDoc(doc(db, "perfiles", currentUser), {
                 nombre: currentUser, foto: url, actualizadoEn: serverTimestamp()
             }, { merge: true });
             setPerfil(function(p) { return { ...p, foto: url }; });
+            setPreviewFoto(url);
             setGuardado(true);
-        };
 
-        var objectUrl = URL.createObjectURL(file);
-        var img = new Image();
-
-        var yaResuelto = false;
-        var timeoutCarga = setTimeout(function() {
-            if (yaResuelto) return;
-            yaResuelto = true;
-            terminar('Este formato de foto no se puede procesar en tu navegador. Prueba a hacer una captura de pantalla de la foto y sube esa captura.');
-        }, 12000); // si ni onload ni onerror disparan en 12s (pasa con algunos HEIC), no nos quedamos colgados
-
-        img.onload = async function() {
-            if (yaResuelto) return;
-            yaResuelto = true;
-            clearTimeout(timeoutCarga);
-            setSubiendoFoto(true);
+            // Paso 2 (en segundo plano): intentar aplicar el filtro UDLP y
+            // resubir la versión filtrada. Si falla, la foto original ya está
+            // guardada y visible — no se pierde nada.
             try {
-                var blob = await conTimeout(aplicarFiltroUDLP(img), 15000, 'El procesado de la imagen está tardando demasiado.');
-                var previewUrl = URL.createObjectURL(blob);
-                setPreviewFoto(previewUrl);
-                await subirBlobFinal(blob, 'image/jpeg');
-                terminar('');
-            } catch (err) {
-                console.warn('Filtro UDLP falló, subiendo foto original sin filtro:', err.message);
-                alert('Paso 1 (filtro) falló: ' + err.message + ' — intentando subir sin filtro...');
-                try {
-                    setPreviewFoto(objectUrl);
-                    await subirBlobFinal(file, file.type || 'image/jpeg');
-                    terminar('');
-                } catch (err2) {
-                    console.error(err2);
-                    alert('Paso 2 (subida) también falló: ' + err2.message);
-                    terminar('No se pudo subir la foto: ' + err2.message + '.\n\nSi dice "storage/unauthorized" o "permission", las reglas de Firebase Storage NO están publicadas — ve a Firebase Console → Storage → Rules y pega las reglas del archivo storage.rules que te di.');
-                }
+                var objectUrl = URL.createObjectURL(file);
+                var img = new Image();
+                img.crossOrigin = 'anonymous';
+                await new Promise(function(resolve, reject) {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    setTimeout(function() { reject(new Error('timeout')); }, 8000);
+                    img.src = objectUrl;
+                });
+                var blob = await conTimeout(aplicarFiltroUDLP(img), 10000, 'Filtro tardó demasiado');
+                await uploadBytes(ref, blob, { contentType: 'image/jpeg' });
+                var urlFiltrada = await getDownloadURL(ref);
+                await setDoc(doc(db, "perfiles", currentUser), {
+                    foto: urlFiltrada, actualizadoEn: serverTimestamp()
+                }, { merge: true });
+                setPerfil(function(p) { return { ...p, foto: urlFiltrada }; });
+                setPreviewFoto(URL.createObjectURL(blob));
+                URL.revokeObjectURL(objectUrl);
+            } catch (filtroErr) {
+                console.warn('Filtro UDLP no se pudo aplicar (la foto original ya está guardada):', filtroErr.message);
             }
-        };
-        img.onerror = function() {
-            if (yaResuelto) return;
-            yaResuelto = true;
-            clearTimeout(timeoutCarga);
-            terminar('No se pudo leer esa imagen. Prueba con otro archivo (JPG o PNG van siempre bien).');
-        };
-        img.src = objectUrl;
+
+            setSubiendoFoto(false);
+            setErrorFoto('');
+        } catch (err) {
+            console.error('Error subiendo foto:', err);
+            setSubiendoFoto(false);
+            var msgErr = err.message || 'Error desconocido';
+            if (err.code === 'storage/unauthorized' || msgErr.indexOf('unauthorized') !== -1 || msgErr.indexOf('permission') !== -1) {
+                setErrorFoto('Las reglas de Firebase Storage no permiten subir fotos. Ve a Firebase Console → Storage → Rules y comprueba que las reglas permitan escritura.');
+            } else {
+                setErrorFoto('No se pudo subir la foto: ' + msgErr);
+            }
+            alert('Error subiendo foto: ' + msgErr);
+        }
     };
 
     var elegirEmoji = async function(em) {
