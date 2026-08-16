@@ -4131,65 +4131,92 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
     const premio2 = Math.round(boteActual * 0.25);
     const premio3 = Math.round(boteActual * 0.10);
 
+    // Filtrar jugadores inactivos de la clasificación
+    var clasificacionActiva = clasificacion.filter(function(j) {
+        return jugadoresInactivosCL.indexOf(j.id) === -1;
+    });
+
     return (
         <div>
-            <h2 style={styles.title} className="app-title">CLASIFICACIÓN GLOBAL</h2>
-            
-            <div style={styles.prizeBannerFinal}>
-                <h4 style={styles.prizeBannerTitle}>BOTE DE LA PORRA — A REPARTIR ENTRE EL TOP 3</h4>
-                <p style={{textAlign:'center',fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:'#FFD700',letterSpacing:2,margin:'4px 0 6px'}}>
-                    {boteActual}€
-                </p>
-                <p style={{textAlign:'center',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.55)',marginBottom:10}}>
-                    Con {inscritos.length} inscritos ahora mismo — mínimo 15 jugadores (75€), objetivo 20 (100€). Este bote sale solo de las inscripciones de la porra — el resto de premios (Estrellas, rifas...) van aparte, de otros botes internos.
-                </p>
-                <div style={styles.prizeList}>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥇</span> <span><strong>1º CLASIFICADO (65%):</strong> {premio1}€</span></div>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥈</span> <span><strong>2º CLASIFICADO (25%):</strong> {premio2}€</span></div>
-                    <div style={styles.prizeItem}><span style={{fontSize: '1.5rem'}}>🥉</span> <span><strong>3º CLASIFICADO (10%):</strong> {premio3}€</span></div>
-                </div>
-            </div>
+            <h2 style={styles.title} className="app-title">CLASIFICACIÓN</h2>
 
             {campeonInvierno && campeonInvierno.top3 && campeonInvierno.top3[0] && (
                 <div style={{background:'linear-gradient(135deg,#0091FF,#001F6B)',borderRadius:16,padding:'16px 18px',marginBottom:18,textAlign:'center'}}>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:'rgba(255,255,255,0.6)',textTransform:'uppercase',marginBottom:4}}>❄️ Campeón de Invierno</p>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:26,fontWeight:700,color:'#fff',letterSpacing:1}}>{campeonInvierno.top3[0].nombre}</p>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.7)'}}>{campeonInvierno.top3[0].puntos} puntos a mitad de temporada</p>
                 </div>
             )}
 
-            <div style={{background:'rgba(255,215,0,0.06)',border:'1px solid rgba(255,215,0,0.25)',borderRadius:16,padding:'16px 18px',marginBottom:18}}>
+            {/* Ranking — estilo La Jornada, no tabla antigua */}
+            <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,overflow:'hidden',marginBottom:20}}>
+                {clasificacionActiva.map(function(jugador, index) {
+                    var esMio = jugador.id === currentUser;
+                    var perf = userProfiles[jugador.id] || {};
+                    var isOnline = onlineUsers ? onlineUsers[jugador.id] : false;
+                    var pts = jugador.puntosTotales || 0;
+                    var exactos = jugador.puntosResultadoExacto || 0;
+                    return (
+                        <div key={jugador.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
+                            borderBottom:'1px solid rgba(0,31,107,0.06)',
+                            background: esMio ? 'rgba(255,215,0,0.08)' : index < 3 ? 'rgba(0,31,107,0.02)' : 'transparent'}}>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,width:24,textAlign:'center',
+                                color: index === 0 ? '#FFD700' : index === 1 ? '#C0C0C0' : index === 2 ? '#CD7F32' : 'rgba(0,31,107,0.3)'}}>
+                                {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : (index+1)}
+                            </span>
+                            <IconoPerfilClickable nombre={jugador.id} perfil={perf} size={32} />
+                            <div style={{flex:1}}>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight: esMio ? 700 : 500,color:'#001F6B'}}>
+                                    {nombreVisible(jugador.id, perf)}
+                                </span>
+                                {isOnline && <span style={{width:6,height:6,backgroundColor:'#10b981',borderRadius:'50%',display:'inline-block',marginLeft:6,boxShadow:'0 0 6px #10b981'}}></span>}
+                                {exactos > 0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)',marginLeft:8}}>{exactos} 🎯</span>}
+                            </div>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,
+                                color: index === 0 ? '#FFD700' : pts > 0 ? '#001F6B' : 'rgba(0,31,107,0.25)'}}>
+                                {pts}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Premios y bote — al final, como pediste */}
+            <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:20,marginBottom:16}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:3,color:'rgba(255,255,255,0.5)',textTransform:'uppercase',marginBottom:10}}>
+                    Bote de la porra
+                </p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:36,fontWeight:700,color:'#FFD700',textAlign:'center',marginBottom:6}}>
+                    {boteActual}€
+                </p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.45)',textAlign:'center',marginBottom:16}}>
+                    {inscritos.length} inscritos · solo de inscripciones
+                </p>
+                <div style={{display:'flex',gap:8,justifyContent:'center'}}>
+                    {[
+                        {emoji:'🥇', label:'1º (65%)', valor: premio1},
+                        {emoji:'🥈', label:'2º (25%)', valor: premio2},
+                        {emoji:'🥉', label:'3º (10%)', valor: premio3},
+                    ].map(function(p) {
+                        return (
+                            <div key={p.label} style={{flex:1,textAlign:'center',background:'rgba(255,255,255,0.06)',borderRadius:10,padding:'10px 6px'}}>
+                                <p style={{fontSize:20,marginBottom:2}}>{p.emoji}</p>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color:'#FFD700'}}>{p.valor}€</p>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.4)'}}>{p.label}</p>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div style={{background:'rgba(255,215,0,0.06)',border:'1px solid rgba(255,215,0,0.25)',borderRadius:16,padding:'16px 18px'}}>
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',marginBottom:8,fontWeight:700}}>
                     🎁 Y todavía hay más en juego
                 </p>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7,margin:0}}>
-                    ❄️ Habrá un <strong>Campeón de Invierno</strong> — quien vaya primero a mitad de temporada tendrá su propio reconocimiento, sin esperar a junio.<br/>
-                    🎟️ Durante la temporada se harán <strong>rifas</strong> para todos los jugadores, con sus propios premios.<br/>
-                    ⭐ El ganador de la <strong>Liga de Estrellas</strong> también tiene premio aparte — de alto valor, y lo iremos desvelando poco a poco.<br/>
-                    ✨ Y habrá más sorpresas según avance la temporada.
+                    ❄️ <strong>Campeón de Invierno</strong> — quien vaya primero a mitad de temporada.<br/>
+                    🎟️ <strong>Rifas</strong> durante la temporada, con sus propios premios.<br/>
+                    ⭐ Ganador de la <strong>Liga de Estrellas</strong> — premio aparte de alto valor.
                 </p>
-            </div>
-
-            <div style={{overflowX: 'auto', backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: '20px', border: `1px solid rgba(255,215,0,0.15)`, padding: '10px', backdropFilter: 'blur(5px)'}}>
-                <table style={styles.table}>
-                    <thead><tr><th style={styles.th}>POS</th><th style={styles.th}>JUGADOR</th><th style={{...styles.th, textAlign: 'center'}}>TOTAL</th><th style={{...styles.th, textAlign: 'center'}}>P. EXACTO</th></tr></thead>
-                    <tbody>
-                        {clasificacion.map((jugador, index) => { 
-                            const rowStyle = jugador.id === currentUser ? {backgroundColor: 'rgba(212, 175, 55, 0.15)', border: `1px solid ${styles.colors.golden}`, transform: 'scale(1.02)'} : styles.tr;
-                            return (
-                                <tr key={jugador.id} style={rowStyle}>
-                                    <td style={styles.tdRank}>{index + 1}º</td>
-                                    <td style={styles.td}>
-                                        <PlayerProfileDisplay name={jugador.id} profile={userProfiles[jugador.id]} isOnline={onlineUsers ? onlineUsers[jugador.id] : false} />
-                                        {jugador.desgloseExtra && <div style={{fontSize: '0.75rem', color: styles.colors.success, marginTop: '5px', fontWeight: 'bold'}}>{jugador.desgloseExtra}</div>}
-                                    </td>
-                                    <td style={styles.tdTotalPoints}>{jugador.puntosTotales || 0}</td>
-                                    <td style={{...styles.td, textAlign: 'center', color: styles.colors.silver, fontFamily: "'Montserrat', sans-serif"}}>{jugador.puntosResultadoExacto || 0}</td>
-                                </tr>
-                            )
-                        })}
-                    </tbody>
-                </table>
             </div>
         </div>
     );
@@ -4757,365 +4784,6 @@ const CalendarioScreen = ({ teamLogos }) => {
 // ============================================================================
 // --- ADMINISTRADOR Y CIERRE ---
 // ============================================================================
-const AdminCierreTemporada = () => {
-    // ─── DATOS REALES CONFIRMADOS EN FIREBASE ─────────────────────────────────
-    // porraAnualPronosticos → campo "ascenso": "NO"/"SI", campo "posicion": "8" etc.
-    // apuestasExtra         → campo "equipo": "Málaga CF" / "CD Castellón" etc.
-    // UDLP acabó 5ª y NO ascendió. Málaga CF ascendió por playoff.
-    // ──────────────────────────────────────────────────────────────────────────
-    const UDLP_POSICION_FINAL = '5';
-    const UDLP_ASCENDIO = false;   // UDLP NO ascendió
-
-    // Lista de equipos que se consideran "Málaga" en cualquier formato de Firebase
-    const esMalaga = (equipo) => {
-        const e = (equipo || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-        return e.includes('MALAGA') || e.includes('MLAGA');
-    };
-
-    const [procesando, setProcesando] = useState(false);
-    const [diagnostico, setDiagnostico] = useState(null);
-    const [cargandoDiag, setCargandoDiag] = useState(false);
-
-    // ── PASO 1: DIAGNÓSTICO ───────────────────────────────────────────────────
-    const handleDiagnostico = async () => {
-        setCargandoDiag(true);
-        try {
-            // A. Clasificación actual (puntos acumulados hasta ahora en Firebase)
-            const clasifSnap = await getDocs(collection(db, "clasificacion"));
-            const clasifActual = {};
-            clasifSnap.forEach(d => { clasifActual[d.id] = d.data(); });
-
-            // B. Última jornada finalizada y sus pronósticos
-            const jornadasSnap = await getDocs(query(
-                collection(db, "jornadas"),
-                where("estado", "==", "Finalizada"),
-                orderBy("numeroJornada", "desc"),
-                limit(1)
-            ));
-            let ultimaJornada = null;
-            let pronosticosUltima = {};
-            if (!jornadasSnap.empty) {
-                ultimaJornada = { id: jornadasSnap.docs[0].id, ...jornadasSnap.docs[0].data() };
-                const pSnap = await getDocs(collection(db, "pronosticos", ultimaJornada.id, "jugadores"));
-                pSnap.forEach(d => { pronosticosUltima[d.id] = d.data(); });
-            }
-
-            // C. Porra Anual — colección CONFIRMADA: "porraAnualPronosticos"
-            const anualSnap = await getDocs(collection(db, "porraAnualPronosticos"));
-            const apuestasAnuales = {};
-            anualSnap.forEach(d => { apuestasAnuales[d.id] = d.data(); });
-
-            // D. El Camino — colección: "apuestasExtra"
-            const extraSnap = await getDocs(collection(db, "apuestasExtra"));
-            const apuestasExtra = {};
-            extraSnap.forEach(d => { apuestasExtra[d.id] = d.data(); });
-            // Jugadores sin doc en apuestasExtra pero que sabemos apostaron Málaga
-            ['Carlos', 'Carmelo', 'José'].forEach(n => {
-                if (!apuestasExtra[n]) apuestasExtra[n] = { equipo: 'Málaga CF' };
-            });
-
-            // E. Preparar datos de la última jornada para calcular puntos
-            const resL = parseInt(ultimaJornada?.resultadoLocal);
-            const resV = parseInt(ultimaJornada?.resultadoVisitante);
-            const golReal = (ultimaJornada?.goleador || '').trim().toLowerCase();
-            const esVipU = ultimaJornada?.esVip || false;
-            let rReal = '';
-            if (ultimaJornada) {
-                if (ultimaJornada.equipoLocal === "UD Las Palmas")
-                    rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
-                else if (ultimaJornada.equipoVisitante === "UD Las Palmas")
-                    rReal = resV > resL ? 'gana' : (resV < resL ? 'pierde' : 'empate');
-                else
-                    rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
-            }
-
-            // F. Calcular para cada jugador qué puntos EXTRA faltan sumar
-            //    IMPORTANTE: los puntos de la última jornada ya están en clasificación
-            //    según me confirmas. Los detectamos comparando puntosObtenidos en el pronóstico.
-            const filas = JUGADORES_BASE.map(userId => {
-                const clasif = clasifActual[userId] || {};
-                const totalActual = clasif.puntosTotales || 0;
-
-                // ── F1. ¿Los puntos de la última jornada ya están sumados? ──
-                // Los pronósticos guardan puntosObtenidos. Si > 0, ya se sumaron a clasificación.
-                // Si = 0, hay que calcularlos y sumarlos.
-                const pronU = pronosticosUltima[userId];
-                const ptosJornadaEnPron = Number(pronU?.puntosObtenidos) || 0;
-                let ptosJornada = 0; let ptosExacto = 0; let ptosGol = 0;
-                let jornadaYaSumada = ptosJornadaEnPron > 0;
-
-                if (ultimaJornada && pronU && !jornadaYaSumada) {
-                    // Calcular desde cero
-                    if (parseInt(pronU.golesLocal) === resL && parseInt(pronU.golesVisitante) === resV) {
-                        ptosExacto = esVipU ? 6 : 3;
-                    }
-                    ptosJornada += ptosExacto;
-                    if (check1x2(pronU.resultado1x2, rReal, ultimaJornada.tipoPartido, ultimaJornada.desenlace))
-                        ptosJornada += esVipU ? 4 : 2;
-                    const golAp = (pronU.goleador || '').trim().toLowerCase();
-                    if (resL > 0 || resV > 0 || golReal === 'sg') {
-                        if (pronU.sinGoleador && golReal === 'sg') ptosGol += 1;
-                        else if (!pronU.sinGoleador && golAp !== '' && golAp === golReal && golReal !== 'sg')
-                            ptosGol += esVipU ? 4 : 2;
-                    }
-                    ptosJornada += ptosGol;
-                }
-
-                // ── F2. El Camino (+5): ¿apostó por Málaga (el ascendido)? ──
-                // INDEPENDIENTE de puntosExtraSumados — calculamos siempre si lo merece
-                // y luego en handleAplicarCierre solo sumamos si no está ya en desgloseExtra
-                let ptsCamino = 0;
-                const equipoExtra = apuestasExtra[userId]?.equipo || '';
-                if (esMalaga(equipoExtra)) ptsCamino = 5;
-
-                // ── F3. Porra Anual ──
-                // Campos reales: "ascenso" = "NO"/"SI", "posicion" = "8" etc.
-                let ptsAnual = 0;
-                let motivoAnual = '';
-                const ap = apuestasAnuales[userId];
-                if (ap) {
-                    const ascRaw = String(ap.ascenso || ap.asciende || '').toUpperCase().trim();
-                    const jugadorDijoSube = ascRaw === 'SI' || ascRaw === 'SÍ' || ascRaw === 'YES' || ascRaw === 'TRUE';
-                    const aciertoAsciende = jugadorDijoSube === UDLP_ASCENDIO; // ambos false = correcto
-                    const posRaw = String(ap.posicion || '').trim();
-                    const aciertoPosicion = posRaw === UDLP_POSICION_FINAL;
-                    if (aciertoAsciende && aciertoPosicion) {
-                        ptsAnual = 20; motivoAnual = `+20 Pleno (pos.${posRaw} + No asciende ✓)`;
-                    } else if (aciertoPosicion) {
-                        ptsAnual = 10; motivoAnual = `+10 Posición ${posRaw}ª ✓`;
-                    } else if (aciertoAsciende) {
-                        ptsAnual = 5; motivoAnual = `+5 Ascenso (apostó ${jugadorDijoSube ? 'Sí' : 'No'} ✓)`;
-                    }
-                }
-
-                // ── F4. ¿Qué está ya sumado en Firebase (desgloseExtra)? ──
-                const desgloseActual = clasif.desgloseExtra || '';
-                const caminoYaSumado = desgloseActual.includes('Camino') || desgloseActual.includes('camino');
-                const anualYaSumado = desgloseActual.includes('Anual') || desgloseActual.includes('anual') || desgloseActual.includes('Pleno');
-
-                // ── F5. Total real a añadir ahora ──
-                let ptsAñadir = 0;
-                let desglose = [];
-
-                if (!jornadaYaSumada && ptosJornada > 0) {
-                    ptsAñadir += ptosJornada;
-                    desglose.push(`+${ptosJornada} pts jornada final`);
-                } else if (jornadaYaSumada) {
-                    desglose.push(`✓ Jornada (${ptosJornadaEnPron} pts ya sumados)`);
-                }
-
-                if (!caminoYaSumado && ptsCamino > 0) {
-                    ptsAñadir += ptsCamino;
-                    desglose.push(`+5 El Camino (${equipoExtra} ✓)`);
-                } else if (caminoYaSumado) {
-                    desglose.push(`✓ Camino ya sumado`);
-                }
-
-                if (!anualYaSumado && ptsAnual > 0) {
-                    ptsAñadir += ptsAnual;
-                    desglose.push(motivoAnual);
-                } else if (anualYaSumado) {
-                    desglose.push(`✓ Anual ya sumado`);
-                }
-
-                return {
-                    userId, totalActual, ptsAñadir,
-                    totalFinal: totalActual + ptsAñadir,
-                    desglose,
-                    // Para aplicar cierre:
-                    ptosJornada, ptosExacto, ptosGol, jornadaYaSumada,
-                    ptsCamino, caminoYaSumado,
-                    ptsAnual, anualYaSumado, motivoAnual,
-                    // Para mostrar en tabla:
-                    apuestaAnual: ap || null,
-                    apuestaExtra: apuestasExtra[userId] || null,
-                    pronU,
-                };
-            });
-
-            setDiagnostico({ filas, ultimaJornada, resL, resV });
-        } catch(e) {
-            console.error(e);
-            alert("Error al cargar diagnóstico: " + e.message);
-        }
-        setCargandoDiag(false);
-    };
-
-    // ── PASO 2: APLICAR CIERRE ────────────────────────────────────────────────
-    const handleAplicarCierre = async () => {
-        if (!diagnostico) return;
-        const hayPendientes = diagnostico.filas.some(f => f.ptsAñadir > 0);
-        if (!hayPendientes) { alert("No hay puntos pendientes de sumar según el diagnóstico."); return; }
-
-        const resumen = diagnostico.filas.filter(f => f.ptsAñadir > 0).map(f =>
-            `${f.userId}: +${f.ptsAñadir} pts → ${f.desglose.filter(d => !d.includes('✓ Jornada') && !d.includes('ya sumado')).join(', ')}`
-        ).join('\n');
-
-        if (!window.confirm(`¿Confirmas aplicar los siguientes puntos en Firebase?\n\n${resumen}\n\nSolo se suman los que faltan. Los ya sumados no se tocan.`)) return;
-
-        setProcesando(true);
-        try {
-            const batch = writeBatch(db);
-            const { filas, ultimaJornada } = diagnostico;
-
-            for (const f of filas) {
-                if (f.ptsAñadir === 0) continue;
-
-                const clasifRef = doc(db, "clasificacion", f.userId);
-                let nuevosDesgloses = [];
-
-                // Solo sumar jornada si no estaba ya
-                if (!f.jornadaYaSumada && f.ptosJornada > 0) {
-                    batch.update(doc(db, "pronosticos", ultimaJornada.id, "jugadores", f.userId), {
-                        puntosObtenidos: f.ptosJornada,
-                        puntosResultadoExacto: f.ptosExacto,
-                        puntosGoleador: f.ptosGol,
-                    });
-                }
-
-                // Construir desglose de extras (Camino + Anual) para guardar
-                if (!f.caminoYaSumado && f.ptsCamino > 0) nuevosDesgloses.push(`+${f.ptsCamino} El Camino`);
-                if (!f.anualYaSumado && f.ptsAnual > 0) nuevosDesgloses.push(f.motivoAnual);
-
-                // Actualizar clasificación: sumar lo que falta al total actual
-                const updateData = { puntosTotales: f.totalFinal };
-                if (nuevosDesgloses.length > 0) {
-                    updateData.desgloseExtra = nuevosDesgloses.join(' | ');
-                    updateData.puntosExtraSumados = (f.ptsCamino || 0) + (f.ptsAnual || 0);
-                }
-                batch.update(clasifRef, updateData);
-            }
-
-            if (ultimaJornada) {
-                batch.update(doc(db, "jornadas", ultimaJornada.id), { puntosCalculados: true });
-            }
-
-            await batch.commit();
-            await handleDiagnostico(); // Recargar para confirmar
-            alert("✅ ¡CIERRE COMPLETADO! Todos los puntos han sido guardados en Firebase.\n\nRecarga el diagnóstico para confirmar que todo está en '✓ ya sumado'.");
-        } catch(e) {
-            console.error(e);
-            alert("Error al aplicar el cierre: " + e.message);
-        }
-        setProcesando(false);
-    };
-
-    // ── RESET TOTAL ───────────────────────────────────────────────────────────
-    const handleResetTotal = async () => {
-        if (!window.confirm("⚠️ PELIGRO: Esto borrará desgloseExtra y puntosExtraSumados de la clasificación, y pondrá a 0 los puntos de la última jornada en los pronósticos. Úsalo solo si algo salió mal.")) return;
-        setProcesando(true);
-        try {
-            const batch = writeBatch(db);
-            const clasifSnap = await getDocs(collection(db, "clasificacion"));
-            clasifSnap.forEach(d => {
-                const data = d.data();
-                const extra = data.puntosExtraSumados || 0;
-                if (extra > 0 || data.desgloseExtra) {
-                    batch.update(doc(db, "clasificacion", d.id), {
-                        puntosTotales: Math.max(0, (data.puntosTotales || 0) - extra),
-                        puntosExtraSumados: 0,
-                        desgloseExtra: '',
-                    });
-                }
-            });
-            if (diagnostico?.ultimaJornada) {
-                const pSnap = await getDocs(collection(db, "pronosticos", diagnostico.ultimaJornada.id, "jugadores"));
-                pSnap.forEach(d => {
-                    batch.update(doc(db, "pronosticos", diagnostico.ultimaJornada.id, "jugadores", d.id), {
-                        puntosObtenidos: 0, puntosResultadoExacto: 0, puntosGoleador: 0,
-                    });
-                });
-                batch.update(doc(db, "jornadas", diagnostico.ultimaJornada.id), { puntosCalculados: false });
-            }
-            await batch.commit();
-            setDiagnostico(null);
-            alert("✅ Reset completo. Recarga el diagnóstico para empezar de cero.");
-        } catch(e) {
-            console.error(e);
-            alert("Error al resetear: " + e.message);
-        }
-        setProcesando(false);
-    };
-
-    const hayPendientes = diagnostico?.filas?.some(f => f.ptsAñadir > 0);
-
-    return (
-        <div style={{padding: '25px', backgroundColor: 'rgba(230,57,70,0.08)', border: `1px solid ${styles.colors.danger}`, borderRadius: '16px', marginBottom: '30px'}}>
-            <h3 style={{fontFamily: "'Oswald', sans-serif", color: styles.colors.danger, marginBottom: '5px', fontSize: '1.3rem'}}>🚨 CIERRE DE TEMPORADA DEFINITIVO</h3>
-            <p style={{color: styles.colors.silver, fontSize: '0.85rem', marginBottom: '20px'}}>
-                Datos fijos: <strong style={{color: styles.colors.golden}}>UDLP no ascendió · Posición 5ª · Campeón playoff: Málaga CF</strong>
-            </p>
-
-            {/* PASO 1 */}
-            <button onClick={handleDiagnostico} disabled={cargandoDiag || procesando} style={{...styles.secondaryButton, width: '100%', marginBottom: '20px', padding: '14px'}}>
-                {cargandoDiag ? '⏳ LEYENDO FIREBASE...' : '🔍 PASO 1: CARGAR DIAGNÓSTICO DESDE FIREBASE'}
-            </button>
-
-            {/* TABLA DE DIAGNÓSTICO */}
-            {diagnostico && (
-                <div style={{marginBottom: '20px'}}>
-                    <p style={{color: styles.colors.silver, fontSize: '0.8rem', marginBottom: '10px'}}>
-                        Última jornada detectada: <strong style={{color: '#fff'}}>{diagnostico.ultimaJornada?.equipoLocal} vs {diagnostico.ultimaJornada?.equipoVisitante}</strong> — Resultado: <strong style={{color: styles.colors.golden}}>{diagnostico.resL}-{diagnostico.resV}</strong> — Goleador: <strong style={{color: styles.colors.golden}}>{diagnostico.ultimaJornada?.goleador || 'SG'}</strong>
-                    </p>
-                    <div style={{overflowX: 'auto'}}>
-                        <table style={{...styles.table, marginTop: '5px', fontSize: '0.82rem'}}>
-                            <thead>
-                                <tr>
-                                    <th style={{...styles.th, fontSize: '0.75rem'}}>JUGADOR</th>
-                                    <th style={{...styles.th, fontSize: '0.75rem', textAlign:'center'}}>PTS AHORA</th>
-                                    <th style={{...styles.th, fontSize: '0.75rem', textAlign:'center'}}>A SUMAR</th>
-                                    <th style={{...styles.th, fontSize: '0.75rem', textAlign:'center'}}>TOTAL FINAL</th>
-                                    <th style={{...styles.th, fontSize: '0.75rem'}}>DESGLOSE</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {diagnostico.filas
-                                    .sort((a,b) => b.totalFinal - a.totalFinal)
-                                    .map(f => (
-                                    <tr key={f.userId} style={{...styles.tr, backgroundColor: f.ptsAñadir > 0 ? 'rgba(212,175,55,0.08)' : 'rgba(0,0,0,0.2)'}}>
-                                        <td style={styles.td}><strong style={{color: f.ptsAñadir > 0 ? styles.colors.golden : styles.colors.silver}}>{f.userId}</strong></td>
-                                        <td style={{...styles.td, textAlign:'center', color: styles.colors.silver}}>{f.totalActual}</td>
-                                        <td style={{...styles.td, textAlign:'center', fontWeight:'bold', color: f.ptsAñadir > 0 ? styles.colors.success : styles.colors.silver}}>
-                                            {f.ptsAñadir > 0 ? `+${f.ptsAñadir}` : '—'}
-                                        </td>
-                                        <td style={{...styles.td, textAlign:'center', fontFamily:"'Oswald', sans-serif", fontSize:'1.1rem', color: styles.colors.golden, fontWeight:'bold'}}>{f.totalFinal}</td>
-                                        <td style={{...styles.td, fontSize:'0.75rem', color: styles.colors.silver}}>
-                                            {f.desglose.length > 0 ? f.desglose.join(' · ') : (f.extraYaSumado > 0 ? '✅ Ya sumado' : 'Sin puntos extra')}
-                                            {f.apuestaAnual && <span style={{display:'block', color:'rgba(255,255,255,0.4)', marginTop:'3px'}}>
-                                                Anuales: pos.{f.apuestaAnual.posicion} / ascenso: {String(f.apuestaAnual.ascenso || f.apuestaAnual.asciende || '?')}
-                                            </span>}
-                                            {f.apuestaExtra && <span style={{display:'block', color:'rgba(255,255,255,0.4)', marginTop:'2px'}}>
-                                                Camino: {f.apuestaExtra.equipo}
-                                            </span>}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* PASO 2 */}
-                    {hayPendientes ? (
-                        <button onClick={handleAplicarCierre} disabled={procesando} style={{...styles.mainButton, width: '100%', marginTop: '20px', background: `linear-gradient(135deg, #c0392b, #e74c3c)`}}>
-                            {procesando ? '⏳ APLICANDO PUNTOS EN FIREBASE...' : '✅ PASO 2: APLICAR CIERRE Y GUARDAR EN FIREBASE'}
-                        </button>
-                    ) : (
-                        <div style={{marginTop: '20px', padding: '15px', backgroundColor: 'rgba(16,185,129,0.1)', border: `1px solid ${styles.colors.success}`, borderRadius: '12px', textAlign: 'center'}}>
-                            <p style={{color: styles.colors.success, fontWeight: 'bold'}}>✅ Todos los puntos ya están sumados correctamente. No hay nada pendiente.</p>
-                        </div>
-                    )}
-
-                    {/* RESET */}
-                    <div style={{marginTop: '15px', textAlign: 'center'}}>
-                        <button onClick={handleResetTotal} disabled={procesando} style={{...styles.secondaryButton, fontSize: '0.75rem', borderColor: styles.colors.danger, color: styles.colors.danger}}>
-                            ↩ DESHACER TODO EL CIERRE (solo si algo salió mal)
-                        </button>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
 
 // ============================================================================
 // --- CÁLCULO AUTOMÁTICO DE ESTRELLAS — vía API-Football (fixtures/players) ---
@@ -5290,10 +4958,10 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 if (ptsASustraer > 0 || exactosASustraer > 0) {
                     const cTotal = clasifActual[userId]?.puntosTotales || 0;
                     const cExactos = clasifActual[userId]?.puntosResultadoExacto || 0;
-                    batch.update(doc(db, "clasificacion", userId), { 
+                    batch.set(doc(db, "clasificacion", userId), { 
                         puntosTotales: Math.max(0, cTotal - ptsASustraer), 
                         puntosResultadoExacto: Math.max(0, cExactos - exactosASustraer) 
-                    });
+                    }, { merge: true });
                 }
                 
                 batch.update(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: 0, puntosResultadoExacto: 0, puntosGoleador: 0 });
@@ -5505,7 +5173,15 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                     batch.update(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: ptosJornada, puntosResultadoExacto: ptosExacto, puntosGoleador: ptosGol });
                     const cTotal = clasifActual[userId]?.puntosTotales || 0;
                     const cExactos = clasifActual[userId]?.puntosResultadoExacto || 0;
-                    batch.update(doc(db, "clasificacion", userId), { puntosTotales: cTotal + ptosJornada, puntosResultadoExacto: cExactos + ptosExacto });
+                    // set con merge: true en vez de update — porque si es la
+                    // primera jornada de la temporada, el documento de clasificación
+                    // de este jugador puede no existir todavía (se borró en el
+                    // reseteo). Con update fallaría en silencio y los puntos
+                    // nunca se sumarían.
+                    batch.set(doc(db, "clasificacion", userId), {
+                        puntosTotales: cTotal + ptosJornada,
+                        puntosResultadoExacto: cExactos + ptosExacto
+                    }, { merge: true });
                 }
             });
         }
@@ -7212,7 +6888,6 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                             {msgSync && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginTop:8,opacity:.7}}>{msgSync}</p>}
                         </div>
                     )}
-                    <AdminCierreTemporada />
                     <div style={{marginTop:12}}>
                         {jornadas.map(function(j) {
                             var abierta = expandida === j.id;
