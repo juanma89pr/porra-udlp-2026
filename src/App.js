@@ -465,6 +465,72 @@ function aplicarFiltroUDLP(imgElement) {
     });
 }
 
+// Filtro blanco y negro clásico
+function aplicarFiltroBYN(imgElement) {
+    return new Promise(function(resolve, reject) {
+        try {
+            var SIZE = 480;
+            var canvas = document.createElement('canvas');
+            canvas.width = SIZE; canvas.height = SIZE;
+            var ctx = canvas.getContext('2d');
+            var iw = imgElement.naturalWidth, ih = imgElement.naturalHeight;
+            if (!iw || !ih) { reject(new Error('Sin dimensiones')); return; }
+            var side = Math.min(iw, ih);
+            var sx = (iw - side) / 2, sy = (ih - side) / 2;
+            ctx.drawImage(imgElement, sx, sy, side, side, 0, 0, SIZE, SIZE);
+            var data = ctx.getImageData(0, 0, SIZE, SIZE);
+            var px = data.data;
+            for (var i = 0; i < px.length; i += 4) {
+                var lum = Math.round(0.299*px[i] + 0.587*px[i+1] + 0.114*px[i+2]);
+                px[i] = lum; px[i+1] = lum; px[i+2] = lum;
+            }
+            ctx.putImageData(data, 0, 0);
+            canvas.toBlob(function(blob) {
+                if (!blob) { reject(new Error('No blob')); return; }
+                resolve(blob);
+            }, 'image/jpeg', 0.9);
+        } catch (err) { reject(err); }
+    });
+}
+
+// Filtro sepia vintage
+function aplicarFiltroSepia(imgElement) {
+    return new Promise(function(resolve, reject) {
+        try {
+            var SIZE = 480;
+            var canvas = document.createElement('canvas');
+            canvas.width = SIZE; canvas.height = SIZE;
+            var ctx = canvas.getContext('2d');
+            var iw = imgElement.naturalWidth, ih = imgElement.naturalHeight;
+            if (!iw || !ih) { reject(new Error('Sin dimensiones')); return; }
+            var side = Math.min(iw, ih);
+            var sx = (iw - side) / 2, sy = (ih - side) / 2;
+            ctx.drawImage(imgElement, sx, sy, side, side, 0, 0, SIZE, SIZE);
+            var data = ctx.getImageData(0, 0, SIZE, SIZE);
+            var px = data.data;
+            for (var i = 0; i < px.length; i += 4) {
+                var r = px[i], g = px[i+1], b = px[i+2];
+                px[i]   = Math.min(255, r*0.393 + g*0.769 + b*0.189);
+                px[i+1] = Math.min(255, r*0.349 + g*0.686 + b*0.168);
+                px[i+2] = Math.min(255, r*0.272 + g*0.534 + b*0.131);
+            }
+            ctx.putImageData(data, 0, 0);
+            canvas.toBlob(function(blob) {
+                if (!blob) { reject(new Error('No blob')); return; }
+                resolve(blob);
+            }, 'image/jpeg', 0.9);
+        } catch (err) { reject(err); }
+    });
+}
+
+// Devuelve la función de filtro según el nombre elegido — o null si es "sin filtro"
+function obtenerFuncionFiltro(nombreFiltro) {
+    if (nombreFiltro === 'udlp') return aplicarFiltroUDLP;
+    if (nombreFiltro === 'byn') return aplicarFiltroBYN;
+    if (nombreFiltro === 'sepia') return aplicarFiltroSepia;
+    return null; // 'ninguno' → sin filtro
+}
+
 // Envuelve cualquier promesa con un límite de tiempo — para que nada se quede
 // "procesando" para siempre si el navegador se cuelga con un formato raro.
 function conTimeout(promise, ms, mensajeTimeout) {
@@ -497,7 +563,65 @@ function IconoPerfil({ perfil, size }) {
     );
 }
 
-// Componente de avatar de jugador con burbuja de El Otro
+// Modal de perfil ampliado — aparece al pulsar en cualquier avatar de la
+// app, con una animación de crecer desde el centro. Muestra la foto grande
+// y el nombre/apodo. Se cierra pulsando en cualquier sitio.
+function ModalPerfilAmpliado({ nombre, perfil, onClose }) {
+    var [animado, setAnimado] = useState(false);
+    useEffect(function() {
+        requestAnimationFrame(function() { setAnimado(true); });
+    }, []);
+    var foto = perfil && perfil.foto;
+    var textoNombre = nombreVisible(nombre, perfil);
+    return (
+        <div onClick={onClose} style={{
+            position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:9999,
+            background:'rgba(0,0,0,0.7)',backdropFilter:'blur(6px)',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            cursor:'pointer',
+        }}>
+            <div style={{
+                transform: animado ? 'scale(1)' : 'scale(0.3)',
+                opacity: animado ? 1 : 0,
+                transition:'transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.25s ease',
+                textAlign:'center',
+            }}>
+                {foto ? (
+                    <img src={foto} alt={textoNombre} style={{width:220,height:220,borderRadius:'50%',objectFit:'cover',
+                        border:'4px solid #FFD700',boxShadow:'0 8px 40px rgba(0,0,0,0.5)'}} />
+                ) : (
+                    <div style={{width:220,height:220,borderRadius:'50%',
+                        background:'linear-gradient(135deg,#001F6B,#003a9e)',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        fontSize:90,border:'4px solid #FFD700',boxShadow:'0 8px 40px rgba(0,0,0,0.5)'}}>
+                        {(perfil && perfil.emoji) || '⚽'}
+                    </div>
+                )}
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#fff',marginTop:16,letterSpacing:2,textTransform:'uppercase',
+                    textShadow:'0 2px 8px rgba(0,0,0,0.5)'}}>
+                    {textoNombre}
+                </p>
+            </div>
+        </div>
+    );
+}
+
+// IconoPerfil clickable — envuelve IconoPerfil con la posibilidad de abrir
+// el modal de perfil ampliado al pulsar. Se usa en cualquier sitio donde
+// se muestre un avatar y se quiera poder ampliar.
+function IconoPerfilClickable({ nombre, perfil, size }) {
+    var [abierto, setAbierto] = useState(false);
+    return (
+        <>
+            <div onClick={function(e) { e.stopPropagation(); setAbierto(true); }} style={{cursor:'pointer'}}>
+                <IconoPerfil perfil={perfil} size={size} />
+            </div>
+            {abierto && <ModalPerfilAmpliado nombre={nombre} perfil={perfil} onClose={function(){setAbierto(false);}} />}
+        </>
+    );
+}
+
+
 // Burbuja de ayuda desplegable — pulsas el título y se abre/cierra. Estilo
 // único reutilizado en El Otro Equipo y en Estrellas, para que toda la
 // información de reglas se vea y se comporte igual en toda la app.
@@ -693,7 +817,7 @@ const PlayerAvatar = ({ name, perfil, elOtroData, size = 40, showElOtro = false,
 const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.lightText, isOnline = false }) => {
     const p = profile || {}; const color = p.color || defaultColor; const isG = typeof color === 'string' && color.startsWith('linear-gradient');
     const nStyle = { ...(isG ? { background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color }), fontWeight: 'bold' };
-    return (<span style={{display: 'inline-flex', alignItems: 'center', gap: '8px' }}><IconoPerfil perfil={p} size={26} /><span style={nStyle}>{nombreVisible(name, p)}</span>{isOnline && <span style={{width: '8px', height: '8px', backgroundColor: styles.colors.success, borderRadius: '50%', boxShadow: `0 0 8px ${styles.colors.success}`}}></span>}</span>);
+    return (<span style={{display: 'inline-flex', alignItems: 'center', gap: '8px' }}><IconoPerfilClickable nombre={name} perfil={p} size={26} /><span style={nStyle}>{nombreVisible(name, p)}</span>{isOnline && <span style={{width: '8px', height: '8px', backgroundColor: styles.colors.success, borderRadius: '50%', boxShadow: `0 0 8px ${styles.colors.success}`}}></span>}</span>);
 };
 
 // ============================================================================
@@ -705,6 +829,7 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema, teamLogos }) => {
     var [guardado, setGuardado] = useState(false);
     var [guardando, setGuardando] = useState(false);
     var [subiendoFoto, setSubiendoFoto] = useState(false);
+    var [filtroElegido, setFiltroElegido] = useState('udlp'); // udlp | byn | sepia | ninguno
     var [convirtiendoFormato, setConvirtiendoFormato] = useState(false);
     var [previewFoto, setPreviewFoto] = useState(null); // dataURL local mientras se procesa/sube
     var [errorFoto, setErrorFoto] = useState('');
@@ -780,30 +905,33 @@ async function convertirHeicSiHaceFalta(file) {
             setPreviewFoto(url);
             setGuardado(true);
 
-            // Paso 2 (en segundo plano): intentar aplicar el filtro UDLP y
+            // Paso 2 (en segundo plano): intentar aplicar el filtro elegido y
             // resubir la versión filtrada. Si falla, la foto original ya está
             // guardada y visible — no se pierde nada.
-            try {
-                var objectUrl = URL.createObjectURL(file);
-                var img = new Image();
-                img.crossOrigin = 'anonymous';
-                await new Promise(function(resolve, reject) {
-                    img.onload = resolve;
-                    img.onerror = reject;
-                    setTimeout(function() { reject(new Error('timeout')); }, 8000);
-                    img.src = objectUrl;
-                });
-                var blob = await conTimeout(aplicarFiltroUDLP(img), 10000, 'Filtro tardó demasiado');
-                await uploadBytes(ref, blob, { contentType: 'image/jpeg' });
-                var urlFiltrada = await getDownloadURL(ref);
-                await setDoc(doc(db, "perfiles", currentUser), {
-                    foto: urlFiltrada, actualizadoEn: serverTimestamp()
-                }, { merge: true });
-                setPerfil(function(p) { return { ...p, foto: urlFiltrada }; });
-                setPreviewFoto(URL.createObjectURL(blob));
-                URL.revokeObjectURL(objectUrl);
-            } catch (filtroErr) {
-                console.warn('Filtro UDLP no se pudo aplicar (la foto original ya está guardada):', filtroErr.message);
+            var fnFiltro = obtenerFuncionFiltro(filtroElegido);
+            if (fnFiltro) {
+                try {
+                    var objectUrl = URL.createObjectURL(file);
+                    var img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    await new Promise(function(resolve, reject) {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        setTimeout(function() { reject(new Error('timeout')); }, 8000);
+                        img.src = objectUrl;
+                    });
+                    var blob = await conTimeout(fnFiltro(img), 10000, 'Filtro tardó demasiado');
+                    await uploadBytes(ref, blob, { contentType: 'image/jpeg' });
+                    var urlFiltrada = await getDownloadURL(ref);
+                    await setDoc(doc(db, "perfiles", currentUser), {
+                        foto: urlFiltrada, actualizadoEn: serverTimestamp()
+                    }, { merge: true });
+                    setPerfil(function(p) { return { ...p, foto: urlFiltrada }; });
+                    setPreviewFoto(URL.createObjectURL(blob));
+                    URL.revokeObjectURL(objectUrl);
+                } catch (filtroErr) {
+                    console.warn('Filtro no se pudo aplicar (la foto original ya está guardada):', filtroErr.message);
+                }
             }
 
             setSubiendoFoto(false);
@@ -909,15 +1037,33 @@ async function convertirHeicSiHaceFalta(file) {
                 </div>
             )}
 
-            {/* Opción principal: subir foto con filtro UDLP */}
+            {/* Subir foto con filtro a elegir */}
             <div style={{background:'linear-gradient(135deg,#001F6B,#00296e)',borderRadius:16,padding:20,marginBottom:16,
                 border:'1px solid rgba(0,31,107,0.08)'}}>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',fontWeight:700,marginBottom:4}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',fontWeight:700,marginBottom:12}}>
                     Sube tu foto
                 </p>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.6)',marginBottom:16,lineHeight:1.5}}>
-                    Se aplica automáticamente el filtro azul y dorado de la UDLP. Es la opción recomendada para tu perfil.
-                </p>
+                {/* Selector de filtro */}
+                <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+                    {[
+                        {id:'udlp', label:'🔵🟡 UDLP', desc:'Azul y dorado'},
+                        {id:'byn', label:'⚫⚪ B/N', desc:'Blanco y negro'},
+                        {id:'sepia', label:'🟤 Sepia', desc:'Vintage'},
+                        {id:'ninguno', label:'📷 Original', desc:'Sin filtro'},
+                    ].map(function(f) {
+                        var activo = filtroElegido === f.id;
+                        return (
+                            <button key={f.id} onClick={function(){setFiltroElegido(f.id);}}
+                                style={{flex:1,minWidth:70,padding:'8px 4px',borderRadius:10,border: activo ? '2px solid #FFD700' : '1.5px solid rgba(255,255,255,0.15)',
+                                    background: activo ? 'rgba(255,215,0,0.15)' : 'rgba(255,255,255,0.05)',
+                                    fontFamily:"'Inter',sans-serif",fontSize:10,color: activo ? '#FFD700' : 'rgba(255,255,255,0.6)',
+                                    cursor:'pointer',textAlign:'center',lineHeight:1.4}}>
+                                <span style={{display:'block',fontSize:14,marginBottom:2}}>{f.label}</span>
+                                <span style={{fontSize:9,opacity:0.7}}>{f.desc}</span>
+                            </button>
+                        );
+                    })}
+                </div>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={manejarSeleccionFoto} style={{display:'none'}} />
                 <button onClick={function() { fileInputRef.current && fileInputRef.current.click(); }}
                     disabled={subiendoFoto}
@@ -3260,7 +3406,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                     <div key={nombre} style={{opacity: haApostado ? 1 : 0.35, display:'flex', flexDirection:'column', alignItems:'center', gap:4, transition:'opacity .2s'}}>
                                         <div style={{position:'relative'}}>
                                             <div style={{border: '2px solid rgba(0,31,107,0.15)', borderRadius:'50%', boxShadow: '0 2px 8px rgba(0,31,107,0.12)'}}>
-                                                <IconoPerfil perfil={perf} size={44} />
+                                                <IconoPerfilClickable nombre={nombre} perfil={perf} size={44} />
                                             </div>
                                             {tieneEquipoOtro && (
                                                 <div style={{
@@ -8350,18 +8496,21 @@ const LoginScreen = ({ onLoginSuccess }) => {
 
             {/* Pantalla de selección de nombre */}
             {paso === 'nombre' && (
-                <div className="fade-up" style={{width:'100%',maxWidth:340,position:'relative',zIndex:5}}>
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+                <div className="fade-up" style={{width:'100%',maxWidth:380,position:'relative',zIndex:5}}>
+                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
                         {JUGADORES.map(function(j) {
                             var perf = perfilesLogin[j] || {};
                             var textoVisible = nombreVisible(j, perf);
                             return (
                                 <button key={j} className="login-btn" onClick={function(){seleccionarNombre(j);}} disabled={cargando}
-                                    style={{padding:'10px 8px',borderRadius:14,border:'1.5px solid rgba(0,31,107,0.12)',
-                                        background:'#f8f8f8',fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
-                                        color:'#001F6B',cursor:'pointer',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
-                                    <IconoPerfil perfil={perf} size={36} />
-                                    <span>{textoVisible}</span>
+                                    style={{padding:'10px 16px',borderRadius:14,border:'1.5px solid rgba(0,31,107,0.08)',
+                                        background:'rgba(255,255,255,0.06)',backdropFilter:'blur(8px)',
+                                        fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:600,
+                                        color:'#001F6B',cursor:'pointer',textAlign:'left',
+                                        display:'flex',flexDirection:'row',alignItems:'center',gap:12}}>
+                                    <IconoPerfilClickable nombre={j} perfil={perf} size={38} />
+                                    <span style={{flex:1}}>{textoVisible}</span>
+                                    <span style={{fontSize:16,opacity:0.3}}>→</span>
                                 </button>
                             );
                         })}
