@@ -2048,13 +2048,32 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     var f = data.response[0];
                     var isLive = ['LIVE','1H','2H','HT','ET'].includes(f.fixture.status.short);
                     var primerGol = (f.events||[]).find(function(e) { return e.type==='Goal' && e.detail!=='Missed Penalty'; });
+
+                    // Extraer estadísticas del partido (posesión, tiros, etc.) si existen
+                    var statsPartido = {};
+                    if (f.statistics && f.statistics.length >= 2) {
+                        var buscarStat = function(equipo, tipo) {
+                            var found = (f.statistics[equipo].statistics || []).find(function(s) { return s.type === tipo; });
+                            return found ? found.value : null;
+                        };
+                        statsPartido = {
+                            posesionLocal: parseInt(buscarStat(0, 'Ball Possession')) || null,
+                            posesionVisitante: parseInt(buscarStat(1, 'Ball Possession')) || null,
+                            tirosLocal: buscarStat(0, 'Total Shots'), tirosVisitante: buscarStat(1, 'Total Shots'),
+                            tirosApuertaLocal: buscarStat(0, 'Shots on Goal'), tirosApuertaVisitante: buscarStat(1, 'Shots on Goal'),
+                            cornersLocal: buscarStat(0, 'Corner Kicks'), cornersVisitante: buscarStat(1, 'Corner Kicks'),
+                        };
+                    }
+
                     await setDoc(doc(db, "jornadas", jornada.id), {
-                        fixtureId: f.fixture.id, // necesario para pedir luego las estadísticas por jugador (Estrellas)
+                        fixtureId: f.fixture.id,
                         liveData: {
                             golesLocal: f.goals.home,
                             golesVisitante: f.goals.away,
                             primerGoleador: primerGol ? primerGol.player.name : '',
+                            minuto: f.fixture.status.elapsed || null,
                             isLive: isLive,
+                            estadisticas: statsPartido,
                             actualizadoEn: new Date().toISOString()
                         },
                         estado: isLive ? 'En vivo' : jornada.estado
@@ -3379,7 +3398,14 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                             <p style={{fontFamily:"'Teko',sans-serif",fontSize:36,color:'rgba(255,255,255,0.2)',letterSpacing:4}}>vs</p>
                         )}
                         <div style={{marginTop:8}}>
-                            {isLive && <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,color:'#e63946',padding:'4px 12px',background:'rgba(230,57,70,0.2)',borderRadius:10,animation:'blink-live 1.5s infinite'}}>EN VIVO</span>}
+                            {isLive && (
+                                <>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,color:'#e63946',padding:'4px 12px',background:'rgba(230,57,70,0.2)',borderRadius:10,animation:'blink-live 1.5s infinite'}}>EN VIVO</span>
+                                    {live && live.minuto && (
+                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'rgba(255,255,255,0.5)',marginTop:6}}>{live.minuto}'</p>
+                                    )}
+                                </>
+                            )}
                             {!isLive && <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.3)'}}>{jornada.estado}</span>}
                         </div>
                     </div>
@@ -3398,6 +3424,28 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                         </span>
                     </div>
                 </div>
+                {/* Estadísticas del partido en vivo — métricas de estadio */}
+                {isLive && live && live.estadisticas && (
+                    <div style={{marginTop:12,display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                        {[
+                            {label:'Posesión', local: live.estadisticas.posesionLocal, visitante: live.estadisticas.posesionVisitante, sufijo:'%'},
+                            {label:'Tiros', local: live.estadisticas.tirosLocal, visitante: live.estadisticas.tirosVisitante},
+                            {label:'A puerta', local: live.estadisticas.tirosApuertaLocal, visitante: live.estadisticas.tirosApuertaVisitante},
+                            {label:'Corners', local: live.estadisticas.cornersLocal, visitante: live.estadisticas.cornersVisitante},
+                        ].map(function(stat) {
+                            if (stat.local === undefined && stat.visitante === undefined) return null;
+                            return (
+                                <div key={stat.label} style={{background:'rgba(255,255,255,0.06)',borderRadius:10,padding:'6px 10px',textAlign:'center'}}>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.35)',letterSpacing:1,textTransform:'uppercase',marginBottom:2}}>{stat.label}</p>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,color:'#fff'}}>
+                                        {stat.local || 0}{stat.sufijo||''} — {stat.visitante || 0}{stat.sufijo||''}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
                 {/* Bote */}
                 <div style={{marginTop:16,display:'flex',justifyContent:'center',gap:24}}>
                     <div style={{textAlign:'center'}}>
@@ -3425,9 +3473,75 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:2,color:G.deepBlue,textTransform:'uppercase',marginBottom:4}}>
                             Apuestas en curso
                         </p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5}}>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5,marginBottom:16}}>
                             Los pronósticos se revelarán cuando cierren las apuestas.
                         </p>
+
+                        {/* Estadísticas agregadas — solo visibles con 5+ apuestas */}
+                        {participantes.length >= 5 && (function() {
+                            var conteoMarcadores = {};
+                            var conteo1X2 = { '1': 0, 'X': 0, '2': 0 };
+                            participantes.forEach(function(p) {
+                                var clave = p.golesLocal + '-' + p.golesVisitante;
+                                conteoMarcadores[clave] = (conteoMarcadores[clave] || 0) + 1;
+                                if (p.resultado1x2 === '1') conteo1X2['1']++;
+                                else if (p.resultado1x2 === 'X') conteo1X2['X']++;
+                                else if (p.resultado1x2 === '2') conteo1X2['2']++;
+                            });
+                            var marcadoresOrdenados = Object.keys(conteoMarcadores)
+                                .map(function(k) { return { marcador: k, n: conteoMarcadores[k] }; })
+                                .sort(function(a,b) { return b.n - a.n; })
+                                .slice(0, 5);
+                            var maxN = marcadoresOrdenados.length > 0 ? marcadoresOrdenados[0].n : 1;
+                            var total1X2 = conteo1X2['1'] + conteo1X2['X'] + conteo1X2['2'];
+                            var pct = function(v) { return total1X2 > 0 ? Math.round(v / total1X2 * 100) : 0; };
+
+                            return (
+                                <div style={{marginBottom:20}}>
+                                    <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:16}}>
+                                        {[
+                                            { label: 'LOCAL', key: '1', color: '#10b981' },
+                                            { label: 'EMPATE', key: 'X', color: '#FFD700' },
+                                            { label: 'VISITANTE', key: '2', color: '#e63946' },
+                                        ].map(function(item) {
+                                            return (
+                                                <div key={item.key} style={{flex:1,textAlign:'center'}}>
+                                                    <div style={{height:60,display:'flex',alignItems:'flex-end',justifyContent:'center',marginBottom:4}}>
+                                                        <div style={{width:28,borderRadius:'6px 6px 0 0',background:item.color,opacity:0.8,
+                                                            height: Math.max(8, pct(conteo1X2[item.key]) * 0.55) + 'px',
+                                                            transition:'height 0.5s ease'}} />
+                                                    </div>
+                                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:item.color}}>{pct(conteo1X2[item.key])}%</p>
+                                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)',letterSpacing:1}}>{item.label}</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.35)',letterSpacing:1,textTransform:'uppercase',marginBottom:8}}>Marcadores más repetidos</p>
+                                    <div style={{display:'flex',flexDirection:'column',gap:6,maxWidth:240,margin:'0 auto'}}>
+                                        {marcadoresOrdenados.map(function(m) {
+                                            return (
+                                                <div key={m.marcador} style={{display:'flex',alignItems:'center',gap:10}}>
+                                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:G.deepBlue,width:40,textAlign:'center'}}>{m.marcador}</span>
+                                                    <div style={{flex:1,height:14,background:'rgba(0,31,107,0.06)',borderRadius:7,overflow:'hidden'}}>
+                                                        <div style={{height:'100%',borderRadius:7,background:'linear-gradient(90deg,#001F6B,#FFD700)',
+                                                            width: Math.round(m.n / maxN * 100) + '%', transition:'width 0.5s ease'}} />
+                                                    </div>
+                                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)',width:20}}>{m.n}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {participantes.length > 0 && participantes.length < 5 && (
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.3)',marginBottom:16}}>
+                                Las estadísticas se muestran a partir de 5 apuestas ({participantes.length}/{5})
+                            </p>
+                        )}
+
                         {/* Todo el grupo, no solo quien ya ha apostado — atenuados
                             quienes todavía no lo han hecho, para que se vean entre
                             ellos de un vistazo. La burbuja de El Otro Equipo aquí
@@ -3526,6 +3640,55 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     </div>
                 )}
             </div>
+
+            {/* Clasificación EN VIVO de la porra — quién va ganando durante
+                el partido, con indicadores de quién acierta marcador/1X2 */}
+            {isLive && live && participantes.length > 0 && (function() {
+                var marcadorLive = gL + '-' + gV;
+                var resultado1x2Live = parseInt(gL) > parseInt(gV) ? '1' : (parseInt(gL) < parseInt(gV) ? '2' : 'X');
+                var rankingVivo = participantes.filter(function(p){return !p.sinApuesta;}).map(function(p) {
+                    var pts = calculateProvisionalPoints(p, live, jornada);
+                    var marcadorApostado = p.golesLocal + '-' + p.golesVisitante;
+                    var aciertaMarcador = marcadorApostado === marcadorLive;
+                    var acierta1x2 = p.resultado1x2 === resultado1x2Live;
+                    return { id: p.id, puntos: pts, marcador: marcadorApostado, aciertaMarcador: aciertaMarcador, acierta1x2: acierta1x2 };
+                }).sort(function(a,b) { return b.puntos - a.puntos; });
+                var acertaronExacto = rankingVivo.filter(function(r){ return r.aciertaMarcador; }).length;
+                return (
+                    <div style={{marginTop:16}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:'#e63946',opacity:.8,textTransform:'uppercase',marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
+                            <span style={{animation:'blink-live 1.5s infinite'}}>🔴</span> Quién va ganando
+                        </p>
+                        {acertaronExacto > 0 && (
+                            <div style={{background:'rgba(255,215,0,0.1)',border:'1px solid rgba(212,175,55,0.3)',borderRadius:10,padding:'8px 14px',marginBottom:10,textAlign:'center'}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:G.golden}}>
+                                    🎯 {acertaronExacto === 1 ? '¡1 jugador clava el marcador!' : acertaronExacto + ' jugadores clavan el marcador!'}
+                                    {acertaronExacto === 1 ? ' → se lleva el bote' : ' → bote repartido'}
+                                </p>
+                            </div>
+                        )}
+                        <div style={{background:'rgba(230,57,70,0.04)',border:'1px solid rgba(230,57,70,0.15)',borderRadius:14,overflow:'hidden'}}>
+                            {rankingVivo.map(function(r, idx) {
+                                var perf = userProfiles[r.id] || {};
+                                return (
+                                    <div key={r.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',
+                                        borderBottom: idx < rankingVivo.length-1 ? '1px solid rgba(0,31,107,0.05)' : 'none',
+                                        background: r.aciertaMarcador ? 'rgba(255,215,0,0.08)' : 'transparent'}}>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color: idx === 0 ? G.golden : 'rgba(0,31,107,0.3)',width:18,textAlign:'center',fontWeight:700}}>{idx+1}</span>
+                                        <IconoPerfil perfil={perf} size={26} />
+                                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,fontWeight: idx === 0 ? 700 : 400}}>{nombreVisible(r.id, perf)}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(0,31,107,0.4)',width:35,textAlign:'center'}}>{r.marcador}</span>
+                                        {r.aciertaMarcador && <span style={{fontSize:11}} title="Acierta marcador">🎯</span>}
+                                        {!r.aciertaMarcador && r.acierta1x2 && <span style={{fontSize:11}} title="Acierta 1X2">✓</span>}
+                                        {!r.aciertaMarcador && !r.acierta1x2 && <span style={{fontSize:11,opacity:0.3}} title="Falla">✗</span>}
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: idx === 0 ? G.golden : r.puntos > 0 ? G.deepBlue : 'rgba(0,31,107,0.25)',minWidth:24,textAlign:'right'}}>{r.puntos}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Estrellas EN VIVO — comparativa provisional durante el partido, NO definitiva */}
             {isLive && jornada.liveEstrellas && jornada.liveEstrellas.puntosPorNombre && seleccionesEstrellasJornada.length > 0 && (function() {
