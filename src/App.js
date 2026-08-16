@@ -5040,19 +5040,29 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
             clasifSnap.forEach(d => clasifActual[d.id] = d.data());
 
             // --- PAGO POR JORNADA: quién ha pagado ESTA jornada en concreto.
-            // Sin pagar, su resultado no cuenta al cerrar — se le avisa en su
-            // pantalla, pero la comprobación real de verdad pasa por aquí.
+            // Si nadie tiene un pago de jornada (porque todavía no se ha
+            // activado ese sistema, como pasa al inicio de temporada), se
+            // considera que TODOS han pagado — así no se bloquean los puntos
+            // de toda la porra entera por un mecanismo que aún no se usa.
             const jornadaCodigoActual = 'J' + jornada.numeroJornada;
             const pagosSnap = await getDocs(collection(db, "pagos"));
             var jugadoresQueHanPagadoEstaJornada = {};
+            var hayAlgunPagoDeJornada = false;
             pagosSnap.forEach(function(d) {
                 var pg = d.data();
-                if (pg.jornada === jornadaCodigoActual &&
-                    (pg.tipo === 'jornada_normal' || pg.tipo === 'jornada_vip') &&
+                if ((pg.tipo === 'jornada_normal' || pg.tipo === 'jornada_vip') &&
                     pg.estado !== 'cancelado' && pg.estado !== 'rechazado' && pg.estado !== 'fallido') {
-                    jugadoresQueHanPagadoEstaJornada[pg.jugador] = true;
+                    hayAlgunPagoDeJornada = true;
+                    if (pg.jornada === jornadaCodigoActual) {
+                        jugadoresQueHanPagadoEstaJornada[pg.jugador] = true;
+                    }
                 }
             });
+            // Si nadie ha pagado ninguna jornada todavía (el sistema no está activo),
+            // marcar a todos como pagados para que los puntos se repartan normalmente.
+            if (!hayAlgunPagoDeJornada) {
+                pSnap.forEach(function(d) { jugadoresQueHanPagadoEstaJornada[d.id] = true; });
+            }
 
             // --- EL OTRO EQUIPO: precargar resultados de los partidos activados ---
             // Aislado del resto — si la API falla aquí, los puntos normales de la
