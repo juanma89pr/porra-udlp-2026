@@ -403,7 +403,7 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
     else { rReal = gL > gV ? 'gana' : (gL < gV ? 'pierde' : 'empate'); }
 
     if (check1x2(pronostico.resultado1x2, rReal, jornada.tipoPartido, jornada.desenlace)) {
-        ptos += esVip ? 2 : 1;
+        ptos += esVip ? 4 : 2;
     }
 
     const golReal = (liveData.primerGoleador || '').trim().toLowerCase();
@@ -2107,7 +2107,12 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             } catch(e) { console.warn('API sync error:', e.message); }
         };
         sincronizar(); // Primera vez inmediata
-        var intervalo = setInterval(sincronizar, 5 * 60 * 1000); // Cada 5 min
+        // En vivo → cada 2 minutos (antes era 30s y agotó el plan entero
+        // en el primer partido — 100 peticiones/día no dan para 30s durante
+        // 90 min). 2 minutos × 90 min = 45 peticiones, manejable.
+        // Fuera de partido → cada 15 minutos (solo para detectar si empieza).
+        var frecuencia = (jornada && jornada.estado === 'En vivo') ? 2 * 60 * 1000 : 15 * 60 * 1000;
+        var intervalo = setInterval(sincronizar, frecuencia);
         return function() { clearInterval(intervalo); };
     }, [jornada, plantilla]);
 
@@ -3763,6 +3768,63 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                 </div>
             )}
 
+            {/* Resumen de jornada finalizada — puntos, ganadores, bote */}
+            {jornada.estado === 'Finalizada' && participantes.length > 0 && (function() {
+                var resumenOrdenado = participantes.filter(function(p){return !p.sinApuesta;})
+                    .sort(function(a,b) { return (b.puntosObtenidos||0) - (a.puntosObtenidos||0); });
+                var maxPtos = resumenOrdenado.length > 0 ? (resumenOrdenado[0].puntosObtenidos || 0) : 0;
+                var acertaronExacto = participantes.filter(function(p) {
+                    return !p.sinApuesta && parseInt(p.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(p.golesVisitante) === parseInt(jornada.resultadoVisitante);
+                });
+                var boteJornada = participantes.filter(function(p){return !p.sinApuesta;}).length;
+                var premioPorGanador = acertaronExacto.length > 0 ? Math.floor(boteJornada / acertaronExacto.length) : 0;
+
+                return (
+                    <div style={{marginTop:20,background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:20}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:3,color:'#FFD700',textTransform:'uppercase',marginBottom:14}}>
+                            📊 Resumen Jornada {jornada.numeroJornada}
+                        </p>
+                        <div style={{display:'flex',gap:16,justifyContent:'center',marginBottom:16}}>
+                            <div style={{textAlign:'center'}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700'}}>{boteJornada}€</p>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.4)',letterSpacing:1}}>RECAUDADO</p>
+                            </div>
+                            {acertaronExacto.length > 0 && (
+                                <div style={{textAlign:'center'}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700'}}>{premioPorGanador}€</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.4)',letterSpacing:1}}>POR GANADOR</p>
+                                </div>
+                            )}
+                        </div>
+                        {acertaronExacto.length > 0 && (
+                            <div style={{background:'rgba(255,215,0,0.15)',borderRadius:10,padding:10,marginBottom:14,textAlign:'center'}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#FFD700'}}>
+                                    🎯 {acertaronExacto.length === 1 ? '¡' + nombreVisible(acertaronExacto[0].id, userProfiles[acertaronExacto[0].id]) + ' clava el marcador!' : acertaronExacto.length + ' jugadores clavan el marcador'}
+                                </p>
+                            </div>
+                        )}
+                        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                            {resumenOrdenado.map(function(p, idx) {
+                                var perf = userProfiles[p.id] || {};
+                                var exacto = parseInt(p.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(p.golesVisitante) === parseInt(jornada.resultadoVisitante);
+                                return (
+                                    <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',
+                                        background: exacto ? 'rgba(255,215,0,0.1)' : 'rgba(255,255,255,0.04)',borderRadius:8}}>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color: idx === 0 ? '#FFD700' : 'rgba(255,255,255,0.3)',width:18,fontWeight:700}}>{idx+1}</span>
+                                        <IconoPerfil perfil={perf} size={24} />
+                                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11,color:'#fff'}}>{nombreVisible(p.id, perf)}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(255,255,255,0.4)',width:35,textAlign:'center'}}>{p.golesLocal}-{p.golesVisitante}</span>
+                                        {exacto && <span style={{fontSize:10}}>🎯</span>}
+                                        {p.elOtroActivado && <span style={{fontSize:10}}>🛡️</span>}
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: (p.puntosObtenidos||0) > 0 ? '#FFD700' : 'rgba(255,255,255,0.25)',minWidth:24,textAlign:'right'}}>{p.puntosObtenidos||0}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* Partidos de Primera relevantes — los que afectan a jugadores
                 del grupo que tienen equipo elegido en El Otro, para que se
                 vea de un vistazo qué partidos importan esta jornada. */}
@@ -4789,7 +4851,7 @@ const AdminCierreTemporada = () => {
                     }
                     ptosJornada += ptosExacto;
                     if (check1x2(pronU.resultado1x2, rReal, ultimaJornada.tipoPartido, ultimaJornada.desenlace))
-                        ptosJornada += esVipU ? 2 : 1;
+                        ptosJornada += esVipU ? 4 : 2;
                     const golAp = (pronU.goleador || '').trim().toLowerCase();
                     if (resL > 0 || resV > 0 || golReal === 'sg') {
                         if (pronU.sinGoleador && golReal === 'sg') ptosGol += 1;
@@ -5402,7 +5464,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
                 // 2. SOLUCIÓN PASA/NO PASA Y GANA/PIERDE CON EL COMPROBADOR FLEXIBLE
                 if (check1x2(p.resultado1x2, rReal, tipoPartido, desenlace)) {
-                    ptosJornada += esVip ? 2 : 1;
+                    ptosJornada += esVip ? 4 : 2;
                 }
 
                 // 3. GOLEADOR
@@ -6502,15 +6564,33 @@ const ResetearClasificacionAdmin = () => {
         try {
             var snap = await getDocs(collection(db, 'clasificacion'));
             var batch = writeBatch(db);
-            var n = 0;
+            var borrados = 0;
+            var reseteados = 0;
+            // Jugadores activos de esta temporada
+            var activos = JUGADORES_FUNDADORES.slice();
+            try {
+                var apSnap = await getDoc(doc(db, 'configuracion', 'jugadoresAprobados'));
+                if (apSnap.exists()) activos = activos.concat(apSnap.data().nombres || []);
+                var inSnap = await getDoc(doc(db, 'configuracion', 'jugadoresInactivos'));
+                var inactivos = inSnap.exists() ? (inSnap.data().nombres || []) : [];
+                activos = activos.filter(function(j) { return inactivos.indexOf(j) === -1; });
+            } catch(e2) { console.warn(e2); }
+
             snap.forEach(function(d) {
-                batch.set(doc(db, 'clasificacion', d.id), {
-                    puntosTotales: 0, puntosResultadoExacto: 0,
-                }, { merge: true });
-                n++;
+                if (activos.indexOf(d.id) === -1) {
+                    // Jugador de la temporada pasada que ya no juega → borrar
+                    batch.delete(doc(db, 'clasificacion', d.id));
+                    borrados++;
+                } else {
+                    // Jugador activo → poner a 0
+                    batch.set(doc(db, 'clasificacion', d.id), {
+                        puntosTotales: 0, puntosResultadoExacto: 0,
+                    }, { merge: true });
+                    reseteados++;
+                }
             });
             await batch.commit();
-            setMsg('✅ Clasificación reseteada a 0 para ' + n + ' jugadores. Temporada nueva, empieza limpia.');
+            setMsg('✅ Clasificación reseteada: ' + reseteados + ' jugadores a 0, ' + borrados + ' de la temporada pasada borrados.');
             setConfirmando(false);
         } catch (e) {
             console.error(e);
@@ -6826,7 +6906,7 @@ const NormativaScreen = () => {
             <AcordeonAyuda icono="⚽" titulo="La Porra" abiertoPorDefecto={true}>
                 <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
                     <p style={{marginBottom:8}}>Cada jornada de la UDLP, adivinas el <strong>marcador exacto</strong> y el <strong>1X2</strong> (quién gana, pierde o empata).</p>
-                    <p style={{marginBottom:8}}><strong>Puntos:</strong> marcador exacto +3 (jornada VIP +6) · 1X2 acertado +1 (VIP +2).</p>
+                    <p style={{marginBottom:8}}><strong>Puntos:</strong> marcador exacto +3 (jornada VIP +6) · 1X2 acertado +2 (VIP +4).</p>
                     <p style={{marginBottom:8}}><strong>Cierre:</strong> las apuestas se cierran <strong>5 minutos antes</strong> del partido de la UDLP. Puedes cambiar tu apuesta cuantas veces quieras hasta ese momento.</p>
                     <p style={{marginBottom:8}}><strong>Secreto hasta el cierre:</strong> nadie ve el resultado de nadie mientras la jornada está abierta. Solo se ven estadísticas agregadas (qué marcadores se repiten, cuántos Local/Empate/Visitante) — y solo a partir de <strong>5 apuestas guardadas</strong>, para que nunca se pueda intuir quién puso qué con pocos datos.</p>
                     <p style={{margin:0}}><strong>⚠️ Pago obligatorio por jornada:</strong> el sistema te deja apostar siempre, pero tu resultado <strong>solo cuenta si pagas esa jornada por Bizum</strong> antes del cierre. Pagar no bloquea que sigas cambiando tu apuesta — solo confirma tu participación. Si no pagas, tu apuesta se guarda pero no puntúa.</p>
