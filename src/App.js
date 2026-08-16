@@ -920,11 +920,11 @@ async function convertirHeicSiHaceFalta(file) {
                 </p>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={manejarSeleccionFoto} style={{display:'none'}} />
                 <button onClick={function() { fileInputRef.current && fileInputRef.current.click(); }}
-                    disabled={subiendoFoto || convirtiendoFormato}
+                    disabled={subiendoFoto}
                     style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.05rem',letterSpacing:2,
                         background:'#FFD700',color:'#001F6B',border:'none',borderRadius:30,padding:14,
                         cursor: subiendoFoto ? 'default' : 'pointer', opacity: subiendoFoto ? 0.7 : 1}}>
-                    {convirtiendoFormato ? 'CONVIRTIENDO FORMATO...' : subiendoFoto ? 'PROCESANDO...' : (perfil.foto ? 'CAMBIAR FOTO' : '📷 SUBIR FOTO')}
+                    {subiendoFoto ? 'SUBIENDO...' : (perfil.foto ? 'CAMBIAR FOTO' : '📷 SUBIR FOTO')}
                 </button>
                 {errorFoto && (
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#ff8a8a',marginTop:10,textAlign:'center'}}>{errorFoto}</p>
@@ -8161,6 +8161,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
     var JUGADORES_FUNDADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
     var [jugadoresAprobados, setJugadoresAprobados] = useState([]); // nuevos, entrados por invitación aprobada
+    var [perfilesLogin, setPerfilesLogin] = useState({}); // para mostrar apodos en vez de nombres reales
     var JUGADORES_TODOS = Array.from(new Set(JUGADORES_FUNDADORES.concat(jugadoresAprobados)));
     var JUGADORES = JUGADORES_TODOS.filter(function(j) { return jugadoresInactivos.indexOf(j) === -1; });
 
@@ -8174,6 +8175,18 @@ const LoginScreen = ({ onLoginSuccess }) => {
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(snap) {
             setJugadoresAprobados(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
+
+    // Cargar los perfiles (apodos, fotos) para mostrarlos en la pantalla de
+    // selección de nombre — antes solo mostraba el nombre real tal cual,
+    // sin respetar el apodo que alguien se hubiera puesto.
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, 'perfiles'), function(snap) {
+            var m = {};
+            snap.forEach(function(d) { m[d.id] = d.data(); });
+            setPerfilesLogin(m);
         });
         return function() { unsub(); };
     }, []);
@@ -8340,12 +8353,15 @@ const LoginScreen = ({ onLoginSuccess }) => {
                 <div className="fade-up" style={{width:'100%',maxWidth:340,position:'relative',zIndex:5}}>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
                         {JUGADORES.map(function(j) {
+                            var perf = perfilesLogin[j] || {};
+                            var textoVisible = nombreVisible(j, perf);
                             return (
                                 <button key={j} className="login-btn" onClick={function(){seleccionarNombre(j);}} disabled={cargando}
-                                    style={{padding:'14px 8px',borderRadius:14,border:'1.5px solid rgba(0,31,107,0.12)',
-                                        background:'#f8f8f8',fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:600,
-                                        color:'#001F6B',cursor:'pointer',textAlign:'center'}}>
-                                    {j}
+                                    style={{padding:'10px 8px',borderRadius:14,border:'1.5px solid rgba(0,31,107,0.12)',
+                                        background:'#f8f8f8',fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
+                                        color:'#001F6B',cursor:'pointer',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+                                    <IconoPerfil perfil={perf} size={36} />
+                                    <span>{textoVisible}</span>
                                 </button>
                             );
                         })}
