@@ -208,6 +208,12 @@ const PUNTOS_ESTRELLAS = {
 // 275 mal puesto desde el principio, que era otro equipo distinto; por eso
 // nunca cruzaba ningún nombre de jugador con la plantilla real).
 const API_TEAM_ID_UDLP = 534;
+
+// Lista ÚNICA de jugadores fundadores — antes había 4 copias repartidas
+// por el código (Admin, El Otro, La Jornada, Login), y si se añadía o
+// quitaba alguien, había que acordarse de tocar las 4. Ahora es una sola
+// constante global, usada en todos los sitios.
+const JUGADORES_FUNDADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
 // Plantilla oficial UD Las Palmas 26/27
 // Fotos: API-Football media CDN (confirmados) + ui-avatars fallback
 // Para jugadores sin apiId usamos foto de Wikipedia cuando disponible
@@ -1701,6 +1707,23 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
     var [guardando, setGuardando] = useState(false);
     var [posFiltro, setPosicion] = useState('Todos');
     var [tab, setTab] = useState('elegir'); // 'elegir' | 'puntos'
+    var [ahora, setAhora] = useState(new Date());
+
+    useEffect(function() {
+        var t = setInterval(function() { setAhora(new Date()); }, 30000);
+        return function() { clearInterval(t); };
+    }, []);
+
+    // Bloqueo 2 horas antes del partido — para que nadie elija después de
+    // saber el 11 inicial (que se suele publicar ~1h antes del kickoff).
+    var fechaPartidoObj = jornada && jornada.fechaPartido
+        ? (jornada.fechaPartido.toDate ? jornada.fechaPartido.toDate() : new Date(jornada.fechaPartido))
+        : null;
+    var limiteEstrellas = fechaPartidoObj ? new Date(fechaPartidoObj.getTime() - 2 * 60 * 60 * 1000) : null;
+    var estrellasCerradas = !!(limiteEstrellas && ahora >= limiteEstrellas);
+    var msHastaBloqueo = limiteEstrellas ? Math.max(0, limiteEstrellas - ahora) : null;
+    var horasRestantes = msHastaBloqueo !== null ? Math.floor(msHastaBloqueo / 3600000) : null;
+    var minutosRestantes = msHastaBloqueo !== null ? Math.floor((msHastaBloqueo % 3600000) / 60000) : null;
 
     useEffect(function() {
         if (!jornada) return;
@@ -1710,7 +1733,8 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
     }, [jornada, user]);
 
     var toggle = function(j) {
-        if (jornada && jornada.estado !== 'Abierta') return; // solo bloqueado cuando la jornada realmente cierra
+        if (estrellasCerradas) return;
+        if (jornada && jornada.estado !== 'Abierta') return;
         var ya = seleccion.find(function(s) { return s.nombre === j.nombre; });
         if (ya) { setSeleccion(seleccion.filter(function(s) { return s.nombre !== j.nombre; })); }
         else if (seleccion.length < 5) { setSeleccion([...seleccion, j]); }
@@ -1718,6 +1742,7 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
 
     var guardar = async function() {
         if (!jornada || seleccion.length === 0) return;
+        if (estrellasCerradas) { alert('El plazo para elegir tus 5 Estrellas ya ha cerrado (2 horas antes del partido).'); return; }
         setGuardando(true);
         try {
             await setDoc(doc(db, "estrellas_seleccion", jornada.id, "jugadores", user), {
@@ -1749,6 +1774,20 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
                         <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'rgba(255,255,255,0.3)',fontSize:22,cursor:'pointer'}}>✕</button>
                     </div>
                     {/* Tabs */}
+                    {estrellasCerradas && (
+                        <div style={{background:'rgba(230,57,70,0.2)',borderRadius:10,padding:'8px 12px',marginBottom:10}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#ff8a8a',textAlign:'center'}}>
+                                ⏰ El plazo para elegir tus 5 Estrellas ha cerrado (2h antes del partido). Ya no puedes modificar tu selección.
+                            </p>
+                        </div>
+                    )}
+                    {!estrellasCerradas && limiteEstrellas && horasRestantes !== null && (horasRestantes < 4) && (
+                        <div style={{background:'rgba(255,215,0,0.15)',borderRadius:10,padding:'6px 12px',marginBottom:10}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#FFD700',textAlign:'center'}}>
+                                ⏱️ Cierre en {horasRestantes}h {minutosRestantes}m — elige antes de que se publique el 11 inicial
+                            </p>
+                        </div>
+                    )}
                     <div style={{display:'flex',gap:0}}>
                         {[['elegir','Elegir jugadores'],['puntos','Tabla de ⭐']].map(function(t) {
                             return (
@@ -1793,7 +1832,8 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
                                             style={{display:'inline-flex',alignItems:'center',gap:6,
                                                 background:G.golden,color:'#001F6B',borderRadius:20,padding:'4px 12px 4px 4px',
                                                 fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
-                                                cursor: (!jornada || jornada.estado==='Abierta') ? 'pointer' : 'default'}}>
+                                                cursor: (!estrellasCerradas && (!jornada || jornada.estado==='Abierta')) ? 'pointer' : 'default',
+                                                opacity: estrellasCerradas ? 0.6 : 1}}>
                                             {getFotoJugador(j) ? (
                                                 <img src={getFotoJugador(j)} alt="" style={{width:20,height:20,borderRadius:'50%',objectFit:'cover',background:'#fff'}}
                                                     onError={function(e){e.target.style.display='none';}} />
@@ -3236,10 +3276,9 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     var [loading, setLoading] = useState(true);
     // Lista completa de jugadores registrados — para que se vea a todo el
     // grupo aquí, no solo a quien ya ha apostado.
-    var JUGADORES_FUNDADORES_LJ = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
     var [jugadoresAprobadosLJ, setJugadoresAprobadosLJ] = useState([]);
     var [jugadoresInactivosLJ, setJugadoresInactivosLJ] = useState([]);
-    var JUGADORES_TODOS_LJ = Array.from(new Set(JUGADORES_FUNDADORES_LJ.concat(jugadoresAprobadosLJ)));
+    var JUGADORES_TODOS_LJ = Array.from(new Set(JUGADORES_FUNDADORES.concat(jugadoresAprobadosLJ)));
     var JUGADORES_ACTIVOS_LJ = JUGADORES_TODOS_LJ.filter(function(j) { return jugadoresInactivosLJ.indexOf(j) === -1; });
 
     useEffect(function() {
@@ -3933,7 +3972,6 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
 
 const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
     var G = styles.colors;
-    var JUGADORES_FUNDADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
     var [jugadoresAprobados, setJugadoresAprobados] = useState([]);
     var JUGADORES_TODOS = Array.from(new Set(JUGADORES_FUNDADORES.concat(jugadoresAprobados)));
@@ -6210,6 +6248,24 @@ const GestionPlantillaAdmin = ({ plantilla }) => {
         setGuardando(false);
     };
 
+    var editarJugador = async function(jug, campo, nuevoValor) {
+        setGuardando(true);
+        try {
+            var plantillaNueva = plantilla.map(function(j) {
+                if (j.nombre !== jug.nombre) return j;
+                var copia = { ...j };
+                copia[campo] = nuevoValor;
+                return copia;
+            });
+            await setDoc(doc(db, 'configuracion', 'plantilla_udlp'), { jugadores: plantillaNueva });
+            setMsg('✅ ' + jug.nombre + ': ' + campo + ' actualizado.');
+        } catch(e) {
+            console.error(e);
+            setMsg('❌ Error: ' + e.message);
+        }
+        setGuardando(false);
+    };
+
     return (
         <div style={ADMIN_STYLES.card}>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
@@ -6243,16 +6299,23 @@ const GestionPlantillaAdmin = ({ plantilla }) => {
                 </button>
             </div>
 
-            <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:280,overflowY:'auto'}}>
+            <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:400,overflowY:'auto'}}>
                 {plantilla.map(function(jug) {
                     return (
-                        <div key={jug.nombre} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 10px',background:'rgba(0,31,107,0.02)',borderRadius:8}}>
-                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(0,31,107,0.4)',width:24}}>{jug.dorsal}</span>
-                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#001F6B',flex:1}}>{jug.nombre}</span>
-                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)'}}>{jug.posicion}</span>
+                        <div key={jug.nombre} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'rgba(0,31,107,0.02)',borderRadius:8,flexWrap:'wrap'}}>
+                            <input value={jug.dorsal} style={{width:30,padding:'4px 6px',border:'1px solid rgba(0,31,107,0.12)',borderRadius:6,fontFamily:"'Teko',sans-serif",fontSize:13,textAlign:'center',color:'#001F6B'}}
+                                onChange={function(e){ editarJugador(jug, 'dorsal', e.target.value); }} />
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#001F6B',flex:1,minWidth:100}}>{jug.nombre}</span>
+                            <select value={jug.posicion} style={{padding:'4px 6px',border:'1px solid rgba(0,31,107,0.12)',borderRadius:6,fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.6)'}}
+                                onChange={function(e){ editarJugador(jug, 'posicion', e.target.value); }}>
+                                <option>Portero</option><option>Defensa</option><option>Centrocampista</option><option>Mediapunta</option><option>Delantero</option>
+                            </select>
+                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color: jug.apiId ? '#10b981' : '#e63946'}}>
+                                {jug.apiId ? 'ID:' + jug.apiId : 'sin ID'}
+                            </span>
                             <button onClick={function(){quitarJugador(jug);}} disabled={guardando}
                                 style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946',background:'none',border:'none',cursor:'pointer'}}>
-                                Quitar
+                                ✕
                             </button>
                         </div>
                     );
@@ -6664,7 +6727,6 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
     var [rifas, setRifas] = useState([]);
     var [nuevaRifa, setNuevaRifa] = useState({ titulo:'', descripcion:'', precio:'', fecha:'' });
 
-    var JUGADORES_FUNDADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
     var [jugadoresAprobados, setJugadoresAprobados] = useState([]);
     var JUGADORES_TODOS = Array.from(new Set(JUGADORES_FUNDADORES.concat(jugadoresAprobados)));
@@ -8304,7 +8366,6 @@ const LoginScreen = ({ onLoginSuccess }) => {
         return !localStorage.getItem('aviso_reinstalar_2627_visto');
     });
 
-    var JUGADORES_FUNDADORES = ["Juanma","Lucy","Antonio","Mari","Pedro","Pedrito","Himar","Sarito","Vicky","Carmelo","Laura","Carlos","José","Claudio","Javi"];
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
     var [jugadoresAprobados, setJugadoresAprobados] = useState([]); // nuevos, entrados por invitación aprobada
     var [perfilesLogin, setPerfilesLogin] = useState({}); // para mostrar apodos en vez de nombres reales
@@ -8494,23 +8555,24 @@ const LoginScreen = ({ onLoginSuccess }) => {
                 </div>
             )}
 
-            {/* Pantalla de selección de nombre */}
+            {/* Pantalla de selección de nombre — grid compacto de 2 columnas
+                con scroll, foto pequeña + nombre al lado. Cabe en una
+                pantalla de móvil sin bloquear el scroll. */}
             {paso === 'nombre' && (
-                <div className="fade-up" style={{width:'100%',maxWidth:380,position:'relative',zIndex:5}}>
-                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                <div className="fade-up" style={{width:'100%',maxWidth:400,position:'relative',zIndex:5}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,maxHeight:'65vh',overflowY:'auto',padding:'4px 2px'}}>
                         {JUGADORES.map(function(j) {
                             var perf = perfilesLogin[j] || {};
                             var textoVisible = nombreVisible(j, perf);
                             return (
                                 <button key={j} className="login-btn" onClick={function(){seleccionarNombre(j);}} disabled={cargando}
-                                    style={{padding:'10px 16px',borderRadius:14,border:'1.5px solid rgba(0,31,107,0.08)',
+                                    style={{padding:'10px 12px',borderRadius:12,border:'1.5px solid rgba(0,31,107,0.08)',
                                         background:'rgba(255,255,255,0.06)',backdropFilter:'blur(8px)',
-                                        fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:600,
+                                        fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:600,
                                         color:'#001F6B',cursor:'pointer',textAlign:'left',
-                                        display:'flex',flexDirection:'row',alignItems:'center',gap:12}}>
-                                    <IconoPerfilClickable nombre={j} perfil={perf} size={38} />
-                                    <span style={{flex:1}}>{textoVisible}</span>
-                                    <span style={{fontSize:16,opacity:0.3}}>→</span>
+                                        display:'flex',flexDirection:'row',alignItems:'center',gap:10}}>
+                                    <IconoPerfil perfil={perf} size={32} />
+                                    <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{textoVisible}</span>
                                 </button>
                             );
                         })}
