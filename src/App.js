@@ -2164,10 +2164,23 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         }).catch(function() { setCargandoPartidoOtro(false); });
     }, [miElOtro, jornada]);
 
-    // Plazo de activación: hasta que empiece el partido de Primera de tu
-    // equipo — nunca después, para no entrar en conflicto con lo que ya haya
-    // pasado en el campo.
-    var plazoActivacionSuperado = !!(partidoOtro && partidoOtro.fecha && new Date() >= new Date(partidoOtro.fecha));
+    // Plazo de activación de El Otro: se bloquea cuando empiece el PRIMER
+    // partido de toda la jornada de Primera División (no solo el de tu equipo
+    // concreto), porque la jornada afecta a todos los comodines a la vez.
+    var [primerPartidoPrimera, setPrimerPartidoPrimera] = useState(null);
+    useEffect(function() {
+        buscarJornadaCompletaPrimera(new Date().toISOString(), 5).then(function(partidos) {
+            if (partidos && partidos.length > 0) {
+                var primero = partidos.sort(function(a,b) { return new Date(a.fecha) - new Date(b.fecha); })[0];
+                setPrimerPartidoPrimera(primero);
+            }
+        }).catch(function(){});
+    }, []);
+
+    var ahora = new Date();
+    var primerKickoff = primerPartidoPrimera ? new Date(primerPartidoPrimera.fecha) : null;
+    var jornadaPrimeraEmpezada = !!(primerKickoff && ahora >= primerKickoff);
+    var plazoActivacionSuperado = jornadaPrimeraEmpezada;
 
     // Countdown al cierre
     useEffect(function() {
@@ -2455,9 +2468,18 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.35,marginTop:10}}>No encontramos su próximo partido de Primera todavía.</p>
                             )}
                             {plazoActivacionSuperado && !elOtroActivado && (
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.danger,marginTop:8}}>
-                                    ⏰ Su partido ya ha empezado — no puedes activarlo esta jornada.
-                                </p>
+                                <div style={{marginTop:8,background:'rgba(230,57,70,0.1)',borderRadius:10,padding:'8px 12px'}}>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946'}}>
+                                        ⏰ Ya ha empezado la jornada en Primera — no podrás activar El Otro Equipo esta semana.
+                                    </p>
+                                </div>
+                            )}
+                            {plazoActivacionSuperado && elOtroActivado && (
+                                <div style={{marginTop:8,background:'rgba(16,185,129,0.1)',borderRadius:10,padding:'8px 12px'}}>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#10b981'}}>
+                                        ✅ Ya activaste tu comodín — toca esperar a ver qué hace tu equipo. ¡Suerte!
+                                    </p>
+                                </div>
                             )}
                             {!plazoActivacionSuperado && !elOtroActivado && partidoOtro && partidoOtro.fecha && (function() {
                                 var msHastaPartido = new Date(partidoOtro.fecha) - new Date();
@@ -3454,7 +3476,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                 {/* Bote */}
                 <div style={{marginTop:16,display:'flex',justifyContent:'center',gap:24}}>
                     <div style={{textAlign:'center'}}>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#FFD700'}}>{bote.toFixed(0)}€</p>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#FFD700'}}>{bote.toFixed(2)}€</p>
                         <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.35)',letterSpacing:2,textTransform:'uppercase'}}>Bote</p>
                     </div>
                     <div style={{textAlign:'center'}}>
@@ -3777,7 +3799,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     return !p.sinApuesta && parseInt(p.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(p.golesVisitante) === parseInt(jornada.resultadoVisitante);
                 });
                 var boteJornada = participantes.filter(function(p){return !p.sinApuesta;}).length;
-                var premioPorGanador = acertaronExacto.length > 0 ? Math.floor(boteJornada / acertaronExacto.length) : 0;
+                var premioPorGanador = acertaronExacto.length > 0 ? (boteJornada / acertaronExacto.length).toFixed(2) : '0.00';
 
                 return (
                     <div style={{marginTop:20,background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:20}}>
@@ -4127,9 +4149,9 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
             .map(function(p) { return p.jugador; })
     )).filter(function(nombre) { return jugadoresInactivosCL.indexOf(nombre) === -1; });
     const boteActual = inscritos.length * 5;
-    const premio1 = Math.round(boteActual * 0.65);
-    const premio2 = Math.round(boteActual * 0.25);
-    const premio3 = Math.round(boteActual * 0.10);
+    const premio1 = (boteActual * 0.65).toFixed(2);
+    const premio2 = (boteActual * 0.25).toFixed(2);
+    const premio3 = (boteActual * 0.10).toFixed(2);
 
     // Filtrar jugadores inactivos y FUSIONAR con la lista real de inscritos
     // que han pagado — antes solo mostraba quien ya tenía un documento en la
@@ -6948,6 +6970,47 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             {seccion === 'pagos' && (
                 <div>
                     <ConfiguracionBizum />
+
+                    {/* Botón de excepción: marcar pago manual de un jugador que
+                        hizo el Bizum a tiempo pero no lo marcó en la app */}
+                    <div style={ADMIN_STYLES.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                            ⚡ Pago manual por excepción
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            Para cuando alguien hizo el Bizum a tiempo pero no lo marcó en la app. Crea un pago confirmado directamente, sin pasar por el flujo normal.
+                        </p>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            <select id="pagoManualJugador" style={{flex:1,minWidth:120,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}}>
+                                {JUGADORES_LISTA.map(function(j) { return <option key={j} value={j}>{j}</option>; })}
+                            </select>
+                            <select id="pagoManualTipo" style={{flex:1,minWidth:100,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}}>
+                                <option value="inscripcion">Inscripción (5€)</option>
+                                <option value="jornada_normal">Jornada normal (1€)</option>
+                                <option value="jornada_vip">Jornada VIP (2€)</option>
+                            </select>
+                            <input id="pagoManualJornada" placeholder="Jornada (ej: J1)" style={{width:70,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
+                            <button onClick={async function() {
+                                var jugador = document.getElementById('pagoManualJugador').value;
+                                var tipo = document.getElementById('pagoManualTipo').value;
+                                var jornadaVal = document.getElementById('pagoManualJornada').value.trim();
+                                var importe = tipo === 'inscripcion' ? 5 : tipo === 'jornada_vip' ? 2 : 1;
+                                if (!window.confirm('¿Crear pago confirmado de ' + importe + '€ para ' + jugador + '?\n\nTipo: ' + tipo + (jornadaVal ? ' · Jornada: ' + jornadaVal : '') + '\n\nEsto es irreversible.')) return;
+                                try {
+                                    await addDoc(collection(db, 'pagos'), {
+                                        jugador: jugador, pagoBy: 'admin_manual', tipo: tipo,
+                                        jornada: jornadaVal || null, importe: importe,
+                                        descripcion: 'Pago manual por excepción (admin)',
+                                        metodo: 'bizum', estado: 'completado',
+                                        creadoEn: serverTimestamp(), confirmadoEn: serverTimestamp(),
+                                    });
+                                    alert('✅ Pago de ' + importe + '€ creado para ' + jugador);
+                                } catch(e) { alert('❌ Error: ' + e.message); }
+                            }} style={ADMIN_STYLES.btnSuccess}>
+                                Crear pago
+                            </button>
+                        </div>
+                    </div>
 
                     <ResetearClasificacionAdmin />
 
