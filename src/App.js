@@ -84,6 +84,27 @@ const API_FOOTBALL_KEY = process.env.REACT_APP_API_FOOTBALL_KEY || "";
 const LEAGUE_ID_SEGUNDA = 141;
 const LEAGUE_ID_PRIMERA = 140;
 
+// Comparación de nombres tolerante a acentos y mayúsculas — antes "José"
+// (con tilde) no cruzaba contra "Jose" (sin tilde) que a veces devuelve la
+// API, y esos jugadores se quedaban sin encontrarse por una tontería de
+// tipografía. Se usa en todos los sitios donde cruzamos nuestra plantilla
+// (o nombres de equipo) contra lo que devuelve la API.
+function normalizarTexto(s) {
+    return (s || '').toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quita acentos (á->a, ñ->n, etc.)
+        .trim();
+}
+
+function nombresSonSimilares(nombreA, nombreB) {
+    var a = normalizarTexto(nombreA);
+    var b = normalizarTexto(nombreB);
+    if (!a || !b) return false;
+    var ultimaA = a.split(' ').pop();
+    var ultimaB = b.split(' ').pop();
+    return a.indexOf(ultimaB) !== -1 || b.indexOf(ultimaA) !== -1;
+}
+
+
 // Busca el partido de Primera División de un equipo cerca de una fecha dada
 // (la fecha de la jornada de Segunda). No usamos el ID numérico del equipo
 // en la API (no tengo los 20 IDs verificados) — en su lugar pedimos TODOS
@@ -96,7 +117,6 @@ async function buscarPartidoPrimera(equipoNombre, fechaReferenciaStr) {
     var desde = new Date(fechaBase); desde.setDate(desde.getDate() - 4);
     var hasta = new Date(fechaBase); hasta.setDate(hasta.getDate() + 4);
     var fmt = function(d) { return d.toISOString().slice(0, 10); };
-    var ultimoNombre = equipoNombre.toLowerCase().split(' ').pop();
 
     // season=2026 confirmado directamente en el panel de API-Football para
     // La Liga 26/27 (temporada activa: 2026-08-15 a 2027-05-30) — ya no hace
@@ -108,12 +128,10 @@ async function buscarPartidoPrimera(equipoNombre, fechaReferenciaStr) {
         var data = await res.json();
         var partidos = data.response || [];
         var encontrado = partidos.find(function(p) {
-            var local = p.teams.home.name.toLowerCase();
-            var visitante = p.teams.away.name.toLowerCase();
-            return local.indexOf(ultimoNombre) !== -1 || visitante.indexOf(ultimoNombre) !== -1;
+            return nombresSonSimilares(p.teams.home.name, equipoNombre) || nombresSonSimilares(p.teams.away.name, equipoNombre);
         });
         if (encontrado) {
-            var esLocal = encontrado.teams.home.name.toLowerCase().indexOf(ultimoNombre) !== -1;
+            var esLocal = nombresSonSimilares(encontrado.teams.home.name, equipoNombre);
             return {
                 fixtureId: encontrado.fixture.id,
                 fecha: encontrado.fixture.date,
@@ -523,9 +541,13 @@ var MOSTRAR_APELLIDOS = false;
 // este recorte entero desde el panel (MOSTRAR_APELLIDOS).
 function nombreVisible(nombreCrudo, perfil) {
     if (perfil && perfil.apodo) return perfil.apodo;
-    if (!nombreCrudo) return nombreCrudo;
+    if (!nombreCrudo) return nombreCrudo || '';
     if (MOSTRAR_APELLIDOS) return nombreCrudo;
-    return nombreCrudo.trim().split(/\s+/)[0];
+    // Quita el apellido siempre — incluso si perfil llega undefined (que pasa
+    // en algunos sitios donde el mapa de perfiles todavía no se ha cargado o
+    // no tiene entrada para este nombre).
+    var partes = nombreCrudo.trim().split(/\s+/);
+    return partes[0];
 }
 
 var hashPin = async function(nombre, pin) {
@@ -677,7 +699,7 @@ const PlayerProfileDisplay = ({ name, profile, defaultColor = styles.colors.ligh
 // ============================================================================
 // --- PERFIL — Edición de emoji y apodo ---
 // ============================================================================
-const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
+const PerfilScreen = ({ currentUser, tema, cambiarTema, teamLogos }) => {
     var G = styles.colors;
     var [perfil, setPerfil] = useState({ emoji: '⚽', apodo: '', foto: null });
     var [guardado, setGuardado] = useState(false);
@@ -686,7 +708,16 @@ const PerfilScreen = ({ currentUser, tema, cambiarTema }) => {
     var [convirtiendoFormato, setConvirtiendoFormato] = useState(false);
     var [previewFoto, setPreviewFoto] = useState(null); // dataURL local mientras se procesa/sube
     var [errorFoto, setErrorFoto] = useState('');
+    var [miElOtroPerfil, setMiElOtroPerfil] = useState(null); // el equipo elegido, para verlo siempre en su propio perfil
     var fileInputRef = useRef(null);
+
+    useEffect(function() {
+        if (!currentUser) return;
+        var unsub = onSnapshot(doc(db, "elOtro", currentUser), function(snap) {
+            setMiElOtroPerfil(snap.exists() ? snap.data() : null);
+        });
+        return function() { unsub(); };
+    }, [currentUser]);
 
     useEffect(function() {
         if (!currentUser) return;
@@ -756,7 +787,14 @@ async function convertirHeicSiHaceFalta(file) {
 
         var subirBlobFinal = async function(blob, tipo) {
             var ref = storageRef(storage, 'perfiles/' + currentUser + '/foto.jpg');
-            await conTimeout(uploadBytes(ref, blob, { contentType: tipo }), 20000, 'La subida está tardando demasiado. Comprueba tu conexión e inténtalo de nuevo.');
+            try {
+                await conTimeout(uploadBytes(ref, blob, { contentType: tipo }), 20000, 'La subida está tardando demasiado. Comprueba tu conexión e inténtalo de nuevo.');
+            } catch (uploadErr) {
+                if (uploadErr.code === 'storage/unauthorized' || (uploadErr.message && uploadErr.message.indexOf('unauthorized') !== -1)) {
+                    throw new Error('PERMISOS: Las reglas de Firebase Storage NO están publicadas. Ve a Firebase Console → Storage → Rules y pega las reglas del archivo storage.rules.');
+                }
+                throw uploadErr;
+            }
             var url = await conTimeout(getDownloadURL(ref), 10000, 'No se pudo obtener el enlace de la foto. Inténtalo de nuevo.');
             await setDoc(doc(db, "perfiles", currentUser), {
                 nombre: currentUser, foto: url, actualizadoEn: serverTimestamp()
@@ -796,7 +834,7 @@ async function convertirHeicSiHaceFalta(file) {
                     terminar('');
                 } catch (err2) {
                     console.error(err2);
-                    terminar('No se pudo subir la foto: ' + err2.message + '. Si sigue fallando, puede ser que Firebase Storage no tenga las reglas de acceso subidas — avisa a Juanma.');
+                    terminar('No se pudo subir la foto: ' + err2.message + '.\n\nSi dice "storage/unauthorized" o "permission", las reglas de Firebase Storage NO están publicadas — ve a Firebase Console → Storage → Rules y pega las reglas del archivo storage.rules que te di.');
                 }
             }
         };
@@ -878,6 +916,24 @@ async function convertirHeicSiHaceFalta(file) {
                     {guardado && !subiendoFoto && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#10b981',letterSpacing:2,textTransform:'uppercase'}}>✓ Guardado</span>}
                 </div>
             </div>
+
+            {/* Mi Otro Equipo — el dueño del perfil SIEMPRE ve su propio
+                equipo, aunque para el resto siga siendo secreto hasta la 3ª
+                activación (esa regla es solo de cara a los demás). */}
+            {miElOtroPerfil && miElOtroPerfil.equipo && (
+                <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:18,marginBottom:16,display:'flex',alignItems:'center',gap:14}}>
+                    <img src={getLogoEquipo(miElOtroPerfil.equipo, teamLogos)} alt={miElOtroPerfil.equipo} style={{width:44,height:44,objectFit:'contain',flexShrink:0}}
+                        onError={function(e){e.target.style.display='none';}} />
+                    <div style={{flex:1}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(255,215,0,0.6)',textTransform:'uppercase',marginBottom:2}}>Mi Otro Equipo</p>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:'#fff'}}>{miElOtroPerfil.equipo}</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.5)'}}>
+                            {miElOtroPerfil.activaciones || 0} activaciones · ×{getMultiplicadorOtro(miElOtroPerfil.activaciones || 0)} actual
+                            {(miElOtroPerfil.activaciones || 0) < 3 ? ' · 🔒 secreto para el resto' : ' · 👁️ ya visible para todos'}
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* Opción principal: subir foto con filtro UDLP */}
             <div style={{background:'linear-gradient(135deg,#001F6B,#00296e)',borderRadius:16,padding:20,marginBottom:16,
@@ -2075,18 +2131,24 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 </div>
             )}
 
-            {/* Aviso: apuesta guardada pero jornada sin pagar todavía */}
+            {/* Aviso: apuesta guardada pero jornada sin pagar todavía — con
+                cuenta atrás del cierre para que sea urgente de verdad */}
             {guardado && !jornadaPagada && (
-                <div style={{background:'rgba(255,215,0,0.1)',border:'1.5px solid rgba(212,175,55,0.4)',borderRadius:14,padding:'14px 16px',marginBottom:16}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,color:'#8a6a00',fontWeight:700,marginBottom:4}}>
-                        💳 Falta pagar esta jornada
+                <div style={{background:'rgba(230,57,70,0.08)',border:'1.5px solid rgba(230,57,70,0.35)',borderRadius:14,padding:'14px 16px',marginBottom:16}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:1,color:'#e63946',fontWeight:700,marginBottom:4}}>
+                        ⚠️ PAGA ANTES DE QUE CIERRE
                     </p>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)',lineHeight:1.6}}>
-                        Tu apuesta ya está guardada, pero <strong>no contará al cerrar la jornada</strong> hasta que pagues por Bizum. Pagar no bloquea que sigas cambiando tu resultado — solo confirma tu participación.
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)',lineHeight:1.6,marginBottom:4}}>
+                        Tu apuesta ya está guardada, pero <strong>NO cuenta si no pagas por Bizum antes de que se cierre el plazo</strong> (5 minutos antes del partido). Pagar no bloquea que sigas cambiando tu resultado.
                     </p>
-                    <button onClick={function(){ onIrAPagos(jornadaCodigo, jornada.esVip); }} style={{marginTop:10,fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,
-                        background:'#001F6B',color:'#FFD700',border:'none',borderRadius:20,padding:'8px 18px',cursor:'pointer'}}>
-                        Ir a pagar →
+                    {timeLeft && timeLeft !== 'CERRADO' && (
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:'#e63946',marginBottom:8}}>
+                            ⏱️ Cierre en {timeLeft}
+                        </p>
+                    )}
+                    <button onClick={function(){ onIrAPagos(jornadaCodigo, jornada.esVip); }} style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,
+                        background:'#e63946',color:'#fff',border:'none',borderRadius:20,padding:'8px 18px',cursor:'pointer'}}>
+                        💳 Pagar ahora →
                     </button>
                 </div>
             )}
@@ -2213,6 +2275,25 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                     ⏰ Su partido ya ha empezado — no puedes activarlo esta jornada.
                                 </p>
                             )}
+                            {!plazoActivacionSuperado && !elOtroActivado && partidoOtro && partidoOtro.fecha && (function() {
+                                var msHastaPartido = new Date(partidoOtro.fecha) - new Date();
+                                var horasHastaPartido = msHastaPartido / 3600000;
+                                if (horasHastaPartido > 0 && horasHastaPartido < 24) {
+                                    var hh = Math.floor(horasHastaPartido);
+                                    var mm = Math.floor((msHastaPartido % 3600000) / 60000);
+                                    return (
+                                        <div style={{marginTop:8,background:'rgba(230,57,70,0.08)',border:'1px solid rgba(230,57,70,0.25)',borderRadius:10,padding:'8px 12px'}}>
+                                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#e63946',fontWeight:700}}>
+                                                ⚠️ ACTIVA TU COMODÍN ANTES DE QUE EMPIECE EL PARTIDO
+                                            </p>
+                                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(230,57,70,0.8)',lineHeight:1.5}}>
+                                                Quedan <strong>{hh}h {mm}m</strong> para que empiece el partido de tu equipo de Primera. Si no activas El Otro Equipo antes, <strong>pierdes la oportunidad esta jornada</strong>.
+                                            </p>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })()}
                         </div>
                         );
                     })()}
@@ -3023,6 +3104,13 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     var [jornada, setJornada] = useState(null);
     var [participantes, setParticipantes] = useState([]);
     var [elOtroTodos, setElOtroTodos] = useState({});
+    var [partidosPrimera, setPartidosPrimera] = useState([]);
+
+    useEffect(function() {
+        buscarJornadaCompletaPrimera(new Date().toISOString(), 5).then(function(r) {
+            setPartidosPrimera(r || []);
+        }).catch(function() {});
+    }, []);
     var [clasifEstrellas, setClasifEstrellas] = useState([]);
     var [seleccionesEstrellasJornada, setSeleccionesEstrellasJornada] = useState([]); // para la comparativa en vivo
     var [loading, setLoading] = useState(true);
@@ -3346,6 +3434,37 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                     <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: i===0 ? G.golden : G.deepBlue}}>
                                         {p.puntosEstrellas || 0}⭐
                                     </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Partidos de Primera relevantes — los que afectan a jugadores
+                del grupo que tienen equipo elegido en El Otro, para que se
+                vea de un vistazo qué partidos importan esta jornada. */}
+            {partidosPrimera.length > 0 && (
+                <div style={{marginTop:24}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.4,textTransform:'uppercase',marginBottom:10}}>
+                        Partidos de Primera · El Otro Equipo
+                    </p>
+                    <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,overflow:'hidden'}}>
+                        {partidosPrimera.map(function(p) {
+                            var fechaObj = new Date(p.fecha);
+                            var fechaTexto = fechaObj.toLocaleString('es-ES', {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary'});
+                            var finalizado = p.estadoCorto === 'FT' || p.estadoCorto === 'AET' || p.estadoCorto === 'PEN';
+                            var enVivo = p.estadoCorto === '1H' || p.estadoCorto === '2H' || p.estadoCorto === 'HT';
+                            return (
+                                <div key={p.fixtureId} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderBottom:'1px solid rgba(0,31,107,0.05)',flexWrap:'wrap'}}>
+                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)',minWidth:100}}>{fechaTexto}</span>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:G.deepBlue,flex:1}}>{p.local} vs {p.visitante}</span>
+                                    {finalizado && (
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color:'#10b981'}}>{p.golesLocal}-{p.golesVisitante}</span>
+                                    )}
+                                    {enVivo && (
+                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,background:'rgba(230,57,70,0.1)',color:'#e63946',padding:'2px 8px',borderRadius:10}}>EN VIVO {p.golesLocal}-{p.golesVisitante}</span>
+                                    )}
                                 </div>
                             );
                         })}
@@ -4057,6 +4176,7 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
     var [clasificacion, setClasificacion] = useState([]);
     var [jornadas, setJornadas] = useState([]);
     var [historico, setHistorico] = useState(false);
+    var [jugadoresInactivosEst, setJugadoresInactivosEst] = useState([]);
 
     useEffect(function() {
         var unsub = onSnapshot(collection(db, 'clasificacion'), function(snap) {
@@ -4073,6 +4193,19 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
         return function(){unsub();};
     }, []);
 
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
+            setJugadoresInactivosEst(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function(){unsub();};
+    }, []);
+
+    // Filtra a los que se han dado de baja — no deben aparecer en las
+    // estadísticas de la temporada actual, solo ensucian la lista.
+    var clasificacionActiva = clasificacion.filter(function(j) {
+        return jugadoresInactivosEst.indexOf(j.id) === -1;
+    });
+
     var medallaColor = ['#FFD700','#C0C0C0','#CD7F32'];
 
     return (
@@ -4088,7 +4221,7 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.4)',padding:20,textAlign:'center'}}>
                         La clasificación se actualizará al cerrar la primera jornada
                     </p>
-                ) : clasificacion.map(function(j, idx) {
+                ) : clasificacionActiva.map(function(j, idx) {
                     var online = onlineUsers && onlineUsers[j.id];
                     var perfil = userProfiles && userProfiles[j.id];
                     return (
@@ -4965,8 +5098,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 if (p.elOtroActivado && p.elOtroFixtureId && p.elOtroEquipoUsado && !puntosYaCalculados) {
                     var resFx = resultadosFixtureOtro[p.elOtroFixtureId];
                     if (resFx && resFx.finalizado) {
-                        var ultimoNombreOtro = p.elOtroEquipoUsado.toLowerCase().split(' ').pop();
-                        var esLocalOtro = resFx.nombreLocal.toLowerCase().indexOf(ultimoNombreOtro) !== -1;
+                        var esLocalOtro = nombresSonSimilares(resFx.nombreLocal, p.elOtroEquipoUsado);
                         var golesFavor = esLocalOtro ? resFx.golesLocal : resFx.golesVisitante;
                         var golesContra = esLocalOtro ? resFx.golesVisitante : resFx.golesLocal;
                         var resultadoOtro = golesFavor > golesContra ? 'gana' : (golesFavor < golesContra ? 'pierde' : 'empate');
@@ -5077,7 +5209,27 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 )}
 
                 <div><label style={styles.label}>Apertura Apuestas:</label><input type="datetime-local" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} style={styles.input} /></div>
-                <div><label style={styles.label}>Cierre Apuestas:</label><input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={styles.input} /></div>
+                <div><label style={styles.label}>Cierre Apuestas:</label><input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={styles.input} />
+                    <button type="button" onClick={async function() {
+                        if (!jornada.fecha) { alert('Pon primero la fecha del partido en el campo de arriba.'); return; }
+                        try {
+                            var fmt2 = function(d) { return d.toISOString().slice(0,10); };
+                            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + fmt2(new Date(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
+                            var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+                            var data = await res.json();
+                            if (data.response && data.response.length > 0) {
+                                var kickoff = new Date(data.response[0].fixture.date);
+                                kickoff.setMinutes(kickoff.getMinutes() - 5);
+                                setFechaCierre(toInputFormat(kickoff));
+                                alert('✅ Cierre establecido 5 min antes del kickoff: ' + kickoff.toLocaleString('es-ES', {timeZone:'Atlantic/Canary'}));
+                            } else {
+                                alert('No se encontró partido de la UDLP ese día en la API.');
+                            }
+                        } catch(e) { alert('Error consultando API: ' + e.message); }
+                    }} style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,background:'rgba(0,31,107,0.06)',color:'#001F6B',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,padding:'4px 10px',cursor:'pointer',marginLeft:6}}>
+                        ⏱️ Auto (API)
+                    </button>
+                </div>
                 <div><label style={styles.label}>Fecha Partido (H.Canaria):</label><input type="datetime-local" value={fechaPartido} onChange={(e) => setFechaPartido(e.target.value)} style={styles.input} /></div>
                 
                 <div style={{gridColumn: '1 / -1'}}><label style={styles.label}>Historial vs Rival (Info Previa):</label><input type="text" value={h2hInfo} onChange={(e) => setH2hInfo(e.target.value)} placeholder="Ej: UDLP 2-1 Málaga" style={styles.input} /></div>
@@ -5158,12 +5310,12 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
                 setErrorMsg('La API no devolvió la plantilla. Puede que el equipo aún no esté vinculado correctamente en API-Football para esta temporada.');
                 setBuscando(false); return;
             }
-            // Cruce simple con nuestra plantilla por coincidencia de apellido/nombre
+            // Cruce con nuestra plantilla, tolerante a acentos/mayúsculas —
+            // antes "José" con tilde no cruzaba contra un "Jose" sin tilde
+            // que a veces devuelve la API.
             var cruce = plantilla.map(function(jug) {
                 var match = apiPorNombre.find(function(a) {
-                    var an = a.nombre.toLowerCase();
-                    var jn = jug.nombre.toLowerCase();
-                    return an.indexOf(jn.split(' ').pop()) !== -1 || jn.indexOf(an.split(' ').pop()) !== -1;
+                    return nombresSonSimilares(a.nombre, jug.nombre);
                 });
                 var fotoActual = jug.apiId ? ('https://media.api-sports.io/football/players/' + jug.apiId + '.png') : null;
                 return {
@@ -5494,13 +5646,29 @@ const SaltarTurnoAdmin = () => {
         setProcesando(true);
         setMsg('');
         try {
-            // 1. Saltar al que tiene el turno ahora mismo.
-            await setDoc(doc(db, 'elOtro', turnoCalculado), { saltado: true }, { merge: true });
+            // 1. Saltar al que tiene el turno ahora mismo, contando cuántas
+            // veces lleva saltado. A la 3ª vez sin elegir, se le asigna un
+            // equipo al azar entre los libres, para que no bloquee la cola
+            // para siempre (el caso de Claudio).
+            var vecesSaltadoPrevias = (datosDelTurno && datosDelTurno.vecesSaltado) || 0;
+            var vecesSaltadoNuevo = vecesSaltadoPrevias + 1;
+            var datosSimulados = { ...todosElOtro };
+            if (vecesSaltadoNuevo >= 3) {
+                var equipoAzar = elegirEquipoAleatorioDisponible(todosElOtro);
+                await setDoc(doc(db, 'elOtro', turnoCalculado), {
+                    saltado: false, vecesSaltado: vecesSaltadoNuevo,
+                    equipo: equipoAzar, elegidoEn: serverTimestamp(), revelado: false,
+                    asignadoAlAzarPor3Saltos: true,
+                }, { merge: true });
+                datosSimulados[turnoCalculado] = { ...(datosSimulados[turnoCalculado] || {}), equipo: equipoAzar, saltado: false };
+                setMsg('✅ ' + turnoCalculado + ' llevaba 3 turnos saltados sin elegir — se le ha asignado ' + (equipoAzar || '(sin equipos libres)') + ' al azar, y pasa al siguiente jugador.');
+            } else {
+                await setDoc(doc(db, 'elOtro', turnoCalculado), { saltado: true, vecesSaltado: vecesSaltadoNuevo }, { merge: true });
+                datosSimulados[turnoCalculado] = { ...(datosSimulados[turnoCalculado] || {}), saltado: true };
+            }
 
             // 2. Simular el estado ya actualizado (sin esperar al listener) para
             // saber quién es el siguiente de verdad, ahora mismo.
-            var datosSimulados = { ...todosElOtro };
-            datosSimulados[turnoCalculado] = { ...(datosSimulados[turnoCalculado] || {}), saltado: true };
             var ordenSimulado = calcularOrdenElOtro(datosSimulados, vacantes, jugadoresAprobados, jugadoresInactivos);
             var siguienteTurno = calcularTurnoElOtro(ordenSimulado, datosSimulados, jugadoresInactivos);
 
@@ -5510,9 +5678,11 @@ const SaltarTurnoAdmin = () => {
                 await setDoc(doc(db, 'elOtro', siguienteTurno), {
                     turnoIniciadoEn: serverTimestamp(), saltado: false,
                 }, { merge: true });
-                setMsg('✅ ' + turnoCalculado + ' saltado. ' + siguienteTurno + ' ya tiene sus 60 minutos corriendo — el reloj sigue avanzando pase lo que pase, tenga o no la app abierta.');
-            } else {
-                setMsg('✅ ' + turnoCalculado + ' saltado. No queda nadie más pendiente de elegir ahora mismo.');
+                if (vecesSaltadoNuevo < 3) {
+                    setMsg('✅ ' + turnoCalculado + ' saltado (van ' + vecesSaltadoNuevo + ' de 3). ' + siguienteTurno + ' ya tiene sus 60 minutos corriendo.');
+                }
+            } else if (vecesSaltadoNuevo < 3) {
+                setMsg('✅ ' + turnoCalculado + ' saltado (van ' + vecesSaltadoNuevo + ' de 3). No queda nadie más pendiente de elegir ahora mismo.');
             }
         } catch (e) {
             console.error(e);
@@ -7207,6 +7377,17 @@ function calcularTurnoElOtro(ordenConf, datos, jugadoresInactivos) {
     return null;
 }
 
+// Si alguien lleva 3 turnos saltados sin elegir (por lo que sea — se olvida,
+// no se entera, lo que sea), se le asigna un equipo al azar entre los que
+// sigan libres, para que no bloquee la cola indefinidamente. Es el caso que
+// pasó con Claudio.
+function elegirEquipoAleatorioDisponible(datosElOtro) {
+    var tomados = Object.values(datosElOtro).map(function(d) { return d.equipo; }).filter(Boolean);
+    var disponibles = EQUIPOS_PRIMERA_DIVISION.filter(function(e) { return tomados.indexOf(e) === -1; });
+    if (disponibles.length === 0) return null;
+    return disponibles[Math.floor(Math.random() * disponibles.length)];
+}
+
 const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos }) => {
     var G = styles.colors;
     var [miElOtro, setMiElOtro] = useState(null);
@@ -7344,8 +7525,20 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                 // Cualquiera que tenga la pantalla abierta puede escribir el
                 // salto de quien le tocaba — no hace falta que sea la propia
                 // persona, así nunca se queda el draft bloqueado esperando a
-                // alguien que no está mirando el móvil.
-                setDoc(doc(db, "elOtro", turnoActual), { saltado: true }, { merge: true }).catch(function(){});
+                // alguien que no está mirando el móvil. A la 3ª vez seguida
+                // sin elegir, se le asigna un equipo al azar entre los libres.
+                var vecesSaltadoPreviasAuto = (datos.vecesSaltado || 0);
+                var vecesSaltadoNuevoAuto = vecesSaltadoPreviasAuto + 1;
+                if (vecesSaltadoNuevoAuto >= 3) {
+                    var equipoAzarAuto = elegirEquipoAleatorioDisponible(todosElOtro);
+                    setDoc(doc(db, "elOtro", turnoActual), {
+                        saltado: false, vecesSaltado: vecesSaltadoNuevoAuto,
+                        equipo: equipoAzarAuto, elegidoEn: serverTimestamp(), revelado: false,
+                        asignadoAlAzarPor3Saltos: true,
+                    }, { merge: true }).catch(function(){});
+                } else {
+                    setDoc(doc(db, "elOtro", turnoActual), { saltado: true, vecesSaltado: vecesSaltadoNuevoAuto }, { merge: true }).catch(function(){});
+                }
             } else if (turnoActual === currentUser) {
                 setTiempoRestante(Math.ceil(restante));
             }
@@ -7467,7 +7660,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
             {/* Reglas — en burbujas desplegables */}
             <AcordeonAyuda icono="📖" titulo="Cómo funciona" abiertoPorDefecto={false}>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,lineHeight:1.7,margin:0}}>
-                    Cada jugador tiene un equipo de Primera División asignado para <strong>toda la temporada</strong>. Cada jornada decides si lo activas o no — actívalo antes de que empiece la jornada de Primera de tu equipo. Si <strong>gana</strong> → multiplicas tus puntos de esa jornada (redondeo al alza). Si <strong>empata</strong> → tus puntos se quedan igual. Si <strong>pierde</strong> → tus puntos se dividen (redondeo a la baja). El multiplicador sube con el uso: <strong>×2</strong> al principio, <strong>×2.5</strong> desde tu 3ª activación, <strong>×3</strong> desde la 5ª. Tu equipo es <strong>secreto durante las 3 primeras activaciones</strong> — a partir de ahí (×2.5) se hace público para todos. <strong>Si te saltas una jornada sin activar, el acumulado se pierde y vuelves a ×2</strong> — perder una jornada activada NO te hace decaer, solo el no activar.
+                    Cada jugador tiene un equipo de Primera División asignado para <strong>la primera vuelta</strong>. Cada jornada decides si lo activas o no — actívalo antes de que empiece la jornada de Primera de tu equipo. Si <strong>gana</strong> → multiplicas tus puntos de esa jornada (redondeo al alza). Si <strong>empata</strong> → tus puntos se quedan igual. Si <strong>pierde</strong> → tus puntos se dividen (redondeo a la baja). El multiplicador sube con el <strong>uso consecutivo</strong>: <strong>×2</strong> al principio, <strong>×2.5</strong> desde tu 3ª activación consecutiva, <strong>×3</strong> desde la 5ª consecutiva. Tu equipo es <strong>secreto durante las 3 primeras activaciones</strong> — a partir de ahí (×2.5) se hace público para todos. <strong>Si te saltas una jornada sin activar, el acumulado se pierde y vuelves a ×2</strong> — perder una jornada activada NO te hace decaer, solo el no activar. <strong>En la mitad de temporada</strong>, los comodines de El Otro Equipo serán desactivados y se volverá a elegir equipo <strong>en orden inverso</strong>: los últimos de la primera ronda elegirán primero en la segunda.
                 </p>
             </AcordeonAyuda>
 
@@ -8596,7 +8789,7 @@ function App() {
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
             case 'pagos':       return <PagosScreen currentUser={currentUser} contextoPago={contextoPago} onContextoPagoUsado={function(){setContextoPago(null);}} />;
-            case 'perfil':      return <PerfilScreen currentUser={currentUser} tema={tema} cambiarTema={cambiarTema} />;
+            case 'perfil':      return <PerfilScreen currentUser={currentUser} tema={tema} cambiarTema={cambiarTema} teamLogos={teamLogos} />;
             case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantillaConFotos} teamLogos={teamLogos} /> : null;
             default:            return null;
         }
