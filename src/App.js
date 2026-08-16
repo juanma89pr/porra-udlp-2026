@@ -4131,9 +4131,22 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
     const premio2 = Math.round(boteActual * 0.25);
     const premio3 = Math.round(boteActual * 0.10);
 
-    // Filtrar jugadores inactivos de la clasificación
-    var clasificacionActiva = clasificacion.filter(function(j) {
-        return jugadoresInactivosCL.indexOf(j.id) === -1;
+    // Filtrar jugadores inactivos y FUSIONAR con la lista real de inscritos
+    // que han pagado — antes solo mostraba quien ya tenía un documento en la
+    // colección 'clasificacion', así que los nuevos (que pagaron pero todavía
+    // no habían sumado puntos) no aparecían nunca.
+    var clasificacionMapa = {};
+    clasificacion.forEach(function(j) { clasificacionMapa[j.id] = j; });
+
+    var clasificacionCompleta = inscritos.map(function(nombre) {
+        var datos = clasificacionMapa[nombre] || {};
+        return {
+            id: nombre,
+            puntosTotales: datos.puntosTotales || 0,
+            puntosResultadoExacto: datos.puntosResultadoExacto || 0,
+        };
+    }).sort(function(a, b) {
+        return (b.puntosTotales || 0) - (a.puntosTotales || 0);
     });
 
     return (
@@ -4149,7 +4162,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
 
             {/* Ranking — estilo La Jornada, no tabla antigua */}
             <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,overflow:'hidden',marginBottom:20}}>
-                {clasificacionActiva.map(function(jugador, index) {
+                {clasificacionCompleta.map(function(jugador, index) {
                     var esMio = jugador.id === currentUser;
                     var perf = userProfiles[jugador.id] || {};
                     var isOnline = onlineUsers ? onlineUsers[jugador.id] : false;
@@ -4581,7 +4594,7 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
 // ============================================================================
 // --- ESTADÍSTICAS ───────────────────────────────────────────────────────────
 // ============================================================================
-const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
+const EstadisticasScreen = ({ userProfiles, onlineUsers, pagos }) => {
     var G = styles.colors;
     var [clasificacion, setClasificacion] = useState([]);
     var [jornadas, setJornadas] = useState([]);
@@ -4591,7 +4604,6 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
     useEffect(function() {
         var unsub = onSnapshot(collection(db, 'clasificacion'), function(snap) {
             var data = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
-            data.sort(function(a,b) { return (b.puntos||0)-(a.puntos||0); });
             setClasificacion(data);
         });
         return function(){unsub();};
@@ -4610,11 +4622,20 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers }) => {
         return function(){unsub();};
     }, []);
 
-    // Filtra a los que se han dado de baja — no deben aparecer en las
-    // estadísticas de la temporada actual, solo ensucian la lista.
-    var clasificacionActiva = clasificacion.filter(function(j) {
-        return jugadoresInactivosEst.indexOf(j.id) === -1;
-    });
+    // Lista real de inscritos activos — fusionada con los datos de
+    // clasificación que existan, para que aparezcan TODOS los que han pagado.
+    var inscritosEst = Array.from(new Set(
+        (pagos || []).filter(function(p) { return p.tipo === 'inscripcion' && p.estado !== 'pendiente_confirmacion' && p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido'; })
+            .map(function(p) { return p.jugador; })
+    )).filter(function(nombre) { return jugadoresInactivosEst.indexOf(nombre) === -1; });
+
+    var clasificacionMapa = {};
+    clasificacion.forEach(function(j) { clasificacionMapa[j.id] = j; });
+
+    var clasificacionActiva = inscritosEst.map(function(nombre) {
+        var datos = clasificacionMapa[nombre] || {};
+        return { id: nombre, puntosTotales: datos.puntosTotales || 0, puntosResultadoExacto: datos.puntosResultadoExacto || 0 };
+    }).sort(function(a,b) { return (b.puntosTotales||0) - (a.puntosTotales||0); });
 
     var medallaColor = ['#FFD700','#C0C0C0','#CD7F32'];
 
@@ -8906,7 +8927,7 @@ function App() {
             case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} />;
             case 'normativa':     return <NormativaScreen />;
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
-            case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} />;
+            case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} />;
             case 'pagos':       return <PagosScreen currentUser={currentUser} contextoPago={contextoPago} onContextoPagoUsado={function(){setContextoPago(null);}} />;
             case 'perfil':      return <PerfilScreen currentUser={currentUser} tema={tema} cambiarTema={cambiarTema} teamLogos={teamLogos} />;
             case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantillaConFotos} teamLogos={teamLogos} /> : null;
