@@ -171,6 +171,7 @@ async function buscarJornadaCompletaPrimera(fechaReferenciaStr, diasVentana) {
                 return {
                     fixtureId: p.fixture.id,
                     fecha: p.fixture.date,
+                    round: p.league && p.league.round ? p.league.round : null,
                     local: p.teams.home.name,
                     visitante: p.teams.away.name,
                     estadoCorto: p.fixture.status.short,
@@ -181,6 +182,45 @@ async function buscarJornadaCompletaPrimera(fechaReferenciaStr, diasVentana) {
         }
     } catch (e) { console.warn('Error buscando jornada completa de Primera:', e.message); }
     return [];
+}
+
+
+// Datos del siguiente y últimos partidos de UDLP para La Jornada.
+async function buscarProximoPartidoUDLP() {
+    if (!API_FOOTBALL_KEY) return null;
+    try {
+        var url = 'https://v3.football.api-sports.io/fixtures?team=' + API_TEAM_ID_UDLP + '&season=2026&next=1';
+        var res = await fetch(url,{headers:{'x-apisports-key':API_FOOTBALL_KEY}});
+        var data = await res.json();
+        if (!data.response || !data.response.length) return null;
+        var p=data.response[0];
+        return {fixtureId:p.fixture.id,fecha:p.fixture.date,local:p.teams.home.name,visitante:p.teams.away.name,
+            golesLocal:p.goals.home,golesVisitante:p.goals.away,estadoCorto:p.fixture.status.short,
+            estadio:p.fixture.venue && p.fixture.venue.name ? p.fixture.venue.name : ''};
+    } catch(e){ console.warn('Próximo UDLP:',e.message); return null; }
+}
+async function buscarUltimosPartidosUDLP(cantidad) {
+    if (!API_FOOTBALL_KEY) return [];
+    try {
+        var url='https://v3.football.api-sports.io/fixtures?team='+API_TEAM_ID_UDLP+'&season=2026&last='+(cantidad||3);
+        var res=await fetch(url,{headers:{'x-apisports-key':API_FOOTBALL_KEY}}); var data=await res.json();
+        return (data.response||[]).map(function(p){return {fixtureId:p.fixture.id,fecha:p.fixture.date,local:p.teams.home.name,visitante:p.teams.away.name,golesLocal:p.goals.home,golesVisitante:p.goals.away,estadoCorto:p.fixture.status.short};})
+            .sort(function(a,b){return new Date(b.fecha)-new Date(a.fecha);});
+    } catch(e){ console.warn('Últimos UDLP:',e.message); return []; }
+}
+async function comprobarCierrePrimeraJornada(fechaReferenciaStr) {
+    var todos=await buscarJornadaCompletaPrimera(fechaReferenciaStr,8);
+    if(!todos.length) return {ok:false,partidos:[],pendientes:[],ronda:null};
+    var base=new Date(fechaReferenciaStr||Date.now()).getTime(), grupos={};
+    todos.forEach(function(p){ var r=p.round||'sin-ronda'; if(!grupos[r])grupos[r]=[]; grupos[r].push(p); });
+    var rondas=Object.keys(grupos).sort(function(a,b){
+        var da=Math.min.apply(null,grupos[a].map(function(x){return Math.abs(new Date(x.fecha).getTime()-base);}));
+        var db=Math.min.apply(null,grupos[b].map(function(x){return Math.abs(new Date(x.fecha).getTime()-base);}));
+        return da-db;
+    });
+    var ronda=rondas[0], partidos=grupos[ronda]||[], finales=['FT','AET','PEN','AWD','WO'];
+    var pendientes=partidos.filter(function(p){return finales.indexOf(p.estadoCorto)===-1;});
+    return {ok:pendientes.length===0,partidos:partidos,pendientes:pendientes,ronda:ronda};
 }
 
 // Tabla de puntuación Mis 5 Estrellas (calculada vía API)
@@ -2034,6 +2074,7 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
     const [resultadoOtro, setResultadoOtro] = useState(null);
     const [premio, setPremio] = useState('0.00');
     const [ganador, setGanador] = useState(false);
+    const [cobroConfirmado, setCobroConfirmado] = useState(false);
 
     useEffect(function() {
         var activo = true;
@@ -2055,13 +2096,17 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
                     if (pd.noContabilizado) return;
                     if (parseInt(pd.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(pd.golesVisitante) === parseInt(jornada.resultadoVisitante)) exactos.push(d.id);
                 });
-                var bote = Number(jornada.bote || 0);
-                if (!bote) bote = todosSnap.docs.filter(function(d){ return !(d.data() || {}).noContabilizado; }).length;
+                var costeJornada = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+                var jugadoresValidos = todosSnap.docs.filter(function(d){ return !(d.data() || {}).noContabilizado; });
+                var bote = Number(jornada.bote || 0) + jugadoresValidos.length * costeJornada;
                 var esGanador = exactos.indexOf(user) !== -1 || (jornada.ganadores || []).indexOf(user) !== -1;
                 if (activo) {
                     setGanador(esGanador);
                     setPremio(esGanador && exactos.length ? (bote / exactos.length).toFixed(2) : '0.00');
                 }
+
+                var cobroSnap = await getDocs(query(collection(db,'premios_jornada'),where('jornadaId','==',jornada.id),where('usuario','==',user),limit(1)));
+                if (activo) setCobroConfirmado(!cobroSnap.empty && !!cobroSnap.docs[0].data().recibido);
 
                 var estSnap = await getDocs(collection(db, 'estrellas_resultados', jornada.id, 'jugadores'));
                 var est = estSnap.docs.map(function(d){ return { id:d.id, ...d.data() }; })
@@ -2124,20 +2169,31 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
                         <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.62,lineHeight:1.5}}>{ganador ? 'Has clavado el resultado y tienes premio.' : 'Esta vez no hay premio directo, pero tus puntos ya están en juego para la clasificación.'}</p>
                         {ganador && <p style={{fontFamily:"'Teko',sans-serif",fontSize:30,fontWeight:700,color:'#b8860b',marginTop:8}}>{premio}€</p>}
                     </div>
+                    {ganador && (
+                        <div style={{background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.22)',borderRadius:14,padding:13,marginBottom:14}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#0f8a61',letterSpacing:1,marginBottom:6}}>💸 CONFIRMA TU PREMIO</p>
+                            <button disabled={cobroConfirmado} onClick={async function(){try{await setDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user),{jornadaId:jornada.id,usuario:user,importe:Number(premio),recibido:true,recibidoEn:serverTimestamp()},{merge:true});setCobroConfirmado(true);}catch(e){alert('No se pudo registrar el cobro: '+e.message);}}} style={{width:'100%',border:'none',borderRadius:10,padding:'10px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:cobroConfirmado?'#10b981':'#fff',color:cobroConfirmado?'#fff':'#001F6B',cursor:cobroConfirmado?'default':'pointer',border:cobroConfirmado?'none':'1px solid rgba(0,31,107,.12)'}}>{cobroConfirmado?'✅ INGRESO CONFIRMADO':'HE RECIBIDO EL INGRESO'}</button>
+                        </div>
+                    )}
 
                     <div style={{background:'#001F6B',borderRadius:16,padding:15,marginBottom:14}}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'#FFD700',marginBottom:8}}>🛡️ EL OTRO EQUIPO</p>
                         {!miPronostico || !miPronostico.elOtroActivado ? (
                             <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.62)',margin:0}}>No activaste El Otro en esta jornada.</p>
+                         ) : !jornada.cierreDefinitivo ? (
+                            <div>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,color:'#FFD700',margin:0}}>⏳ RESULTADO PENDIENTE DE CIERRE</p>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.65)',lineHeight:1.5,marginTop:5}}>El resultado de El Otro y cualquier multiplicación/división se resolverán cuando cierre por completo la jornada de Primera. Hasta entonces, tus puntos siguen siendo provisionales.</p>
+                            </div>
                         ) : !resultadoOtro || !terminadoOtro ? (
                             <div>
                                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,color:'#FFD700',margin:0}}>⏳ RESULTADO PENDIENTE</p>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.65)',lineHeight:1.5,marginTop:5}}>Tu equipo de Primera todavía no ha terminado. Tus puntos <strong>todavía no se multiplican ni se dividen</strong>. El resultado definitivo se aplicará cuando termine ese partido.</p>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.65)',lineHeight:1.5,marginTop:5}}>No se pudo cerrar todavía el resultado del equipo asociado.</p>
                             </div>
                         ) : (
                             <div>
                                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,color:estadoOtroColor,margin:0}}>{resultadoOtro.equipo} · {resultadoOtro.golesEquipo} — {resultadoOtro.golesRival}</p>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.65)',marginTop:5}}>Tu equipo {resultadoOtro.resultado}. El efecto del multiplicador se aplicará según las reglas de El Otro.</p>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.65)',marginTop:5}}>Resultado definitivo de El Otro. El multiplicador/divisor de esta jornada ya ha quedado aplicado.</p>
                             </div>
                         )}
                     </div>
@@ -2184,6 +2240,34 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
     );
 };
 
+
+const PremioMiJornadaCard = ({ user, jornada }) => {
+    var [importe,setImporte]=useState(0), [confirmado,setConfirmado]=useState(false), [cargando,setCargando]=useState(true);
+    useEffect(function(){
+        var activo=true;
+        (async function(){
+            try{
+                var ps=await getDocs(collection(db,'pronosticos',jornada.id,'jugadores'));
+                var vals=ps.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(x){return !x.noContabilizado;});
+                var exactos=vals.filter(function(x){return parseInt(x.golesLocal)===parseInt(jornada.resultadoLocal)&&parseInt(x.golesVisitante)===parseInt(jornada.resultadoVisitante);});
+                var bote=parseFloat(jornada.bote||0)+vals.length*(jornada.esVip?APUESTA_VIP:APUESTA_NORMAL);
+                var mi=exactos.some(function(x){return x.id===user})&&exactos.length?Number((bote/exactos.length).toFixed(2)):0;
+                var cs=await getDocs(query(collection(db,'premios_jornada'),where('jornadaId','==',jornada.id),where('usuario','==',user),limit(1)));
+                if(activo){setImporte(mi);setConfirmado(!cs.empty&&!!cs.docs[0].data().recibido);setCargando(false);}
+            }catch(e){if(activo)setCargando(false);}
+        })(); return function(){activo=false;};
+    },[user,jornada.id,jornada.resultadoLocal,jornada.resultadoVisitante,jornada.bote,jornada.esVip]);
+    if(cargando) return null;
+    return <div style={{background:importe>0?'rgba(255,215,0,.12)':'rgba(0,31,107,.04)',border:'1px solid '+(importe>0?'rgba(212,175,55,.35)':'rgba(0,31,107,.08)'),borderRadius:16,padding:16,marginBottom:16}}>
+        <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:5,fontWeight:700}}>{importe>0?'🏆 PREMIO DE LA JORNADA':'📊 JORNADA RESUELTA'}</p>
+        {importe>0 ? <>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#001F6B',marginBottom:8}}>{importe.toFixed(2)}€</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.55)',lineHeight:1.5,marginBottom:9}}>Cuando recibas el ingreso, confírmalo aquí. Quedará registrado para ti y para Administración.</p>
+            <button disabled={confirmado} onClick={async function(){try{await setDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user),{jornadaId:jornada.id,usuario:user,importe:importe,recibido:true,recibidoEn:serverTimestamp()},{merge:true});setConfirmado(true);}catch(e){alert('No se pudo registrar el cobro: '+e.message);}}} style={{width:'100%',border:'none',borderRadius:10,padding:'10px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:confirmado?'#10b981':'#001F6B',color:'#fff',cursor:confirmado?'default':'pointer'}}>{confirmado?'✅ COBRO CONFIRMADO':'💰 HE RECIBIDO EL INGRESO'}</button>
+        </> : <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.55)',margin:0}}>Esta jornada no tienes premio económico. El resultado y los puntos se gestionan por separado.</p>}
+    </div>;
+};
+
 const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers, pagos, onIrAPagos }) => {
     var G = styles.colors;
     var [jornada, setJornada] = useState(null);
@@ -2201,6 +2285,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var [showPorraAnual, setShowPorraAnual] = useState(false);
     var [showEstrellas, setShowEstrellas] = useState(false);
     var [jornadaCierre, setJornadaCierre] = useState(null);
+    var [premioMiJornada, setPremioMiJornada] = useState(0);
+    var [premioCobradoMiJornada, setPremioCobradoMiJornada] = useState(false);
 
     // Sincronización automática con API cada 5 minutos cuando hay jornada en vivo
     useEffect(function() {
@@ -2289,7 +2375,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     useEffect(function() {
         if (!user) return;
         var q = query(collection(db, "jornadas"),
-            where("estado", "in", ["Abierta", "En vivo"]),
+            where("estado", "in", ["Abierta", "En vivo", "Finalizada"]),
             orderBy("numeroJornada", "desc"), limit(1));
         var unsub = onSnapshot(q, function(snap) {
             if (!snap.empty) {
@@ -2310,17 +2396,40 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     setParticipantes(docs.map(function(d) { return d.id; }));
                     setPronosticosTodos(docs);
                 });
+            } else {
+                setJornada(null);
             }
 
             setLoading(false);
         });
+        // Última jornada finalizada: permite ver el cierre y confirmar premios
+        // incluso cuando todavía no se ha abierto la siguiente.
+        var unsubCierre = onSnapshot(query(collection(db,'jornadas'),where('estado','==','Finalizada'),orderBy('numeroJornada','desc'),limit(1)), function(cs){
+            if (!cs.empty) {
+                var cj={id:cs.docs[0].id,...cs.docs[0].data()};
+                setJornadaCierre(cj);
+                getDoc(doc(db,'pronosticos',cj.id,'jugadores',user)).then(function(ps){
+                    if(ps.exists()){
+                        var pd=ps.data();
+                        var exacto=parseInt(pd.golesLocal)===parseInt(cj.resultadoLocal)&&parseInt(pd.golesVisitante)===parseInt(cj.resultadoVisitante);
+                        if(exacto){
+                            getDocs(collection(db,'pronosticos',cj.id,'jugadores')).then(function(all){
+                                var vals=all.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(x){return !x.noContabilizado;});
+                                var exactos=vals.filter(function(x){return parseInt(x.golesLocal)===parseInt(cj.resultadoLocal)&&parseInt(x.golesVisitante)===parseInt(cj.resultadoVisitante);});
+                                var boteReal=parseFloat(cj.bote||0)+vals.length*(cj.esVip?APUESTA_VIP:APUESTA_NORMAL);
+                                var premio=exactos.length ? Number((boteReal/exactos.length).toFixed(2)) : 0;
+                                setPremioMiJornada(pd && exactos.some(function(x){return x.id===user;}) ? premio : 0);
+                            });
+                        } else setPremioMiJornada(0);
+                        getDocs(query(collection(db,'premios_jornada'),where('jornadaId','==',cj.id),where('usuario','==',user),limit(1))).then(function(rc){setPremioCobradoMiJornada(!rc.empty&&!!rc.docs[0].data().recibido);}).catch(function(){});
+                    }
+                }).catch(function(){});
+            }
+        });
         // Mi El Otro
         var unsubOtro = onSnapshot(doc(db, "elOtro", user), function(snap) {
             if (snap.exists()) setMiElOtro(snap.data());
-        });
-        var unsubCierre = onSnapshot(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada'), orderBy('numeroJornada', 'desc'), limit(1)), function(snap) {
-            if (!snap.empty) setJornadaCierre({ id: snap.docs[0].id, ...snap.docs[0].data() });
-            else setJornadaCierre(null);
+            else setMiElOtro(null);
         });
         return function() { unsub(); unsubOtro(); unsubCierre(); };
     }, [user]);
@@ -2456,6 +2565,20 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         return { marcadoresOrdenados: marcadoresOrdenados, por1x2: por1x2, total: pronosticosTodos.length };
     };
 
+    if (jornada && jornada.estado === 'Finalizada') {
+        return (
+            <div style={{paddingBottom:40}}>
+                <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:10,fontWeight:700}}>MI JORNADA</h2>
+                <PremioMiJornadaCard user={user} jornada={jornada} />
+                <div style={{background:jornada.cierreDefinitivo?'rgba(16,185,129,.08)':'rgba(255,215,0,.08)',border:'1px solid '+(jornada.cierreDefinitivo?'rgba(16,185,129,.22)':'rgba(212,175,55,.28)'),borderRadius:14,padding:14,marginBottom:16}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:jornada.cierreDefinitivo?'#0f8a61':'#8a6a00',margin:0,textTransform:'uppercase'}}>{jornada.cierreDefinitivo?'✅ PUNTOS DEFINITIVOS':'⏳ PUNTOS PROVISIONALES'}</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.62)',lineHeight:1.5,marginTop:6}}>{jornada.cierreDefinitivo?'La jornada ya está cerrada por completo.':'La Porra y el reparto económico ya están resueltos. Los puntos pueden cambiar cuando termine la jornada de Primera.'}</p>
+                </div>
+                <button onClick={function(){setJornadaCierre(jornada);}} style={{width:'100%',border:'none',background:'#001F6B',color:'#FFD700',borderRadius:24,padding:12,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,cursor:'pointer'}}>VER RESUMEN DE JORNADA →</button>
+            </div>
+        );
+    }
+
     if (!jornada) return (
         <div style={{padding:40,textAlign:'center'}}>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,color:G.deepBlue,letterSpacing:2}}>NO HAY JORNADA ACTIVA</p>
@@ -2503,7 +2626,17 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 </div>
             </div>
 
-            {/* Cuenta atrás de El Otro Equipo — apertura de temporada, o reanudación tras la pausa nocturna */}
+            {jornada && jornada.estado === 'Finalizada' && (
+        <div style={{background:premioMiJornada>0?'rgba(255,215,0,.12)':'rgba(0,31,107,.04)',border:'1px solid '+(premioMiJornada>0?'rgba(212,175,55,.35)':'rgba(0,31,107,.08)'),borderRadius:16,padding:16,marginBottom:16}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>{premioMiJornada>0?'🏆 PREMIO DE LA JORNADA':'📊 JORNADA RESUELTA'}</p>
+            {premioMiJornada>0 ? <>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#001F6B',marginBottom:8}}>{premioMiJornada.toFixed(2)}€</p>
+                <button disabled={premioCobradoMiJornada} onClick={async function(){try{await setDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user),{jornadaId:jornada.id,usuario:user,importe:premioMiJornada,recibido:true,recibidoEn:serverTimestamp()},{merge:true});setPremioCobradoMiJornada(true);}catch(e){alert('No se pudo registrar el cobro: '+e.message);}}} style={{width:'100%',border:'none',borderRadius:10,padding:'10px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:premioCobradoMiJornada?'#10b981':'#001F6B',color:'#fff',cursor:premioCobradoMiJornada?'default':'pointer'}}>{premioCobradoMiJornada?'✅ COBRO CONFIRMADO':'💰 HE RECIBIDO EL INGRESO'}</button>
+            </> : <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.55)',margin:0}}>Esta jornada no tienes premio económico. Tus puntos se gestionan por separado.</p>}
+        </div>
+    )}
+
+    {/* Cuenta atrás de El Otro Equipo — apertura de temporada, o reanudación tras la pausa nocturna */}
             <CuentaAtrasElOtro />
 
             {/* Banner VIP */}
@@ -3496,12 +3629,25 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     var [participantes, setParticipantes] = useState([]);
     var [elOtroTodos, setElOtroTodos] = useState({});
     var [partidosPrimera, setPartidosPrimera] = useState([]);
+    var [proximaUDLP, setProximaUDLP] = useState(null);
+    var [ultimosUDLP, setUltimosUDLP] = useState([]);
+    var [detalleFixtureActual, setDetalleFixtureActual] = useState(null);
 
     useEffect(function() {
-        buscarJornadaCompletaPrimera(new Date().toISOString(), 5).then(function(r) {
-            setPartidosPrimera(r || []);
-        }).catch(function() {});
-    }, []);
+        var base = jornada && jornada.fecha ? jornada.fecha : new Date().toISOString();
+        buscarJornadaCompletaPrimera(base, 8).then(function(r){setPartidosPrimera(r||[]);}).catch(function(){});
+        buscarProximoPartidoUDLP().then(setProximaUDLP).catch(function(){});
+        buscarUltimosPartidosUDLP(3).then(setUltimosUDLP).catch(function(){});
+    }, [jornada && jornada.fecha]);
+
+    useEffect(function(){
+        setDetalleFixtureActual(null);
+        if(!jornada || !jornada.fixtureId || !API_FOOTBALL_KEY) return;
+        fetch('https://v3.football.api-sports.io/fixtures?id='+jornada.fixtureId,{headers:{'x-apisports-key':API_FOOTBALL_KEY}})
+            .then(function(r){return r.json();})
+            .then(function(d){if(d.response&&d.response[0])setDetalleFixtureActual(d.response[0]);})
+            .catch(function(){});
+    }, [jornada && jornada.fixtureId]);
     var [clasifEstrellas, setClasifEstrellas] = useState([]);
     var [seleccionesEstrellasJornada, setSeleccionesEstrellasJornada] = useState([]); // para la comparativa en vivo
     var [loading, setLoading] = useState(true);
@@ -3561,7 +3707,26 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     }, []);
 
     if (loading) return <LoadingSkeleton />;
-    if (!jornada) return <div style={{padding:40,textAlign:'center'}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:20,color:G.deepBlue,opacity:.5}}>SIN JORNADA ACTIVA</p></div>;
+    if ((!jornada || jornada.estado === 'Finalizada') && proximaUDLP) {
+        var fp=new Date(proximaUDLP.fecha);
+        return <div style={{paddingBottom:40}}>
+            <h2 style={styles.title}>LA JORNADA</h2>
+            <div style={{background:'#001F6B',borderRadius:20,padding:24,textAlign:'center',marginBottom:16}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:4,color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:8}}>PRÓXIMA JORNADA</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#fff',marginBottom:6}}>{proximaUDLP.local} — {proximaUDLP.visitante}</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#FFD700'}}>{fp.toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}</p>
+                {proximaUDLP.estadio && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.4)',marginTop:4}}>🏟️ {proximaUDLP.estadio}</p>}
+            </div>
+            {ultimosUDLP.length>0 && <div style={{background:'#fff',borderRadius:16,border:'1px solid rgba(0,31,107,.08)',overflow:'hidden'}}>
+                <div style={{padding:'12px 16px',background:'rgba(0,31,107,.04)'}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.5}}>HISTÓRICO RECIENTE</p></div>
+                {ultimosUDLP.map(function(p){return <div key={p.fixtureId} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 16px',borderBottom:'1px solid rgba(0,31,107,.05)'}}>
+                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.4)',minWidth:84}}>{new Date(p.fecha).toLocaleDateString('es-ES',{day:'numeric',month:'short',timeZone:'Atlantic/Canary'})}</span>
+                    <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:14,color:G.deepBlue}}>{p.local} — {p.visitante}</span>
+                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,color:G.deepBlue}}>{p.golesLocal}—{p.golesVisitante}</span>
+                </div>;})}
+            </div>}
+        </div>;
+    }
 
     var abierta = jornada.estado === 'Abierta';
     var udlpEsLocal = jornada.equipoLocal === 'UD Las Palmas';
@@ -3582,8 +3747,14 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
 
             {/* Banner resultado */}
             <div style={{background:'#001F6B',borderRadius:20,padding:24,marginBottom:20,textAlign:'center'}}>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginBottom:16}}>
-                    Jornada {jornada.numeroJornada} {jornada.esVip?'⭐ VIP':''} {jornada.derbi?'🔥':''} · {jornada.fecha}
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginBottom:4}}>
+                    Jornada {jornada.numeroJornada} {jornada.esVip?'⭐ VIP':''} {jornada.derbi?'🔥':''}
+                </p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.42)',marginBottom:16}}>
+                    {(detalleFixtureActual && detalleFixtureActual.fixture && detalleFixtureActual.fixture.date)
+                        ? new Date(detalleFixtureActual.fixture.date).toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})
+                        : (jornada.fechaPartido || jornada.fecha || '')}
+                    {jornada.estadio ? ' · '+jornada.estadio : ''}
                 </p>
                 {/* Marcador con escudos */}
                 <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12}}>
@@ -3670,6 +3841,17 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     </div>
                 </div>
             </div>
+
+            {!abierta && jornada && jornada.estado === 'Finalizada' && !jornada.cierreDefinitivo && (
+                <div style={{background:'linear-gradient(135deg,#fff9e6,#fff)',border:'1px solid rgba(212,175,55,.4)',borderRadius:16,padding:18,marginBottom:18}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,letterSpacing:2,color:'#8a6a00',textTransform:'uppercase',fontWeight:700,marginBottom:6}}>⏳ JORNADA EN CIERRE</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,.7)',lineHeight:1.6,marginBottom:6}}>El resultado de la Porra y el reparto económico ya están resueltos. Los puntos mostrados son <strong>provisionales</strong> hasta que termine la jornada de Primera.</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.5)',lineHeight:1.5}}>No se muestran equipos ni multiplicadores de El Otro para mantener la competición en secreto. El cierre definitivo aplicará todo de una vez.</p>
+                </div>
+            )}
+            {jornada && jornada.estado === 'Finalizada' && jornada.cierreDefinitivo && (
+                <div style={{background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.25)',borderRadius:16,padding:14,marginBottom:18}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#0f8a61',textTransform:'uppercase',fontWeight:700,margin:0}}>✅ JORNADA CERRADA DEFINITIVAMENTE</p></div>
+            )}
 
             {/* Pronósticos */}
             <div style={{background:'#fff',borderRadius:16,border:'1px solid rgba(0,31,107,0.08)',overflow:'hidden'}}>
@@ -3983,7 +4165,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                 var acertaronExacto = participantes.filter(function(p) {
                     return !p.sinApuesta && parseInt(p.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(p.golesVisitante) === parseInt(jornada.resultadoVisitante);
                 });
-                var boteJornada = participantes.filter(function(p){return !p.sinApuesta;}).length;
+                var boteJornada = parseFloat(jornada.bote || 0) + participantes.filter(function(p){return !p.sinApuesta;}).length * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL);
                 var premioPorGanador = acertaronExacto.length > 0 ? (boteJornada / acertaronExacto.length).toFixed(2) : '0.00';
 
                 return (
@@ -5159,21 +5341,13 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
         var estrellasAnteriores = Number(viejo.estrellasJornada !== undefined ? viejo.estrellasJornada : (viejo.puntosJornada !== undefined ? viejo.puntosJornada : 0));
         var puntosRankingAnteriores = Number(viejo.puntosRanking !== undefined ? viejo.puntosRanking : 0);
         var deltaEstrellas = r.estrellasJornada - estrellasAnteriores;
-        var deltaRanking = formatoNuevo ? (r.puntosRanking - puntosRankingAnteriores) : (r.puntosRanking - estrellasAnteriores);
-
-        // Acumulado de estrellas: solo cambia por la diferencia. Esto hace que
-        // RE-CALCULAR sea seguro y nunca duplique la Liga de Estrellas.
+        // Acumulado de estrellas: solo cambia por la diferencia. La puntuación
+        // 5/4/3/2/1 de esta jornada NO entra aún en la clasificación general;
+        // queda guardada como provisional hasta el cierre total de Primera.
         batch.set(doc(db, 'clasificacion_estrellas', r.userId), {
             puntosEstrellas: increment(deltaEstrellas),
             ultimaJornada: jornadaId,
         }, { merge: true });
-
-        // Puntos de la jornada: también se aplica por diferencia, así que si
-        // corregimos un ranking ya calculado, solo se corrige la diferencia.
-        if (deltaRanking !== 0) {
-            var clasifRef = doc(db, 'clasificacion', r.userId);
-            batch.set(clasifRef, { puntosTotales: increment(deltaRanking) }, { merge: true });
-        }
 
         batch.set(doc(db, 'estrellas_seleccion', jornadaId, 'jugadores', r.userId), {
             puntosEstrellas: r.estrellasJornada,
@@ -5213,6 +5387,59 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
         }),
         jugadoresSinApiId: jugadoresSinApiId,
     };
+}
+
+async function actualizarPuntosProvisionalesJornada(jornadaId) {
+    var snap=await getDocs(collection(db,'pronosticos',jornadaId,'jugadores'));
+    var batch=writeBatch(db);
+    snap.forEach(function(d){
+        var p=d.data()||{};
+        var base=Number(p.puntosBaseSinOtro!==undefined ? p.puntosBaseSinOtro : 0);
+        var estrellas=Number(p.puntosEstrellasJornada!==undefined ? p.puntosEstrellasJornada : 0);
+        batch.set(d.ref,{puntosProvisionales:base+estrellas},{merge:true});
+    });
+    await batch.commit();
+}
+
+async function cerrarJornadaDefinitivamenteAdmin(jornadaId) {
+    var jSnap=await getDoc(doc(db,'jornadas',jornadaId));
+    if(!jSnap.exists()) throw new Error('No se encuentra la jornada.');
+    var jornada={id:jSnap.id,...jSnap.data()};
+    if(jornada.cierreDefinitivo) return {ok:true,yaCerrada:true};
+    var estadoPrimera=await comprobarCierrePrimeraJornada(jornada.fecha);
+    if(!estadoPrimera.ok) return {ok:false,pendientes:estadoPrimera.pendientes};
+
+    var pSnap=await getDocs(collection(db,'pronosticos',jornadaId,'jugadores'));
+    var clasSnap=await getDocs(collection(db,'clasificacion')); var clas={}; clasSnap.forEach(function(d){clas[d.id]=d.data();});
+    var otroSnap=await getDocs(collection(db,'elOtro')); var otro={}; otroSnap.forEach(function(d){otro[d.id]=d.data();});
+    var fixtureIds=[]; pSnap.forEach(function(d){var p=d.data()||{}; if(p.elOtroActivado&&p.elOtroFixtureId&&fixtureIds.indexOf(p.elOtroFixtureId)===-1)fixtureIds.push(p.elOtroFixtureId);});
+    var fxMap={};
+    for(var i=0;i<fixtureIds.length;i++){
+        try{var rr=await fetch('https://v3.football.api-sports.io/fixtures?id='+fixtureIds[i],{headers:{'x-apisports-key':API_FOOTBALL_KEY}});var dd=await rr.json();var fx=dd.response&&dd.response[0];if(fx){var st=fx.fixture.status.short;fxMap[fixtureIds[i]]={finalizado:['FT','AET','PEN','AWD','WO'].indexOf(st)!==-1,local:fx.teams.home.name,visitante:fx.teams.away.name,gl:fx.goals.home,gv:fx.goals.away};}}catch(e){}}
+
+    var batch=writeBatch(db);
+    pSnap.forEach(function(d){
+        var p=d.data()||{}, userId=d.id;
+        if(p.noContabilizado) return;
+        var provisional=Number(p.puntosProvisionales!==undefined?p.puntosProvisionales:(Number(p.puntosBaseSinOtro||0)+Number(p.puntosEstrellasJornada||0)));
+        var definitivo=provisional, otroResultado=null, otroMult=null;
+        if(p.elOtroActivado&&p.elOtroFixtureId&&p.elOtroEquipoUsado){
+            var fx=fxMap[p.elOtroFixtureId];
+            if(fx&&fx.finalizado){
+                var local=nombresSonSimilares(fx.local,p.elOtroEquipoUsado);var gf=local?fx.gl:fx.gv;var gc=local?fx.gv:fx.gl;
+                otroResultado=gf>gc?'gana':gf<gc?'pierde':'empate';
+                var prev=(otro[userId]&&otro[userId].activaciones)||0; otroMult=getMultiplicadorOtro(prev);
+                definitivo=aplicarMultiplicadorOtro(provisional,otroResultado,otroMult);
+                batch.set(doc(db,'elOtro',userId),{activaciones:increment(1),historial:arrayUnion({jornada:jornada.numeroJornada,equipo:p.elOtroEquipoUsado,resultado:otroResultado,multiplicador:otroMult,ptosAntes:provisional,ptosDespues:definitivo})},{merge:true});
+            }
+        }
+        var c=clas[userId]||{};
+        batch.set(doc(db,'clasificacion',userId),{puntosTotales:Number(c.puntosTotales||0)+definitivo,puntosResultadoExacto:Number(c.puntosResultadoExacto||0)+Number(p.puntosResultadoExacto||0)},{merge:true});
+        batch.set(d.ref,{puntosObtenidos:definitivo,puntosDefinitivos:definitivo,puntosProvisionales:provisional,elOtroResultado:otroResultado,elOtroMultiplicador:otroMult,elOtroAplicado:!!otroResultado,elOtroPendiente:false,definitivoEn:serverTimestamp()},{merge:true});
+    });
+    batch.set(doc(db,'jornadas',jornadaId),{cierreDefinitivo:true,puntosCalculados:true,cierreDefinitivoEn:serverTimestamp(),estado:'Finalizada'},{merge:true});
+    await batch.commit();
+    return {ok:true,yaCerrada:false,pendientes:[]};
 }
 
 async function resolverElOtroPendienteJornada(jornada) {
@@ -5535,57 +5762,17 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 }
                 ptosJornada += ptosGol;
 
-                // 4. EL OTRO EQUIPO — separamos SIEMPRE los puntos base de la
-                // porra de su efecto. Si el partido de Primera todavía no terminó,
-                // guardamos los puntos base y dejamos el multiplicador pendiente.
+                // 4. El Otro queda pendiente hasta el cierre total de Primera.
                 var puntosBaseSinOtro = ptosJornada;
-                var otroAplicado = false;
-                var otroPendiente = false;
-                if (p.elOtroActivado && p.elOtroFixtureId && p.elOtroEquipoUsado) {
-                    var resFx = resultadosFixtureOtro[p.elOtroFixtureId];
-                    if (resFx && resFx.finalizado) {
-                        var esLocalOtro = nombresSonSimilares(resFx.nombreLocal, p.elOtroEquipoUsado);
-                        var golesFavor = esLocalOtro ? resFx.golesLocal : resFx.golesVisitante;
-                        var golesContra = esLocalOtro ? resFx.golesVisitante : resFx.golesLocal;
-                        var resultadoOtro = golesFavor > golesContra ? 'gana' : (golesFavor < golesContra ? 'pierde' : 'empate');
-                        var activacionesPrevias = (elOtroDataUsuarios[userId] && elOtroDataUsuarios[userId].activaciones) || 0;
-                        var multOtro = getMultiplicadorOtro(activacionesPrevias);
-                        ptosJornada = aplicarMultiplicadorOtro(puntosBaseSinOtro, resultadoOtro, multOtro);
-                        otroAplicado = true;
-                        if (!puntosYaCalculados) {
-                            batch.set(doc(db, "elOtro", userId), {
-                                activaciones: increment(1),
-                                historial: arrayUnion({
-                                    jornada: jornada.numeroJornada, equipo: p.elOtroEquipoUsado,
-                                    resultado: resultadoOtro, multiplicador: multOtro,
-                                    ptosAntes: puntosBaseSinOtro, ptosDespues: ptosJornada,
-                                }),
-                            }, { merge: true });
-                        }
-                    } else {
-                        otroPendiente = true;
-                    }
-                }
-
                 if (!puntosYaCalculados) {
                     batch.set(doc(db, "pronosticos", jornada.id, "jugadores", userId), {
-                        puntosObtenidos: ptosJornada,
+                        puntosObtenidos: 0,
                         puntosBaseSinOtro: puntosBaseSinOtro,
+                        puntosProvisionales: puntosBaseSinOtro + Number(p.puntosEstrellasJornada||0),
                         puntosResultadoExacto: ptosExacto,
                         puntosGoleador: ptosGol,
-                        elOtroAplicado: otroAplicado,
-                        elOtroPendiente: otroPendiente,
-                    }, { merge: true });
-                    const cTotal = clasifActual[userId]?.puntosTotales || 0;
-                    const cExactos = clasifActual[userId]?.puntosResultadoExacto || 0;
-                    // set con merge: true en vez de update — porque si es la
-                    // primera jornada de la temporada, el documento de clasificación
-                    // de este jugador puede no existir todavía (se borró en el
-                    // reseteo). Con update fallaría en silencio y los puntos
-                    // nunca se sumarían.
-                    batch.set(doc(db, "clasificacion", userId), {
-                        puntosTotales: cTotal + ptosJornada,
-                        puntosResultadoExacto: cExactos + ptosExacto
+                        elOtroAplicado: false,
+                        elOtroPendiente: !!(p.elOtroActivado && p.elOtroFixtureId)
                     }, { merge: true });
                 }
             });
@@ -5598,7 +5785,8 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
         if (estado === 'Finalizada') {
             updateData.ganadores = ganadoresArray;
-            if (!puntosYaCalculados) { updateData.puntosCalculados = true; setPuntosYaCalculados(true); } // FIX: actualizar estado local
+            updateData.premiosCalculados = true;
+            if (!jornada.cierreDefinitivo) updateData.puntosCalculados = false;
         }
 
         batch.set(jornadaRef, updateData, { merge: true });
@@ -5607,36 +5795,38 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
         // --- Estrellas: cálculo automático vía API-Football, aislado del flujo principal ---
         // Si algo falla aquí (API caída, jugador sin apiId, etc.) NO debe tocar los puntos
         // de la porra principal, que ya se guardaron arriba.
-        if (estado === 'Finalizada' && !puntosYaCalculados) {
+        if (estado === 'Finalizada' && !jornada.cierreDefinitivo) {
             try {
-                await calcularEstrellasJornada(jornada.id, jornada.fixtureId, plantilla, {
+                if (jornada.fixtureId) await calcularEstrellasJornada(jornada.id, jornada.fixtureId, plantilla, {
                     equipoLocal: jornada.equipoLocal, equipoVisitante: jornada.equipoVisitante,
                     resultadoLocal: resultadoLocal, resultadoVisitante: resultadoVisitante
                 });
+                // actualizarPuntosProvisionales recoge el ranking 5/4/3/2/1
+                // guardado por el cálculo de Estrellas sin tocar aún la general.
+                await actualizarPuntosProvisionalesJornada(jornada.id);
             } catch(e) {
                 console.error('Error calculando Estrellas:', e);
-                alert('⚠️ Los puntos de la porra se guardaron bien, pero hubo un error calculando las Estrellas: ' + e.message + '\n\nPuedes reintentarlo con el botón "Recalcular Estrellas".');
+                alert('⚠️ El reparto económico y el resultado de la Porra están guardados. Las Estrellas se pueden recalcular después.');
             }
         }
 
-        if (estado === 'Finalizada' && !puntosYaCalculados) alert('¡JORNADA FINALIZADA! Puntos sumados.'); else alert('Jornada guardada.');
+        if (estado === 'Finalizada') alert('✅ Resultado de la Porra y reparto económico guardados. Los puntos quedan provisionales hasta el cierre total de Primera.'); else alert('Jornada guardada.');
     };
 
     // Recalcula solo las Estrellas de esta jornada (botón manual, por si la API
     // no estaba lista al finalizar, o para corregir tras un ajuste).
     const handleRecalcularEstrellas = async () => {
         if (!jornada.fixtureId) { alert('Esta jornada no tiene fixtureId guardado — sincroniza primero con la API.'); return; }
-        if (!window.confirm('Se volverán a leer las estadísticas de API-Football y se recalcularán las Estrellas de esta jornada.\n\nEl sistema corregirá SOLO las diferencias respecto al cálculo anterior: no duplicará ni las Estrellas acumuladas ni los puntos de jornada.\n\n¿Continuar?')) return;
+        if (!window.confirm('Se volverán a leer las estadísticas de API-Football y se recalcularán las Estrellas de esta jornada. El sistema corrige solo la diferencia y no duplica acumulados.')) return;
         try {
             var resultado = await calcularEstrellasJornada(jornada.id, jornada.fixtureId, plantilla, {
                 equipoLocal: jornada.equipoLocal, equipoVisitante: jornada.equipoVisitante,
                 resultadoLocal: jornada.resultadoLocal, resultadoVisitante: jornada.resultadoVisitante
             });
+            await actualizarPuntosProvisionalesJornada(jornada.id);
             var sinIds = resultado.jugadoresSinApiId || [];
-            alert('✅ Estrellas recalculadas y protegidas contra duplicados.\n\n' + (sinIds.length ? 'Sin apiId: ' + sinIds.join(', ') : 'Todos los jugadores de la plantilla con ID están preparados.') );
-        } catch(e) {
-            alert('❌ Error: ' + e.message);
-        }
+            alert('✅ Estrellas recalculadas sin duplicar.\n\n' + (sinIds.length ? 'Sin apiId: ' + sinIds.join(', ') : 'Todos los jugadores con ID están preparados.') );
+        } catch(e) { alert('❌ Error: ' + e.message); }
     };
 
     const handleUpdateLiveState = async () => {
@@ -5722,6 +5912,16 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
             </div>
             
             <button onClick={handleSaveChanges} style={{...styles.saveButton, width: '100%', marginTop: '25px'}}>GUARDAR TODOS LOS CAMBIOS</button>
+            {estado === 'Finalizada' && !jornada.cierreDefinitivo && (
+                <div style={{background:'rgba(255,215,0,0.08)',border:'1px solid rgba(212,175,55,.35)',borderRadius:12,padding:14,marginTop:12}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#8a6a00',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>⏳ CIERRE TOTAL PENDIENTE</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,.62)',lineHeight:1.5,marginBottom:10}}>La Porra y el reparto de euros ya están resueltos. Los puntos siguen provisionales hasta que termine la jornada de Primera. En ese momento se aplicará El Otro y se cerrará la clasificación.</p>
+                    <button onClick={async function(){
+                        if(!window.confirm('¿Comprobar Primera y cerrar definitivamente esta jornada?'))return;
+                        try{var r=await cerrarJornadaDefinitivamenteAdmin(jornada.id);if(!r.ok){var txt=(r.pendientes||[]).slice(0,6).map(function(p){return new Date(p.fecha).toLocaleString('es-ES',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})+' · '+p.local+' - '+p.visitante;}).join('\\n');alert('⏳ Todavía no puede cerrarse. Pendientes:\\n\\n'+txt);}else{alert('✅ Jornada cerrada definitivamente.');window.location.reload();}}catch(e){alert('❌ '+e.message);}
+                    }} style={{...styles.saveButton,width:'100%',background:'#001F6B'}}>🔒 CERRAR JORNADA DEFINITIVAMENTE</button>
+                </div>
+            )}
 
             {(estado === 'Cerrada' || estado === 'En vivo') && (
                 <div style={styles.liveAdminContainer}>
@@ -7093,6 +7293,31 @@ const NormativaScreen = () => {
     );
 };
 
+const ConfirmacionesPremiosAdmin = ({ jornadas }) => {
+    const [jornada, setJornada] = useState(null);
+    const [confirmaciones, setConfirmaciones] = useState([]);
+    useEffect(function(){
+        var ultima = (jornadas || []).slice().sort(function(a,b){return (b.numeroJornada||0)-(a.numeroJornada||0);}).find(function(j){return j.estado==='Finalizada';});
+        setJornada(ultima || null);
+        if(!ultima){ setConfirmaciones([]); return; }
+        var unsub = onSnapshot(collection(db,'premios_jornada',ultima.id,'usuarios'), function(snap){
+            setConfirmaciones(snap.docs.map(function(d){return {id:d.id,...d.data()};}));
+        });
+        return function(){unsub();};
+    }, [jornadas]);
+    if(!jornada) return null;
+    var validos = confirmaciones.filter(function(x){return x.recibido;}).length;
+    return <div style={ADMIN_STYLES.card}>
+        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>💸 Confirmaciones de premios · J{jornada.numeroJornada}</p>
+        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,.5)',marginBottom:12,lineHeight:1.5}}>{validos} jugadores han confirmado que han recibido su premio.</p>
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {confirmaciones.length===0 ? <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.4)'}}>Todavía no hay confirmaciones registradas.</p> : confirmaciones.map(function(x){
+                return <div key={x.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:x.recibido?'rgba(16,185,129,.08)':'rgba(230,57,70,.06)',borderRadius:9}}><span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#001F6B'}}>{x.id}</span><span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:x.recibido?'#0f8a61':'#e63946'}}>{x.recibido?'✅ RECIBIDO':'⏳ PENDIENTE'}</span></div>;
+            })}
+        </div>
+    </div>;
+};
+
 const AdminPanelScreen = ({ plantilla, teamLogos }) => {
     var [jornadas, setJornadas] = useState([]);
     var [expandida, setExpandida] = useState(null);
@@ -7387,6 +7612,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'pagos' && (
                 <div>
+                    <ConfirmacionesPremiosAdmin jornadas={jornadas} />
                     <ConfiguracionBizum />
 
                     {/* Botón de excepción: marcar pago manual de un jugador que
@@ -7816,9 +8042,13 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                         </div>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                             <button onClick={async function() {
+                                await setDoc(doc(db, 'configuracion', 'elOtro'), { plazoAbierto: true, reaperturaPendientes: true, reaperturaEn: serverTimestamp() }, { merge: true });
+                                setMsgAdmin('✅ Plazo reabierto: los jugadores pendientes ya pueden elegir El Otro Equipo.');
+                            }} style={A.btnSuccess}>🔓 Reabrir para pendientes</button>
+                            <button onClick={async function() {
                                 await setDoc(doc(db, 'configuracion', 'elOtro'), { plazoAbierto: true }, { merge: true });
                                 setMsgAdmin('✅ Plazo de El Otro Equipo abierto');
-                            }} style={A.btnSuccess}>Abrir plazo</button>
+                            }} style={A.btnPrimary}>Abrir plazo</button>
                             <button onClick={async function() {
                                 await setDoc(doc(db, 'configuracion', 'elOtro'), { plazoAbierto: false, cerradoEn: serverTimestamp() }, { merge: true });
                                 setMsgAdmin('✅ Plazo de El Otro Equipo cerrado');
