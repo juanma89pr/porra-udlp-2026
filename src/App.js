@@ -4445,7 +4445,6 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
 const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
     var G = styles.colors;
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
-    var [configElOtro, setConfigElOtro] = useState({plazoAbierto:true});
     var [jugadoresAprobados, setJugadoresAprobados] = useState([]);
     var JUGADORES_TODOS = Array.from(new Set(JUGADORES_FUNDADORES.concat(jugadoresAprobados)));
     var JUGADORES_LISTA = JUGADORES_TODOS.filter(function(j) { return jugadoresInactivos.indexOf(j) === -1; });
@@ -4460,13 +4459,6 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
     var [bizumInfo, setBizumInfo] = useState({ nombre: 'Juanma', telefono: '' });
     var [copiado, setCopiado] = useState(false);
     var [heEnviado, setHeEnviado] = useState(false);
-
-    useEffect(function() {
-        var unsub = onSnapshot(doc(db, 'configuracion', 'elOtro'), function(snap) {
-            setConfigElOtro(snap.exists() ? {plazoAbierto: snap.data().plazoAbierto !== false, ...snap.data()} : {plazoAbierto:true});
-        });
-        return function() { unsub(); };
-    }, []);
 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'bizum'), function(snap) {
@@ -8089,6 +8081,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
     var [enviandoPlaza, setEnviandoPlaza] = useState(false);
     var [jugadoresAprobados, setJugadoresAprobados] = useState([]); // nuevos por invitación, en orden real de entrada
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
+    var [configElOtro, setConfigElOtro] = useState({plazoAbierto:true});
 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(snap) {
@@ -8100,6 +8093,13 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
             setJugadoresInactivos(snap.exists() ? (snap.data().nombres || []) : []);
+        });
+        return function() { unsub(); };
+    }, []);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'elOtro'), function(snap) {
+            setConfigElOtro(snap.exists() ? {plazoAbierto: snap.data().plazoAbierto !== false, ...snap.data()} : {plazoAbierto:true});
         });
         return function() { unsub(); };
     }, []);
