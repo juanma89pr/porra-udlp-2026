@@ -2088,15 +2088,20 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             var dataJug = await resJug.json();
                             if (dataJug.response && dataJug.response.length > 0) {
                                 var statsPorApiId = {};
+                                var statsPorNombre = {};
                                 dataJug.response.forEach(function(equipo) {
                                     (equipo.players || []).forEach(function(p) {
-                                        statsPorApiId[p.player.id] = (p.statistics && p.statistics[0]) || {};
+                                        var stats = (p.statistics && p.statistics[0]) || {};
+                                        statsPorApiId[p.player.id] = stats;
+                                        if (p.player && p.player.name) {
+                                            statsPorNombre[normalizarTexto(p.player.name)] = stats;
+                                        }
                                     });
                                 });
                                 var udlpEsLocal = jornada.equipoLocal === 'UD Las Palmas';
                                 var golesEncajadosAhora = udlpEsLocal ? f.goals.away : f.goals.home;
                                 var porteriaACeroAhora = golesEncajadosAhora === 0;
-                                var calc = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACeroAhora);
+                                var calc = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACeroAhora, statsPorNombre);
                                 await setDoc(doc(db, "jornadas", jornada.id), {
                                     liveEstrellas: { puntosPorNombre: calc.puntosPorNombre, actualizadoEn: new Date().toISOString() }
                                 }, { merge: true });
@@ -4837,14 +4842,24 @@ const CalendarioScreen = ({ teamLogos }) => {
 // de las estadísticas de la API para un fixture, en cualquier momento (en vivo
 // o finalizado). Reutilizada tanto por el cálculo definitivo (admin, al cerrar
 // la jornada) como por la estimación en directo durante el partido.
-function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero) {
+function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero, statsPorNombre) {
     var jugadoresSinApiId = [];
     var puntosPorNombre = {};
+    statsPorNombre = statsPorNombre || {};
 
     plantilla.forEach(function(jug) {
-        if (!jug.apiId) { jugadoresSinApiId.push(jug.nombre); puntosPorNombre[jug.nombre] = 0; return; }
-        var st = statsPorApiId[jug.apiId];
-        if (!st) { puntosPorNombre[jug.nombre] = 0; return; } // no convocado / no jugó (todavía)
+        // Primero usamos el ID oficial de API-Football. Como red de seguridad,
+        // si la plantilla todavía no tiene apiId o API-Football ha cambiado
+        // algún identificador, cruzamos por nombre normalizado. Así un jugador
+        // no se queda a 0 estrellas solo porque todavía no se ha sincronizado
+        // su ID en Firebase.
+        var st = jug.apiId ? statsPorApiId[jug.apiId] : null;
+        if (!st) st = statsPorNombre[normalizarTexto(jug.nombre)] || null;
+        if (!st) {
+            if (!jug.apiId) jugadoresSinApiId.push(jug.nombre);
+            puntosPorNombre[jug.nombre] = 0;
+            return;
+        } // no convocado / no jugó (todavía)
 
         var pts = 0;
         var minutos = (st.games && st.games.minutes) || 0;
@@ -4906,9 +4921,14 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
 
     // Mapa apiId -> estadísticas del jugador en este partido concreto
     var statsPorApiId = {};
+    var statsPorNombre = {};
     data.response.forEach(function(equipo) {
         (equipo.players || []).forEach(function(p) {
-            statsPorApiId[p.player.id] = (p.statistics && p.statistics[0]) || {};
+            var stats = (p.statistics && p.statistics[0]) || {};
+            statsPorApiId[p.player.id] = stats;
+            if (p.player && p.player.name) {
+                statsPorNombre[normalizarTexto(p.player.name)] = stats;
+            }
         });
     });
 
@@ -4917,7 +4937,7 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
     var golesEncajados = parseInt(udlpEsLocal ? jornadaInfo.resultadoVisitante : jornadaInfo.resultadoLocal);
     var porteriaACero = golesEncajados === 0;
 
-    var calculo = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero);
+    var calculo = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero, statsPorNombre);
     var puntosPorNombre = calculo.puntosPorNombre;
     var jugadoresSinApiId = calculo.jugadoresSinApiId;
 
@@ -5413,7 +5433,7 @@ const ADMIN_STYLES = {
     btnDanger: { background:'#e63946', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
 };
 
-const BuscadorApiIdsPlantilla = ({ plantilla }) => {
+const BuscadorApiIdsPlantilla = ({ plantilla, onPlantillaActualizada }) => {
     var [resultado, setResultado] = useState(null);
     var [buscando, setBuscando] = useState(false);
     var [errorMsg, setErrorMsg] = useState('');
@@ -5431,6 +5451,83 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
         return (response[0].players || []).map(function(p) {
             return { nombre: p.name, id: p.id, foto: p.photo };
         });
+    };
+
+    var sincronizarTodosLosIds = async function() {
+        if (!API_FOOTBALL_KEY) {
+            setErrorMsg('Falta configurar REACT_APP_API_FOOTBALL_KEY.');
+            return;
+        }
+        setBuscando(true);
+        setErrorMsg('');
+        setResultado(null);
+        try {
+            var apiPlantilla = await consultarPlantillaActual();
+            if (apiPlantilla.length === 0) {
+                throw new Error('API-Football no devolvió la plantilla actual de la UD Las Palmas.');
+            }
+
+            // Cruce robusto: primero nombre completo normalizado; después
+            // apellido + primera letra del nombre. Nunca pisamos un ID válido
+            // si no hay una coincidencia suficientemente clara.
+            var normalizadosApi = apiPlantilla.map(function(a) {
+                return { ...a, _norm: normalizarTexto(a.nombre) };
+            });
+
+            var plantillaNueva = plantilla.map(function(jug) {
+                var norm = normalizarTexto(jug.nombre);
+                var exacto = normalizadosApi.find(function(a) { return a._norm === norm; });
+                var match = exacto || null;
+
+                if (!match) {
+                    var partes = norm.split(' ').filter(Boolean);
+                    var apellido = partes.length ? partes[partes.length - 1] : '';
+                    var inicial = partes.length ? partes[0].charAt(0) : '';
+                    var candidatos = normalizadosApi.filter(function(a) {
+                        var pa = a._norm.split(' ').filter(Boolean);
+                        var ap = pa.length ? pa[pa.length - 1] : '';
+                        var ini = pa.length ? pa[0].charAt(0) : '';
+                        return apellido && ap === apellido && (!inicial || ini === inicial);
+                    });
+                    if (candidatos.length === 1) match = candidatos[0];
+                }
+
+                if (!match) return jug;
+                return { ...jug, apiId: match.id, foto: match.foto || jug.foto };
+            });
+
+            var encontrados = plantillaNueva.filter(function(j) { return !!j.apiId; }).length;
+            var pendientes = plantillaNueva.filter(function(j) { return !j.apiId; }).map(function(j) { return j.nombre; });
+
+            await setDoc(doc(db, 'configuracion', 'plantilla_udlp'), {
+                jugadores: plantillaNueva,
+                fuenteIds: 'API-Football /players/squads',
+                sincronizadoEn: serverTimestamp()
+            }, { merge: true });
+
+            if (onPlantillaActualizada) onPlantillaActualizada(plantillaNueva);
+
+            setResultado(plantillaNueva.map(function(jug) {
+                var api = normalizadosApi.find(function(a) { return a.id === jug.apiId; });
+                return {
+                    nombre: jug.nombre,
+                    apiIdActual: jug.apiId,
+                    fotoActual: jug.apiId ? ('https://media.api-sports.io/football/players/' + jug.apiId + '.png') : null,
+                    apiIdEncontrado: api ? api.id : null,
+                    nombreApi: api ? api.nombre : null,
+                    fotoEncontrada: api ? api.foto : null,
+                    posibleConflicto: false
+                };
+            }));
+
+            setErrorMsg(
+                '✅ Sincronización completada: ' + encontrados + '/' + plantillaNueva.length + ' jugadores con ID. ' +
+                (pendientes.length ? 'Pendientes: ' + pendientes.join(', ') : 'Todos tienen ID.')
+            );
+        } catch(e) {
+            setErrorMsg('Error sincronizando IDs: ' + e.message);
+        }
+        setBuscando(false);
     };
 
     var buscar = async function() {
@@ -5472,9 +5569,14 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
                 Comprueba TODOS los jugadores, no solo los que faltan — así puedes ver con tus propios ojos si alguna foto o ID de sesiones anteriores está mal asignado. Compara "Tienes ahora" con "La API dice" antes de copiar nada.
             </p>
-            <button onClick={buscar} disabled={buscando} style={ADMIN_STYLES.btnPrimary}>
-                {buscando ? 'Consultando API...' : 'Buscar y verificar ahora'}
-            </button>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                <button onClick={buscar} disabled={buscando} style={ADMIN_STYLES.btnPrimary}>
+                    {buscando ? 'Consultando API...' : 'Buscar y verificar ahora'}
+                </button>
+                <button onClick={sincronizarTodosLosIds} disabled={buscando} style={ADMIN_STYLES.btnSuccess}>
+                    {buscando ? 'SINCRONIZANDO...' : '⚡ SINCRONIZAR TODOS LOS IDs'}
+                </button>
+            </div>
             {errorMsg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginTop:10}}>{errorMsg}</p>}
             {resultado && (
                 <div style={{marginTop:14,background:'rgba(0,31,107,0.03)',borderRadius:8,overflow:'hidden'}}>
@@ -6706,7 +6808,7 @@ const NormativaScreen = () => {
     );
 };
 
-const AdminPanelScreen = ({ plantilla, teamLogos }) => {
+const AdminPanelScreen = ({ plantilla, teamLogos, onPlantillaActualizada }) => {
     var [jornadas, setJornadas] = useState([]);
     var [expandida, setExpandida] = useState(null);
     var [sincronizando, setSincronizando] = useState(false);
@@ -7427,7 +7529,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                     {/* Verificación real del enlace plantilla ↔ estadísticas */}
                     <VerificarEstadisticasJugadoresAdmin plantilla={plantilla} />
 
-                    <BuscadorApiIdsPlantilla plantilla={plantilla} />
+                    <BuscadorApiIdsPlantilla plantilla={plantilla} onPlantillaActualizada={onPlantillaActualizada} />
 
                     {/* Verificación visual de fotos */}
                     <VerificarEscudosPrimera teamLogos={teamLogos} />
@@ -9158,7 +9260,7 @@ function App() {
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} />;
             case 'pagos':       return <PagosScreen currentUser={currentUser} contextoPago={contextoPago} onContextoPagoUsado={function(){setContextoPago(null);}} />;
             case 'perfil':      return <PerfilScreen currentUser={currentUser} tema={tema} cambiarTema={cambiarTema} teamLogos={teamLogos} />;
-            case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantillaConFotos} teamLogos={teamLogos} /> : null;
+            case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantillaConFotos} teamLogos={teamLogos} onPlantillaActualizada={setPlantilla} /> : null;
             default:            return null;
         }
     };
