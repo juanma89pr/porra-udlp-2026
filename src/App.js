@@ -5070,10 +5070,16 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
             clasifSnap.forEach(d => clasifActual[d.id] = d.data());
 
             // --- PAGO POR JORNADA: quién ha pagado ESTA jornada en concreto.
-            // Si nadie tiene un pago de jornada (porque todavía no se ha
-            // activado ese sistema, como pasa al inicio de temporada), se
-            // considera que TODOS han pagado — así no se bloquean los puntos
-            // de toda la porra entera por un mecanismo que aún no se usa.
+            // Cada jugador debe pagar por Bizum cada jornada para que su
+            // apuesta cuente. El flujo normal es: jugador marca "ya pagué" →
+            // admin confirma. Pero si alguien pagó pero no lo marcó en la app,
+            // el admin puede crear un pago manual desde la herramienta de
+            // excepción — ese pago tiene que contar igual que uno normal.
+            //
+            // Comprobación: cualquier pago de tipo jornada_normal o jornada_vip
+            // que esté en estado 'completado' (o 'pendiente_confirmacion' si el
+            // admin aún no lo confirmó pero el jugador sí lo marcó) para esta
+            // jornada concreta. También cuenta el pago manual (pagoBy: 'admin_manual').
             const jornadaCodigoActual = 'J' + jornada.numeroJornada;
             const pagosSnap = await getDocs(collection(db, "pagos"));
             var jugadoresQueHanPagadoEstaJornada = {};
@@ -5083,13 +5089,19 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 if ((pg.tipo === 'jornada_normal' || pg.tipo === 'jornada_vip') &&
                     pg.estado !== 'cancelado' && pg.estado !== 'rechazado' && pg.estado !== 'fallido') {
                     hayAlgunPagoDeJornada = true;
-                    if (pg.jornada === jornadaCodigoActual) {
+                    // Coincidencia de jornada flexible: acepta 'J1', 'j1',
+                    // 'Jornada 1', etc. — antes era estricta y si el admin
+                    // escribía 'j1' en vez de 'J1' no lo encontraba nunca.
+                    var jornadaPago = (pg.jornada || '').toString().toUpperCase().replace(/[^0-9]/g, '');
+                    var jornadaEsperada = jornadaCodigoActual.toUpperCase().replace(/[^0-9]/g, '');
+                    if (jornadaPago === jornadaEsperada) {
                         jugadoresQueHanPagadoEstaJornada[pg.jugador] = true;
                     }
                 }
             });
-            // Si nadie ha pagado ninguna jornada todavía (el sistema no está activo),
-            // marcar a todos como pagados para que los puntos se repartan normalmente.
+            // Si no hay NINGÚN pago de jornada en todo el sistema (el mecanismo
+            // aún no se ha activado), se considera que todos han pagado para no
+            // bloquear toda la porra por un sistema que no se está usando.
             if (!hayAlgunPagoDeJornada) {
                 pSnap.forEach(function(d) { jugadoresQueHanPagadoEstaJornada[d.id] = true; });
             }
@@ -7018,6 +7030,46 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                 Crear pago
                             </button>
                         </div>
+                    </div>
+
+                    {/* Eliminar pagos duplicados */}
+                    <div style={ADMIN_STYLES.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                            🧹 Limpiar pagos duplicados
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            Busca y elimina pagos repetidos (mismo jugador, mismo tipo, misma jornada). Deja solo el más reciente de cada grupo.
+                        </p>
+                        <button onClick={async function() {
+                            try {
+                                var snap = await getDocs(collection(db, 'pagos'));
+                                var porClave = {};
+                                snap.forEach(function(d) {
+                                    var pg = d.data();
+                                    var clave = (pg.jugador || '') + '|' + (pg.tipo || '') + '|' + (pg.jornada || '');
+                                    if (!porClave[clave]) porClave[clave] = [];
+                                    porClave[clave].push({ id: d.id, data: pg });
+                                });
+                                var aBorrar = [];
+                                Object.values(porClave).forEach(function(grupo) {
+                                    if (grupo.length <= 1) return;
+                                    grupo.sort(function(a,b) {
+                                        var ta = a.data.creadoEn && a.data.creadoEn.toMillis ? a.data.creadoEn.toMillis() : 0;
+                                        var tb = b.data.creadoEn && b.data.creadoEn.toMillis ? b.data.creadoEn.toMillis() : 0;
+                                        return tb - ta;
+                                    });
+                                    for (var i = 1; i < grupo.length; i++) aBorrar.push(grupo[i].id);
+                                });
+                                if (aBorrar.length === 0) { alert('No hay pagos duplicados.'); return; }
+                                if (!window.confirm('Se van a eliminar ' + aBorrar.length + ' pagos duplicados. ¿Continuar?')) return;
+                                var batch = writeBatch(db);
+                                aBorrar.forEach(function(id) { batch.delete(doc(db, 'pagos', id)); });
+                                await batch.commit();
+                                alert('✅ ' + aBorrar.length + ' pagos duplicados eliminados.');
+                            } catch(e) { alert('❌ Error: ' + e.message); }
+                        }} style={ADMIN_STYLES.btnPrimary}>
+                            🧹 Buscar y eliminar duplicados
+                        </button>
                     </div>
 
                     <ResetearClasificacionAdmin />
