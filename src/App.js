@@ -22,6 +22,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const API_TEAM_ID_UDLP = 534;
 const auth = getAuth(app);
 const messaging = getMessaging(app);
 
@@ -307,11 +308,11 @@ const PUNTOS_ESTRELLAS = {
 // Plantilla real UD Las Palmas 26/27 — pretemporada Marbella (22/07/2026)
 // Fotos: se cargan desde API-Football o ESPN CDN como fallback
 // Team ID en API-Football: 534 (UD Las Palmas) — confirmado en directo por
+// Team ID en API-Football: 534 (UD Las Palmas) — confirmado en directo por
 // el admin desde el Live Tester del panel de API-Football (antes tenía un
 // 275 mal puesto desde el principio, que era otro equipo distinto; por eso
 // nunca cruzaba ningún nombre de jugador con la plantilla real).
-const API_TEAM_ID_UDLP = 534;
-
+// NOTA: movido aquí arriba porque funciones anteriores ya lo usan.
 // Lista ÚNICA de jugadores fundadores — antes había 4 copias repartidas
 // por el código (Admin, El Otro, La Jornada, Login), y si se añadía o
 // quitaba alguien, había que acordarse de tocar las 4. Ahora es una sola
@@ -2336,7 +2337,7 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
                 if(activo){setImporte(mi);setConfirmado(!cs.empty&&!!cs.docs[0].data().recibido);setCargando(false);}
             }catch(e){if(activo)setCargando(false);}
         })(); return function(){activo=false;};
-    },[user,jornada.id,jornada.resultadoLocal,jornada.resultadoVisitante,jornada.bote,jornada.esVip]);
+    },[user,jornada?.id,jornada?.resultadoLocal,jornada?.resultadoVisitante,jornada?.bote,jornada?.esVip]);
     if(cargando) return null;
     return <div style={{background:importe>0?'rgba(255,215,0,.12)':'rgba(0,31,107,.04)',border:'1px solid '+(importe>0?'rgba(212,175,55,.35)':'rgba(0,31,107,.08)'),borderRadius:16,padding:16,marginBottom:16}}>
         <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:5,fontWeight:700}}>{importe>0?'🏆 PREMIO DE LA JORNADA':'📊 JORNADA RESUELTA'}</p>
@@ -5918,7 +5919,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     const [isUnlocked, setIsUnlocked] = useState(jornada.estado !== 'Finalizada');
     const [liveData, setLiveData] = useState({ golesLocal: 0, golesVisitante: 0, primerGoleador: '', isLive: false });
 
-    useEffect(() => { if (jornada.liveData) { setLiveData({ ...jornada.liveData }); } }, [jornada.liveData]);
+    useEffect(() => { if (jornada && jornada.liveData) { setLiveData({ ...jornada.liveData }); } }, [jornada]);
 
     // --- NUEVO: FUNCIÓN PARA DESHACER EL CÁLCULO DE PUNTOS DE LA JORNADA ---
     const handleResetPuntos = async () => {
