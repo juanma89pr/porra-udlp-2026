@@ -2172,7 +2172,7 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
                     {ganador && (
                         <div style={{background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.22)',borderRadius:14,padding:13,marginBottom:14}}>
                             <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#0f8a61',letterSpacing:1,marginBottom:6}}>💸 CONFIRMA TU PREMIO</p>
-                            <button disabled={cobroConfirmado} onClick={async function(){try{await setDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user),{jornadaId:jornada.id,usuario:user,importe:Number(premio),recibido:true,recibidoEn:serverTimestamp()},{merge:true});setCobroConfirmado(true);}catch(e){alert('No se pudo registrar el cobro: '+e.message);}}} style={{width:'100%',border:'none',borderRadius:10,padding:'10px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:cobroConfirmado?'#10b981':'#fff',color:cobroConfirmado?'#fff':'#001F6B',cursor:cobroConfirmado?'default':'pointer',border:cobroConfirmado?'none':'1px solid rgba(0,31,107,.12)'}}>{cobroConfirmado?'✅ INGRESO CONFIRMADO':'HE RECIBIDO EL INGRESO'}</button>
+                            <button disabled={cobroConfirmado} onClick={async function(){try{await setDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user),{jornadaId:jornada.id,usuario:user,importe:Number(premio),recibido:true,recibidoEn:serverTimestamp()},{merge:true});setCobroConfirmado(true);}catch(e){alert('No se pudo registrar el cobro: '+e.message);}}} style={{width:'100%',borderRadius:10,padding:'10px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:cobroConfirmado?'#10b981':'#fff',color:cobroConfirmado?'#fff':'#001F6B',cursor:cobroConfirmado?'default':'pointer',border:cobroConfirmado?'none':'1px solid rgba(0,31,107,.12)'}}>{cobroConfirmado?'✅ INGRESO CONFIRMADO':'HE RECIBIDO EL INGRESO'}</button>
                         </div>
                     )}
 
@@ -3632,22 +3632,24 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     var [proximaUDLP, setProximaUDLP] = useState(null);
     var [ultimosUDLP, setUltimosUDLP] = useState([]);
     var [detalleFixtureActual, setDetalleFixtureActual] = useState(null);
+    var fechaJornadaLJ = jornada && jornada.fecha ? jornada.fecha : new Date().toISOString();
+    var fixtureIdLJ = jornada && jornada.fixtureId ? jornada.fixtureId : null;
 
     useEffect(function() {
-        var base = jornada && jornada.fecha ? jornada.fecha : new Date().toISOString();
+        var base = fechaJornadaLJ;
         buscarJornadaCompletaPrimera(base, 8).then(function(r){setPartidosPrimera(r||[]);}).catch(function(){});
         buscarProximoPartidoUDLP().then(setProximaUDLP).catch(function(){});
         buscarUltimosPartidosUDLP(3).then(setUltimosUDLP).catch(function(){});
-    }, [jornada && jornada.fecha]);
+    }, [fechaJornadaLJ]);
 
     useEffect(function(){
         setDetalleFixtureActual(null);
-        if(!jornada || !jornada.fixtureId || !API_FOOTBALL_KEY) return;
-        fetch('https://v3.football.api-sports.io/fixtures?id='+jornada.fixtureId,{headers:{'x-apisports-key':API_FOOTBALL_KEY}})
+        if(!fixtureIdLJ || !API_FOOTBALL_KEY) return;
+        fetch('https://v3.football.api-sports.io/fixtures?id='+fixtureIdLJ,{headers:{'x-apisports-key':API_FOOTBALL_KEY}})
             .then(function(r){return r.json();})
             .then(function(d){if(d.response&&d.response[0])setDetalleFixtureActual(d.response[0]);})
             .catch(function(){});
-    }, [jornada && jornada.fixtureId]);
+    }, [fixtureIdLJ]);
     var [clasifEstrellas, setClasifEstrellas] = useState([]);
     var [seleccionesEstrellasJornada, setSeleccionesEstrellasJornada] = useState([]); // para la comparativa en vivo
     var [loading, setLoading] = useState(true);
