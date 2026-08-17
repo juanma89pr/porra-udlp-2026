@@ -5634,20 +5634,14 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     // no estaba lista al finalizar, o para corregir tras un ajuste).
     const handleRecalcularEstrellas = async () => {
         if (!jornada.fixtureId) { alert('Esta jornada no tiene fixtureId guardado — sincroniza primero con la API.'); return; }
-        if (!window.confirm('Se volverán a leer las estadísticas de API-Football y se recalcularán las Estrellas de esta jornada.
-
-El sistema corregirá SOLO las diferencias respecto al cálculo anterior: no duplicará ni las Estrellas acumuladas ni los puntos de jornada.
-
-¿Continuar?')) return;
+        if (!window.confirm('Se volverán a leer las estadísticas de API-Football y se recalcularán las Estrellas de esta jornada.\n\nEl sistema corregirá SOLO las diferencias respecto al cálculo anterior: no duplicará ni las Estrellas acumuladas ni los puntos de jornada.\n\n¿Continuar?')) return;
         try {
             var resultado = await calcularEstrellasJornada(jornada.id, jornada.fixtureId, plantilla, {
                 equipoLocal: jornada.equipoLocal, equipoVisitante: jornada.equipoVisitante,
                 resultadoLocal: jornada.resultadoLocal, resultadoVisitante: jornada.resultadoVisitante
             });
             var sinIds = resultado.jugadoresSinApiId || [];
-            alert('✅ Estrellas recalculadas y protegidas contra duplicados.
-
-' + (sinIds.length ? 'Sin apiId: ' + sinIds.join(', ') : 'Todos los jugadores de la plantilla con ID están preparados.') );
+            alert('✅ Estrellas recalculadas y protegidas contra duplicados.\n\n' + (sinIds.length ? 'Sin apiId: ' + sinIds.join(', ') : 'Todos los jugadores de la plantilla con ID están preparados.') );
         } catch(e) {
             alert('❌ Error: ' + e.message);
         }
@@ -5669,14 +5663,7 @@ El sistema corregirá SOLO las diferencias respecto al cálculo anterior: no dup
                         if (!window.confirm('¿Comprobar ahora los partidos de Primera pendientes de El Otro y aplicar los multiplicadores que ya hayan terminado?')) return;
                         try {
                             var r = await resolverElOtroPendienteJornada(jornada);
-                            alert('🛡️ El Otro actualizado.
-
-Aplicados: ' + r.aplicados + '
-Pendientes: ' + r.pendientes + (r.pendientes ? '
-
-Todavía quedan partidos por terminar.' : '
-
-Ya no quedan multiplicadores pendientes.'));
+                            alert('🛡️ El Otro actualizado.\n\nAplicados: ' + r.aplicados + '\nPendientes: ' + r.pendientes + (r.pendientes ? '\n\nTodavía quedan partidos por terminar.' : '\n\nYa no quedan multiplicadores pendientes.'));
                         } catch(e) { alert('❌ Error resolviendo El Otro: ' + e.message); }
                     }} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: '#0091FF', color: '#0074cc'}}>🛡️ RESOLVER EL OTRO</button>
                     <button onClick={handleResetPuntos} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: styles.colors.danger, color: styles.colors.danger}}>RESETEAR PUNTOS</button>
