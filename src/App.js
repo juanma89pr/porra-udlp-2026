@@ -89,6 +89,42 @@ const LEAGUE_ID_PRIMERA = 140;
 // API, y esos jugadores se quedaban sin encontrarse por una tontería de
 // tipografía. Se usa en todos los sitios donde cruzamos nuestra plantilla
 // (o nombres de equipo) contra lo que devuelve la API.
+function toJsDate(value) {
+    if (!value) return null;
+    if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+    if (value && typeof value.toDate === 'function') {
+        try {
+            var d = value.toDate();
+            return d instanceof Date && !isNaN(d.getTime()) ? d : null;
+        } catch (e) {}
+    }
+    if (value && typeof value.seconds === 'number') {
+        var ms = value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1000000);
+        var d2 = new Date(ms);
+        return isNaN(d2.getTime()) ? null : d2;
+    }
+    var d3 = new Date(value);
+    return isNaN(d3.getTime()) ? null : d3;
+}
+
+function fechaAString(value) {
+    var d = toJsDate(value);
+    return d ? d.toISOString() : '';
+}
+
+function formatearFechaJornada(value) {
+    var d = toJsDate(value);
+    if (!d) return 'Fecha por confirmar';
+    return d.toLocaleString('es-ES', {
+        weekday:'long',
+        day:'numeric',
+        month:'long',
+        hour:'2-digit',
+        minute:'2-digit',
+        timeZone:'Atlantic/Canary'
+    });
+}
+
 function normalizarTexto(s) {
     return (s || '').toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quita acentos (á->a, ñ->n, etc.)
@@ -2116,7 +2152,7 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
                     }).slice(0,5);
                 if (activo) setTopEstrellas(est);
 
-                var partidos = await buscarJornadaCompletaPrimera(jornada.fecha || new Date().toISOString(), 7);
+                var partidos = await buscarJornadaCompletaPrimera(fechaAString(jornada.fecha) || new Date().toISOString(), 7);
                 if (activo) setPartidosPrimera(partidos || []);
 
                 if (p && p.elOtroActivado && p.elOtroFixtureId && p.elOtroEquipoUsado && API_FOOTBALL_KEY) {
@@ -2296,7 +2332,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             try {
                 // season=2026 confirmado directamente en el panel de API-Football
                 // para la Segunda División 26/27 — ya no hace falta probar dos.
-                var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + jornada.fecha + '&team=' + API_TEAM_ID_UDLP;
+                var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + encodeURIComponent(fechaAString(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
                 var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
                 var data = await res.json();
                 if (data.response && data.response.length > 0) {
@@ -2440,7 +2476,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     useEffect(function() {
         if (!miElOtro || !miElOtro.equipo || !jornada) { setPartidoOtro(null); return; }
         setCargandoPartidoOtro(true);
-        buscarPartidoPrimera(miElOtro.equipo, jornada.fecha).then(function(p) {
+        buscarPartidoPrimera(miElOtro.equipo, fechaAString(jornada.fecha)).then(function(p) {
             setPartidoOtro(p);
             setCargandoPartidoOtro(false);
         }).catch(function() { setCargandoPartidoOtro(false); });
@@ -2607,7 +2643,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                         onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoVisitante||'?').substring(0,3));}} />
                 </div>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.35)'}}>
-                    {jornada.estadio} · {jornada.fecha}
+                    {jornada.estadio} · {formatearFechaJornada(jornada.fecha)}
                 </p>
                 {timeLeft && timeLeft !== 'CERRADO' && (
                     <div style={{marginTop:12,display:'flex',alignItems:'center',gap:8}}>
@@ -3632,7 +3668,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     var [proximaUDLP, setProximaUDLP] = useState(null);
     var [ultimosUDLP, setUltimosUDLP] = useState([]);
     var [detalleFixtureActual, setDetalleFixtureActual] = useState(null);
-    var fechaJornadaLJ = jornada && jornada.fecha ? jornada.fecha : new Date().toISOString();
+    var fechaJornadaLJ = jornada && jornada.fecha ? fechaAString(jornada.fecha) : new Date().toISOString();
     var fixtureIdLJ = jornada && jornada.fixtureId ? jornada.fixtureId : null;
 
     useEffect(function() {
@@ -3755,7 +3791,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.42)',marginBottom:16}}>
                     {(detalleFixtureActual && detalleFixtureActual.fixture && detalleFixtureActual.fixture.date)
                         ? new Date(detalleFixtureActual.fixture.date).toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})
-                        : (jornada.fechaPartido || jornada.fecha || '')}
+                        : formatearFechaJornada(jornada.fechaPartido || jornada.fecha)}
                     {jornada.estadio ? ' · '+jornada.estadio : ''}
                 </p>
                 {/* Marcador con escudos */}
@@ -5163,7 +5199,7 @@ const CalendarioScreen = ({ teamLogos }) => {
                             <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,
                                 color: esVivo ? 'rgba(255,255,255,0.35)' : 'rgba(0,31,107,0.4)',
                                 marginBottom: tieneResultado ? 8 : 0}}>
-                                {j.fecha} · {j.estadio}
+                                {formatearFechaJornada(j.fecha)} · {j.estadio}
                             </p>
                             {tieneResultado && (
                                 <div style={{display:'flex', alignItems:'center', gap:12, marginTop:6}}>
@@ -5408,7 +5444,7 @@ async function cerrarJornadaDefinitivamenteAdmin(jornadaId) {
     if(!jSnap.exists()) throw new Error('No se encuentra la jornada.');
     var jornada={id:jSnap.id,...jSnap.data()};
     if(jornada.cierreDefinitivo) return {ok:true,yaCerrada:true};
-    var estadoPrimera=await comprobarCierrePrimeraJornada(jornada.fecha);
+    var estadoPrimera=await comprobarCierrePrimeraJornada(fechaAString(jornada.fecha));
     if(!estadoPrimera.ok) return {ok:false,pendientes:estadoPrimera.pendientes};
 
     var pSnap=await getDocs(collection(db,'pronosticos',jornadaId,'jugadores'));
@@ -5878,7 +5914,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                         if (!jornada.fecha) { alert('Pon primero la fecha del partido en el campo de arriba.'); return; }
                         try {
                             var fmt2 = function(d) { return d.toISOString().slice(0,10); };
-                            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + fmt2(new Date(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
+                            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + fmt2(toJsDate(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
                             var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
                             var data = await res.json();
                             if (data.response && data.response.length > 0) {
@@ -7416,7 +7452,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
         setSincronizando(true); setMsgSync('Consultando API-Football...');
         try {
             // season=2026 confirmado directamente en el panel de API-Football.
-            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + jornada.fecha + '&team=' + API_TEAM_ID_UDLP;
+            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + encodeURIComponent(fechaAString(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
             var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
             var data = await res.json();
             if (data.response && data.response.length > 0) {
