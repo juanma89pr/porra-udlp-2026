@@ -4930,14 +4930,22 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
         var userId = docSnap.id;
         var sel = docSnap.data().jugadores || [];
         var total = 0;
+        var desglosePorJugador = {};
         var detalle = sel.map(function(j) {
             var pts = puntosPorNombre[j.nombre] || 0;
             total += pts;
+            desglosePorJugador[j.nombre] = pts;
             return { nombre: j.nombre, puntos: pts };
         });
 
         batch.set(doc(db, "clasificacion_estrellas", userId), {
             puntosEstrellas: increment(total)
+        }, { merge: true });
+
+        // Guardar el desglose en la propia selección, para que el historial
+        // pueda mostrar qué puntos dio cada estrella sin consultas extra.
+        batch.set(doc(db, "estrellas_seleccion", jornadaId, "jugadores", userId), {
+            puntosEstrellas: total, desglosePorJugador: desglosePorJugador
         }, { merge: true });
 
         batch.set(doc(db, "estrellas_resultados", jornadaId, "jugadores", userId), {
@@ -8099,6 +8107,10 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     const [yaGuardado, setYaGuardado] = useState(false);
     const [loading, setLoading] = useState(true);
     const [posicionFiltro, setPosicionFiltro] = useState('Todos');
+    // Historial de jornadas finalizadas con selecciones de estrellas
+    const [jornadasFinalizadas, setJornadasFinalizadas] = useState([]);
+    const [historialEstrellas, setHistorialEstrellas] = useState({}); // { jornadaId: { userId: { jugadores, puntosEstrellas } } }
+    const [jornadaHistorialAbierta, setJornadaHistorialAbierta] = useState(null);
 
     useEffect(() => {
         if (!currentUser) return;
@@ -8109,19 +8121,34 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                 setLoading(false);
             }
         );
-        // Clasificación de estrellas
         const unsubClasif = onSnapshot(collection(db, "clasificacion_estrellas"), (snap) => {
             const datos = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.puntosEstrellas||0)-(a.puntosEstrellas||0));
             setClasificacionEstrellas(datos);
-            // Beneficio del jugador actual según su posición
             const miPos = datos.findIndex(d => d.id === currentUser);
             if (miPos === 0) setMiBeneficio('ver_apuestas');
             else if (miPos === 1) setMiBeneficio('bloquear');
             else if (miPos === 2) setMiBeneficio('sexta_estrella');
             else setMiBeneficio(null);
         });
-        return () => { unsubJornada(); unsubClasif(); };
+        // Cargar jornadas finalizadas para el historial
+        const unsubFinalizadas = onSnapshot(
+            query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc")),
+            (snap) => {
+                setJornadasFinalizadas(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            }
+        );
+        return () => { unsubJornada(); unsubClasif(); unsubFinalizadas(); };
     }, [currentUser]);
+
+    // Cargar selecciones de estrellas de una jornada específica al abrirla
+    useEffect(() => {
+        if (!jornadaHistorialAbierta) return;
+        getDocs(collection(db, "estrellas_seleccion", jornadaHistorialAbierta, "jugadores")).then(function(snap) {
+            var datos = {};
+            snap.forEach(function(d) { datos[d.id] = d.data(); });
+            setHistorialEstrellas(function(prev) { var c = { ...prev }; c[jornadaHistorialAbierta] = datos; return c; });
+        });
+    }, [jornadaHistorialAbierta, historialEstrellas]);
 
     useEffect(() => {
         if (!jornadaActual || !currentUser) return;
@@ -8335,19 +8362,95 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                 </>
             )}
 
-            {/* Clasificación de estrellas */}
+            {/* Historial de Estrellas — jornada por jornada, qué eligió
+                cada jugador y cuántos puntos sumó cada estrella */}
+            {jornadasFinalizadas.length > 0 && (
+                <div style={{marginTop:32}}>
+                    <h3 style={{...styles.title,fontSize:'1.1rem',marginBottom:16}}>HISTORIAL POR JORNADA</h3>
+                    {jornadasFinalizadas.map(function(jf) {
+                        var abierta = jornadaHistorialAbierta === jf.id;
+                        var seleccionesJornada = historialEstrellas[jf.id] || {};
+                        return (
+                            <div key={jf.id} style={{marginBottom:10}}>
+                                <button onClick={function(){setJornadaHistorialAbierta(abierta ? null : jf.id);}}
+                                    style={{width:'100%',padding:'10px 14px',borderRadius:12,border:'1px solid rgba(0,31,107,0.1)',
+                                        background: abierta ? 'rgba(0,31,107,0.06)' : '#fff',
+                                        fontFamily:"'Teko',sans-serif",fontSize:14,color:G.deepBlue,cursor:'pointer',
+                                        display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                                    <span>⭐ Jornada {jf.numeroJornada}</span>
+                                    <span style={{fontSize:12,opacity:0.5}}>{abierta ? '▲' : '▼'}</span>
+                                </button>
+                                {abierta && (
+                                    <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.08)',borderRadius:'0 0 12px 12px',padding:12}}>
+                                        {Object.keys(seleccionesJornada).length === 0 ? (
+                                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.4)',textAlign:'center'}}>Cargando selecciones...</p>
+                                        ) : (
+                                            Object.keys(seleccionesJornada).sort(function(a,b) {
+                                                return (seleccionesJornada[b].puntosEstrellas||0) - (seleccionesJornada[a].puntosEstrellas||0);
+                                            }).map(function(userId, idx) {
+                                                var sel = seleccionesJornada[userId];
+                                                var perf = userProfiles[userId] || {};
+                                                var jugadoresElegidos = sel.jugadores || [];
+                                                var ptsTotal = sel.puntosEstrellas || 0;
+                                                return (
+                                                    <div key={userId} style={{padding:'8px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                                                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color: idx < 3 ? '#FFD700' : 'rgba(0,31,107,0.3)',width:18,fontWeight:700}}>{idx+1}</span>
+                                                            <IconoPerfil perfil={perf} size={24} />
+                                                            <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,color:G.deepBlue}}>{nombreVisible(userId, perf)}</span>
+                                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: ptsTotal > 0 ? G.deepBlue : 'rgba(0,31,107,0.25)'}}>{ptsTotal}⭐</span>
+                                                        </div>
+                                                        <div style={{display:'flex',gap:4,flexWrap:'wrap',marginLeft:26}}>
+                                                            {jugadoresElegidos.map(function(j) {
+                                                                var ptosJugador = (sel.desglosePorJugador && sel.desglosePorJugador[j.nombre]) || 0;
+                                                                return (
+                                                                    <span key={j.nombre} style={{fontFamily:"'Inter',sans-serif",fontSize:10,
+                                                                        background: ptosJugador > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(0,31,107,0.04)',
+                                                                        color: ptosJugador > 0 ? '#10b981' : 'rgba(0,31,107,0.5)',
+                                                                        padding:'2px 8px',borderRadius:8}}>
+                                                                        {j.nombre} {ptosJugador > 0 ? '+' + ptosJugador : '0'}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Clasificación global de estrellas — la liga paralela */}
             <div style={{marginTop:32}}>
-                <h3 style={{...styles.title,fontSize:'1.1rem',marginBottom:16}}>CLASIFICACIÓN ESTRELLAS</h3>
-                {clasificacionEstrellas.map((j,i) => (
-                    <div key={j.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,31,107,0.06)'}}>
-                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.2rem',color:i<3?G.golden:G.deepBlue,width:24,textAlign:'center'}}>{i+1}</span>
-                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:600,color:G.deepBlue}}>{j.id}</span>
-                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.1rem',color:G.deepBlue}}>{j.puntosEstrellas||0} pts</span>
-                        {i===0&&<span style={{fontSize:16}}>👁</span>}
-                        {i===1&&<span style={{fontSize:16}}>🔒</span>}
-                        {i===2&&<span style={{fontSize:16}}>⭐</span>}
+                <h3 style={{...styles.title,fontSize:'1.1rem',marginBottom:16}}>🏆 LIGA DE ESTRELLAS</h3>
+                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,overflow:'hidden'}}>
+                {clasificacionEstrellas.map((j,i) => {
+                    var perf = userProfiles[j.id] || {};
+                    return (
+                    <div key={j.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
+                        borderBottom:'1px solid rgba(0,31,107,0.06)',
+                        background: j.id === currentUser ? 'rgba(255,215,0,0.08)' : i < 3 ? 'rgba(0,31,107,0.02)' : 'transparent'}}>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,width:24,textAlign:'center',
+                            color: i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : 'rgba(0,31,107,0.3)'}}>
+                            {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)}
+                        </span>
+                        <IconoPerfil perfil={perf} size={28} />
+                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight: j.id === currentUser ? 700 : 500,color:G.deepBlue}}>
+                            {nombreVisible(j.id, perf)}
+                        </span>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: i === 0 ? '#FFD700' : G.deepBlue}}>{j.puntosEstrellas||0}⭐</span>
+                        {i===0&&<span style={{fontSize:14}}>👁</span>}
+                        {i===1&&<span style={{fontSize:14}}>🔒</span>}
+                        {i===2&&<span style={{fontSize:14}}>⭐</span>}
                     </div>
-                ))}
+                    );
+                })}
+                </div>
             </div>
         </div>
     );
