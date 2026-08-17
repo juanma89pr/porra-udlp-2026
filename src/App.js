@@ -2716,6 +2716,34 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         );
     }
 
+    // Blindaje entre jornadas: Mi Jornada también puede quedar temporalmente sin
+    // jornada activa cuando ya han pasado las 48h de la anterior. No intentamos
+    // leer jornada.esVip/jornada.id en ese estado; mostramos histórico y próximo partido.
+    if (!jornada) {
+        return (
+            <div style={{paddingBottom:40}}>
+                <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:14,fontWeight:700}}>MI JORNADA</h2>
+                <div style={{background:'#001F6B',borderRadius:18,padding:20,marginBottom:16}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:3,color:'rgba(255,255,255,.45)',marginBottom:6}}>PRÓXIMO PARTIDO</p>
+                    {proximaUDLPMJ ? (function(){ var fp=new Date(proximaUDLPMJ.fecha); return <>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#FFD700',margin:0}}>{proximaUDLPMJ.local} — {proximaUDLPMJ.visitante}</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.68)',marginTop:7}}>🕐 {fp.toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}</p>
+                        {proximaUDLPMJ.estadio && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.4)',marginTop:4}}>🏟️ {proximaUDLPMJ.estadio}</p>}
+                    </>; })() : <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.65)',margin:0}}>Buscando el próximo partido de la UDLP…</p>}
+                </div>
+                {ultimosUDLPMJ.length>0 && <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,overflow:'hidden',marginBottom:14}}>
+                    <div style={{padding:'11px 14px',background:'rgba(0,31,107,.04)'}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:G.deepBlue,margin:0}}>RESULTADOS RECIENTES</p></div>
+                    {ultimosUDLPMJ.map(function(p){return <div key={p.fixtureId} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 14px',borderBottom:'1px solid rgba(0,31,107,.05)'}}>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,.4)',minWidth:70}}>{new Date(p.fecha).toLocaleDateString('es-ES',{day:'numeric',month:'short',timeZone:'Atlantic/Canary'})}</span>
+                        <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:13,color:G.deepBlue}}>{p.local} — {p.visitante}</span>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color:G.deepBlue}}>{p.golesLocal}—{p.golesVisitante}</span>
+                    </div>;})}
+                </div>}
+                {renderHistorialMiJornada()}
+            </div>
+        );
+    }
+
     var cerrado = jornada && jornada.estado !== 'Abierta';
     var finalizada = jornada && jornada.estado === 'Finalizada';
     var mult = miElOtro ? getMultiplicador(miElOtro.activaciones || 0) : 2;
@@ -3966,6 +3994,31 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     }, []);
 
     if (loading) return <LoadingSkeleton />;
+
+    // Blindaje: durante la ventana entre jornadas puede no existir una jornada
+    // activa ni una finalizada dentro de las últimas 48h. En ese caso NO se
+    // puede continuar renderizando usando jornada.estado porque jornada es null.
+    // Mostramos igualmente la información útil de la siguiente jornada/histórico.
+    if (!jornada && !proximaUDLP) {
+        return (
+            <div style={{paddingBottom:40}}>
+                <h2 style={styles.title}>LA JORNADA</h2>
+                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:18,padding:22,textAlign:'center',marginBottom:16}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:2,color:'#001F6B',marginBottom:6}}>JORNADA EN PREPARACIÓN</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,.55)',lineHeight:1.6,margin:0}}>Estamos actualizando la información de la próxima jornada. Vuelve a entrar en unos minutos.</p>
+                </div>
+                {ultimosUDLP.length>0 && <div style={{background:'#fff',borderRadius:16,border:'1px solid rgba(0,31,107,.08)',overflow:'hidden'}}>
+                    <div style={{padding:'12px 16px',background:'rgba(0,31,107,.04)'}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.5}}>HISTÓRICO RECIENTE</p></div>
+                    {ultimosUDLP.map(function(p){return <div key={p.fixtureId} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 16px',borderBottom:'1px solid rgba(0,31,107,.05)'}}>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.4)',minWidth:84}}>{new Date(p.fecha).toLocaleDateString('es-ES',{day:'numeric',month:'short',timeZone:'Atlantic/Canary'})}</span>
+                        <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:14,color:G.deepBlue}}>{p.local} — {p.visitante}</span>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,color:G.deepBlue}}>{p.golesLocal}—{p.golesVisitante}</span>
+                    </div>;})}
+                </div>}
+            </div>
+        );
+    }
+
     if ((!jornada || jornada.estado === 'Finalizada') && proximaUDLP) {
         var fp=new Date(proximaUDLP.fecha);
         return <div style={{paddingBottom:40}}>
