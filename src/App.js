@@ -2212,7 +2212,7 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
             }
         })();
         return function(){ activo = false; };
-    }, [user, jornada]);
+    }, [user, jornada, onCerrar]);
 
     var cerrar = async function() {
         try { await setDoc(doc(db, 'cierres_jornada', jornada.id, 'usuarios', user), { vistoEn: serverTimestamp() }, { merge:true }); } catch(e) {}
@@ -2395,8 +2395,12 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                         if (exactoH) {
                             var allH = await getDocs(collection(db,'pronosticos',jh.id,'jugadores'));
                             var validH = allH.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(x){return !x.noContabilizado;});
-                            var exH = validH.filter(function(x){return parseInt(x.golesLocal) === parseInt(jh.resultadoLocal) && parseInt(x.golesVisitante) === parseInt(jh.resultadoVisitante);});
-                            var boteH = Number(jh.bote || 0) + validH.length * (jh.esVip ? APUESTA_VIP : APUESTA_NORMAL);
+                            var rLocalH = jh.resultadoLocal;
+                            var rVisitanteH = jh.resultadoVisitante;
+                            var exH = validH.filter(function(x){return parseInt(x.golesLocal) === parseInt(rLocalH) && parseInt(x.golesVisitante) === parseInt(rVisitanteH);});
+                            var boteBaseH = Number(jh.bote || 0);
+                            var costeH = jh.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+                            var boteH = boteBaseH + validH.length * costeH;
                             premioHistorico = exH.length ? Number((boteH/exH.length).toFixed(2)) : 0;
                         }
                     }
