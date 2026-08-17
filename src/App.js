@@ -244,6 +244,40 @@ async function buscarUltimosPartidosUDLP(cantidad) {
             .sort(function(a,b){return new Date(b.fecha)-new Date(a.fecha);});
     } catch(e){ console.warn('Últimos UDLP:',e.message); return []; }
 }
+
+// Ventana de presentación del cierre: la jornada recién finalizada se muestra
+// durante 48 h desde su cierre económico/postpartido. Se prioriza siempre una
+// jornada activa si ya existe. Si no hay activa y han pasado 48 h, se muestra
+// la próxima jornada.
+function getJornadaFinMs(jornada) {
+    if (!jornada) return null;
+    var candidatos = [
+        jornada.finalizadaEn,
+        jornada.fechaFinalizacion,
+        jornada.finEconomicoEn,
+        jornada.cierreEconomicoEn,
+        jornada.liveData && jornada.liveData.finalizadoEn,
+        jornada.fechaPartido,
+        jornada.fecha
+    ];
+    for (var i = 0; i < candidatos.length; i++) {
+        var v = candidatos[i];
+        if (!v) continue;
+        try {
+            var d = v && typeof v.toDate === 'function' ? v.toDate() : new Date(v);
+            if (!isNaN(d.getTime())) return d.getTime();
+        } catch (e) {}
+    }
+    return null;
+}
+
+function jornadaDentroVentana48h(jornada, ahoraMs) {
+    var finMs = getJornadaFinMs(jornada);
+    if (!finMs) return false;
+    var ahora = ahoraMs || Date.now();
+    return ahora >= finMs && ahora < (finMs + 48 * 60 * 60 * 1000);
+}
+
 async function comprobarCierrePrimeraJornada(fechaReferenciaStr) {
     var todos=await buscarJornadaCompletaPrimera(fechaReferenciaStr,8);
     if(!todos.length) return {ok:false,partidos:[],pendientes:[],ronda:null};
@@ -2100,7 +2134,7 @@ const PorraAnualModal = ({ user, onClose }) => {
 // Si Primera aún no ha terminado, deja explícitamente el multiplicador de
 // El Otro como PENDIENTE y muestra qué partidos quedan por jugar.
 // ============================================================================
-const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrEstrellas }) => {
+const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrEstrellas, onCerrar }) => {
     const G = styles.colors;
     const [visible, setVisible] = useState(false);
     const [cargando, setCargando] = useState(true);
@@ -2119,7 +2153,7 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
             try {
                 var vistoRef = doc(db, 'cierres_jornada', jornada.id, 'usuarios', user);
                 var vistoSnap = await getDoc(vistoRef);
-                if (vistoSnap.exists()) { if (activo) { setCargando(false); setVisible(false); } return; }
+                if (vistoSnap.exists()) { if (activo) { setCargando(false); setVisible(false); if (onCerrar) onCerrar(); } return; }
 
                 var pSnap = await getDoc(doc(db, 'pronosticos', jornada.id, 'jugadores', user));
                 var p = pSnap.exists() ? pSnap.data() : null;
@@ -2182,6 +2216,7 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
     var cerrar = async function() {
         try { await setDoc(doc(db, 'cierres_jornada', jornada.id, 'usuarios', user), { vistoEn: serverTimestamp() }, { merge:true }); } catch(e) {}
         setVisible(false);
+        if (onCerrar) onCerrar();
     };
 
     if (cargando || !visible) return null;
@@ -2202,9 +2237,17 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
                 <div style={{padding:20}}>
                     <div style={{background:ganador?'rgba(255,215,0,.16)':'rgba(0,31,107,.05)',border:'1px solid '+(ganador?'rgba(255,180,0,.35)':'rgba(0,31,107,.08)'),borderRadius:16,padding:16,textAlign:'center',marginBottom:14}}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:23,fontWeight:700,color:G.deepBlue,letterSpacing:1,marginBottom:4}}>{ganador ? '🏆 ¡HAS GANADO LA JORNADA!' : 'JORNADA CERRADA'}</p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.62,lineHeight:1.5}}>{ganador ? 'Has clavado el resultado y tienes premio.' : 'Esta vez no hay premio directo, pero tus puntos ya están en juego para la clasificación.'}</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.62,lineHeight:1.5}}>{ganador ? 'Has clavado el resultado y tienes premio.' : 'El reparto económico ya está resuelto. Tus puntos que ves ahora son provisionales hasta el cierre total.'}</p>
                         {ganador && <p style={{fontFamily:"'Teko',sans-serif",fontSize:30,fontWeight:700,color:'#b8860b',marginTop:8}}>{premio}€</p>}
                     </div>
+                    {miPronostico && (
+                        <div style={{background:'rgba(0,31,107,.05)',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,padding:13,marginBottom:14,textAlign:'center'}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'#001F6B',marginBottom:3}}>📊 TUS PUNTOS</p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#001F6B',margin:0}}>+{Number(miPronostico.puntosProvisionales||miPronostico.puntosObtenidos||0)}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.5)',marginTop:3}}>provisionales hasta el cierre total de la jornada</p>
+                        </div>
+                    )}
+
                     {ganador && (
                         <div style={{background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.22)',borderRadius:14,padding:13,marginBottom:14}}>
                             <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#0f8a61',letterSpacing:1,marginBottom:6}}>💸 CONFIRMA TU PREMIO</p>
@@ -2323,6 +2366,65 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var [jornadaCierre, setJornadaCierre] = useState(null);
     var [premioMiJornada, setPremioMiJornada] = useState(0);
     var [premioCobradoMiJornada, setPremioCobradoMiJornada] = useState(false);
+    var [historialMiJornada, setHistorialMiJornada] = useState([]);
+    var [proximaUDLPMJ, setProximaUDLPMJ] = useState(null);
+    var [ultimosUDLPMJ, setUltimosUDLPMJ] = useState([]);
+
+    // Historial personal y próxima jornada: esta pantalla debe servir como
+    // centro personal del jugador, no solo como formulario de apuesta.
+    useEffect(function() {
+        if (!user) return;
+        var activo = true;
+        (async function() {
+            try {
+                var qh = query(collection(db,'jornadas'), orderBy('numeroJornada','desc'), limit(5));
+                var sh = await getDocs(qh);
+                var jornadasData = sh.docs.map(function(d){ return {id:d.id,...d.data()}; })
+                    .filter(function(j){ return j.estado === 'Finalizada'; });
+                var salida = [];
+                for (var i=0;i<jornadasData.length;i++) {
+                    var jh = jornadasData[i];
+                    var pr = await getDoc(doc(db,'pronosticos',jh.id,'jugadores',user));
+                    var pd = pr.exists() ? pr.data() : null;
+                    var ps = await getDoc(doc(db,'premios_jornada',jh.id,'usuarios',user));
+                    var premioData = ps.exists() ? ps.data() : null;
+                    var premioHistorico = premioData && premioData.importe != null ? Number(premioData.importe) : 0;
+                    if (!premioHistorico && pd && !pd.noContabilizado && pd.golesLocal != null && pd.golesVisitante != null) {
+                        var exactoH = parseInt(pd.golesLocal) === parseInt(jh.resultadoLocal) && parseInt(pd.golesVisitante) === parseInt(jh.resultadoVisitante);
+                        if (exactoH) {
+                            var allH = await getDocs(collection(db,'pronosticos',jh.id,'jugadores'));
+                            var validH = allH.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(x){return !x.noContabilizado;});
+                            var exH = validH.filter(function(x){return parseInt(x.golesLocal) === parseInt(jh.resultadoLocal) && parseInt(x.golesVisitante) === parseInt(jh.resultadoVisitante);});
+                            var boteH = Number(jh.bote || 0) + validH.length * (jh.esVip ? APUESTA_VIP : APUESTA_NORMAL);
+                            premioHistorico = exH.length ? Number((boteH/exH.length).toFixed(2)) : 0;
+                        }
+                    }
+                    if (pd || premioHistorico || jh.ganadores) {
+                        salida.push({
+                            id: jh.id,
+                            numeroJornada: jh.numeroJornada,
+                            local: jh.equipoLocal,
+                            visitante: jh.equipoVisitante,
+                            resultadoLocal: jh.resultadoLocal,
+                            resultadoVisitante: jh.resultadoVisitante,
+                            pronostico: pd,
+                            premio: premioHistorico,
+                            cobrado: !!(premioData && premioData.recibido),
+                            definitivo: !!jh.cierreDefinitivo
+                        });
+                    }
+                }
+                if (activo) setHistorialMiJornada(salida);
+
+                var next = await buscarProximoPartidoUDLP();
+                var last = await buscarUltimosPartidosUDLP(3);
+                if (activo) { setProximaUDLPMJ(next || null); setUltimosUDLPMJ(last || []); }
+            } catch(e) {
+                console.warn('Mi Jornada — historial:', e.message);
+            }
+        })();
+        return function(){ activo=false; };
+    }, [user]);
 
     // Sincronización automática con API cada 5 minutos cuando hay jornada en vivo
     useEffect(function() {
@@ -2407,42 +2509,61 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         return function() { clearInterval(intervalo); };
     }, [jornada, plantilla]);
 
-    // Cargar jornada activa
+    // Cargar la vista personal con prioridad: jornada activa > cierre de las
+    // últimas 48 h > ninguna jornada. El histórico se carga aparte y siempre se
+    // mantiene visible en Mi Jornada.
     useEffect(function() {
         if (!user) return;
-        var q = query(collection(db, "jornadas"),
-            where("estado", "in", ["Abierta", "En vivo", "Finalizada"]),
-            orderBy("numeroJornada", "desc"), limit(1));
-        var unsub = onSnapshot(q, function(snap) {
-            if (!snap.empty) {
-                var j = { id: snap.docs[0].id, ...snap.docs[0].data() };
-                setJornada(j);
-                // Cargar pronóstico existente
-                getDoc(doc(db, "pronosticos", snap.docs[0].id, "jugadores", user)).then(function(p) {
-                    if (p.exists()) {
-                        var d = p.data();
-                        setPronostico({ golesLocal: d.golesLocal ?? '', golesVisitante: d.golesVisitante ?? '', resultado1x2: d.resultado1x2 || '' });
-                        setElOtroActivado(d.elOtroActivado || false);
-                        setGuardado(true);
-                    }
-                });
-                // Participantes que ya apostaron + sus marcadores (para stats agregadas, sin mostrar nombres)
-                onSnapshot(collection(db, "pronosticos", snap.docs[0].id, "jugadores"), function(ps) {
-                    var docs = ps.docs.map(function(d) { return { id: d.id, ...d.data() }; });
-                    setParticipantes(docs.map(function(d) { return d.id; }));
-                    setPronosticosTodos(docs);
-                });
-            } else {
-                setJornada(null);
+        var unsub = onSnapshot(
+            query(collection(db, "jornadas"), orderBy("numeroJornada", "desc"), limit(10)),
+            function(snap) {
+                var ahoraMs = Date.now();
+                var lista = snap.docs.map(function(d){ return { id:d.id, ...d.data() }; });
+                var activa = lista.find(function(j){ return j.estado === 'Abierta' || j.estado === 'En vivo'; });
+                var reciente = lista.find(function(j){ return j.estado === 'Finalizada' && jornadaDentroVentana48h(j, ahoraMs); });
+                var seleccion = activa || reciente || null;
+                if (seleccion) {
+                    setJornada(seleccion);
+                    getDoc(doc(db, "pronosticos", seleccion.id, "jugadores", user)).then(function(p) {
+                        if (p.exists()) {
+                            var d = p.data();
+                            setPronostico({ golesLocal: d.golesLocal ?? '', golesVisitante: d.golesVisitante ?? '', resultado1x2: d.resultado1x2 || '' });
+                            setElOtroActivado(d.elOtroActivado || false);
+                            setGuardado(true);
+                        } else {
+                            setPronostico({golesLocal:'',golesVisitante:'',resultado1x2:''});
+                            setElOtroActivado(false);
+                            setGuardado(false);
+                        }
+                    }).catch(function(){});
+                    onSnapshot(collection(db, "pronosticos", seleccion.id, "jugadores"), function(ps) {
+                        var docs = ps.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+                        setParticipantes(docs.map(function(d) { return d.id; }));
+                        setPronosticosTodos(docs);
+                    }, function(){});
+                } else {
+                    setJornada(null);
+                    setParticipantes([]);
+                    setPronosticosTodos([]);
+                    setGuardado(false);
+                    setPronostico({golesLocal:'',golesVisitante:'',resultado1x2:''});
+                    setElOtroActivado(false);
+                }
+                setLoading(false);
+            },
+            function(e) {
+                console.warn('Mi Jornada — jornadas:', e.message);
+                setLoading(false);
             }
+        );
 
-            setLoading(false);
-        });
-        // Última jornada finalizada: permite ver el cierre y confirmar premios
-        // incluso cuando todavía no se ha abierto la siguiente.
-        var unsubCierre = onSnapshot(query(collection(db,'jornadas'),where('estado','==','Finalizada'),orderBy('numeroJornada','desc'),limit(1)), function(cs){
-            if (!cs.empty) {
-                var cj={id:cs.docs[0].id,...cs.docs[0].data()};
+        // Cierre de una sola visualización: SOLO durante la ventana de 48 h.
+        var unsubCierre = onSnapshot(
+            query(collection(db,'jornadas'), where('estado','==','Finalizada'), orderBy('numeroJornada','desc'), limit(5)),
+            function(cs){
+                var candidatas = cs.docs.map(function(d){ return {id:d.id,...d.data()}; });
+                var cj = candidatas.find(function(j){ return jornadaDentroVentana48h(j, Date.now()); });
+                if (!cj) { setJornadaCierre(null); return; }
                 setJornadaCierre(cj);
                 getDoc(doc(db,'pronosticos',cj.id,'jugadores',user)).then(function(ps){
                     if(ps.exists()){
@@ -2461,8 +2582,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     }
                 }).catch(function(){});
             }
-        });
-        // Mi El Otro
+        );
+
         var unsubOtro = onSnapshot(doc(db, "elOtro", user), function(snap) {
             if (snap.exists()) setMiElOtro(snap.data());
             else setMiElOtro(null);
@@ -2566,6 +2687,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 userProfiles={userProfiles}
                 teamLogos={teamLogos}
                 onIrEstrellas={function(){ setJornadaCierre(null); setShowEstrellas(true); }}
+                onCerrar={function(){ setJornadaCierre(null); }}
             />
         );
     }
@@ -2601,26 +2723,85 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         return { marcadoresOrdenados: marcadoresOrdenados, por1x2: por1x2, total: pronosticosTodos.length };
     };
 
+    var renderHistorialMiJornada = function() {
+        return (
+            <div style={{marginTop:18}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,margin:0}}>📚 MIS ÚLTIMAS JORNADAS</p>
+                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,.38)'}}>Tu histórico personal</span>
+                </div>
+                {historialMiJornada.length === 0 ? (
+                    <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,padding:14,textAlign:'center'}}>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.45)',margin:0}}>Todavía no hay jornadas cerradas en tu histórico.</p>
+                    </div>
+                ) : historialMiJornada.map(function(h){
+                    var pd=h.pronostico||{};
+                    var acerto= pd.golesLocal!=null && parseInt(pd.golesLocal)===parseInt(h.resultadoLocal) && parseInt(pd.golesVisitante)===parseInt(h.resultadoVisitante);
+                    var puntos = h.definitivo ? Number(pd.puntosObtenidos||0) : Number(pd.puntosProvisionales||pd.puntosObtenidos||0);
+                    return (
+                        <div key={h.id} style={{background:'#fff',border:'1px solid '+(h.premio>0?'rgba(212,175,55,.32)':'rgba(0,31,107,.08)'),borderRadius:14,padding:13,marginBottom:8}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color:G.deepBlue,minWidth:28}}>J{h.numeroJornada}</span>
+                                <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,color:G.deepBlue}}>{h.local} {h.resultadoLocal}—{h.resultadoVisitante} {h.visitante}</span>
+                                {h.premio>0 && <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,color:'#a87900'}}>+{h.premio.toFixed(2)}€</span>}
+                            </div>
+                            <div style={{display:'flex',alignItems:'center',gap:10,marginTop:6,flexWrap:'wrap'}}>
+                                {pd.golesLocal!=null ? <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:acerto?'#10b981':'rgba(0,31,107,.48)'}}>🎯 Tu apuesta: {pd.golesLocal}—{pd.golesVisitante} {acerto?'✅':''}</span> : <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.4)'}}>Sin apuesta</span>}
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color:G.deepBlue}}>+{puntos} pts {h.definitivo?'def.':'prov.'}</span>
+                                {h.premio>0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:h.cobrado?'#10b981':'#e63946'}}>{h.cobrado?'✅ Cobrado':'⏳ Cobro pendiente'}</span>}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
     if (jornada && jornada.estado === 'Finalizada') {
+        var pdActual = null;
+        var histActual = historialMiJornada.find(function(h){ return h.id === jornada.id; });
+        if (histActual) pdActual = histActual.pronostico || null;
+        var puntosActuales = pdActual ? Number(jornada.cierreDefinitivo ? (pdActual.puntosObtenidos||0) : (pdActual.puntosProvisionales||pdActual.puntosObtenidos||0)) : 0;
         return (
             <div style={{paddingBottom:40}}>
                 <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:10,fontWeight:700}}>MI JORNADA</h2>
                 <PremioMiJornadaCard user={user} jornada={jornada} />
                 <div style={{background:jornada.cierreDefinitivo?'rgba(16,185,129,.08)':'rgba(255,215,0,.08)',border:'1px solid '+(jornada.cierreDefinitivo?'rgba(16,185,129,.22)':'rgba(212,175,55,.28)'),borderRadius:14,padding:14,marginBottom:16}}>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:jornada.cierreDefinitivo?'#0f8a61':'#8a6a00',margin:0,textTransform:'uppercase'}}>{jornada.cierreDefinitivo?'✅ PUNTOS DEFINITIVOS':'⏳ PUNTOS PROVISIONALES'}</p>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.62)',lineHeight:1.5,marginTop:6}}>{jornada.cierreDefinitivo?'La jornada ya está cerrada por completo.':'La Porra y el reparto económico ya están resueltos. Los puntos pueden cambiar cuando termine la jornada de Primera.'}</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:G.deepBlue,margin:'8px 0 3px'}}>+{puntosActuales} PUNTOS</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.62)',lineHeight:1.5,margin:0}}>{jornada.cierreDefinitivo?'La jornada ya está cerrada por completo.':'Tu resultado y el reparto económico ya están resueltos. Los puntos pueden cambiar cuando termine la jornada de Primera.'}</p>
                 </div>
-                <button onClick={function(){setJornadaCierre(jornada);}} style={{width:'100%',border:'none',background:'#001F6B',color:'#FFD700',borderRadius:24,padding:12,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,cursor:'pointer'}}>VER RESUMEN DE JORNADA →</button>
+                <button onClick={function(){setJornadaCierre(jornada);}} style={{width:'100%',border:'none',background:'#001F6B',color:'#FFD700',borderRadius:24,padding:12,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,cursor:'pointer',marginBottom:8}}>VER RESUMEN DE JORNADA →</button>
+                {renderHistorialMiJornada()}
             </div>
         );
     }
 
-    if (!jornada) return (
-        <div style={{padding:40,textAlign:'center'}}>
-            <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,color:G.deepBlue,letterSpacing:2}}>NO HAY JORNADA ACTIVA</p>
-            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,opacity:.5,marginTop:8}}>La próxima jornada estará disponible pronto.</p>
-        </div>
-    );
+    if (!jornada) {
+        return (
+            <div style={{paddingBottom:40}}>
+                <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:G.deepBlue,textTransform:'uppercase',marginBottom:12,fontWeight:700}}>MI JORNADA</h2>
+                {proximaUDLPMJ ? (function(){
+                    var fp=new Date(proximaUDLPMJ.fecha);
+                    return <div style={{background:'#001F6B',borderRadius:18,padding:18,marginBottom:14}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:3,color:'rgba(255,255,255,.45)',marginBottom:5}}>🔜 PRÓXIMO PARTIDO</p>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700',margin:0}}>{proximaUDLPMJ.local} — {proximaUDLPMJ.visitante}</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.68)',marginTop:7}}>🕐 {fp.toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}</p>
+                        {proximaUDLPMJ.estadio && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.4)',marginTop:4}}>🏟️ {proximaUDLPMJ.estadio}</p>}
+                    </div>;
+                })() : <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,padding:15,marginBottom:14,textAlign:'center'}}><p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.45)',margin:0}}>Buscando el próximo partido de la UDLP…</p></div>}
+                {ultimosUDLPMJ.length>0 && <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,overflow:'hidden',marginBottom:8}}>
+                    <div style={{padding:'11px 14px',background:'rgba(0,31,107,.04)'}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:G.deepBlue,margin:0}}>RESULTADOS RECIENTES</p></div>
+                    {ultimosUDLPMJ.map(function(p){return <div key={p.fixtureId} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 14px',borderBottom:'1px solid rgba(0,31,107,.05)'}}>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,.4)',minWidth:70}}>{new Date(p.fecha).toLocaleDateString('es-ES',{day:'numeric',month:'short',timeZone:'Atlantic/Canary'})}</span>
+                        <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:13,color:G.deepBlue}}>{p.local} — {p.visitante}</span>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color:G.deepBlue}}>{p.golesLocal}—{p.golesVisitante}</span>
+                    </div>;})}
+                </div>}
+                {renderHistorialMiJornada()}
+            </div>
+        );
+    }
 
     return (
         <div style={{paddingBottom:40}}>
@@ -2942,6 +3123,28 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     )}
                 </div>
             )}
+
+            {/* Centro personal: próximo partido + historial, siempre visible aunque haya jornada activa */}
+            <div style={{marginTop:18,marginBottom:18}}>
+                {proximaUDLPMJ && (function(){
+                    var fpNext = new Date(proximaUDLPMJ.fecha);
+                    return <div style={{background:'#001F6B',borderRadius:16,padding:16,marginBottom:12}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:3,color:'rgba(255,255,255,.45)',margin:0,textTransform:'uppercase'}}>🔜 PRÓXIMO PARTIDO UDLP</p>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:21,fontWeight:700,color:'#FFD700',margin:'6px 0 3px'}}>{proximaUDLPMJ.local} — {proximaUDLPMJ.visitante}</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.68)',margin:0}}>🕐 {fpNext.toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}</p>
+                        {proximaUDLPMJ.estadio && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.42)',margin:'4px 0 0'}}>🏟️ {proximaUDLPMJ.estadio}</p>}
+                    </div>;
+                })()}
+                {ultimosUDLPMJ.length>0 && <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,overflow:'hidden',marginBottom:12}}>
+                    <div style={{padding:'10px 14px',background:'rgba(0,31,107,.04)'}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:G.deepBlue,margin:0}}>RESULTADOS UDLP RECIENTES</p></div>
+                    {ultimosUDLPMJ.slice(0,3).map(function(p){return <div key={p.fixtureId} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderBottom:'1px solid rgba(0,31,107,.05)'}}>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,.4)',minWidth:68}}>{new Date(p.fecha).toLocaleDateString('es-ES',{day:'numeric',month:'short',timeZone:'Atlantic/Canary'})}</span>
+                        <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:12,color:G.deepBlue}}>{p.local} — {p.visitante}</span>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color:G.deepBlue}}>{p.golesLocal}—{p.golesVisitante}</span>
+                    </div>;})}
+                </div>}
+                {renderHistorialMiJornada()}
+            </div>
 
             {/* Banner Porra Anual — PROMINENTE en J1-J5 */}
             {jornada.numeroJornada <= 5 && (
@@ -3719,19 +3922,23 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     }, []);
 
     useEffect(function() {
-        var q = query(collection(db, "jornadas"),
-            where("estado", "in", ["Abierta","Cerrada","En vivo","Finalizada"]),
-            orderBy("numeroJornada","desc"), limit(1));
+        var q = query(collection(db, "jornadas"), orderBy("numeroJornada","desc"), limit(10));
         var unsub = onSnapshot(q, function(snap) {
-            if (!snap.empty) {
-                var j = { id: snap.docs[0].id, ...snap.docs[0].data() };
-                setJornada(j);
+            var lista = snap.docs.map(function(d){ return {id:d.id,...d.data()}; });
+            var activa = lista.find(function(j){ return j.estado === 'Abierta' || j.estado === 'En vivo'; });
+            var reciente = lista.find(function(j){ return j.estado === 'Finalizada' && jornadaDentroVentana48h(j, Date.now()); });
+            var j = activa || reciente || null;
+            setJornada(j);
+            if (j) {
                 onSnapshot(collection(db, "pronosticos", j.id, "jugadores"), function(ps) {
                     setParticipantes(ps.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
-                });
+                }, function(){});
                 onSnapshot(collection(db, "estrellas_seleccion", j.id, "jugadores"), function(es) {
                     setSeleccionesEstrellasJornada(es.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
-                });
+                }, function(){});
+            } else {
+                setParticipantes([]);
+                setSeleccionesEstrellasJornada([]);
             }
             setLoading(false);
         });
@@ -5256,7 +5463,7 @@ function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACe
         var titular = !!(st.games && st.games.substitute === false && minutos > 0);
         var suplenteJugo = !!(st.games && st.games.substitute === true && minutos > 0);
 
-        if (titular) pts += 2;
+        if (titular && minutos >= 60) pts += 2;
         else if (suplenteJugo) pts += 1;
 
         var goles = (st.goals && st.goals.total) || 0;
@@ -5289,8 +5496,10 @@ function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACe
             else if (jug.posicion === 'Defensa') pts += 2;
         }
 
-        // Nota: robo de balón al último hombre, recuperaciones y pases interceptados
-        // no vienen en la API — no se pueden calcular automáticamente.
+        // API-Football sí devuelve tackles, interceptions, duels y dribbles en
+        // /fixtures/players. Todavía no se convierten en Estrellas: se dejan fuera
+        // de la puntuación hasta que se apruebe el nuevo baremo para no cambiar la
+        // competición a mitad de temporada.
 
         puntosPorNombre[jug.nombre] = pts;
     });
@@ -5824,6 +6033,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
         if (estado === 'Finalizada') {
             updateData.ganadores = ganadoresArray;
             updateData.premiosCalculados = true;
+            if (!jornada.finalizadaEn) updateData.finalizadaEn = serverTimestamp();
             if (!jornada.cierreDefinitivo) updateData.puntosCalculados = false;
         }
 
