@@ -2691,6 +2691,40 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     // Multiplicador de El Otro según activaciones — versión única en getMultiplicadorOtro()
     var getMultiplicador = getMultiplicadorOtro;
 
+    var renderHistorialMiJornada = function() {
+        return (
+            <div style={{marginTop:18}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,margin:0}}>📚 MIS ÚLTIMAS JORNADAS</p>
+                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,.38)'}}>Tu histórico personal</span>
+                </div>
+                {historialMiJornada.length === 0 ? (
+                    <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,padding:14,textAlign:'center'}}>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.45)',margin:0}}>Todavía no hay jornadas cerradas en tu histórico.</p>
+                    </div>
+                ) : historialMiJornada.map(function(h){
+                    var pd=h.pronostico||{};
+                    var acerto= pd.golesLocal!=null && parseInt(pd.golesLocal)===parseInt(h.resultadoLocal) && parseInt(pd.golesVisitante)===parseInt(h.resultadoVisitante);
+                    var puntos = h.definitivo ? Number(pd.puntosObtenidos||0) : Number(pd.puntosProvisionales||pd.puntosObtenidos||0);
+                    return (
+                        <div key={h.id} style={{background:'#fff',border:'1px solid '+(h.premio>0?'rgba(212,175,55,.32)':'rgba(0,31,107,.08)'),borderRadius:14,padding:13,marginBottom:8}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color:G.deepBlue,minWidth:28}}>J{h.numeroJornada}</span>
+                                <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,color:G.deepBlue}}>{h.local} {h.resultadoLocal}—{h.resultadoVisitante} {h.visitante}</span>
+                                {h.premio>0 && <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,color:'#a87900'}}>+{h.premio.toFixed(2)}€</span>}
+                            </div>
+                            <div style={{display:'flex',alignItems:'center',gap:10,marginTop:6,flexWrap:'wrap'}}>
+                                {pd.golesLocal!=null ? <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:acerto?'#10b981':'rgba(0,31,107,.48)'}}>🎯 Tu apuesta: {pd.golesLocal}—{pd.golesVisitante} {acerto?'✅':''}</span> : <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.4)'}}>Sin apuesta</span>}
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color:G.deepBlue}}>+{puntos} pts {h.definitivo?'def.':'prov.'}</span>
+                                {h.premio>0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:h.cobrado?'#10b981':'#e63946'}}>{h.cobrado?'✅ Cobrado':'⏳ Cobro pendiente'}</span>}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
     if (loading) return <LoadingSkeleton />;
 
     if (jornadaCierre) {
@@ -2763,40 +2797,6 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             .map(function(k) { return { marcador: k, cuenta: porMarcador[k] }; })
             .sort(function(a, b) { return b.cuenta - a.cuenta; });
         return { marcadoresOrdenados: marcadoresOrdenados, por1x2: por1x2, total: pronosticosTodos.length };
-    };
-
-    var renderHistorialMiJornada = function() {
-        return (
-            <div style={{marginTop:18}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:G.deepBlue,margin:0}}>📚 MIS ÚLTIMAS JORNADAS</p>
-                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,.38)'}}>Tu histórico personal</span>
-                </div>
-                {historialMiJornada.length === 0 ? (
-                    <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,padding:14,textAlign:'center'}}>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.45)',margin:0}}>Todavía no hay jornadas cerradas en tu histórico.</p>
-                    </div>
-                ) : historialMiJornada.map(function(h){
-                    var pd=h.pronostico||{};
-                    var acerto= pd.golesLocal!=null && parseInt(pd.golesLocal)===parseInt(h.resultadoLocal) && parseInt(pd.golesVisitante)===parseInt(h.resultadoVisitante);
-                    var puntos = h.definitivo ? Number(pd.puntosObtenidos||0) : Number(pd.puntosProvisionales||pd.puntosObtenidos||0);
-                    return (
-                        <div key={h.id} style={{background:'#fff',border:'1px solid '+(h.premio>0?'rgba(212,175,55,.32)':'rgba(0,31,107,.08)'),borderRadius:14,padding:13,marginBottom:8}}>
-                            <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color:G.deepBlue,minWidth:28}}>J{h.numeroJornada}</span>
-                                <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,color:G.deepBlue}}>{h.local} {h.resultadoLocal}—{h.resultadoVisitante} {h.visitante}</span>
-                                {h.premio>0 && <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,color:'#a87900'}}>+{h.premio.toFixed(2)}€</span>}
-                            </div>
-                            <div style={{display:'flex',alignItems:'center',gap:10,marginTop:6,flexWrap:'wrap'}}>
-                                {pd.golesLocal!=null ? <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:acerto?'#10b981':'rgba(0,31,107,.48)'}}>🎯 Tu apuesta: {pd.golesLocal}—{pd.golesVisitante} {acerto?'✅':''}</span> : <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.4)'}}>Sin apuesta</span>}
-                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color:G.deepBlue}}>+{puntos} pts {h.definitivo?'def.':'prov.'}</span>
-                                {h.premio>0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:h.cobrado?'#10b981':'#e63946'}}>{h.cobrado?'✅ Cobrado':'⏳ Cobro pendiente'}</span>}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        );
     };
 
     if (jornada && jornada.estado === 'Finalizada') {
