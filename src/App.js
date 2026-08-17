@@ -2394,10 +2394,19 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                         var exactoH = parseInt(pd.golesLocal) === parseInt(jh.resultadoLocal) && parseInt(pd.golesVisitante) === parseInt(jh.resultadoVisitante);
                         if (exactoH) {
                             var allH = await getDocs(collection(db,'pronosticos',jh.id,'jugadores'));
-                            var validH = allH.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(x){return !x.noContabilizado;});
+                            var validH = [];
+                            var exH = [];
                             var rLocalH = jh.resultadoLocal;
                             var rVisitanteH = jh.resultadoVisitante;
-                            var exH = validH.filter(function(x){return parseInt(x.golesLocal) === parseInt(rLocalH) && parseInt(x.golesVisitante) === parseInt(rVisitanteH);});
+                            for (var hIdx = 0; hIdx < allH.docs.length; hIdx++) {
+                                var hData = allH.docs[hIdx].data();
+                                var hEntry = {id: allH.docs[hIdx].id, ...hData};
+                                if (hEntry.noContabilizado) continue;
+                                validH.push(hEntry);
+                                if (parseInt(hEntry.golesLocal) === parseInt(rLocalH) && parseInt(hEntry.golesVisitante) === parseInt(rVisitanteH)) {
+                                    exH.push(hEntry);
+                                }
+                            }
                             var boteBaseH = Number(jh.bote || 0);
                             var costeH = jh.esVip ? APUESTA_VIP : APUESTA_NORMAL;
                             var boteH = boteBaseH + validH.length * costeH;
@@ -5526,12 +5535,12 @@ function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACe
 
         // Baremo fantasy añadido. Se utilizan únicamente campos que API-Football
         // devuelve de forma estructurada en /fixtures/players.
-        var rematesAPuerta = Number(st.shots && st.shots.on || 0);
-        var regatesCompletados = Number(st.dribbles && st.dribbles.success || 0);
-        var tackles = Number(st.tackles && st.tackles.total || 0);
-        var intercepciones = Number(st.tackles && st.tackles.interceptions || 0);
-        var pasesClave = Number(st.passes && st.passes.key || 0);
-        var duelosGanados = Number(st.duels && st.duels.won || 0);
+        var rematesAPuerta = Number(st.shots && st.shots.on ? st.shots.on : 0);
+        var regatesCompletados = Number(st.dribbles && st.dribbles.success ? st.dribbles.success : 0);
+        var tackles = Number(st.tackles && st.tackles.total ? st.tackles.total : 0);
+        var intercepciones = Number(st.tackles && st.tackles.interceptions ? st.tackles.interceptions : 0);
+        var pasesClave = Number(st.passes && st.passes.key ? st.passes.key : 0);
+        var duelosGanados = Number(st.duels && st.duels.won ? st.duels.won : 0);
 
         var eRemates = veces(rematesAPuerta, 2);
         var eRegates = veces(regatesCompletados, 2);
