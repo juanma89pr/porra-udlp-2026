@@ -295,18 +295,11 @@ async function comprobarCierrePrimeraJornada(fechaReferenciaStr) {
 
 // Tabla de puntuación Mis 5 Estrellas (calculada vía API)
 const PUNTOS_ESTRELLAS = {
-    titular: 2,
-    suplente: 1,
-    gol_portero_defensa: 8,
-    gol_centrocampista: 6,
-    gol_delantero: 5,
-    asistencia: 3,
-    porteria_cero_portero: 4,
-    porteria_cero_defensa: 2,
-    amarilla: -1,
-    roja: -3,
-    penalti_fallado: -2,
-    gol_propia: -2,
+    titular: 2, suplente: 1, gol_portero_defensa: 8, gol_centrocampista: 6, gol_delantero: 5,
+    asistencia: 3, porteria_cero_portero: 4, porteria_cero_defensa: 2, amarilla: -1, roja: -3,
+    penalti_fallado: -2, gol_propia: -2,
+    remates_a_puerta_por_2: 1, regates_por_2: 1, tackles_por_3: 1, intercepciones_por_3: 1,
+    pases_clave_por_2: 1, duelos_ganados_por_4: 1, recuperaciones: null, despejes: null
 };
 
 // Plantilla de fallback (usada si la API no está disponible)
@@ -1803,11 +1796,19 @@ const TABLA_PUNTOS_ESTRELLAS = [
     { accion: 'Asistencia', estrellas: 3 },
     { accion: 'Portería a cero (portero)', estrellas: 4 },
     { accion: 'Portería a cero (defensa)', estrellas: 2 },
-    { accion: 'Ser titular', estrellas: 2 },
+    { accion: 'Ser titular (60+ min)', estrellas: 2 },
     { accion: 'Entrar como suplente', estrellas: 1 },
     { accion: 'Tarjeta amarilla', estrellas: -1 },
     { accion: 'Tarjeta roja', estrellas: -3 },
     { accion: 'Penalti fallado', estrellas: -2 },
+    { accion: '2 remates a puerta', estrellas: 1 },
+    { accion: '2 regates completados', estrellas: 1 },
+    { accion: '3 tackles', estrellas: 1 },
+    { accion: '3 intercepciones', estrellas: 1 },
+    { accion: '5 recuperaciones', estrellas: null, disponible: false },
+    { accion: '5 despejes', estrellas: null, disponible: false },
+    { accion: '2 pases clave', estrellas: 1 },
+    { accion: '4 duelos ganados', estrellas: 1 },
 ];
 
 const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
@@ -1926,7 +1927,7 @@ const MisEstrellasModal = ({ user, plantilla, jornada, onClose }) => {
                                         <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,flex:1}}>{r.accion}</span>
                                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,
                                             color: r.estrellas > 0 ? '#FFD700' : G.danger}}>
-                                            {r.estrellas > 0 ? '+' : ''}{r.estrellas} ⭐
+                                            {r.disponible === false ? 'No disponible en API' : ((r.estrellas > 0 ? '+' : '') + r.estrellas + ' ⭐')}
                                         </span>
                                     </div>
                                 );
@@ -5452,59 +5453,112 @@ const CalendarioScreen = ({ teamLogos }) => {
 function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero) {
     var jugadoresSinApiId = [];
     var puntosPorNombre = {};
+    var detallesPorNombre = {};
+
+    function veces(valor, umbral) {
+        return Math.floor(Number(valor || 0) / umbral);
+    }
 
     plantilla.forEach(function(jug) {
-        if (!jug.apiId) { jugadoresSinApiId.push(jug.nombre); puntosPorNombre[jug.nombre] = 0; return; }
+        if (!jug.apiId) {
+            jugadoresSinApiId.push(jug.nombre);
+            puntosPorNombre[jug.nombre] = 0;
+            detallesPorNombre[jug.nombre] = { puntosBase:0, extras:{} };
+            return;
+        }
+
         var st = statsPorApiId[jug.apiId];
-        if (!st) { puntosPorNombre[jug.nombre] = 0; return; } // no convocado / no jugó (todavía)
+        if (!st) {
+            puntosPorNombre[jug.nombre] = 0;
+            detallesPorNombre[jug.nombre] = { puntosBase:0, extras:{}, sinEstadisticas:true };
+            return;
+        }
 
         var pts = 0;
-        var minutos = (st.games && st.games.minutes) || 0;
+        var extras = {};
+        var minutos = Number((st.games && st.games.minutes) || 0);
         var titular = !!(st.games && st.games.substitute === false && minutos > 0);
         var suplenteJugo = !!(st.games && st.games.substitute === true && minutos > 0);
 
-        if (titular && minutos >= 60) pts += 2;
-        else if (suplenteJugo) pts += 1;
+        if (titular && minutos >= 60) { pts += 2; extras.titular60 = 2; }
+        else if (suplenteJugo) { pts += 1; extras.suplente = 1; }
 
-        var goles = (st.goals && st.goals.total) || 0;
+        var goles = Number((st.goals && st.goals.total) || 0);
         if (goles > 0) {
             var ptsPorGol = (jug.posicion === 'Portero' || jug.posicion === 'Defensa') ? 8
                 : (jug.posicion === 'Centrocampista' || jug.posicion === 'Mediapunta') ? 6 : 5;
             pts += goles * ptsPorGol;
+            extras.goles = goles * ptsPorGol;
         }
 
-        var asistencias = (st.goals && st.goals.assists) || 0;
+        var asistencias = Number((st.goals && st.goals.assists) || 0);
         pts += asistencias * 3;
+        if (asistencias) extras.asistencias = asistencias * 3;
 
-        var amarillas = (st.cards && st.cards.yellow) || 0;
-        var rojas = (st.cards && st.cards.red) || 0;
-        pts -= amarillas * 1;
+        var amarillas = Number((st.cards && st.cards.yellow) || 0);
+        var rojas = Number((st.cards && st.cards.red) || 0);
+        pts -= amarillas;
         pts -= rojas * 3;
+        if (amarillas) extras.amarillas = -amarillas;
+        if (rojas) extras.rojas = -rojas * 3;
 
-        var penFallado = (st.penalty && st.penalty.missed) || 0;
+        var penFallado = Number((st.penalty && st.penalty.missed) || 0);
         pts -= penFallado * 2;
+        if (penFallado) extras.penaltisFallados = -penFallado * 2;
 
         if (jug.posicion === 'Portero') {
-            var penParado = (st.penalty && st.penalty.saved) || 0;
+            var penParado = Number((st.penalty && st.penalty.saved) || 0);
+            var paradas = Number((st.goals && st.goals.saves) || 0);
             pts += penParado * 5;
-            var paradas = (st.goals && st.goals.saves) || 0;
-            pts += paradas * 1;
+            pts += paradas;
+            if (penParado) extras.penaltisParados = penParado * 5;
+            if (paradas) extras.paradas = paradas;
         }
 
         if (porteriaACero && minutos > 0) {
-            if (jug.posicion === 'Portero') pts += 4;
-            else if (jug.posicion === 'Defensa') pts += 2;
+            if (jug.posicion === 'Portero') { pts += 4; extras.porteriaCero = 4; }
+            else if (jug.posicion === 'Defensa') { pts += 2; extras.porteriaCero = 2; }
         }
 
-        // API-Football sí devuelve tackles, interceptions, duels y dribbles en
-        // /fixtures/players. Todavía no se convierten en Estrellas: se dejan fuera
-        // de la puntuación hasta que se apruebe el nuevo baremo para no cambiar la
-        // competición a mitad de temporada.
+        // Baremo fantasy añadido. Se utilizan únicamente campos que API-Football
+        // devuelve de forma estructurada en /fixtures/players.
+        var rematesAPuerta = Number(st.shots && st.shots.on || 0);
+        var regatesCompletados = Number(st.dribbles && st.dribbles.success || 0);
+        var tackles = Number(st.tackles && st.tackles.total || 0);
+        var intercepciones = Number(st.tackles && st.tackles.interceptions || 0);
+        var pasesClave = Number(st.passes && st.passes.key || 0);
+        var duelosGanados = Number(st.duels && st.duels.won || 0);
+
+        var eRemates = veces(rematesAPuerta, 2);
+        var eRegates = veces(regatesCompletados, 2);
+        var eTackles = veces(tackles, 3);
+        var eIntercepciones = veces(intercepciones, 3);
+        var ePasesClave = veces(pasesClave, 2);
+        var eDuelos = veces(duelosGanados, 4);
+
+        if (eRemates) { pts += eRemates; extras.rematesAPuerta = eRemates; }
+        if (eRegates) { pts += eRegates; extras.regates = eRegates; }
+        if (eTackles) { pts += eTackles; extras.tackles = eTackles; }
+        if (eIntercepciones) { pts += eIntercepciones; extras.intercepciones = eIntercepciones; }
+        if (ePasesClave) { pts += ePasesClave; extras.pasesClave = ePasesClave; }
+        if (eDuelos) { pts += eDuelos; extras.duelosGanados = eDuelos; }
 
         puntosPorNombre[jug.nombre] = pts;
+        detallesPorNombre[jug.nombre] = {
+            puntosBase: pts,
+            extras: extras,
+            statsDisponibles: {
+                rematesAPuerta, regatesCompletados, tackles, intercepciones,
+                pasesClave, duelosGanados
+            }
+        };
     });
 
-    return { puntosPorNombre: puntosPorNombre, jugadoresSinApiId: jugadoresSinApiId };
+    return {
+        puntosPorNombre: puntosPorNombre,
+        detallesPorNombre: detallesPorNombre,
+        jugadoresSinApiId: jugadoresSinApiId
+    };
 }
 
 async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornadaInfo) {
@@ -5531,6 +5585,7 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
     var porteriaACero = golesEncajados === 0;
     var calculo = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero);
     var puntosPorNombre = calculo.puntosPorNombre;
+    var detallesPorNombre = calculo.detallesPorNombre;
     var jugadoresSinApiId = calculo.jugadoresSinApiId;
 
     // Las estrellas de acción (8, 6, 5...) son una competición acumulativa.
@@ -5552,7 +5607,7 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
             var pts = Number(puntosPorNombre[j.nombre] || 0);
             totalEstrellas += pts;
             desglosePorJugador[j.nombre] = pts;
-            return { nombre: j.nombre, puntos: pts };
+            return { nombre: j.nombre, puntos: pts, detalleStats: detallesPorNombre[j.nombre] || {} };
         });
         resultados.push({
             userId: userId,
@@ -5610,8 +5665,27 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
             puntosRanking: r.puntosRanking,
             puestoEstrellas: r.puestoEstrellas,
             detalle: r.detalle,
+            recalculoVersion: 2,
             calculadoEn: serverTimestamp(),
-        }, { merge: true });
+        });
+    });
+
+    // Si había resultados anteriores para usuarios que ya no tienen selección,
+    // se eliminan y su acumulado de Estrellas se corrige también.
+    var nuevosIds = {};
+    resultados.forEach(function(r){ nuevosIds[r.userId] = true; });
+    Object.keys(antiguos).forEach(function(uid){
+        if (!nuevosIds[uid]) {
+            var viejo = antiguos[uid] || {};
+            var oldStars = Number(viejo.estrellasJornada || viejo.puntosJornada || 0);
+            if (oldStars) {
+                batch.set(doc(db, 'clasificacion_estrellas', uid), {
+                    puntosEstrellas: increment(-oldStars)
+                }, { merge: true });
+            }
+            batch.delete(doc(db, 'estrellas_resultados', jornadaId, 'jugadores', uid));
+            batch.delete(doc(db, 'estrellas_seleccion', jornadaId, 'jugadores', uid));
+        }
     });
 
     await batch.commit();
@@ -6073,7 +6147,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
             });
             await actualizarPuntosProvisionalesJornada(jornada.id);
             var sinIds = resultado.jugadoresSinApiId || [];
-            alert('✅ Estrellas recalculadas sin duplicar.\n\n' + (sinIds.length ? 'Sin apiId: ' + sinIds.join(', ') : 'Todos los jugadores con ID están preparados.') );
+            alert('✅ Estrellas recalculadas desde cero para esta jornada. El cálculo anterior ha sido sustituido y no se han duplicado acumulados.\n\n' + (sinIds.length ? 'Sin apiId: ' + sinIds.join(', ') : 'Todos los jugadores con ID están preparados.') );
         } catch(e) { alert('❌ Error: ' + e.message); }
     };
 
@@ -7514,7 +7588,9 @@ const NormativaScreen = () => {
                 <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
                     <p style={{marginBottom:8}}>Eliges hasta <strong>5 jugadores de la UDLP</strong> antes de cada partido. Sus goles, asistencias, paradas y tarjetas generan estrellas según una tabla de puntos fija.</p>
                     <p style={{marginBottom:8}}><strong>Cierre:</strong> se cierra a la vez que la porra — 5 minutos antes del partido de la UDLP. Editable libremente hasta ese momento.</p>
-                    <p style={{marginBottom:8}}><strong>Cálculo:</strong> automático, tras el partido, con estadísticas oficiales de la API. Algunas acciones (robo de balón, recuperaciones) no se pueden calcular automáticamente y no puntúan.</p>
+                    <p style={{marginBottom:8}}><strong>Cálculo:</strong> automático, tras el partido, con estadísticas oficiales de API-Football. Además del baremo propio de la Porra, se usan umbrales conocidos de fantasy: <strong>2 remates a puerta +1⭐</strong> · <strong>2 regates +1⭐</strong> · <strong>3 tackles +1⭐</strong> · <strong>3 intercepciones +1⭐</strong> · <strong>2 pases clave +1⭐</strong> · <strong>4 duelos ganados +1⭐</strong>.</p>
+                    <p style={{marginBottom:8}}><strong>No se aplican todavía</strong> recuperaciones ni despejes porque API-Football no los entrega como campos individuales fiables en <code>/fixtures/players</code> para este cálculo.</p>
+                    <p style={{marginBottom:0}}><strong>Recalcular:</strong> cada recálculo vuelve a leer la API y <strong>sustituye completamente el cálculo anterior de esa jornada</strong>. No duplica Estrellas ni puntos. Esto queda blindado para todas las jornadas.</p>
                     <p style={{margin:0}}>Las estrellas acumuladas forman una <strong>clasificación paralela</strong>, con su propio premio.</p>
                 </div>
             </AcordeonAyuda>
