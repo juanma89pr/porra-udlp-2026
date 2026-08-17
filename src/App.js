@@ -2016,6 +2016,174 @@ const PorraAnualModal = ({ user, onClose }) => {
     );
 };
 
+
+// ============================================================================
+// --- CIERRE DE JORNADA · PANTALLA DE TRANSICIÓN DE UNA SOLA VISTA -----------
+// Aparece una vez por jugador cuando la jornada de Segunda queda Finalizada.
+// No sustituye la clasificación: es una pantalla narrativa de cierre.
+// Si Primera aún no ha terminado, deja explícitamente el multiplicador de
+// El Otro como PENDIENTE y muestra qué partidos quedan por jugar.
+// ============================================================================
+const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrEstrellas }) => {
+    const G = styles.colors;
+    const [visible, setVisible] = useState(false);
+    const [cargando, setCargando] = useState(true);
+    const [miPronostico, setMiPronostico] = useState(null);
+    const [topEstrellas, setTopEstrellas] = useState([]);
+    const [partidosPrimera, setPartidosPrimera] = useState([]);
+    const [resultadoOtro, setResultadoOtro] = useState(null);
+    const [premio, setPremio] = useState('0.00');
+    const [ganador, setGanador] = useState(false);
+
+    useEffect(function() {
+        var activo = true;
+        if (!user || !jornada || jornada.estado !== 'Finalizada') { setCargando(false); return function(){}; }
+        (async function() {
+            try {
+                var vistoRef = doc(db, 'cierres_jornada', jornada.id, 'usuarios', user);
+                var vistoSnap = await getDoc(vistoRef);
+                if (vistoSnap.exists()) { if (activo) { setCargando(false); setVisible(false); } return; }
+
+                var pSnap = await getDoc(doc(db, 'pronosticos', jornada.id, 'jugadores', user));
+                var p = pSnap.exists() ? pSnap.data() : null;
+                if (activo) setMiPronostico(p);
+
+                var todosSnap = await getDocs(collection(db, 'pronosticos', jornada.id, 'jugadores'));
+                var exactos = [];
+                todosSnap.forEach(function(d) {
+                    var pd = d.data() || {};
+                    if (pd.noContabilizado) return;
+                    if (parseInt(pd.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(pd.golesVisitante) === parseInt(jornada.resultadoVisitante)) exactos.push(d.id);
+                });
+                var bote = Number(jornada.bote || 0);
+                if (!bote) bote = todosSnap.docs.filter(function(d){ return !(d.data() || {}).noContabilizado; }).length;
+                var esGanador = exactos.indexOf(user) !== -1 || (jornada.ganadores || []).indexOf(user) !== -1;
+                if (activo) {
+                    setGanador(esGanador);
+                    setPremio(esGanador && exactos.length ? (bote / exactos.length).toFixed(2) : '0.00');
+                }
+
+                var estSnap = await getDocs(collection(db, 'estrellas_resultados', jornada.id, 'jugadores'));
+                var est = estSnap.docs.map(function(d){ return { id:d.id, ...d.data() }; })
+                    .sort(function(a,b){
+                        if ((b.estrellasJornada||0) !== (a.estrellasJornada||0)) return (b.estrellasJornada||0)-(a.estrellasJornada||0);
+                        return (a.id||'').localeCompare(b.id||'');
+                    }).slice(0,5);
+                if (activo) setTopEstrellas(est);
+
+                var partidos = await buscarJornadaCompletaPrimera(jornada.fecha || new Date().toISOString(), 7);
+                if (activo) setPartidosPrimera(partidos || []);
+
+                if (p && p.elOtroActivado && p.elOtroFixtureId && p.elOtroEquipoUsado && API_FOOTBALL_KEY) {
+                    try {
+                        var rf = await fetch('https://v3.football.api-sports.io/fixtures?id=' + p.elOtroFixtureId, { headers:{'x-apisports-key':API_FOOTBALL_KEY} });
+                        var df = await rf.json();
+                        if (df.response && df.response[0]) {
+                            var fx = df.response[0];
+                            var estC = fx.fixture.status.short;
+                            var final = ['FT','AET','PEN'].indexOf(estC) !== -1;
+                            var esLocal = nombresSonSimilares(fx.teams.home.name, p.elOtroEquipoUsado);
+                            var gf = esLocal ? fx.goals.home : fx.goals.away;
+                            var gc = esLocal ? fx.goals.away : fx.goals.home;
+                            if (activo) setResultadoOtro({ finalizado:final, estado:estC, equipo:p.elOtroEquipoUsado, rival:esLocal?fx.teams.away.name:fx.teams.home.name, golesEquipo:gf, golesRival:gc, resultado: final ? (gf>gc?'gana':gf<gc?'pierde':'empata') : 'pendiente' });
+                        }
+                    } catch(e) { console.warn('Cierre jornada — error El Otro:', e.message); }
+                }
+                if (activo) { setCargando(false); setVisible(true); }
+            } catch(e) {
+                console.warn('Cierre jornada:', e.message);
+                if (activo) setCargando(false);
+            }
+        })();
+        return function(){ activo = false; };
+    }, [user, jornada]);
+
+    var cerrar = async function() {
+        try { await setDoc(doc(db, 'cierres_jornada', jornada.id, 'usuarios', user), { vistoEn: serverTimestamp() }, { merge:true }); } catch(e) {}
+        setVisible(false);
+    };
+
+    if (cargando || !visible) return null;
+    var pendientes = partidosPrimera.filter(function(p){ return !['FT','AET','PEN'].includes(p.estadoCorto); });
+    var terminadoOtro = resultadoOtro && resultadoOtro.finalizado;
+    var estadoOtroColor = !resultadoOtro ? 'rgba(255,255,255,.45)' : resultadoOtro.resultado==='gana' ? '#10b981' : resultadoOtro.resultado==='pierde' ? '#e63946' : resultadoOtro.resultado==='empata' ? '#FFD700' : '#FFD700';
+
+    return (
+        <div style={{position:'fixed',inset:0,zIndex:99999,background:'linear-gradient(145deg,#00113d 0%,#001F6B 55%,#003da8 100%)',display:'flex',alignItems:'center',justifyContent:'center',padding:18,overflowY:'auto'}}>
+            <div style={{width:'100%',maxWidth:520,background:'#f7f9ff',borderRadius:24,boxShadow:'0 30px 80px rgba(0,0,0,.45)',overflow:'hidden',position:'relative'}}>
+                <div style={{background:'linear-gradient(135deg,#001F6B,#003da8)',padding:'28px 22px 22px',textAlign:'center'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:4,color:'rgba(255,255,255,.55)',margin:0}}>CIERRE · JORNADA {jornada.numeroJornada}</p>
+                    <div style={{fontSize:48,margin:'6px 0'}}>🏟️</div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#FFD700',letterSpacing:2,margin:0}}>{jornada.resultadoLocal} — {jornada.resultadoVisitante}</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.55)',marginTop:6}}>La UDLP ya ha cerrado su jornada. Esto es lo que tienes que saber.</p>
+                </div>
+
+                <div style={{padding:20}}>
+                    <div style={{background:ganador?'rgba(255,215,0,.16)':'rgba(0,31,107,.05)',border:'1px solid '+(ganador?'rgba(255,180,0,.35)':'rgba(0,31,107,.08)'),borderRadius:16,padding:16,textAlign:'center',marginBottom:14}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:23,fontWeight:700,color:G.deepBlue,letterSpacing:1,marginBottom:4}}>{ganador ? '🏆 ¡HAS GANADO LA JORNADA!' : 'JORNADA CERRADA'}</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.62,lineHeight:1.5}}>{ganador ? 'Has clavado el resultado y tienes premio.' : 'Esta vez no hay premio directo, pero tus puntos ya están en juego para la clasificación.'}</p>
+                        {ganador && <p style={{fontFamily:"'Teko',sans-serif",fontSize:30,fontWeight:700,color:'#b8860b',marginTop:8}}>{premio}€</p>}
+                    </div>
+
+                    <div style={{background:'#001F6B',borderRadius:16,padding:15,marginBottom:14}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'#FFD700',marginBottom:8}}>🛡️ EL OTRO EQUIPO</p>
+                        {!miPronostico || !miPronostico.elOtroActivado ? (
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.62)',margin:0}}>No activaste El Otro en esta jornada.</p>
+                        ) : !resultadoOtro || !terminadoOtro ? (
+                            <div>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,color:'#FFD700',margin:0}}>⏳ RESULTADO PENDIENTE</p>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.65)',lineHeight:1.5,marginTop:5}}>Tu equipo de Primera todavía no ha terminado. Tus puntos <strong>todavía no se multiplican ni se dividen</strong>. El resultado definitivo se aplicará cuando termine ese partido.</p>
+                            </div>
+                        ) : (
+                            <div>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,color:estadoOtroColor,margin:0}}>{resultadoOtro.equipo} · {resultadoOtro.golesEquipo} — {resultadoOtro.golesRival}</p>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.65)',marginTop:5}}>Tu equipo {resultadoOtro.resultado}. El efecto del multiplicador se aplicará según las reglas de El Otro.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {pendientes.length > 0 && miPronostico && miPronostico.elOtroActivado && (
+                        <div style={{background:'rgba(255,215,0,.08)',border:'1px solid rgba(255,180,0,.25)',borderRadius:14,padding:13,marginBottom:14}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'#9a6b00',marginBottom:6}}>⏳ PRIMERA AÚN NO HA TERMINADO</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.62)',lineHeight:1.5,marginBottom:8}}>La Jornada {jornada.numeroJornada} no se considera completamente cerrada para El Otro hasta que terminen los partidos que siguen pendientes.</p>
+                            <div style={{display:'flex',flexDirection:'column',gap:4,maxHeight:125,overflowY:'auto'}}>
+                                {pendientes.map(function(p){
+                                    return <div key={p.fixtureId} style={{display:'flex',justifyContent:'space-between',gap:8,fontFamily:"'Inter',sans-serif",fontSize:10,color:G.deepBlue}}><span>{p.local} — {p.visitante}</span><span style={{opacity:.45,whiteSpace:'nowrap'}}>{new Date(p.fecha).toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short',timeZone:'Atlantic/Canary'})}</span></div>;
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {topEstrellas.length > 0 && (
+                        <div style={{marginBottom:14}}>
+                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:G.deepBlue,margin:0}}>⭐ TOP 5 ESTRELLAS · J{jornada.numeroJornada}</p>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,.4)'}}>+5 · +4 · +3 · +2 · +1</span>
+                            </div>
+                            <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                                {topEstrellas.map(function(r,i){
+                                    var perf=userProfiles[r.id]||{};
+                                    var puntos = Number(r.puntosRanking||0);
+                                    return <div key={r.id} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 9px',background:i===0?'rgba(255,215,0,.1)':'rgba(0,31,107,.025)',borderRadius:9}}>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color:G.deepBlue,width:20,textAlign:'center'}}>{puntos ? '+'+puntos : '—'}</span>
+                                        <IconoPerfil perfil={perf} size={24} />
+                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,flex:1}}>{nombreVisible(r.id,perf)}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#b8860b',fontWeight:700}}>{r.estrellasJornada||0}⭐</span>
+                                    </div>;
+                                })}
+                            </div>
+                            <button onClick={function(){ onIrEstrellas(); cerrar(); }} style={{marginTop:9,width:'100%',border:'none',background:'rgba(0,31,107,.06)',color:G.deepBlue,borderRadius:10,padding:9,fontFamily:"'Teko',sans-serif",letterSpacing:1,cursor:'pointer'}}>VER LA CLASIFICACIÓN DE ESTRELLAS →</button>
+                        </div>
+                    )}
+
+                    <button onClick={cerrar} style={{width:'100%',border:'none',background:G.deepBlue,color:'#FFD700',borderRadius:24,padding:13,fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,cursor:'pointer'}}>CONTINUAR</button>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,.35)',textAlign:'center',marginTop:8}}>Esta pantalla aparece una sola vez para ti.</p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers, pagos, onIrAPagos }) => {
     var G = styles.colors;
     var [jornada, setJornada] = useState(null);
@@ -2032,6 +2200,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var [timeLeft, setTimeLeft] = useState('');
     var [showPorraAnual, setShowPorraAnual] = useState(false);
     var [showEstrellas, setShowEstrellas] = useState(false);
+    var [jornadaCierre, setJornadaCierre] = useState(null);
 
     // Sincronización automática con API cada 5 minutos cuando hay jornada en vivo
     useEffect(function() {
@@ -2088,20 +2257,15 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             var dataJug = await resJug.json();
                             if (dataJug.response && dataJug.response.length > 0) {
                                 var statsPorApiId = {};
-                                var statsPorNombre = {};
                                 dataJug.response.forEach(function(equipo) {
                                     (equipo.players || []).forEach(function(p) {
-                                        var stats = (p.statistics && p.statistics[0]) || {};
-                                        statsPorApiId[p.player.id] = stats;
-                                        if (p.player && p.player.name) {
-                                            statsPorNombre[normalizarTexto(p.player.name)] = stats;
-                                        }
+                                        statsPorApiId[p.player.id] = (p.statistics && p.statistics[0]) || {};
                                     });
                                 });
                                 var udlpEsLocal = jornada.equipoLocal === 'UD Las Palmas';
                                 var golesEncajadosAhora = udlpEsLocal ? f.goals.away : f.goals.home;
                                 var porteriaACeroAhora = golesEncajadosAhora === 0;
-                                var calc = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACeroAhora, statsPorNombre);
+                                var calc = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACeroAhora);
                                 await setDoc(doc(db, "jornadas", jornada.id), {
                                     liveEstrellas: { puntosPorNombre: calc.puntosPorNombre, actualizadoEn: new Date().toISOString() }
                                 }, { merge: true });
@@ -2154,7 +2318,11 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         var unsubOtro = onSnapshot(doc(db, "elOtro", user), function(snap) {
             if (snap.exists()) setMiElOtro(snap.data());
         });
-        return function() { unsub(); unsubOtro(); };
+        var unsubCierre = onSnapshot(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada'), orderBy('numeroJornada', 'desc'), limit(1)), function(snap) {
+            if (!snap.empty) setJornadaCierre({ id: snap.docs[0].id, ...snap.docs[0].data() });
+            else setJornadaCierre(null);
+        });
+        return function() { unsub(); unsubOtro(); unsubCierre(); };
     }, [user]);
 
     // Buscar el partido de Primera del Otro Equipo en cuanto sepamos qué
@@ -2244,6 +2412,18 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var getMultiplicador = getMultiplicadorOtro;
 
     if (loading) return <LoadingSkeleton />;
+
+    if (jornadaCierre) {
+        return (
+            <CierreJornadaTransicion
+                user={user}
+                jornada={jornadaCierre}
+                userProfiles={userProfiles}
+                teamLogos={teamLogos}
+                onIrEstrellas={function(){ setJornadaCierre(null); setShowEstrellas(true); }}
+            />
+        );
+    }
 
     // Bloqueo hasta que pague la inscripción
     if (!jugadorHaPagado(user, pagos || [])) {
@@ -4265,6 +4445,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
 const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
     var G = styles.colors;
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
+    var [configElOtro, setConfigElOtro] = useState({plazoAbierto:true});
     var [jugadoresAprobados, setJugadoresAprobados] = useState([]);
     var JUGADORES_TODOS = Array.from(new Set(JUGADORES_FUNDADORES.concat(jugadoresAprobados)));
     var JUGADORES_LISTA = JUGADORES_TODOS.filter(function(j) { return jugadoresInactivos.indexOf(j) === -1; });
@@ -4279,6 +4460,13 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
     var [bizumInfo, setBizumInfo] = useState({ nombre: 'Juanma', telefono: '' });
     var [copiado, setCopiado] = useState(false);
     var [heEnviado, setHeEnviado] = useState(false);
+
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'elOtro'), function(snap) {
+            setConfigElOtro(snap.exists() ? {plazoAbierto: snap.data().plazoAbierto !== false, ...snap.data()} : {plazoAbierto:true});
+        });
+        return function() { unsub(); };
+    }, []);
 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'bizum'), function(snap) {
@@ -4842,24 +5030,14 @@ const CalendarioScreen = ({ teamLogos }) => {
 // de las estadísticas de la API para un fixture, en cualquier momento (en vivo
 // o finalizado). Reutilizada tanto por el cálculo definitivo (admin, al cerrar
 // la jornada) como por la estimación en directo durante el partido.
-function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero, statsPorNombre) {
+function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero) {
     var jugadoresSinApiId = [];
     var puntosPorNombre = {};
-    statsPorNombre = statsPorNombre || {};
 
     plantilla.forEach(function(jug) {
-        // Primero usamos el ID oficial de API-Football. Como red de seguridad,
-        // si la plantilla todavía no tiene apiId o API-Football ha cambiado
-        // algún identificador, cruzamos por nombre normalizado. Así un jugador
-        // no se queda a 0 estrellas solo porque todavía no se ha sincronizado
-        // su ID en Firebase.
-        var st = jug.apiId ? statsPorApiId[jug.apiId] : null;
-        if (!st) st = statsPorNombre[normalizarTexto(jug.nombre)] || null;
-        if (!st) {
-            if (!jug.apiId) jugadoresSinApiId.push(jug.nombre);
-            puntosPorNombre[jug.nombre] = 0;
-            return;
-        } // no convocado / no jugó (todavía)
+        if (!jug.apiId) { jugadoresSinApiId.push(jug.nombre); puntosPorNombre[jug.nombre] = 0; return; }
+        var st = statsPorApiId[jug.apiId];
+        if (!st) { puntosPorNombre[jug.nombre] = 0; return; } // no convocado / no jugó (todavía)
 
         var pts = 0;
         var minutos = (st.games && st.games.minutes) || 0;
@@ -4909,78 +5087,207 @@ function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACe
 }
 
 async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornadaInfo) {
-    if (!fixtureId) throw new Error('Esta jornada no tiene fixtureId guardado. Sincroniza con la API (botón de sincronización) mientras el partido está en juego o recién acabado, y vuelve a intentarlo.');
+    if (!fixtureId) throw new Error('Esta jornada no tiene fixtureId guardado. Sincroniza con la API antes de recalcular.');
     if (!API_FOOTBALL_KEY) throw new Error('Falta configurar REACT_APP_API_FOOTBALL_KEY en el entorno.');
 
     var url = 'https://v3.football.api-sports.io/fixtures/players?fixture=' + fixtureId;
     var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
     var data = await res.json();
     if (!data.response || data.response.length === 0) {
-        throw new Error('La API no tiene todavía las estadísticas de jugadores de este partido. Suele tardar unos minutos tras el pitido final — reinténtalo con "Recalcular Estrellas".');
+        throw new Error('La API no tiene todavía las estadísticas de jugadores de este partido. Espera unos minutos y vuelve a intentarlo.');
     }
 
-    // Mapa apiId -> estadísticas del jugador en este partido concreto
+    // Mapa apiId -> estadísticas del jugador en este partido concreto.
     var statsPorApiId = {};
-    var statsPorNombre = {};
     data.response.forEach(function(equipo) {
         (equipo.players || []).forEach(function(p) {
-            var stats = (p.statistics && p.statistics[0]) || {};
-            statsPorApiId[p.player.id] = stats;
-            if (p.player && p.player.name) {
-                statsPorNombre[normalizarTexto(p.player.name)] = stats;
-            }
+            if (p && p.player && p.player.id) statsPorApiId[p.player.id] = (p.statistics && p.statistics[0]) || {};
         });
     });
 
-    // ¿Portería a 0 de la UDLP en este partido? (Solo tiene sentido para nuestra plantilla)
     var udlpEsLocal = jornadaInfo.equipoLocal === 'UD Las Palmas';
     var golesEncajados = parseInt(udlpEsLocal ? jornadaInfo.resultadoVisitante : jornadaInfo.resultadoLocal);
     var porteriaACero = golesEncajados === 0;
-
-    var calculo = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero, statsPorNombre);
+    var calculo = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero);
     var puntosPorNombre = calculo.puntosPorNombre;
     var jugadoresSinApiId = calculo.jugadoresSinApiId;
 
-    // Leer la selección de 5 estrellas de cada jugador y sumar sus puntos
-    var seleccionesSnap = await getDocs(collection(db, "estrellas_seleccion", jornadaId, "jugadores"));
-    var batch = writeBatch(db);
-    var resumen = [];
+    // Las estrellas de acción (8, 6, 5...) son una competición acumulativa.
+    // NO son todavía los puntos de la clasificación general. Primero calculamos
+    // las estrellas obtenidas en esta jornada por cada participante y después
+    // las convertimos a 5/4/3/2/1 puntos mediante ranking de competición.
+    var seleccionesSnap = await getDocs(collection(db, 'estrellas_seleccion', jornadaId, 'jugadores'));
+    var resultadosSnap = await getDocs(collection(db, 'estrellas_resultados', jornadaId, 'jugadores'));
+    var antiguos = {};
+    resultadosSnap.forEach(function(d) { antiguos[d.id] = d.data() || {}; });
 
+    var resultados = [];
     seleccionesSnap.forEach(function(docSnap) {
         var userId = docSnap.id;
         var sel = docSnap.data().jugadores || [];
-        var total = 0;
+        var totalEstrellas = 0;
         var desglosePorJugador = {};
         var detalle = sel.map(function(j) {
-            var pts = puntosPorNombre[j.nombre] || 0;
-            total += pts;
+            var pts = Number(puntosPorNombre[j.nombre] || 0);
+            totalEstrellas += pts;
             desglosePorJugador[j.nombre] = pts;
             return { nombre: j.nombre, puntos: pts };
         });
-
-        batch.set(doc(db, "clasificacion_estrellas", userId), {
-            puntosEstrellas: increment(total)
-        }, { merge: true });
-
-        // Guardar el desglose en la propia selección, para que el historial
-        // pueda mostrar qué puntos dio cada estrella sin consultas extra.
-        batch.set(doc(db, "estrellas_seleccion", jornadaId, "jugadores", userId), {
-            puntosEstrellas: total, desglosePorJugador: desglosePorJugador
-        }, { merge: true });
-
-        batch.set(doc(db, "estrellas_resultados", jornadaId, "jugadores", userId), {
-            puntosJornada: total, detalle: detalle, calculadoEn: serverTimestamp()
+        resultados.push({
+            userId: userId,
+            estrellasJornada: totalEstrellas,
+            desglosePorJugador: desglosePorJugador,
+            detalle: detalle,
         });
+    });
 
-        resumen.push({ userId: userId, total: total });
+    // Ranking de competición: empate en un puesto comparte puntos y salta el
+    // puesto siguiente. Ej.: 20,20,13,9,7 => 5,5,3,2,1.
+    resultados.sort(function(a,b) {
+        if (b.estrellasJornada !== a.estrellasJornada) return b.estrellasJornada - a.estrellasJornada;
+        return a.userId.localeCompare(b.userId);
+    });
+    var anterior = null;
+    var puesto = 0;
+    resultados.forEach(function(r, index) {
+        if (anterior === null || r.estrellasJornada !== anterior) puesto = index + 1;
+        r.puestoEstrellas = puesto;
+        r.puntosRanking = puesto <= 5 ? (6 - puesto) : 0;
+        anterior = r.estrellasJornada;
+    });
+
+    var batch = writeBatch(db);
+    resultados.forEach(function(r) {
+        var viejo = antiguos[r.userId] || {};
+        // Compatibilidad con el cálculo anterior: antes se guardaba el total
+        // de estrellas de acción en puntosJornada y se sumaba por error a la
+        // clasificación general. Si encontramos ese formato antiguo, lo
+        // tratamos como el valor anterior para que el recálculo lo corrija.
+        var formatoNuevo = viejo.estrellasJornada !== undefined || viejo.puntosRanking !== undefined;
+        var estrellasAnteriores = Number(viejo.estrellasJornada !== undefined ? viejo.estrellasJornada : (viejo.puntosJornada !== undefined ? viejo.puntosJornada : 0));
+        var puntosRankingAnteriores = Number(viejo.puntosRanking !== undefined ? viejo.puntosRanking : 0);
+        var deltaEstrellas = r.estrellasJornada - estrellasAnteriores;
+        var deltaRanking = formatoNuevo ? (r.puntosRanking - puntosRankingAnteriores) : (r.puntosRanking - estrellasAnteriores);
+
+        // Acumulado de estrellas: solo cambia por la diferencia. Esto hace que
+        // RE-CALCULAR sea seguro y nunca duplique la Liga de Estrellas.
+        batch.set(doc(db, 'clasificacion_estrellas', r.userId), {
+            puntosEstrellas: increment(deltaEstrellas),
+            ultimaJornada: jornadaId,
+        }, { merge: true });
+
+        // Puntos de la jornada: también se aplica por diferencia, así que si
+        // corregimos un ranking ya calculado, solo se corrige la diferencia.
+        if (deltaRanking !== 0) {
+            var clasifRef = doc(db, 'clasificacion', r.userId);
+            batch.set(clasifRef, { puntosTotales: increment(deltaRanking) }, { merge: true });
+        }
+
+        batch.set(doc(db, 'estrellas_seleccion', jornadaId, 'jugadores', r.userId), {
+            puntosEstrellas: r.estrellasJornada,
+            estrellasJornada: r.estrellasJornada,
+            desglosePorJugador: r.desglosePorJugador,
+            puntosRanking: r.puntosRanking,
+            puestoEstrellas: r.puestoEstrellas,
+        }, { merge: true });
+
+        batch.set(doc(db, 'estrellas_resultados', jornadaId, 'jugadores', r.userId), {
+            puntosJornada: r.puntosRanking,
+            estrellasJornada: r.estrellasJornada,
+            puntosRanking: r.puntosRanking,
+            puestoEstrellas: r.puestoEstrellas,
+            detalle: r.detalle,
+            calculadoEn: serverTimestamp(),
+        }, { merge: true });
     });
 
     await batch.commit();
 
+    // Marcador de control de la jornada: permite saber que el cálculo de
+    // estrellas existe, pero NO bloquea el recálculo posterior.
+    await setDoc(doc(db, 'jornadas', jornadaId), {
+        estrellasCalculadas: true,
+        estrellasCalculadasEn: serverTimestamp(),
+        estrellasFixtureId: fixtureId,
+    }, { merge: true });
+
     if (jugadoresSinApiId.length > 0) {
-        console.warn('Estrellas: estos jugadores no tienen apiId y no se pudieron calcular automáticamente:', jugadoresSinApiId);
+        console.warn('Estrellas: jugadores sin apiId:', jugadoresSinApiId);
     }
-    return { resumen: resumen, jugadoresSinApiId: jugadoresSinApiId };
+
+    return {
+        resumen: resultados.map(function(r) {
+            return { userId: r.userId, estrellasJornada: r.estrellasJornada, puestoEstrellas: r.puestoEstrellas, puntosRanking: r.puntosRanking };
+        }),
+        jugadoresSinApiId: jugadoresSinApiId,
+    };
+}
+
+async function resolverElOtroPendienteJornada(jornada) {
+    if (!jornada || !jornada.id) throw new Error('Jornada no válida.');
+    if (!API_FOOTBALL_KEY) throw new Error('Falta REACT_APP_API_FOOTBALL_KEY.');
+
+    var pSnap = await getDocs(collection(db, 'pronosticos', jornada.id, 'jugadores'));
+    var pendientes = pSnap.docs.filter(function(d){ var p=d.data()||{}; return p.elOtroActivado && p.elOtroPendiente && p.elOtroFixtureId && !p.elOtroAplicado; });
+    if (!pendientes.length) return { aplicados:0, pendientes:0, mensaje:'No quedan El Otro pendientes.' };
+
+    var cache = {};
+    var todosFinalizados = true;
+    for (var i=0;i<pendientes.length;i++) {
+        var fixtureId = pendientes[i].data().elOtroFixtureId;
+        if (cache[fixtureId]) continue;
+        try {
+            var rf = await fetch('https://v3.football.api-sports.io/fixtures?id=' + fixtureId, { headers:{'x-apisports-key':API_FOOTBALL_KEY} });
+            var df = await rf.json();
+            var fx = df.response && df.response[0];
+            if (!fx) { cache[fixtureId] = { finalizado:false }; todosFinalizados=false; continue; }
+            var est = fx.fixture.status.short;
+            var final = ['FT','AET','PEN'].indexOf(est)!==-1;
+            cache[fixtureId] = {
+                finalizado: final,
+                nombreLocal: fx.teams.home.name,
+                nombreVisitante: fx.teams.away.name,
+                golesLocal: fx.goals.home,
+                golesVisitante: fx.goals.away,
+            };
+            if (!final) todosFinalizados=false;
+        } catch(e) { cache[fixtureId] = {finalizado:false}; todosFinalizados=false; }
+    }
+
+    var usuariosOtro = {};
+    for (var j=0;j<pendientes.length;j++) {
+        var uid=pendientes[j].id;
+        try { var eu=await getDoc(doc(db,'elOtro',uid)); usuariosOtro[uid]=eu.exists()?eu.data():{}; } catch(e) { usuariosOtro[uid]={}; }
+    }
+
+    var batch=writeBatch(db), aplicados=0, siguenPendientes=0;
+    pendientes.forEach(function(d){
+        var p=d.data()||{};
+        var fx=cache[p.elOtroFixtureId];
+        if (!fx || !fx.finalizado) { siguenPendientes++; return; }
+        var local=nombresSonSimilares(fx.nombreLocal,p.elOtroEquipoUsado);
+        var gf=local?fx.golesLocal:fx.golesVisitante;
+        var gc=local?fx.golesVisitante:fx.golesLocal;
+        var resultado=gf>gc?'gana':gf<gc?'pierde':'empate';
+        var activacionesPrevias=(usuariosOtro[d.id]&&usuariosOtro[d.id].activaciones)||0;
+        var mult=getMultiplicadorOtro(activacionesPrevias);
+        var base=Number(p.puntosBaseSinOtro !== undefined ? p.puntosBaseSinOtro : p.puntosObtenidos || 0);
+        var nuevo=aplicarMultiplicadorOtro(base,resultado,mult);
+        var anterior=Number(p.puntosObtenidos||0);
+        var delta=nuevo-anterior;
+        if (delta!==0) batch.set(doc(db,'clasificacion',d.id),{puntosTotales:increment(delta)},{merge:true});
+        batch.set(doc(db,'pronosticos',jornada.id,'jugadores',d.id),{
+            puntosObtenidos:nuevo, elOtroAplicado:true, elOtroPendiente:false,
+            elOtroResultado:resultado, elOtroMultiplicador:mult,
+        },{merge:true});
+        batch.set(doc(db,'elOtro',d.id),{
+            activaciones:increment(1),
+            historial:arrayUnion({jornada:jornada.numeroJornada,equipo:p.elOtroEquipoUsado,resultado:resultado,multiplicador:mult,ptosAntes:base,ptosDespues:nuevo}),
+        },{merge:true});
+        aplicados++;
+    });
+    await batch.commit();
+    return {aplicados:aplicados, pendientes:siguenPendientes, todosFinalizados:todosFinalizados && siguenPendientes===0};
 }
 
 const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
@@ -5236,10 +5543,13 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 }
                 ptosJornada += ptosGol;
 
-                // 4. EL OTRO EQUIPO — multiplica o divide el total de ESTA jornada
-                // según el resultado real de su partido. Solo si se activó, con
-                // fixture guardado, y ese partido ya ha terminado de verdad.
-                if (p.elOtroActivado && p.elOtroFixtureId && p.elOtroEquipoUsado && !puntosYaCalculados) {
+                // 4. EL OTRO EQUIPO — separamos SIEMPRE los puntos base de la
+                // porra de su efecto. Si el partido de Primera todavía no terminó,
+                // guardamos los puntos base y dejamos el multiplicador pendiente.
+                var puntosBaseSinOtro = ptosJornada;
+                var otroAplicado = false;
+                var otroPendiente = false;
+                if (p.elOtroActivado && p.elOtroFixtureId && p.elOtroEquipoUsado) {
                     var resFx = resultadosFixtureOtro[p.elOtroFixtureId];
                     if (resFx && resFx.finalizado) {
                         var esLocalOtro = nombresSonSimilares(resFx.nombreLocal, p.elOtroEquipoUsado);
@@ -5248,22 +5558,32 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                         var resultadoOtro = golesFavor > golesContra ? 'gana' : (golesFavor < golesContra ? 'pierde' : 'empate');
                         var activacionesPrevias = (elOtroDataUsuarios[userId] && elOtroDataUsuarios[userId].activaciones) || 0;
                         var multOtro = getMultiplicadorOtro(activacionesPrevias);
-                        var ptosAntesOtro = ptosJornada;
-                        ptosJornada = aplicarMultiplicadorOtro(ptosJornada, resultadoOtro, multOtro);
-
-                        batch.set(doc(db, "elOtro", userId), {
-                            activaciones: increment(1),
-                            historial: arrayUnion({
-                                jornada: jornada.numeroJornada, equipo: p.elOtroEquipoUsado,
-                                resultado: resultadoOtro, multiplicador: multOtro,
-                                ptosAntes: ptosAntesOtro, ptosDespues: ptosJornada,
-                            }),
-                        }, { merge: true });
+                        ptosJornada = aplicarMultiplicadorOtro(puntosBaseSinOtro, resultadoOtro, multOtro);
+                        otroAplicado = true;
+                        if (!puntosYaCalculados) {
+                            batch.set(doc(db, "elOtro", userId), {
+                                activaciones: increment(1),
+                                historial: arrayUnion({
+                                    jornada: jornada.numeroJornada, equipo: p.elOtroEquipoUsado,
+                                    resultado: resultadoOtro, multiplicador: multOtro,
+                                    ptosAntes: puntosBaseSinOtro, ptosDespues: ptosJornada,
+                                }),
+                            }, { merge: true });
+                        }
+                    } else {
+                        otroPendiente = true;
                     }
                 }
 
                 if (!puntosYaCalculados) {
-                    batch.set(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: ptosJornada, puntosResultadoExacto: ptosExacto, puntosGoleador: ptosGol }, { merge: true });
+                    batch.set(doc(db, "pronosticos", jornada.id, "jugadores", userId), {
+                        puntosObtenidos: ptosJornada,
+                        puntosBaseSinOtro: puntosBaseSinOtro,
+                        puntosResultadoExacto: ptosExacto,
+                        puntosGoleador: ptosGol,
+                        elOtroAplicado: otroAplicado,
+                        elOtroPendiente: otroPendiente,
+                    }, { merge: true });
                     const cTotal = clasifActual[userId]?.puntosTotales || 0;
                     const cExactos = clasifActual[userId]?.puntosResultadoExacto || 0;
                     // set con merge: true en vez de update — porque si es la
@@ -5313,14 +5633,21 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     // Recalcula solo las Estrellas de esta jornada (botón manual, por si la API
     // no estaba lista al finalizar, o para corregir tras un ajuste).
     const handleRecalcularEstrellas = async () => {
-        if (!jornada.fixtureId) { alert('Esta jornada no tiene fixtureId guardado — sincroniza primero con la API mientras el partido esté en juego o recién acabado.'); return; }
-        if (!window.confirm('Esto va a sumar (otra vez) los puntos de Estrellas de esta jornada a la clasificación. Si ya se calcularon antes, se duplicarán. ¿Seguro que no se han calculado todavía?')) return;
+        if (!jornada.fixtureId) { alert('Esta jornada no tiene fixtureId guardado — sincroniza primero con la API.'); return; }
+        if (!window.confirm('Se volverán a leer las estadísticas de API-Football y se recalcularán las Estrellas de esta jornada.
+
+El sistema corregirá SOLO las diferencias respecto al cálculo anterior: no duplicará ni las Estrellas acumuladas ni los puntos de jornada.
+
+¿Continuar?')) return;
         try {
-            await calcularEstrellasJornada(jornada.id, jornada.fixtureId, plantilla, {
+            var resultado = await calcularEstrellasJornada(jornada.id, jornada.fixtureId, plantilla, {
                 equipoLocal: jornada.equipoLocal, equipoVisitante: jornada.equipoVisitante,
                 resultadoLocal: jornada.resultadoLocal, resultadoVisitante: jornada.resultadoVisitante
             });
-            alert('✅ Estrellas recalculadas.');
+            var sinIds = resultado.jugadoresSinApiId || [];
+            alert('✅ Estrellas recalculadas y protegidas contra duplicados.
+
+' + (sinIds.length ? 'Sin apiId: ' + sinIds.join(', ') : 'Todos los jugadores de la plantilla con ID están preparados.') );
         } catch(e) {
             alert('❌ Error: ' + e.message);
         }
@@ -5338,6 +5665,20 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 <div><span style={{fontWeight: 'bold', color: styles.colors.success, fontFamily: "'Oswald', sans-serif", letterSpacing: '1px'}}>✓ {getNombreJornada(jornada.numeroJornada)}: {jornada.equipoLocal} vs {jornada.equipoVisitante}</span> <span style={{color: styles.colors.silver, fontSize: '0.8rem'}}>(Finalizada)</span></div>
                 <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap'}}>
                     <button onClick={handleRecalcularEstrellas} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: '#d4a017', color: '#d4a017'}}>⭐ RECALCULAR ESTRELLAS</button>
+                    <button onClick={async function(){
+                        if (!window.confirm('¿Comprobar ahora los partidos de Primera pendientes de El Otro y aplicar los multiplicadores que ya hayan terminado?')) return;
+                        try {
+                            var r = await resolverElOtroPendienteJornada(jornada);
+                            alert('🛡️ El Otro actualizado.
+
+Aplicados: ' + r.aplicados + '
+Pendientes: ' + r.pendientes + (r.pendientes ? '
+
+Todavía quedan partidos por terminar.' : '
+
+Ya no quedan multiplicadores pendientes.'));
+                        } catch(e) { alert('❌ Error resolviendo El Otro: ' + e.message); }
+                    }} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: '#0091FF', color: '#0074cc'}}>🛡️ RESOLVER EL OTRO</button>
                     <button onClick={handleResetPuntos} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: styles.colors.danger, color: styles.colors.danger}}>RESETEAR PUNTOS</button>
                     <button onClick={() => setIsUnlocked(true)} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem'}}>Desbloquear</button>
                 </div>
@@ -5433,16 +5774,39 @@ const ADMIN_STYLES = {
     btnDanger: { background:'#e63946', color:'#fff', border:'none', borderRadius:8, padding:'6px 12px', fontFamily:"'Teko',sans-serif", fontSize:12, letterSpacing:1, cursor:'pointer' },
 };
 
-const BuscadorApiIdsPlantilla = ({ plantilla, onPlantillaActualizada }) => {
+const BuscadorApiIdsPlantilla = ({ plantilla }) => {
     var [resultado, setResultado] = useState(null);
     var [buscando, setBuscando] = useState(false);
     var [errorMsg, setErrorMsg] = useState('');
+    var [busquedaManual, setBusquedaManual] = useState('');
+    var [resultadosManuales, setResultadosManuales] = useState([]);
+    var [guardandoNombre, setGuardandoNombre] = useState('');
+
+    var guardarApiId = async function(jug, apiId) {
+        var id = parseInt(apiId) || 0;
+        if (!id) { setErrorMsg('ID no válido.'); return; }
+        setGuardandoNombre(jug.nombre);
+        try {
+            var plantillaNueva = plantilla.map(function(j) {
+                if (j.nombre !== jug.nombre) return j;
+                return { ...j, apiId: id };
+            });
+            await setDoc(doc(db, 'configuracion', 'plantilla_udlp'), { jugadores: plantillaNueva }, { merge: true });
+            setErrorMsg('');
+            alert('✅ ' + jug.nombre + ' actualizado con apiId ' + id + '. Ya puede entrar en el cálculo de Estrellas.');
+            if (resultado) {
+                setResultado(resultado.map(function(r) {
+                    if (r.nombre !== jug.nombre) return r;
+                    return { ...r, apiIdActual: id, apiIdEncontrado: id };
+                }));
+            }
+        } catch(e) {
+            setErrorMsg('Error guardando el ID: ' + e.message);
+        }
+        setGuardandoNombre('');
+    };
 
     var consultarPlantillaActual = async function() {
-        // /players/squads da la plantilla REGISTRADA actual directamente — a
-        // diferencia de /players?season=, que solo devuelve algo si el
-        // jugador ya tiene estadísticas de partidos jugados esa temporada
-        // (por eso fallaba justo ahora, con la liga recién empezada).
         var url = 'https://v3.football.api-sports.io/players/squads?team=' + API_TEAM_ID_UDLP;
         var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
         var data = await res.json();
@@ -5453,177 +5817,110 @@ const BuscadorApiIdsPlantilla = ({ plantilla, onPlantillaActualizada }) => {
         });
     };
 
-    var sincronizarTodosLosIds = async function() {
-        if (!API_FOOTBALL_KEY) {
-            setErrorMsg('Falta configurar REACT_APP_API_FOOTBALL_KEY.');
-            return;
-        }
-        setBuscando(true);
-        setErrorMsg('');
-        setResultado(null);
-        try {
-            var apiPlantilla = await consultarPlantillaActual();
-            if (apiPlantilla.length === 0) {
-                throw new Error('API-Football no devolvió la plantilla actual de la UD Las Palmas.');
-            }
-
-            // Cruce robusto: primero nombre completo normalizado; después
-            // apellido + primera letra del nombre. Nunca pisamos un ID válido
-            // si no hay una coincidencia suficientemente clara.
-            var normalizadosApi = apiPlantilla.map(function(a) {
-                return { ...a, _norm: normalizarTexto(a.nombre) };
-            });
-
-            var plantillaNueva = plantilla.map(function(jug) {
-                var norm = normalizarTexto(jug.nombre);
-                var exacto = normalizadosApi.find(function(a) { return a._norm === norm; });
-                var match = exacto || null;
-
-                if (!match) {
-                    var partes = norm.split(' ').filter(Boolean);
-                    var apellido = partes.length ? partes[partes.length - 1] : '';
-                    var inicial = partes.length ? partes[0].charAt(0) : '';
-                    var candidatos = normalizadosApi.filter(function(a) {
-                        var pa = a._norm.split(' ').filter(Boolean);
-                        var ap = pa.length ? pa[pa.length - 1] : '';
-                        var ini = pa.length ? pa[0].charAt(0) : '';
-                        return apellido && ap === apellido && (!inicial || ini === inicial);
-                    });
-                    if (candidatos.length === 1) match = candidatos[0];
-                }
-
-                if (!match) return jug;
-                return { ...jug, apiId: match.id, foto: match.foto || jug.foto };
-            });
-
-            var encontrados = plantillaNueva.filter(function(j) { return !!j.apiId; }).length;
-            var pendientes = plantillaNueva.filter(function(j) { return !j.apiId; }).map(function(j) { return j.nombre; });
-
-            await setDoc(doc(db, 'configuracion', 'plantilla_udlp'), {
-                jugadores: plantillaNueva,
-                fuenteIds: 'API-Football /players/squads',
-                sincronizadoEn: serverTimestamp()
-            }, { merge: true });
-
-            if (onPlantillaActualizada) onPlantillaActualizada(plantillaNueva);
-
-            setResultado(plantillaNueva.map(function(jug) {
-                var api = normalizadosApi.find(function(a) { return a.id === jug.apiId; });
-                return {
-                    nombre: jug.nombre,
-                    apiIdActual: jug.apiId,
-                    fotoActual: jug.apiId ? ('https://media.api-sports.io/football/players/' + jug.apiId + '.png') : null,
-                    apiIdEncontrado: api ? api.id : null,
-                    nombreApi: api ? api.nombre : null,
-                    fotoEncontrada: api ? api.foto : null,
-                    posibleConflicto: false
-                };
-            }));
-
-            setErrorMsg(
-                '✅ Sincronización completada: ' + encontrados + '/' + plantillaNueva.length + ' jugadores con ID. ' +
-                (pendientes.length ? 'Pendientes: ' + pendientes.join(', ') : 'Todos tienen ID.')
-            );
-        } catch(e) {
-            setErrorMsg('Error sincronizando IDs: ' + e.message);
-        }
-        setBuscando(false);
-    };
-
     var buscar = async function() {
         if (!API_FOOTBALL_KEY) { setErrorMsg('Falta configurar REACT_APP_API_FOOTBALL_KEY.'); return; }
         setBuscando(true); setErrorMsg(''); setResultado(null);
         try {
             var apiPorNombre = await consultarPlantillaActual();
             if (apiPorNombre.length === 0) {
-                setErrorMsg('La API no devolvió la plantilla. Puede que el equipo aún no esté vinculado correctamente en API-Football para esta temporada.');
+                setErrorMsg('La API no devolvió la plantilla.');
                 setBuscando(false); return;
             }
-            // Cruce con nuestra plantilla, tolerante a acentos/mayúsculas —
-            // antes "José" con tilde no cruzaba contra un "Jose" sin tilde
-            // que a veces devuelve la API.
             var cruce = plantilla.map(function(jug) {
-                var match = apiPorNombre.find(function(a) {
-                    return nombresSonSimilares(a.nombre, jug.nombre);
-                });
-                var fotoActual = jug.apiId ? ('https://media.api-sports.io/football/players/' + jug.apiId + '.png') : null;
+                var match = apiPorNombre.find(function(a) { return nombresSonSimilares(a.nombre, jug.nombre); });
                 return {
-                    nombre: jug.nombre, apiIdActual: jug.apiId, fotoActual: fotoActual,
+                    nombre: jug.nombre, apiIdActual: jug.apiId, fotoActual: jug.apiId ? ('https://media.api-sports.io/football/players/' + jug.apiId + '.png') : null,
                     apiIdEncontrado: match ? match.id : null, nombreApi: match ? match.nombre : null,
                     fotoEncontrada: match ? match.foto : null,
                     posibleConflicto: !!(jug.apiId && match && match.id !== jug.apiId),
                 };
             });
             setResultado(cruce);
-        } catch(e) {
-            setErrorMsg('Error consultando la API: ' + e.message);
-        }
+        } catch(e) { setErrorMsg('Error consultando la API: ' + e.message); }
         setBuscando(false);
+    };
+
+    var buscarNombreManual = async function() {
+        var termino = busquedaManual.trim();
+        if (termino.length < 3) { setErrorMsg('Escribe al menos 3 letras.'); return; }
+        if (!API_FOOTBALL_KEY) { setErrorMsg('Falta configurar REACT_APP_API_FOOTBALL_KEY.'); return; }
+        setBuscando(true); setErrorMsg(''); setResultadosManuales([]);
+        try {
+            var url = 'https://v3.football.api-sports.io/players?search=' + encodeURIComponent(termino);
+            var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var data = await res.json();
+            var encontrados = (data.response || []).map(function(p) {
+                var equipos = (p.statistics || []).map(function(st) { return st.team ? st.team.name : ''; }).filter(Boolean);
+                return { id:p.player.id, nombre:p.player.name, foto:p.player.photo, equipos:Array.from(new Set(equipos)) };
+            });
+            setResultadosManuales(encontrados);
+            if (!encontrados.length) setErrorMsg('API-Football no devuelve resultados para "' + termino + '".');
+        } catch(e) { setErrorMsg('Error en búsqueda manual: ' + e.message); }
+        setBuscando(false);
+    };
+
+    var jugadorCoincidente = function(r) {
+        var n = normalizarTexto(r.nombre);
+        return plantilla.find(function(j) { return normalizarTexto(j.nombre) === n || nombresSonSimilares(j.nombre, r.nombre); }) || null;
     };
 
     return (
         <div style={ADMIN_STYLES.card}>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
-                🔍 Buscar y verificar IDs de API-Football (para Estrellas)
+                🔎 IDs API-Football · buscar, comprobar y guardar
             </p>
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
-                Comprueba TODOS los jugadores, no solo los que faltan — así puedes ver con tus propios ojos si alguna foto o ID de sesiones anteriores está mal asignado. Compara "Tienes ahora" con "La API dice" antes de copiar nada.
+                Puedes comprobar la plantilla completa o buscar un jugador concreto. <strong>El ID que guardes aquí queda en Firebase</strong>: no tienes que volver a tocar App.js.
             </p>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10}}>
                 <button onClick={buscar} disabled={buscando} style={ADMIN_STYLES.btnPrimary}>
-                    {buscando ? 'Consultando API...' : 'Buscar y verificar ahora'}
-                </button>
-                <button onClick={sincronizarTodosLosIds} disabled={buscando} style={ADMIN_STYLES.btnSuccess}>
-                    {buscando ? 'SINCRONIZANDO...' : '⚡ SINCRONIZAR TODOS LOS IDs'}
+                    {buscando ? 'Consultando...' : '🔄 Verificar plantilla'}
                 </button>
             </div>
+
+            <div style={{background:'rgba(0,31,107,0.035)',borderRadius:10,padding:12,marginBottom:12}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'#001F6B',marginBottom:7,textTransform:'uppercase'}}>Búsqueda manual</p>
+                <div style={{display:'flex',gap:8}}>
+                    <input value={busquedaManual} onChange={function(e){setBusquedaManual(e.target.value);}} onKeyDown={function(e){if(e.key==='Enter') buscarNombreManual();}}
+                        placeholder="Ej. Giovanni Bonfanti" style={{flex:1,padding:'9px 11px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
+                    <button onClick={buscarNombreManual} disabled={buscando} style={{...ADMIN_STYLES.btnSuccess,padding:'8px 12px'}}>Buscar</button>
+                </div>
+                {resultadosManuales.length > 0 && (
+                    <div style={{marginTop:10,display:'flex',flexDirection:'column',gap:6}}>
+                        {resultadosManuales.map(function(r,idx) {
+                            var jug = jugadorCoincidente(r);
+                            return (
+                                <div key={String(r.id)+'_'+idx} style={{display:'flex',alignItems:'center',gap:8,padding:'8px',background:'#fff',borderRadius:8,border:'1px solid rgba(0,31,107,0.08)',flexWrap:'wrap'}}>
+                                    <img src={r.foto} alt="" style={{width:34,height:34,borderRadius:'50%',objectFit:'cover'}} onError={function(e){e.target.style.opacity=.2;}} />
+                                    <div style={{flex:1,minWidth:150}}>
+                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#001F6B',margin:0}}>{r.nombre}</p>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.5)',margin:0}}>API ID: <strong>{r.id}</strong>{r.equipos.length ? ' · '+r.equipos.join(', ') : ''}</p>
+                                    </div>
+                                    {jug ? <button onClick={function(){guardarApiId(jug,r.id);}} disabled={guardandoNombre===jug.nombre} style={ADMIN_STYLES.btnSuccess}>{guardandoNombre===jug.nombre?'Guardando...':'Guardar en '+jug.nombre}</button> : <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#e63946'}}>No coincide con tu plantilla</span>}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
             {errorMsg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginTop:10}}>{errorMsg}</p>}
             {resultado && (
                 <div style={{marginTop:14,background:'rgba(0,31,107,0.03)',borderRadius:8,overflow:'hidden'}}>
                     {resultado.map(function(r) {
                         var sinIdAntes = !r.apiIdActual || r.apiIdActual === 0;
                         return (
-                            <div key={r.nombre} style={{padding:'10px 12px',borderBottom:'1px solid rgba(0,31,107,0.06)',
-                                background: r.posibleConflicto ? 'rgba(230,57,70,0.06)' : (sinIdAntes && r.apiIdEncontrado ? 'rgba(16,185,129,0.06)' : 'transparent')}}>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#001F6B',marginBottom:6,fontWeight:600}}>
-                                    {r.nombre} {r.posibleConflicto && <span style={{color:'#e63946',fontSize:11}}>⚠️ ID distinto al que tienes — revisar</span>}
-                                </p>
-                                <div style={{display:'flex',gap:16,alignItems:'center'}}>
-                                    <div style={{textAlign:'center'}}>
-                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)',marginBottom:3,textTransform:'uppercase'}}>Tienes ahora</p>
-                                        {r.fotoActual ? (
-                                            <img src={r.fotoActual} alt="" style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',border:'2px solid rgba(0,31,107,0.15)'}}
-                                                onError={function(e){e.target.style.opacity=0.2;}} />
-                                        ) : (
-                                            <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(0,31,107,0.06)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'rgba(0,31,107,0.3)'}}>sin ID</div>
-                                        )}
-                                    </div>
-                                    <span style={{color:'rgba(0,31,107,0.25)',fontSize:16}}>→</span>
-                                    <div style={{textAlign:'center'}}>
-                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)',marginBottom:3,textTransform:'uppercase'}}>La API dice</p>
-                                        {r.fotoEncontrada ? (
-                                            <img src={r.fotoEncontrada} alt="" style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',border: r.posibleConflicto ? '2px solid #e63946' : '2px solid #10b981'}} />
-                                        ) : (
-                                            <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(230,57,70,0.08)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'#e63946'}}>?</div>
-                                        )}
-                                    </div>
-                                    <div style={{flex:1}}>
-                                        {r.apiIdEncontrado ? (
-                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color: sinIdAntes ? '#10b981' : (r.posibleConflicto ? '#e63946' : 'rgba(0,31,107,0.4)')}}>
-                                                apiId: {r.apiIdEncontrado}<br/>
-                                                <span style={{fontSize:11,opacity:.7}}>{r.nombreApi}</span>
-                                            </span>
-                                        ) : (
-                                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946'}}>No encontrado en la API — revisar manualmente</span>
-                                        )}
-                                    </div>
+                            <div key={r.nombre} style={{padding:'10px 12px',borderBottom:'1px solid rgba(0,31,107,0.06)',background:r.posibleConflicto?'rgba(230,57,70,0.06)':(sinIdAntes&&r.apiIdEncontrado?'rgba(16,185,129,0.06)':'transparent')}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#001F6B',marginBottom:6,fontWeight:600}}>{r.nombre} {r.posibleConflicto&&<span style={{color:'#e63946',fontSize:11}}>⚠️ ID distinto — revisar foto</span>}</p>
+                                <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:r.apiIdEncontrado?'#10b981':'#e63946'}}>
+                                        {r.apiIdEncontrado ? 'API: '+r.apiIdEncontrado+' · '+(r.nombreApi||'') : 'No encontrado automáticamente'}
+                                    </span>
+                                    {r.apiIdEncontrado && <button onClick={function(){guardarApiId(plantilla.find(function(j){return j.nombre===r.nombre;}),r.apiIdEncontrado);}} disabled={guardandoNombre===r.nombre} style={{...ADMIN_STYLES.btnSuccess,padding:'5px 9px'}}>{guardandoNombre===r.nombre?'Guardando...':'Guardar ID'}</button>}
                                 </div>
                             </div>
                         );
                     })}
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',padding:'8px 12px'}}>
-                        Compara las dos fotos de cada fila. Si la de "La API dice" es la persona correcta, copia ese apiId a PLANTILLA_FALLBACK en el código. La coincidencia de nombre es automática por apellido — puede fallar con apodos o nombres compuestos, así que la foto es la comprobación real.
-                    </p>
                 </div>
             )}
         </div>
@@ -6386,9 +6683,18 @@ const GestionPlantillaAdmin = ({ plantilla }) => {
                                 onChange={function(e){ editarJugador(jug, 'posicion', e.target.value); }}>
                                 <option>Portero</option><option>Defensa</option><option>Centrocampista</option><option>Mediapunta</option><option>Delantero</option>
                             </select>
-                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color: jug.apiId ? '#10b981' : '#e63946'}}>
+                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color: jug.apiId ? '#10b981' : '#e63946',minWidth:70}}>
                                 {jug.apiId ? 'ID:' + jug.apiId : 'sin ID'}
                             </span>
+                            <button onClick={function(){
+                                var valor = window.prompt('API-Football ID de ' + jug.nombre + ':', jug.apiId ? String(jug.apiId) : '');
+                                if (valor === null) return;
+                                var id = parseInt(valor, 10) || 0;
+                                editarJugador(jug, 'apiId', id);
+                            }} disabled={guardando}
+                                style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#001F6B',background:'rgba(0,31,107,0.06)',border:'1px solid rgba(0,31,107,0.1)',borderRadius:6,padding:'4px 7px',cursor:'pointer'}}>
+                                ✏️ ID
+                            </button>
                             <button onClick={function(){quitarJugador(jug);}} disabled={guardando}
                                 style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946',background:'none',border:'none',cursor:'pointer'}}>
                                 ✕
@@ -6808,18 +7114,20 @@ const NormativaScreen = () => {
     );
 };
 
-const AdminPanelScreen = ({ plantilla, teamLogos, onPlantillaActualizada }) => {
+const AdminPanelScreen = ({ plantilla, teamLogos }) => {
     var [jornadas, setJornadas] = useState([]);
     var [expandida, setExpandida] = useState(null);
     var [sincronizando, setSincronizando] = useState(false);
     var [msgSync, setMsgSync] = useState('');
     var [seccion, setSeccion] = useState('jornadas');
+    var [herramientaSub, setHerramientaSub] = useState('jugadores');
     var [solicitudes, setSolicitudes] = useState([]);
     var [errorSolicitudes, setErrorSolicitudes] = useState('');
     var [pagos, setPagos] = useState([]);
     var [msgAdmin, setMsgAdmin] = useState('');
     var [rifas, setRifas] = useState([]);
     var [nuevaRifa, setNuevaRifa] = useState({ titulo:'', descripcion:'', precio:'', fecha:'' });
+    var [elOtroDatosAdmin, setElOtroDatosAdmin] = useState({});
 
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
     var [jugadoresAprobados, setJugadoresAprobados] = useState([]);
@@ -6838,6 +7146,15 @@ const AdminPanelScreen = ({ plantilla, teamLogos, onPlantillaActualizada }) => {
             setJugadoresAprobados(snap.exists() ? (snap.data().nombres || []) : []);
         });
         return function() { unsub(); };
+    }, []);
+
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, 'elOtro'), function(snap) {
+            var m = {};
+            snap.forEach(function(d){ m[d.id] = d.data(); });
+            setElOtroDatosAdmin(m);
+        });
+        return function(){ unsub(); };
     }, []);
 
     useEffect(function() {
@@ -7034,8 +7351,8 @@ const AdminPanelScreen = ({ plantilla, teamLogos, onPlantillaActualizada }) => {
                     ['pagos','💰 Pagos', pagos.filter(function(p){return p.estado==='pendiente_confirmacion';}).length],
                     ['solicitudes','👥 Solicitudes', solicitudes.filter(function(s){return !s.estado || s.estado==='pendiente';}).length],
                     ['clasificacion','🏆 Clasificación', 0],
-                    ['herramientas','🔧 Herramientas', 0],
-                    ['rifas','🎟️ Rifas', 0],
+                    ['herramientas','⚙️ Gestión', 0],
+                    ['rifas','🎟️ Extras', 0],
                 ].map(function(s) {
                     return (
                         <button key={s[0]} onClick={function(){setSeccion(s[0]);setMsgAdmin('');}} style={{...A.secBtn(s[0]),position:'relative'}}>
@@ -7387,6 +7704,13 @@ const AdminPanelScreen = ({ plantilla, teamLogos, onPlantillaActualizada }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'herramientas' && (
                 <div>
+                    <div style={{display:'flex',gap:7,overflowX:'auto',paddingBottom:8,marginBottom:14}}>
+                        {[['jugadores','👤 Jugadores'],['otro','🛡️ El Otro'],['estrellas','⭐ Estrellas'],['sistema','⚙️ Sistema']].map(function(t){
+                            var activoSub = herramientaSub === t[0];
+                            return <button key={t[0]} onClick={function(){setHerramientaSub(t[0]);}} style={{padding:'8px 12px',borderRadius:10,border:'none',cursor:'pointer',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,background:activoSub?'#001F6B':'rgba(0,31,107,0.06)',color:activoSub?'#FFD700':'#001F6B',fontWeight:activoSub?700:400,flexShrink:0}}>{t[1]}</button>;
+                        })}
+                    </div>
+                    {herramientaSub === 'jugadores' && <div>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>👤 Gestión de jugadores</p>
                     {/* Resetear tutorial */}
                     <div style={A.card}>
@@ -7491,17 +7815,27 @@ const AdminPanelScreen = ({ plantilla, teamLogos, onPlantillaActualizada }) => {
                     <PonerApodoAdmin jugadoresLista={JUGADORES_LISTA} />
 
                     <MostrarApellidosAdmin />
+                    </div>}
 
+                    {herramientaSub === 'otro' && <div>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>🛡️ El Otro Equipo</p>
                     {/* El Otro Equipo — gestión de turnos */}
                     <div style={A.card}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
                             🛡️ El Otro Equipo — control de plazos
                         </p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
-                            El plazo de elección abre el 11 agosto 12:00 y cierra el 14 agosto 18:00 (hora canaria). Desde aquí puedes forzar el cierre o reabrir el plazo.
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:10,lineHeight:1.5}}>
+                            Desde aquí controlas el draft de <strong>El Otro Equipo</strong>. Puedes reabrirlo para que los jugadores que todavía no tienen equipo completen su elección. La apertura queda guardada en Firebase y ahora sí controla la pantalla de los jugadores.
                         </p>
-                        <div style={{display:'flex',gap:8}}>
+                        <div style={{background:'rgba(0,31,107,0.035)',borderRadius:10,padding:10,marginBottom:12}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'#001F6B',marginBottom:6}}>PENDIENTES DE ELECCIÓN</p>
+                            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                {JUGADORES_LISTA.filter(function(j){ return !elOtroDatosAdmin[j] || !elOtroDatosAdmin[j].equipo; }).map(function(j){
+                                    return <span key={j} style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#001F6B',background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:12,padding:'4px 8px'}}>{j}</span>;
+                                })}
+                            </div>
+                        </div>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                             <button onClick={async function() {
                                 await setDoc(doc(db, 'configuracion', 'elOtro'), { plazoAbierto: true }, { merge: true });
                                 setMsgAdmin('✅ Plazo de El Otro Equipo abierto');
@@ -7523,13 +7857,15 @@ const AdminPanelScreen = ({ plantilla, teamLogos, onPlantillaActualizada }) => {
 
                     {/* El Otro Equipo — hueco simbólico por baja */}
                     <GestionHuecoVacante />
+                    </div>}
 
+                    {herramientaSub === 'estrellas' && <div>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>⭐ Plantilla y Estrellas</p>
                     {/* Buscador de IDs de API-Football para la plantilla */}
                     {/* Verificación real del enlace plantilla ↔ estadísticas */}
                     <VerificarEstadisticasJugadoresAdmin plantilla={plantilla} />
 
-                    <BuscadorApiIdsPlantilla plantilla={plantilla} onPlantillaActualizada={onPlantillaActualizada} />
+                    <BuscadorApiIdsPlantilla plantilla={plantilla} />
 
                     {/* Verificación visual de fotos */}
                     <VerificarEscudosPrimera teamLogos={teamLogos} />
@@ -7537,8 +7873,10 @@ const AdminPanelScreen = ({ plantilla, teamLogos, onPlantillaActualizada }) => {
                     <VerificarFotosPlantilla plantilla={plantilla} />
 
                     <GestionPlantillaAdmin plantilla={plantilla} />
+                    </div>}
 
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>⚙️ General</p>
+                    {herramientaSub === 'sistema' && <div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>⚙️ Sistema</p>
                     {/* App lanzada al público */}
                     <div style={A.card}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
@@ -7561,6 +7899,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos, onPlantillaActualizada }) => {
                             <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B'}}>{window.location.origin}/invitacion.html</p>
                         </div>
                     </div>
+                    </div>}
                 </div>
             )}
 
@@ -7838,7 +8177,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         // El draft no arranca hasta PLAZO_APERTURA_EL_OTRO, y se pausa cada
         // noche de 01:00 a 09:00 — nadie recibe turno nuevo en ese tramo.
         var ahoraCheck = new Date();
-        var draftAbierto = ahoraCheck >= PLAZO_APERTURA_EL_OTRO && !estaEnPausaNocturna(ahoraCheck);
+        var draftAbierto = configElOtro.plazoAbierto !== false && ahoraCheck >= PLAZO_APERTURA_EL_OTRO && !estaEnPausaNocturna(ahoraCheck);
         setEnPausaNocturna(ahoraCheck >= PLAZO_APERTURA_EL_OTRO && estaEnPausaNocturna(ahoraCheck));
         var turno = draftAbierto ? calcularTurnoElOtro(ordenConf, datos, jugadoresInactivos) : null;
         setTurnoActual(turno);
@@ -7856,7 +8195,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                 }, { merge: true }).catch(function(){});
             }
         }
-    }, [todosElOtro, vacantes, currentUser, jugadoresAprobados, jugadoresInactivos]);
+    }, [todosElOtro, vacantes, currentUser, jugadoresAprobados, jugadoresInactivos, configElOtro]);
 
     // Temporizador: cuenta atrás de 60 minutos del turno ACTUAL (sea de quien
     // sea) — antes solo corría en el móvil de la propia persona a la que le
@@ -7981,7 +8320,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
 
     var esMiTurno = turnoActual === currentUser;
     var yoElegí = miElOtro && miElOtro.equipo;
-    var plazoSuperado = new Date() > PLAZO_EL_OTRO;
+    var plazoSuperado = configElOtro.plazoAbierto === false;
 
     // Aviso de "ya te toca" — vibra el móvil una sola vez en cuanto pasa a
     // ser tu turno (no repite en cada repintado). No hace falta ningún
@@ -8540,7 +8879,10 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                                             <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.4)',textAlign:'center'}}>Cargando selecciones...</p>
                                         ) : (
                                             Object.keys(seleccionesJornada).sort(function(a,b) {
-                                                return (seleccionesJornada[b].puntosEstrellas||0) - (seleccionesJornada[a].puntosEstrellas||0);
+                                                var pa = seleccionesJornada[a].puntosRanking !== undefined ? seleccionesJornada[a].puntosRanking : 0;
+                                                var pb = seleccionesJornada[b].puntosRanking !== undefined ? seleccionesJornada[b].puntosRanking : 0;
+                                                if (pb !== pa) return pb - pa;
+                                                return (seleccionesJornada[b].estrellasJornada||seleccionesJornada[b].puntosEstrellas||0) - (seleccionesJornada[a].estrellasJornada||seleccionesJornada[a].puntosEstrellas||0);
                                             }).map(function(userId, idx) {
                                                 var sel = seleccionesJornada[userId];
                                                 var perf = userProfiles[userId] || {};
@@ -8552,7 +8894,9 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                                                             <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color: idx < 3 ? '#FFD700' : 'rgba(0,31,107,0.3)',width:18,fontWeight:700}}>{idx+1}</span>
                                                             <IconoPerfil perfil={perf} size={24} />
                                                             <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,color:G.deepBlue}}>{nombreVisible(userId, perf)}</span>
-                                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: ptsTotal > 0 ? G.deepBlue : 'rgba(0,31,107,0.25)'}}>{ptsTotal}⭐</span>
+                                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: (sel.puntosRanking||0) > 0 ? G.deepBlue : 'rgba(0,31,107,0.25)'}}>
+                                                                {(sel.puntosRanking||0) > 0 ? '+'+(sel.puntosRanking||0)+' pts' : '0 pts'}
+                                                            </span>
                                                         </div>
                                                         <div style={{display:'flex',gap:4,flexWrap:'wrap',marginLeft:26}}>
                                                             {jugadoresElegidos.map(function(j) {
@@ -8598,9 +8942,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                             {nombreVisible(j.id, perf)}
                         </span>
                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: i === 0 ? '#FFD700' : G.deepBlue}}>{j.puntosEstrellas||0}⭐</span>
-                        {i===0&&<span style={{fontSize:14}}>👁</span>}
-                        {i===1&&<span style={{fontSize:14}}>🔒</span>}
-                        {i===2&&<span style={{fontSize:14}}>⭐</span>}
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.38)',minWidth:46,textAlign:'right'}}>{i < 5 ? 'puesto '+(i+1) : ''}</span>
                     </div>
                     );
                 })}
@@ -9260,7 +9602,7 @@ function App() {
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} />;
             case 'pagos':       return <PagosScreen currentUser={currentUser} contextoPago={contextoPago} onContextoPagoUsado={function(){setContextoPago(null);}} />;
             case 'perfil':      return <PerfilScreen currentUser={currentUser} tema={tema} cambiarTema={cambiarTema} teamLogos={teamLogos} />;
-            case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantillaConFotos} teamLogos={teamLogos} onPlantillaActualizada={setPlantilla} /> : null;
+            case 'admin':       return isAdmin ? <AdminPanelScreen plantilla={plantillaConFotos} teamLogos={teamLogos} /> : null;
             default:            return null;
         }
     };
