@@ -5015,10 +5015,10 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                     }, { merge: true });
                 }
                 
-                batch.update(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: 0, puntosResultadoExacto: 0, puntosGoleador: 0 });
+                batch.set(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: 0, puntosResultadoExacto: 0, puntosGoleador: 0 }, { merge: true });
             });
 
-            batch.update(doc(db, "jornadas", jornada.id), { puntosCalculados: false });
+            batch.set(doc(db, "jornadas", jornada.id), { puntosCalculados: false }, { merge: true });
             await batch.commit();
             setPuntosYaCalculados(false); // FIX: actualizar estado local para que handleSaveChanges funcione bien
             alert("✅ PUNTOS BORRADOS DE LA GENERAL. La jornada ya no está calculada. Modifica lo que necesites y vuelve a 'Guardar Todos Los Cambios'.");
@@ -5176,10 +5176,10 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 const haPagadoEstaJornada = !!jugadoresQueHanPagadoEstaJornada[userId];
                 if (!haPagadoEstaJornada) {
                     if (!puntosYaCalculados) {
-                        batch.update(doc(db, "pronosticos", jornada.id, "jugadores", userId), {
+                        batch.set(doc(db, "pronosticos", jornada.id, "jugadores", userId), {
                             puntosObtenidos: 0, puntosResultadoExacto: 0, puntosGoleador: 0,
                             noContabilizado: true, motivoNoContabilizado: 'Jornada no pagada por Bizum',
-                        });
+                        }, { merge: true });
                     }
                     return; // no suma nada a clasificación, no entra en ganadores
                 }
@@ -5231,7 +5231,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 }
 
                 if (!puntosYaCalculados) {
-                    batch.update(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: ptosJornada, puntosResultadoExacto: ptosExacto, puntosGoleador: ptosGol });
+                    batch.set(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: ptosJornada, puntosResultadoExacto: ptosExacto, puntosGoleador: ptosGol }, { merge: true });
                     const cTotal = clasifActual[userId]?.puntosTotales || 0;
                     const cExactos = clasifActual[userId]?.puntosResultadoExacto || 0;
                     // set con merge: true en vez de update — porque si es la
@@ -5257,7 +5257,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
             if (!puntosYaCalculados) { updateData.puntosCalculados = true; setPuntosYaCalculados(true); } // FIX: actualizar estado local
         }
 
-        batch.update(jornadaRef, updateData);
+        batch.set(jornadaRef, updateData, { merge: true });
         await batch.commit();
 
         // --- Estrellas: cálculo automático vía API-Football, aislado del flujo principal ---
