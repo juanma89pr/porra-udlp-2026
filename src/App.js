@@ -22,6 +22,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const API_TEAM_ID_UDLP = 534;
 const auth = getAuth(app);
 const messaging = getMessaging(app);
 
@@ -307,11 +308,11 @@ const PUNTOS_ESTRELLAS = {
 // Plantilla real UD Las Palmas 26/27 — pretemporada Marbella (22/07/2026)
 // Fotos: se cargan desde API-Football o ESPN CDN como fallback
 // Team ID en API-Football: 534 (UD Las Palmas) — confirmado en directo por
+// Team ID en API-Football: 534 (UD Las Palmas) — confirmado en directo por
 // el admin desde el Live Tester del panel de API-Football (antes tenía un
 // 275 mal puesto desde el principio, que era otro equipo distinto; por eso
 // nunca cruzaba ningún nombre de jugador con la plantilla real).
-const API_TEAM_ID_UDLP = 534;
-
+// NOTA: movido aquí arriba porque funciones anteriores ya lo usan.
 // Lista ÚNICA de jugadores fundadores — antes había 4 copias repartidas
 // por el código (Admin, El Otro, La Jornada, Login), y si se añadía o
 // quitaba alguien, había que acordarse de tocar las 4. Ahora es una sola
@@ -2336,7 +2337,7 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
                 if(activo){setImporte(mi);setConfirmado(!cs.empty&&!!cs.docs[0].data().recibido);setCargando(false);}
             }catch(e){if(activo)setCargando(false);}
         })(); return function(){activo=false;};
-    },[user,jornada.id,jornada.resultadoLocal,jornada.resultadoVisitante,jornada.bote,jornada.esVip]);
+    },[user,jornada?.id,jornada?.resultadoLocal,jornada?.resultadoVisitante,jornada?.bote,jornada?.esVip]);
     if(cargando) return null;
     return <div style={{background:importe>0?'rgba(255,215,0,.12)':'rgba(0,31,107,.04)',border:'1px solid '+(importe>0?'rgba(212,175,55,.35)':'rgba(0,31,107,.08)'),borderRadius:16,padding:16,marginBottom:16}}>
         <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:5,fontWeight:700}}>{importe>0?'🏆 PREMIO DE LA JORNADA':'📊 JORNADA RESUELTA'}</p>
@@ -2424,10 +2425,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             pronostico: pd,
                             premio: premioHistorico,
                             cobrado: !!(premioData && premioData.recibido),
-                            definitivo: !!jh.cierreDefinitivo,
-                            puntosEstrellasJornada: Number((pd && pd.puntosEstrellasJornada) || 0),
-                            estrellasJornada: Number((pd && pd.estrellasJornada) || 0),
-                            puestoEstrellas: pd && pd.puestoEstrellas != null ? Number(pd.puestoEstrellas) : null
+                            definitivo: !!jh.cierreDefinitivo
                         });
                     }
                 }
@@ -2719,7 +2717,6 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             <div style={{display:'flex',alignItems:'center',gap:10,marginTop:6,flexWrap:'wrap'}}>
                                 {pd.golesLocal!=null ? <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:acerto?'#10b981':'rgba(0,31,107,.48)'}}>🎯 Tu apuesta: {pd.golesLocal}—{pd.golesVisitante} {acerto?'✅':''}</span> : <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.4)'}}>Sin apuesta</span>}
                                 <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color:G.deepBlue}}>+{puntos} pts {h.definitivo?'def.':'prov.'}</span>
-                                {Number(pd.puntosEstrellasJornada||0)>0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#a87900'}}>⭐ +{Number(pd.puntosEstrellasJornada||0)}</span>}
                                 {h.premio>0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:h.cobrado?'#10b981':'#e63946'}}>{h.cobrado?'✅ Cobrado':'⏳ Cobro pendiente'}</span>}
                             </div>
                         </div>
@@ -2815,12 +2812,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 <div style={{background:jornada.cierreDefinitivo?'rgba(16,185,129,.08)':'rgba(255,215,0,.08)',border:'1px solid '+(jornada.cierreDefinitivo?'rgba(16,185,129,.22)':'rgba(212,175,55,.28)'),borderRadius:14,padding:14,marginBottom:16}}>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:jornada.cierreDefinitivo?'#0f8a61':'#8a6a00',margin:0,textTransform:'uppercase'}}>{jornada.cierreDefinitivo?'✅ PUNTOS DEFINITIVOS':'⏳ PUNTOS PROVISIONALES'}</p>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:G.deepBlue,margin:'8px 0 3px'}}>+{puntosActuales} PUNTOS</p>
-                    {pdActual && <div style={{display:'flex',justifyContent:'center',gap:14,flexWrap:'wrap',marginTop:6}}>
-                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.55)'}}>Porra: <strong>{Number(pdActual.puntosBaseSinOtro||0)}</strong></span>
-                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#a87900'}}>⭐ Estrellas: <strong>+{Number(pdActual.puntosEstrellasJornada||0)}</strong></span>
-                        {pdActual.elOtroActivado && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#001F6B'}}>🛡️ {jornada.cierreDefinitivo ? (pdActual.elOtroResultado==='gana'?'Multiplica':pdActual.elOtroResultado==='pierde'?'Divide entre 2':'Sin cambio') : 'Pendiente'}</span>}
-                    </div>}
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.62)',lineHeight:1.5,margin:'7px 0 0'}}>{jornada.cierreDefinitivo?'La jornada ya está cerrada por completo.':'El dinero ya está resuelto. Los puntos del Otro Equipo quedan pendientes hasta el cierre total de Primera.'}</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.62)',lineHeight:1.5,margin:0}}>{jornada.cierreDefinitivo?'La jornada ya está cerrada por completo.':'Tu resultado y el reparto económico ya están resueltos. Los puntos pueden cambiar cuando termine la jornada de Primera.'}</p>
                 </div>
                 <button onClick={function(){setJornadaCierre(jornada);}} style={{width:'100%',border:'none',background:'#001F6B',color:'#FFD700',borderRadius:24,padding:12,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,cursor:'pointer',marginBottom:8}}>VER RESUMEN DE JORNADA →</button>
                 {renderHistorialMiJornada()}
@@ -4028,10 +4020,26 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
         );
     }
 
-    // Si hay una jornada finalizada dentro de las 48h, es la protagonista.
-    // La próxima jornada se muestra debajo, no sustituye al cierre reciente.
-    var mostrarProximaDebajo = (!jornada || jornada.estado === 'Finalizada') && !!proximaUDLP;
-    var fpProxima = mostrarProximaDebajo ? new Date(proximaUDLP.fecha) : null;
+    if ((!jornada || jornada.estado === 'Finalizada') && proximaUDLP) {
+        var fp=new Date(proximaUDLP.fecha);
+        return <div style={{paddingBottom:40}}>
+            <h2 style={styles.title}>LA JORNADA</h2>
+            <div style={{background:'#001F6B',borderRadius:20,padding:24,textAlign:'center',marginBottom:16}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:4,color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:8}}>PRÓXIMA JORNADA</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#fff',marginBottom:6}}>{proximaUDLP.local} — {proximaUDLP.visitante}</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#FFD700'}}>{fp.toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}</p>
+                {proximaUDLP.estadio && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.4)',marginTop:4}}>🏟️ {proximaUDLP.estadio}</p>}
+            </div>
+            {ultimosUDLP.length>0 && <div style={{background:'#fff',borderRadius:16,border:'1px solid rgba(0,31,107,.08)',overflow:'hidden'}}>
+                <div style={{padding:'12px 16px',background:'rgba(0,31,107,.04)'}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.5}}>HISTÓRICO RECIENTE</p></div>
+                {ultimosUDLP.map(function(p){return <div key={p.fixtureId} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 16px',borderBottom:'1px solid rgba(0,31,107,.05)'}}>
+                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.4)',minWidth:84}}>{new Date(p.fecha).toLocaleDateString('es-ES',{day:'numeric',month:'short',timeZone:'Atlantic/Canary'})}</span>
+                    <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:14,color:G.deepBlue}}>{p.local} — {p.visitante}</span>
+                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,color:G.deepBlue}}>{p.golesLocal}—{p.golesVisitante}</span>
+                </div>;})}
+            </div>}
+        </div>;
+    }
 
     var abierta = jornada.estado === 'Abierta';
     var udlpEsLocal = jornada.equipoLocal === 'UD Las Palmas';
@@ -4510,8 +4518,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(255,255,255,0.4)',width:35,textAlign:'center'}}>{p.golesLocal}-{p.golesVisitante}</span>
                                         {exacto && <span style={{fontSize:10}}>🎯</span>}
                                         {p.elOtroActivado && <span style={{fontSize:10}}>🛡️</span>}
-                                        {jornada.estrellasCalculadas && <span style={{fontFamily:"'Teko',sans-serif",fontSize:11,color:'#FFD700',minWidth:24,textAlign:'right'}}>⭐{p.puntosEstrellasJornada||0}</span>}
-                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: (p.puntosObtenidos||0) > 0 ? '#FFD700' : 'rgba(255,255,255,0.25)',minWidth:28,textAlign:'right'}}>{p.puntosObtenidos||p.puntosProvisionales||0}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: (p.puntosObtenidos||0) > 0 ? '#FFD700' : 'rgba(255,255,255,0.25)',minWidth:24,textAlign:'right'}}>{p.puntosObtenidos||0}</span>
                                     </div>
                                 );
                             })}
@@ -4547,17 +4554,6 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                 </div>
                             );
                         })}
-                    </div>
-                </div>
-            )}
-
-            {mostrarProximaDebajo && (
-                <div style={{marginTop:22}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.5,textTransform:'uppercase',marginBottom:9}}>🔜 PRÓXIMA JORNADA</p>
-                    <div style={{background:'#001F6B',borderRadius:16,padding:17,textAlign:'center'}}>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700',margin:0}}>{proximaUDLP.local} — {proximaUDLP.visitante}</p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.7)',margin:'7px 0 0'}}>🕐 {fpProxima.toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}</p>
-                        {proximaUDLP.estadio && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.4)',margin:'4px 0 0'}}>🏟️ {proximaUDLP.estadio}</p>}
                     </div>
                 </div>
             )}
@@ -5667,9 +5663,6 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
     var resultadosSnap = await getDocs(collection(db, 'estrellas_resultados', jornadaId, 'jugadores'));
     var antiguos = {};
     resultadosSnap.forEach(function(d) { antiguos[d.id] = d.data() || {}; });
-    var pronosticosSnap = await getDocs(collection(db, 'pronosticos', jornadaId, 'jugadores'));
-    var pronosticosAntiguos = {};
-    pronosticosSnap.forEach(function(d) { pronosticosAntiguos[d.id] = d.data() || {}; });
 
     var resultados = [];
     seleccionesSnap.forEach(function(docSnap) {
@@ -5717,13 +5710,6 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
         var estrellasAnteriores = Number(viejo.estrellasJornada !== undefined ? viejo.estrellasJornada : (viejo.puntosJornada !== undefined ? viejo.puntosJornada : 0));
         var puntosRankingAnteriores = Number(viejo.puntosRanking !== undefined ? viejo.puntosRanking : 0);
         var deltaEstrellas = r.estrellasJornada - estrellasAnteriores;
-        var deltaRanking = r.puntosRanking - puntosRankingAnteriores;
-        // Si la jornada ya estaba cerrada definitivamente, un recálculo de
-        // Estrellas también corrige el total general: solo cambia la parte
-        // extra 5/4/3/2/1, nunca la parte de Porra ni El Otro.
-        if (jornadaInfo.cierreDefinitivo && deltaRanking !== 0) {
-            batch.set(doc(db, 'clasificacion', r.userId), { puntosTotales: increment(deltaRanking) }, { merge: true });
-        }
         // Acumulado de estrellas: solo cambia por la diferencia. La puntuación
         // 5/4/3/2/1 de esta jornada NO entra aún en la clasificación general;
         // queda guardada como provisional hasta el cierre total de Primera.
@@ -5739,21 +5725,6 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
             puntosRanking: r.puntosRanking,
             puestoEstrellas: r.puestoEstrellas,
         }, { merge: true });
-
-        // El ranking 5/4/3/2/1 es un extra independiente de El Otro.
-        // Lo copiamos también al pronóstico de cada jugador para que
-        // Mi Jornada, La Jornada y el cierre trabajen siempre con el mismo
-        // dato y el recálculo sustituya los valores anteriores.
-        var pronosticoUpdate = {
-            puntosEstrellasJornada: r.puntosRanking,
-            estrellasJornada: r.estrellasJornada,
-            puestoEstrellas: r.puestoEstrellas,
-        };
-        if (jornadaInfo.cierreDefinitivo && deltaRanking !== 0) {
-            pronosticoUpdate.puntosObtenidos = Number((pronosticosAntiguos[r.userId] || {}).puntosObtenidos || 0) + deltaRanking;
-            pronosticoUpdate.puntosDefinitivos = Number((pronosticosAntiguos[r.userId] || {}).puntosDefinitivos || (pronosticosAntiguos[r.userId] || {}).puntosObtenidos || 0) + deltaRanking;
-        }
-        batch.set(doc(db, 'pronosticos', jornadaId, 'jugadores', r.userId), pronosticoUpdate, { merge: true });
 
         batch.set(doc(db, 'estrellas_resultados', jornadaId, 'jugadores', r.userId), {
             puntosJornada: r.puntosRanking,
@@ -5774,33 +5745,17 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
         if (!nuevosIds[uid]) {
             var viejo = antiguos[uid] || {};
             var oldStars = Number(viejo.estrellasJornada || viejo.puntosJornada || 0);
-            var oldRanking = Number(viejo.puntosRanking || 0);
             if (oldStars) {
                 batch.set(doc(db, 'clasificacion_estrellas', uid), {
                     puntosEstrellas: increment(-oldStars)
                 }, { merge: true });
             }
-            if (jornadaInfo.cierreDefinitivo && oldRanking) {
-                batch.set(doc(db, 'clasificacion', uid), { puntosTotales: increment(-oldRanking) }, { merge: true });
-                batch.set(doc(db, 'pronosticos', jornadaId, 'jugadores', uid), {
-                    puntosObtenidos: increment(-oldRanking),
-                    puntosDefinitivos: increment(-oldRanking)
-                }, { merge: true });
-            }
             batch.delete(doc(db, 'estrellas_resultados', jornadaId, 'jugadores', uid));
             batch.delete(doc(db, 'estrellas_seleccion', jornadaId, 'jugadores', uid));
-            batch.set(doc(db, 'pronosticos', jornadaId, 'jugadores', uid), {
-                puntosEstrellasJornada: 0, estrellasJornada: 0, puestoEstrellas: null
-            }, { merge: true });
         }
     });
 
     await batch.commit();
-
-    // El recálculo de Estrellas sustituye los valores anteriores y vuelve a
-    // construir los puntos provisionales de la jornada con la nueva cifra
-    // 5/4/3/2/1. Así no hace falta tocar manualmente cada pronóstico.
-    await actualizarPuntosProvisionalesJornada(jornadaId);
 
     // Marcador de control de la jornada: permite saber que el cálculo de
     // estrellas existe, pero NO bloquea el recálculo posterior.
@@ -5854,9 +5809,7 @@ async function cerrarJornadaDefinitivamenteAdmin(jornadaId) {
     pSnap.forEach(function(d){
         var p=d.data()||{}, userId=d.id;
         if(p.noContabilizado) return;
-        var baseSinOtro=Number(p.puntosBaseSinOtro!==undefined?p.puntosBaseSinOtro:0);
-        var estrellasExtra=Number(p.puntosEstrellasJornada||0);
-        var provisional=baseSinOtro+estrellasExtra;
+        var provisional=Number(p.puntosProvisionales!==undefined?p.puntosProvisionales:(Number(p.puntosBaseSinOtro||0)+Number(p.puntosEstrellasJornada||0)));
         var definitivo=provisional, otroResultado=null, otroMult=null;
         if(p.elOtroActivado&&p.elOtroFixtureId&&p.elOtroEquipoUsado){
             var fx=fxMap[p.elOtroFixtureId];
@@ -5864,9 +5817,8 @@ async function cerrarJornadaDefinitivamenteAdmin(jornadaId) {
                 var local=nombresSonSimilares(fx.local,p.elOtroEquipoUsado);var gf=local?fx.gl:fx.gv;var gc=local?fx.gv:fx.gl;
                 otroResultado=gf>gc?'gana':gf<gc?'pierde':'empate';
                 var prev=(otro[userId]&&otro[userId].activaciones)||0; otroMult=getMultiplicadorOtro(prev);
-                var baseAjustada=aplicarMultiplicadorOtro(baseSinOtro,otroResultado,otroMult);
-                definitivo=baseAjustada+estrellasExtra;
-                batch.set(doc(db,'elOtro',userId),{activaciones:increment(1),historial:arrayUnion({jornada:jornada.numeroJornada,equipo:p.elOtroEquipoUsado,resultado:otroResultado,multiplicador:otroMult,ptosAntes:baseSinOtro,ptosDespues:definitivo,estrellasExtra:estrellasExtra})},{merge:true});
+                definitivo=aplicarMultiplicadorOtro(provisional,otroResultado,otroMult);
+                batch.set(doc(db,'elOtro',userId),{activaciones:increment(1),historial:arrayUnion({jornada:jornada.numeroJornada,equipo:p.elOtroEquipoUsado,resultado:otroResultado,multiplicador:otroMult,ptosAntes:provisional,ptosDespues:definitivo})},{merge:true});
             }
         }
         var c=clas[userId]||{};
@@ -5927,9 +5879,7 @@ async function resolverElOtroPendienteJornada(jornada) {
         var activacionesPrevias=(usuariosOtro[d.id]&&usuariosOtro[d.id].activaciones)||0;
         var mult=getMultiplicadorOtro(activacionesPrevias);
         var base=Number(p.puntosBaseSinOtro !== undefined ? p.puntosBaseSinOtro : p.puntosObtenidos || 0);
-        var estrellasExtra=Number(p.puntosEstrellasJornada||0);
-        var baseAjustada=aplicarMultiplicadorOtro(base,resultado,mult);
-        var nuevo=baseAjustada+estrellasExtra;
+        var nuevo=aplicarMultiplicadorOtro(base,resultado,mult);
         var anterior=Number(p.puntosObtenidos||0);
         var delta=nuevo-anterior;
         if (delta!==0) batch.set(doc(db,'clasificacion',d.id),{puntosTotales:increment(delta)},{merge:true});
@@ -5939,7 +5889,7 @@ async function resolverElOtroPendienteJornada(jornada) {
         },{merge:true});
         batch.set(doc(db,'elOtro',d.id),{
             activaciones:increment(1),
-            historial:arrayUnion({jornada:jornada.numeroJornada,equipo:p.elOtroEquipoUsado,resultado:resultado,multiplicador:mult,ptosAntes:base,ptosDespues:nuevo,estrellasExtra:estrellasExtra}),
+            historial:arrayUnion({jornada:jornada.numeroJornada,equipo:p.elOtroEquipoUsado,resultado:resultado,multiplicador:mult,ptosAntes:base,ptosDespues:nuevo}),
         },{merge:true});
         aplicados++;
     });
@@ -5969,7 +5919,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     const [isUnlocked, setIsUnlocked] = useState(jornada.estado !== 'Finalizada');
     const [liveData, setLiveData] = useState({ golesLocal: 0, golesVisitante: 0, primerGoleador: '', isLive: false });
 
-    useEffect(() => { if (jornada.liveData) { setLiveData({ ...jornada.liveData }); } }, [jornada.liveData]);
+    useEffect(() => { if (jornada && jornada.liveData) { setLiveData({ ...jornada.liveData }); } }, [jornada]);
 
     // --- NUEVO: FUNCIÓN PARA DESHACER EL CÁLCULO DE PUNTOS DE LA JORNADA ---
     const handleResetPuntos = async () => {
@@ -7759,62 +7709,92 @@ const ConfirmacionesPremiosAdmin = ({ jornadas }) => {
     </div>;
 };
 
-
-const NovedadPopup = ({ user }) => {
-    var [aviso, setAviso] = useState(null);
-    var [visible, setVisible] = useState(false);
-    useEffect(function(){
-        if (!user) return function(){};
-        var unsub = onSnapshot(doc(db,'configuracion','novedadActiva'), function(snap){
-            var data = snap.exists() ? snap.data() : null;
-            if (!data || data.activo === false) { setVisible(false); return; }
-            setAviso(data);
-            var key = 'porra_novedad_' + (data.id || data.version || 'actualizacion-otro-2026');
-            if (localStorage.getItem(key) !== '1') setVisible(true);
-        }, function(){});
-        return function(){ unsub(); };
-    }, [user]);
-    if (!visible || !aviso) return null;
-    var cerrar = function(){
-        var key='porra_novedad_' + (aviso.id || aviso.version || 'actualizacion-otro-2026');
-        try { localStorage.setItem(key,'1'); } catch(e) {}
-        setVisible(false);
-    };
-    return <div style={{position:'fixed',inset:0,zIndex:99990,background:'rgba(0,12,48,.62)',backdropFilter:'blur(5px)',display:'flex',alignItems:'center',justifyContent:'center',padding:18}}>
-        <div style={{width:'100%',maxWidth:430,maxHeight:'82vh',overflowY:'auto',background:'#f7f9ff',borderRadius:24,boxShadow:'0 30px 80px rgba(0,0,0,.4)'}}>
-            <div style={{background:'linear-gradient(135deg,#001F6B,#003da8)',padding:'24px 20px 20px',textAlign:'center'}}>
-                <div style={{fontSize:34,marginBottom:4}}>{aviso.icono || '📢'}</div>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'rgba(255,255,255,.5)',margin:0,textTransform:'uppercase'}}>NOVEDAD · PORRA UDLP</p>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:27,fontWeight:700,color:'#FFD700',letterSpacing:1,margin:'5px 0 0'}}>{aviso.titulo || 'Actualización importante'}</p>
-            </div>
-            <div style={{padding:20}}>
-                <div style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'#001F6B',lineHeight:1.65,whiteSpace:'pre-line'}}>{aviso.mensaje || ''}</div>
-                <button onClick={cerrar} style={{width:'100%',marginTop:18,border:'none',background:'#001F6B',color:'#FFD700',borderRadius:24,padding:12,fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,cursor:'pointer'}}>ENTENDIDO</button>
+// Popup de novedades — se muestra una sola vez al abrir la app, con scroll
+// interno. El admin puede crear/editar el mensaje desde el panel.
+const PopupNovedad = ({ currentUser, onClose }) => {
+    var [novedad, setNovedad] = useState(null);
+    var [animado, setAnimado] = useState(false);
+    useEffect(function() {
+        onSnapshot(doc(db, 'configuracion', 'novedad_activa'), function(snap) {
+            if (snap.exists() && snap.data().activa) {
+                var yaVisto = localStorage.getItem('novedad_vista_' + snap.data().version + '_' + currentUser);
+                if (!yaVisto) setNovedad(snap.data());
+            }
+        });
+    }, [currentUser]);
+    useEffect(function() { if (novedad) requestAnimationFrame(function() { setAnimado(true); }); }, [novedad]);
+    if (!novedad) return null;
+    return (
+        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10000,background:'rgba(0,0,0,0.85)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+            <div style={{maxWidth:400,width:'100%',maxHeight:'85vh',background:'linear-gradient(135deg,#0a0a14,#0d1b3e)',border:'1px solid rgba(255,215,0,0.15)',borderRadius:24,overflow:'hidden',
+                transform: animado ? 'scale(1)' : 'scale(0.9)', opacity: animado ? 1 : 0, transition:'all 0.4s cubic-bezier(0.34,1.56,0.64,1)'}}>
+                <div style={{overflowY:'auto',maxHeight:'85vh',padding:'28px 24px'}}>
+                    {novedad.icono && <p style={{fontSize:40,textAlign:'center',marginBottom:12}}>{novedad.icono}</p>}
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,letterSpacing:3,color:'#FFD700',textTransform:'uppercase',textAlign:'center',marginBottom:16}}>
+                        {novedad.titulo || 'Novedad'}
+                    </p>
+                    <div style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.7)',lineHeight:1.8,whiteSpace:'pre-wrap'}}>
+                        {novedad.cuerpo}
+                    </div>
+                    <button onClick={function() {
+                        localStorage.setItem('novedad_vista_' + novedad.version + '_' + currentUser, '1');
+                        setNovedad(null);
+                        if (onClose) onClose();
+                    }} style={{width:'100%',marginTop:24,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:3,background:'#FFD700',color:'#001F6B',border:'none',borderRadius:30,padding:14,cursor:'pointer',fontWeight:700}}>
+                        ENTENDIDO
+                    </button>
+                </div>
             </div>
         </div>
-    </div>;
+    );
 };
 
-const NovedadesAdmin = ({ setMsgAdmin }) => {
-    var [titulo,setTitulo]=useState('⚖️ El Otro Equipo · equilibrio de puntos');
-    var [mensaje,setMensaje]=useState('El funcionamiento de El Otro Equipo se ajusta para mantener un equilibrio más justo.\n\n🛡️ Si tu equipo GANA, se aplica el multiplicador que tengas acumulado (hasta ×3).\n➖ Si EMPATA, tus puntos de Porra se mantienen.\n➗ Si PIERDE, los puntos de Porra se dividen SIEMPRE entre 2.\n\n⭐ Los puntos de las 5 Estrellas son EXTRA y nunca se multiplican ni se dividen. Se suman aparte al resultado final.\n\nLa progresión de multiplicación sigue dependiendo de tus usos acumulados: necesitas 5 activaciones para llegar a ×3 y si una jornada no lo utilizas, la progresión se reinicia.');
-    var [icono,setIcono]=useState('⚖️');
-    var [version,setVersion]=useState('otro-equipo-equilibrio-j2');
-    var publicar=async function(){
-        try{
-            await setDoc(doc(db,'configuracion','novedadActiva'),{id:version,version:version,titulo:titulo,mensaje:mensaje,icono:icono,activo:true,publicadoEn:serverTimestamp()},{merge:true});
-            setMsgAdmin('✅ Novedad publicada. Se mostrará como popup una sola vez por jugador.');
-        }catch(e){setMsgAdmin('❌ No se pudo publicar: '+e.message);}
+// Herramienta de admin para crear/editar novedades
+const GestionNovedadesAdmin = () => {
+    var [titulo, setTitulo] = useState('');
+    var [cuerpo, setCuerpo] = useState('');
+    var [icono, setIcono] = useState('📢');
+    var [version, setVersion] = useState('');
+    var [activa, setActiva] = useState(false);
+    var [cargado, setCargado] = useState(false);
+
+    useEffect(function() {
+        getDoc(doc(db, 'configuracion', 'novedad_activa')).then(function(snap) {
+            if (snap.exists()) {
+                var d = snap.data();
+                setTitulo(d.titulo || ''); setCuerpo(d.cuerpo || '');
+                setIcono(d.icono || '📢'); setVersion(d.version || '');
+                setActiva(!!d.activa);
+            }
+            setCargado(true);
+        });
+    }, []);
+
+    var guardar = async function() {
+        var ver = version || ('v' + Date.now());
+        await setDoc(doc(db, 'configuracion', 'novedad_activa'), {
+            titulo: titulo, cuerpo: cuerpo, icono: icono,
+            version: ver, activa: activa, actualizadoEn: serverTimestamp(),
+        });
+        setVersion(ver);
+        alert('✅ Novedad ' + (activa ? 'publicada' : 'guardada (inactiva)'));
     };
-    return <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.1)',borderRadius:14,padding:16,marginBottom:12}}>
-        <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#001F6B',marginBottom:5}}>📢 PUBLICAR NOVEDAD</p>
-        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.5)',lineHeight:1.5,marginBottom:12}}>El popup se enseña una sola vez por versión a cada jugador. Puedes editar el contenido y volver a publicar cambiando la versión en el código cuando necesites una nueva campaña.</p>
-        <input value={version} onChange={function(e){setVersion(e.target.value)}} placeholder="Versión única" style={{width:'100%',padding:'9px 10px',border:'1px solid rgba(0,31,107,.15)',borderRadius:8,marginBottom:8,fontFamily:"'Inter',sans-serif",fontSize:11}} />
-        <input value={icono} onChange={function(e){setIcono(e.target.value)}} placeholder="Icono" style={{width:70,padding:'9px',border:'1px solid rgba(0,31,107,.15)',borderRadius:8,marginBottom:8}} />
-        <input value={titulo} onChange={function(e){setTitulo(e.target.value)}} style={{width:'100%',padding:'10px 12px',border:'1px solid rgba(0,31,107,.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12,marginBottom:8}} />
-        <textarea value={mensaje} onChange={function(e){setMensaje(e.target.value)}} rows={10} style={{width:'100%',padding:'10px 12px',border:'1px solid rgba(0,31,107,.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12,lineHeight:1.5,resize:'vertical',marginBottom:8}} />
-        <button onClick={publicar} style={{background:'#001F6B',color:'#FFD700',border:'none',borderRadius:10,padding:'10px 18px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,cursor:'pointer'}}>PUBLICAR PARA TODOS</button>
-    </div>;
+
+    if (!cargado) return null;
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:12,fontWeight:600}}>📢 Publicar novedad</p>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                <input value={icono} onChange={function(e){setIcono(e.target.value);}} placeholder="Icono (emoji)" style={{padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:14,width:60}} />
+                <input value={titulo} onChange={function(e){setTitulo(e.target.value);}} placeholder="Título de la novedad" style={{padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:13}} />
+                <textarea value={cuerpo} onChange={function(e){setCuerpo(e.target.value);}} placeholder="Cuerpo del mensaje..." rows={6} style={{padding:'10px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12,resize:'vertical',lineHeight:1.7}} />
+                <label style={{fontFamily:"'Inter',sans-serif",fontSize:12,display:'flex',alignItems:'center',gap:8}}>
+                    <input type="checkbox" checked={activa} onChange={function(e){setActiva(e.target.checked);}} /> Activa (visible para los jugadores)
+                </label>
+                <button onClick={guardar} style={ADMIN_STYLES.btnPrimary}>Guardar novedad</button>
+            </div>
+        </div>
+    );
 };
 
 const AdminPanelScreen = ({ plantilla, teamLogos }) => {
@@ -8055,7 +8035,6 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                     ['solicitudes','👥 Solicitudes', solicitudes.filter(function(s){return !s.estado || s.estado==='pendiente';}).length],
                     ['clasificacion','🏆 Clasificación', 0],
                     ['herramientas','⚙️ Gestión', 0],
-                    ['novedades','📢 Novedades', 0],
                     ['rifas','🎟️ Extras', 0],
                 ].map(function(s) {
                     return (
@@ -8066,12 +8045,6 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                     );
                 })}
             </div>
-
-            {seccion === 'novedades' && (
-                <div>
-                    <NovedadesAdmin setMsgAdmin={setMsgAdmin} />
-                </div>
-            )}
 
             {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 JORNADAS
@@ -8416,7 +8389,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             {seccion === 'herramientas' && (
                 <div>
                     <div style={{display:'flex',gap:7,overflowX:'auto',paddingBottom:8,marginBottom:14}}>
-                        {[['jugadores','👤 Jugadores'],['otro','🛡️ El Otro'],['estrellas','⭐ Estrellas'],['sistema','⚙️ Sistema']].map(function(t){
+                        {[['jugadores','👤 Jugadores'],['otro','🛡️ El Otro'],['estrellas','⭐ Estrellas'],['novedades','📢 Novedades'],['sistema','⚙️ Sistema']].map(function(t){
                             var activoSub = herramientaSub === t[0];
                             return <button key={t[0]} onClick={function(){setHerramientaSub(t[0]);}} style={{padding:'8px 12px',borderRadius:10,border:'none',cursor:'pointer',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,background:activoSub?'#001F6B':'rgba(0,31,107,0.06)',color:activoSub?'#FFD700':'#001F6B',fontWeight:activoSub?700:400,flexShrink:0}}>{t[1]}</button>;
                         })}
@@ -8590,6 +8563,10 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                     <GestionPlantillaAdmin plantilla={plantilla} />
                     </div>}
 
+                    {herramientaSub === 'novedades' && <div>
+                        <GestionNovedadesAdmin />
+                    </div>}
+
                     {herramientaSub === 'sistema' && <div>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>⚙️ Sistema</p>
                     {/* App lanzada al público */}
@@ -8720,21 +8697,23 @@ const ORDEN_ELECCION_EL_OTRO = [
 
 // Multiplicador de El Otro según nº de activaciones acumuladas en la
 // temporada — a partir de la 3ª (×2.5) el equipo deja de ser secreto.
+// Multiplicador de El Otro Equipo — escala con el uso CONSECUTIVO:
+// ×2 base, ×2.5 desde la 3ª activación consecutiva, ×3 desde la 5ª.
+// Si una semana no activas, vuelves a ×2.
+// La DIVISIÓN por perder es SIEMPRE ÷2, sin importar las activaciones
+// acumuladas — equilibrio más justo para equipos de zona baja.
+// IMPORTANTE: este multiplicador NUNCA afecta a los puntos de Estrellas,
+// esos se suman aparte después.
 function getMultiplicadorOtro(activaciones) {
     if (activaciones >= 5) return 3;
     if (activaciones >= 3) return 2.5;
     return 2;
 }
 
-// Redondeo oficial de El Otro: al multiplicar (tu equipo gana), redondeo
-// AL ALZA; al dividir (tu equipo pierde), redondeo A LA BAJA. Un empate deja
-// los puntos exactamente igual. PENDIENTE de conectar con el resultado real
-// del partido de El Otro — ver nota en la auditoría de esta sesión.
 function aplicarMultiplicadorOtro(puntos, resultado, mult) {
     if (resultado === 'empate') return puntos;
     if (resultado === 'gana') return Math.ceil(puntos * mult);
-    // Adaptación de equilibrio: perder siempre divide por 2, sin importar
-    // el multiplicador acumulado que tenga el jugador.
+    // Pierde → SIEMPRE ÷2, sin importar el nivel de multiplicador acumulado
     if (resultado === 'pierde') return Math.floor(puntos / 2);
     return puntos;
 }
@@ -9080,7 +9059,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
             {/* Reglas — en burbujas desplegables */}
             <AcordeonAyuda icono="📖" titulo="Cómo funciona" abiertoPorDefecto={false}>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.7,lineHeight:1.7,margin:0}}>
-                    Cada jugador tiene un equipo de Primera División asignado para <strong>la primera vuelta</strong>. Cada jornada decides si lo activas o no — actívalo antes de que empiece la jornada de Primera de tu equipo. Si <strong>gana</strong> → multiplicas tus puntos de esa jornada (redondeo al alza). Si <strong>empata</strong> → tus puntos se quedan igual. Si <strong>pierde</strong> → tus puntos se dividen (redondeo a la baja). El multiplicador sube con el <strong>uso consecutivo</strong>: <strong>×2</strong> al principio, <strong>×2.5</strong> desde tu 3ª activación consecutiva, <strong>×3</strong> desde la 5ª consecutiva. Tu equipo es <strong>secreto durante las 3 primeras activaciones</strong> — a partir de ahí (×2.5) se hace público para todos. <strong>Si te saltas una jornada sin activar, el acumulado se pierde y vuelves a ×2</strong> — perder una jornada activada NO te hace decaer, solo el no activar. <strong>En la mitad de temporada</strong>, los comodines de El Otro Equipo serán desactivados y se volverá a elegir equipo <strong>en orden inverso</strong>: los últimos de la primera ronda elegirán primero en la segunda.
+                    Cada jugador tiene un equipo de Primera División asignado para <strong>la primera vuelta</strong>. Cada jornada decides si lo activas o no — actívalo antes de que empiece la jornada de Primera. Si <strong>gana</strong> → multiplicas tus puntos de resultado (redondeo al alza). Si <strong>empata</strong> → tus puntos se quedan igual. Si <strong>pierde</strong> → tus puntos de resultado <strong>siempre se dividen entre 2</strong>, sin importar el nivel acumulado. El multiplicador sube con el <strong>uso consecutivo</strong>: <strong>×2</strong> al principio, <strong>×2.5</strong> desde tu 3ª activación consecutiva, <strong>×3</strong> desde la 5ª consecutiva. Si una semana no activas, vuelves a ×2. Tu equipo es <strong>secreto durante las 3 primeras activaciones</strong> — a partir de ahí se hace público. <strong>Los puntos de 5 Estrellas NO se ven afectados</strong> por el multiplicador ni el divisor — se suman aparte, como puntos extra. <strong>En la mitad de temporada</strong>, los comodines de El Otro Equipo serán desactivados y se volverá a elegir equipo <strong>en orden inverso</strong>.
                 </p>
             </AcordeonAyuda>
 
@@ -10332,6 +10311,9 @@ function App() {
         }
     };
 
+    // Popup de novedades — se superpone a todo, una sola vez
+    var novedadOverlay = currentUser ? <PopupNovedad currentUser={currentUser} /> : null;
+
     var TABS = [
         { id: 'miJornada', label: 'Mi Jornada', icon: 'ti-calendar-event' },
         { id: 'laJornada', label: 'La Jornada', icon: 'ti-trophy' },
@@ -10357,7 +10339,6 @@ function App() {
 
             {/* Tutorial épico — primera vez en la temporada */}
             {showTutorial && <TutorialEpico user={currentUser} plantilla={plantillaConFotos} onClose={function() { setShowTutorial(false); setActiveTab('perfil'); }} />}
-            {!showTutorial && !mostrarPresentacion && currentUser && <NovedadPopup user={currentUser} />}
 
             {/* ── TOPBAR ── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: TEMA.fondoTop, backdropFilter: 'blur(10px)', borderBottom: '0.5px solid ' + TEMA.hairline, position: 'relative', zIndex: 10 }}>
@@ -10393,6 +10374,7 @@ function App() {
             <div style={{ position: 'absolute', top: 62, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px' }}>
                 <div key={activeTab} style={{ animation: 'slideIn .22s ease both' }}>
                     {renderContent()}
+                    {novedadOverlay}
                 </div>
             </div>
 
