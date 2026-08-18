@@ -2425,8 +2425,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             premio: premioHistorico,
                             cobrado: !!(premioData && premioData.recibido),
                             definitivo: !!jh.cierreDefinitivo,
-                            puntosEstrellasJornada: Number(pd && pd.puntosEstrellasJornada || 0),
-                            estrellasJornada: Number(pd && pd.estrellasJornada || 0),
+                            puntosEstrellasJornada: Number((pd && pd.puntosEstrellasJornada) || 0),
+                            estrellasJornada: Number((pd && pd.estrellasJornada) || 0),
                             puestoEstrellas: pd && pd.puestoEstrellas != null ? Number(pd.puestoEstrellas) : null
                         });
                     }
