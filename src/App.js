@@ -2509,6 +2509,11 @@ const RifasScreen = ({ currentUser, userProfiles }) => {
                 </div>
             )}
 
+            {rifa && currentUser === 'Juanma' && (rifa.estado === 'abierta' || rifa.estado === 'activa') && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#b8860b',background:'rgba(255,215,0,0.1)',border:'1px dashed rgba(255,215,0,0.5)',borderRadius:8,padding:'6px 10px',textAlign:'center',marginBottom:10}}>
+                    🔧 SOLO ADMIN: recuerda publicar la novedad de esta rifa (Herramientas → Novedades → tipo Rifa) para que salte el popup a todos.
+                </p>
+            )}
             {rifa && (
                 <>
                 {/* ── Cabecera de la rifa ── */}
@@ -4370,8 +4375,213 @@ function getFotoJugador(jug) {
 // ============================================================================
 
 
+// ============================================================================
+// 🎬 GALA · CIERRE DE LA JORNADA 1 — presentación épica de fin de edición
+// ============================================================================
+// Estructura ESTABLE: los datos del partido, ganadores, reparto y
+// multiplicadores se leen de Firebase (no hay nada que retocar en código en
+// los próximos meses), y los textos fijos (norma J22, plaza libre) pueden
+// ajustarse opcionalmente desde configuracion/gala_j1 sin tocar el código.
+const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
+    var [slide, setSlide] = useState(0);
+    var [j1, setJ1] = useState(null);
+    var [multiplicadores, setMultiplicadores] = useState([]);
+    var [configGala, setConfigGala] = useState({});
+    var [cargando, setCargando] = useState(true);
+
+    useEffect(function() {
+        (async function() {
+            try {
+                var snap = await getDocs(query(collection(db, 'jornadas'), where('numeroJornada', '==', 1), limit(1)));
+                if (!snap.empty) setJ1({ id: snap.docs[0].id, ...snap.docs[0].data() });
+                var otroSnap = await getDocs(collection(db, 'elOtro'));
+                var lista = [];
+                otroSnap.forEach(function(d) {
+                    var h = (d.data().historial || []).find(function(x) { return x.jornada === 1; });
+                    if (h) lista.push({ usuario: d.id, multiplicador: Number(h.multiplicador || 1) });
+                });
+                lista.sort(function(a, b) { return b.multiplicador - a.multiplicador; });
+                setMultiplicadores(lista);
+                var cfg = await getDoc(doc(db, 'configuracion', 'gala_j1'));
+                if (cfg.exists()) setConfigGala(cfg.data());
+            } catch(e) { console.warn('Gala J1:', e.message); }
+            setCargando(false);
+        })();
+    }, []);
+
+    var ganadores = j1 && Array.isArray(j1.ganadores) ? j1.ganadores : [];
+    var premioCada = j1 && j1.premioPorGanador !== undefined ? Number(j1.premioPorGanador) : null;
+    var boteTotal = j1 && j1.boteTotal !== undefined ? Number(j1.boteTotal) : null;
+    var jugadorSeVa = configGala.jugadorSeVa || '';
+
+    var slides = [
+        // 0 · PORTADA
+        function() { return (
+            <div style={{textAlign:'center'}}>
+                <p style={{fontSize:52,marginBottom:14}}>🎬</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:6,color:'rgba(255,215,0,0.55)',textTransform:'uppercase',marginBottom:8}}>PORRA UDLP 26/27</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:38,fontWeight:700,letterSpacing:3,color:'#FFD700',lineHeight:1.05,marginBottom:14}}>LA GALA DE LA<br/>JORNADA 1</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.65)',lineHeight:1.7}}>
+                    La primera edición ya es historia.<br/>Resultado, premios, multiplicadores…<br/>y lo que viene. 👀
+                </p>
+            </div>
+        ); },
+        // 1 · EL PARTIDO
+        function() { return (
+            <div style={{textAlign:'center'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:5,color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:16}}>⚽ EL PARTIDO</p>
+                {j1 ? (
+                    <>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,color:'#fff',marginBottom:4}}>{j1.equipoLocal}</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:62,fontWeight:700,color:'#FFD700',letterSpacing:8,lineHeight:1,margin:'6px 0'}}>{j1.resultadoLocal} – {j1.resultadoVisitante}</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,color:'#fff',marginBottom:16}}>{j1.equipoVisitante}</p>
+                    {j1.primerGoleador && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.6)'}}>Primer goleador: <strong style={{color:'#FFD700'}}>{j1.primerGoleador}</strong></p>}
+                    </>
+                ) : <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.6)'}}>Cargando el resultado…</p>}
+            </div>
+        ); },
+        // 2 · GANADORES Y REPARTO
+        function() { return (
+            <div style={{textAlign:'center'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:5,color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:16}}>🏆 LOS GANADORES</p>
+                {ganadores.length ? (
+                    <>
+                    <div style={{display:'flex',flexDirection:'column',gap:8,alignItems:'center',marginBottom:18}}>
+                        {ganadores.map(function(g) {
+                            var perf = userProfiles[g] || {};
+                            return (
+                                <div key={g} style={{display:'flex',alignItems:'center',gap:10,background:'rgba(255,215,0,0.08)',border:'1px solid rgba(255,215,0,0.25)',borderRadius:30,padding:'6px 18px 6px 6px'}}>
+                                    <IconoPerfil perfil={perf} size={32} />
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:19,color:'#FFD700',letterSpacing:1}}>{nombreVisible(g, perf)}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.8}}>
+                        {ganadores.length === 1 ? 'Único acertante del resultado exacto.' : ganadores.length + ' acertantes del resultado exacto.'}<br/>
+                        {boteTotal !== null && <span>Bote de la jornada: <strong style={{color:'#FFD700'}}>{boteTotal.toFixed(2)}€</strong><br/></span>}
+                        {premioCada !== null && <span>Premio: <strong style={{color:'#FFD700'}}>{premioCada.toFixed(2)}€ para cada uno</strong> 💰<br/></span>}
+                        El premio espera en <strong>Mi Jornada</strong>: cobrarlo, usarlo en la rifa… o repartirlo.
+                    </p>
+                    </>
+                ) : (
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.65)',lineHeight:1.8}}>Nadie clavó el resultado exacto esta vez.<br/>El bote sigue creciendo para la próxima. 🍯</p>
+                )}
+            </div>
+        ); },
+        // 3 · PRIMERA CERRADA · MULTIPLICADORES
+        function() { return (
+            <div style={{textAlign:'center'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:5,color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:10}}>🛡️ EL OTRO EQUIPO</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7,marginBottom:14}}>
+                    La jornada 1 de Primera División quedó cerrada y con ella se aplicaron los multiplicadores y divisores de <strong>El Otro Equipo</strong>:
+                </p>
+                {multiplicadores.length ? (
+                    <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:220,overflowY:'auto',marginBottom:14}}>
+                        {multiplicadores.map(function(m) {
+                            var perf = userProfiles[m.usuario] || {};
+                            var sube = m.multiplicador > 1;
+                            var baja = m.multiplicador < 1;
+                            return (
+                                <div key={m.usuario} style={{display:'flex',alignItems:'center',gap:10,background:'rgba(255,255,255,0.04)',borderRadius:12,padding:'6px 12px'}}>
+                                    <IconoPerfil perfil={perf} size={26} />
+                                    <span style={{flex:1,textAlign:'left',fontFamily:"'Inter',sans-serif",fontSize:12,color:'#fff'}}>{nombreVisible(m.usuario, perf)}</span>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: sube ? '#FFD700' : baja ? '#ff6b6b' : 'rgba(255,255,255,0.4)'}}>
+                                        {sube ? '×' + m.multiplicador : baja ? '÷2' : '—'}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.55)',marginBottom:14}}>Esta jornada nadie activó su Otro Equipo.</p>
+                )}
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.45)',lineHeight:1.7,background:'rgba(255,255,255,0.04)',borderRadius:10,padding:'8px 12px'}}>
+                    📋 Recordatorio de norma: solo cuentan las elecciones confirmadas <strong>antes del inicio del primer partido de Primera</strong>. Las realizadas fuera de plazo no aplican multiplicador en esa jornada.
+                </p>
+            </div>
+        ); },
+        // 4 · NUEVA NORMA · JORNADA 22
+        function() { return (
+            <div style={{textAlign:'center'}}>
+                <p style={{fontSize:40,marginBottom:10}}>📜</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:5,color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:10}}>NUEVA NORMA OFICIAL</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:26,fontWeight:700,color:'#FFD700',letterSpacing:2,marginBottom:14}}>EL RE-DRAFT DE LA JORNADA 22</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.9}}>
+                    Cuando arranque la <strong>segunda vuelta (jornada 22)</strong>, todos volveréis a elegir vuestro Otro Equipo.<br/><br/>
+                    El orden de elección será <strong style={{color:'#FFD700'}}>el inverso a la clasificación global</strong> en ese momento:<br/>
+                    el <strong>último</strong> de la tabla elegirá <strong>primero</strong>…<br/>
+                    y el <strong>líder</strong> elegirá <strong>el último</strong>. ⚖️
+                </p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:14}}>Ir mal en la tabla nunca tuvo tanto premio.</p>
+            </div>
+        ); },
+        // 5 · UNA PLAZA LIBRE
+        function() { return (
+            <div style={{textAlign:'center'}}>
+                <p style={{fontSize:40,marginBottom:10}}>👋</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:5,color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:10}}>SE ABRE UNA PLAZA</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.9,marginBottom:16}}>
+                    {jugadorSeVa
+                        ? <span><strong style={{color:'#FFD700'}}>{jugadorSeVa}</strong> deja la Porra esta temporada. ¡Gracias por jugar! 💙💛<br/><br/>Su plaza queda <strong>LIBRE</strong>.</span>
+                        : <span>Un jugador deja la Porra esta temporada. ¡Gracias por jugar! 💙💛<br/><br/>Su plaza queda <strong>LIBRE</strong>.</span>}
+                </p>
+                <div style={{background:'rgba(255,215,0,0.08)',border:'1px solid rgba(255,215,0,0.25)',borderRadius:14,padding:14}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,color:'#FFD700',letterSpacing:1,marginBottom:6}}>📣 TRAE A UN AMIGO</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7,margin:0}}>
+                        ¿Conoces a alguien con hambre de porra? Que solicite su plaza desde la pantalla de inicio de la app. Primero en llegar, primero en jugar.
+                    </p>
+                </div>
+            </div>
+        ); },
+        // 6 · CIERRE
+        function() { return (
+            <div style={{textAlign:'center'}}>
+                <p style={{fontSize:52,marginBottom:14}}>🏁</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:34,fontWeight:700,color:'#FFD700',letterSpacing:3,lineHeight:1.15,marginBottom:14}}>QUE EMPIECE<br/>LA LIGA</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.65)',lineHeight:1.8}}>
+                    41 jornadas por delante.<br/>Estrellas, rifas, multiplicadores…<br/>y una porra que ganar.<br/><br/>Suerte a todos. 💙💛
+                </p>
+            </div>
+        ); },
+    ];
+
+    var esUltima = slide >= slides.length - 1;
+
+    return (
+        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10500,background:'linear-gradient(160deg,#060614,#0d1b3e 55%,#001F6B)',display:'flex',flexDirection:'column',padding:'26px 22px'}}>
+            <style>{'@keyframes galaIn{0%{opacity:0;transform:translateY(16px);}100%{opacity:1;transform:translateY(0);}}'}</style>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,color:'rgba(255,255,255,0.35)'}}>PORRA UDLP · GALA J1</span>
+                <button onClick={onClose} style={{border:'none',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',borderRadius:20,padding:'5px 14px',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,cursor:'pointer'}}>SALIR ✕</button>
+            </div>
+            <div key={slide} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',animation:'galaIn 0.5s ease'}}>
+                <div style={{maxWidth:380,width:'100%'}}>
+                    {cargando && slide > 0 ? <p style={{textAlign:'center',fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.5)'}}>Cargando…</p> : slides[slide]()}
+                </div>
+            </div>
+            <div style={{display:'flex',justifyContent:'center',gap:6,marginBottom:14}}>
+                {slides.map(function(_, i) {
+                    return <span key={i} style={{width:i===slide?18:7,height:7,borderRadius:4,background:i===slide?'#FFD700':'rgba(255,255,255,0.2)',transition:'all 0.3s'}} />;
+                })}
+            </div>
+            <div style={{display:'flex',gap:10}}>
+                {slide > 0 && (
+                    <button onClick={function(){ setSlide(slide - 1); }}
+                        style={{flex:1,border:'1px solid rgba(255,255,255,0.2)',background:'transparent',color:'rgba(255,255,255,0.6)',borderRadius:30,padding:13,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,cursor:'pointer'}}>ATRÁS</button>
+                )}
+                <button onClick={function(){ if (esUltima) onClose(); else setSlide(slide + 1); }}
+                    style={{flex:2,border:'none',background:'#FFD700',color:'#001F6B',borderRadius:30,padding:13,fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,fontWeight:700,cursor:'pointer',boxShadow:'0 6px 18px rgba(255,215,0,0.35)'}}>
+                    {slide === 0 ? '🎬 EMPEZAR' : esUltima ? 'CERRAR LA GALA 🏁' : 'SIGUIENTE →'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     var G = styles.colors;
+    var [mostrarGala, setMostrarGala] = useState(false);
     var [jornada, setJornada] = useState(null);
     var [participantes, setParticipantes] = useState([]);
     var [elOtroTodos, setElOtroTodos] = useState({});
@@ -4552,6 +4762,16 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     return (
         <div style={{paddingBottom:40}}>
             <h2 style={styles.title}>LA JORNADA</h2>
+
+            {/* 🎬 GALA · Cierre de la Jornada 1 */}
+            {mostrarGala && <PresentacionGalaJ1 userProfiles={userProfiles} onClose={function(){ setMostrarGala(false); }} />}
+            <button onClick={function(){ setMostrarGala(true); }}
+                style={{width:'100%',border:'1px solid rgba(255,215,0,0.45)',borderRadius:16,padding:'13px 16px',marginBottom:16,cursor:'pointer',
+                    background:'linear-gradient(120deg,#0d1b3e,#001F6B 60%,#0d1b3e)',color:'#FFD700',
+                    fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,display:'flex',alignItems:'center',justifyContent:'center',gap:10,
+                    boxShadow:'0 4px 16px rgba(0,31,107,0.3)'}}>
+                🎬 LA GALA · CIERRE DE LA JORNADA 1 <span style={{fontSize:11,opacity:0.6}}>▶ VER</span>
+            </button>
 
             {/* Banner resultado */}
             <div style={{background:'#001F6B',borderRadius:20,padding:24,marginBottom:20,textAlign:'center'}}>
@@ -6339,12 +6559,28 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
         var g = (statsPorApiId[idApi] && statsPorApiId[idApi].games) || {};
         if (Number(g.minutes || 0) > 0) jugaronApiIds.push(parseInt(idApi));
     });
+    // Titulares y suplentes de la UDLP deducidos de las propias estadísticas
+    // (games.substitute), sin depender del endpoint de alineaciones.
+    var titularesApiIds = [];
+    var suplentesApiIds = [];
+    plantillaEfectiva.forEach(function(j) {
+        var idn = parseInt(j.apiId) || 0;
+        if (!idn) return;
+        var st = statsPorApiId[idn];
+        if (!st) return;
+        var g = st.games || {};
+        if (Number(g.minutes || 0) > 0) {
+            if (g.substitute) suplentesApiIds.push(idn); else titularesApiIds.push(idn);
+        }
+    });
     var puntosJugadoresArr = plantillaEfectiva.map(function(j) {
         return { nombre: j.nombre, apiId: parseInt(j.apiId) || 0, estrellas: Number(puntosPorNombre[j.nombre] || 0) };
     });
     batch.set(doc(db, 'estrellas_resultados', jornadaId), {
         puntosJugadores: puntosJugadoresArr,
         jugaronApiIds: jugaronApiIds,
+        titularesApiIds: titularesApiIds,
+        suplentesApiIds: suplentesApiIds,
         fixtureId: fixtureId,
         calculadoEn: serverTimestamp(),
     }, { merge: true });
@@ -10878,8 +11114,6 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     const [datosJornada, setDatosJornada] = useState({});      // userId -> doc de estrellas_seleccion
     const [metaJornada, setMetaJornada] = useState(undefined); // doc estrellas_resultados/{jid}: undefined=cargando, null=no existe
     const [expandido, setExpandido] = useState(null);          // userId con desglose abierto
-    const [avisoLineup, setAvisoLineup] = useState('');
-    const lineupIntentadoRef = useRef({});
 
     useEffect(() => {
         if (!currentUser) return;
@@ -10910,12 +11144,11 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
 
     var jf = jornadasFinalizadas.length ? jornadasFinalizadas[Math.min(idxJornada, jornadasFinalizadas.length - 1)] : null;
     var jfId = jf ? jf.id : null;
-    var jfFixtureId = jf ? jf.fixtureId : null;
 
     // Datos en vivo de la jornada mostrada: selecciones/resultados + meta (tablero)
     useEffect(() => {
         if (!jfId) { setDatosJornada({}); setMetaJornada(undefined); return; }
-        setExpandido(null); setAvisoLineup('');
+        setExpandido(null);
         const unsubSels = onSnapshot(collection(db, "estrellas_seleccion", jfId, "jugadores"), function(snap) {
             var m = {};
             snap.forEach(function(d) { m[d.id] = d.data(); });
@@ -10927,29 +11160,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         return () => { unsubSels(); unsubMeta(); };
     }, [jfId]);
 
-    // Alineación: se pide a la API UNA vez por jornada y queda cacheada en
-    // Firestore (estrellas_resultados/{jid}.lineup) para no gastar llamadas.
-    var necesitaLineup = !!(jfId && jfFixtureId && metaJornada !== undefined && (!metaJornada || !metaJornada.lineup));
-    useEffect(() => {
-        if (!necesitaLineup || !jfId) return;
-        if (lineupIntentadoRef.current[jfId]) return;
-        lineupIntentadoRef.current[jfId] = true;
-        (async function() {
-            try {
-                if (!API_FOOTBALL_KEY) { setAvisoLineup('Sin clave de API para cargar la alineación.'); return; }
-                var res = await fetch('https://v3.football.api-sports.io/fixtures/lineups?fixture=' + jfFixtureId, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
-                var data = await res.json();
-                var udlp = (data.response || []).find(function(t) { return t.team && t.team.id === API_TEAM_ID_UDLP; });
-                if (!udlp) { setAvisoLineup('La API aún no tiene la alineación de este partido.'); return; }
-                var lineup = {
-                    formation: udlp.formation || '',
-                    startXI: (udlp.startXI || []).map(function(x) { var p = x.player || {}; return { id: p.id, name: p.name || '', number: p.number || '', pos: p.pos || '', grid: p.grid || '' }; }),
-                    substitutes: (udlp.substitutes || []).map(function(x) { var p = x.player || {}; return { id: p.id, name: p.name || '', number: p.number || '', pos: p.pos || '' }; }),
-                };
-                await setDoc(doc(db, 'estrellas_resultados', jfId), { lineup: lineup, lineupGuardadoEn: serverTimestamp() }, { merge: true });
-            } catch(e) { setAvisoLineup('No se pudo cargar la alineación: ' + e.message); }
-        })();
-    }, [necesitaLineup, jfId, jfFixtureId]);
+
 
     const toggleJugador = (jugador) => {
         if (jornadaActual.estado !== 'Abierta') return;
@@ -11008,35 +11219,58 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         );
     }
 
-    // ── Preparación de datos del tablero de la jornada mostrada ──
-    var lineup = metaJornada && metaJornada.lineup ? metaJornada.lineup : null;
-    var estrellasPorApiId = {};
-    var jugoSet = {};
+    // ── Preparación de datos del tablero — 100% con datos PROPIOS ──────────
+    // El campo se construye desde estrellas_resultados (titulares, suplentes y
+    // estrellas por futbolista guardados en el cálculo), sin depender del
+    // endpoint de alineaciones de la API. El esquema se deduce por posiciones.
     var tableroConDatos = !!(metaJornada && metaJornada.puntosJugadores);
+    var estrellasPorApiId = {};
+    var nombrePorApiId = {};
+    var titularesSet = {};
+    var suplentesSet = {};
     if (metaJornada) {
-        (metaJornada.puntosJugadores || []).forEach(function(pj) { if (pj.apiId) estrellasPorApiId[pj.apiId] = pj.estrellas; });
-        (metaJornada.jugaronApiIds || []).forEach(function(idA) { jugoSet[idA] = true; });
-    }
-    var filasCampo = [];
-    if (lineup && lineup.startXI && lineup.startXI.length) {
-        var porFila = {};
-        lineup.startXI.forEach(function(p) {
-            var fila = parseInt(String(p.grid || '1:1').split(':')[0]) || 1;
-            if (!porFila[fila]) porFila[fila] = [];
-            porFila[fila].push(p);
+        (metaJornada.puntosJugadores || []).forEach(function(pj) {
+            if (pj.apiId) { estrellasPorApiId[pj.apiId] = pj.estrellas; nombrePorApiId[pj.apiId] = pj.nombre; }
         });
-        filasCampo = Object.keys(porFila).map(function(f) { return parseInt(f); }).sort(function(a,b){ return a - b; })
-            .map(function(f) {
-                return porFila[f].sort(function(a,b){
-                    return (parseInt(String(a.grid||'0:0').split(':')[1])||0) - (parseInt(String(b.grid||'0:0').split(':')[1])||0);
-                });
-            });
+        if (metaJornada.titularesApiIds && metaJornada.titularesApiIds.length) {
+            metaJornada.titularesApiIds.forEach(function(idA) { titularesSet[idA] = true; });
+            (metaJornada.suplentesApiIds || []).forEach(function(idA) { suplentesSet[idA] = true; });
+        } else {
+            // Compatibilidad con jornadas calculadas antes: todos los que
+            // jugaron se pintan sobre el campo.
+            (metaJornada.jugaronApiIds || []).forEach(function(idA) { titularesSet[idA] = true; });
+        }
     }
-    var suplentesQueJugaron = lineup ? (lineup.substitutes || []).filter(function(s) { return jugoSet[s.id]; }) : [];
+    var posicionPorNombre = {};
+    var jugadorPorNombre = {};
+    plantilla.forEach(function(j) { posicionPorNombre[j.nombre] = j.posicion || 'Centrocampista'; jugadorPorNombre[j.nombre] = j; });
+
+    var ordenLineas = ['Portero', 'Defensa', 'Centrocampista', 'Mediapunta', 'Delantero'];
+    var lineas = { Portero: [], Defensa: [], Centrocampista: [], Mediapunta: [], Delantero: [] };
+    var suplentesQueJugaron = [];
+    Object.keys(titularesSet).forEach(function(idA) {
+        var nombreF = nombrePorApiId[idA];
+        if (!nombreF) return;
+        var pos = posicionPorNombre[nombreF] || 'Centrocampista';
+        if (!lineas[pos]) pos = 'Centrocampista';
+        lineas[pos].push({ id: parseInt(idA), name: nombreF });
+    });
+    Object.keys(suplentesSet).forEach(function(idA) {
+        var nombreS = nombrePorApiId[idA];
+        if (nombreS) suplentesQueJugaron.push({ id: parseInt(idA), name: nombreS });
+    });
+    ordenLineas.forEach(function(pos) { lineas[pos].sort(function(a, b) { return a.name.localeCompare(b.name); }); });
+    suplentesQueJugaron.sort(function(a, b) { return a.name.localeCompare(b.name); });
+    var filasCampo = ordenLineas.map(function(pos) { return lineas[pos]; }).filter(function(fila) { return fila.length > 0; });
+    var hayCampo = filasCampo.length > 0;
+    var esquemaLabel = filasCampo.length > 1
+        ? filasCampo.slice(1).map(function(f) { return f.length; }).join('-')
+        : '';
     var nombreCorto = function(n) {
         var partes = String(n || '').trim().split(' ');
         return partes.length > 1 ? partes[partes.length - 1] : (partes[0] || '');
     };
+    var esAdminVista = currentUser === 'Juanma';
 
     // Ranking de participantes de la jornada mostrada
     var rankingJornada = Object.keys(datosJornada).map(function(uid) { return { uid: uid, ...datosJornada[uid] }; })
@@ -11055,10 +11289,12 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         var mini = props.mini;
         var estrellas = estrellasPorApiId[p.id];
         var tam = mini ? 40 : 48;
+        var objPlantilla = jugadorPorNombre[p.name];
+        var fotoFicha = (objPlantilla && getFotoJugador(objPlantilla)) || ('https://media.api-sports.io/football/players/' + p.id + '.png');
         return (
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',width:mini?56:64,gap:2}}>
                 <div style={{position:'relative'}}>
-                    <img src={'https://media.api-sports.io/football/players/' + p.id + '.png'} alt=""
+                    <img src={fotoFicha} alt=""
                         style={{width:tam,height:tam,borderRadius:'50%',objectFit:'cover',background:'rgba(255,255,255,0.9)',border:'2px solid rgba(255,255,255,0.85)',boxShadow:'0 2px 6px rgba(0,0,0,0.35)'}}
                         onError={function(e){ e.target.style.visibility='hidden'; }} />
                     <span style={{position:'absolute',top:-7,right:-9,minWidth:20,height:20,borderRadius:11,padding:'0 4px',
@@ -11204,7 +11440,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                         <div style={{textAlign:'center'}}>
                             <p style={{fontFamily:"'Teko',sans-serif",fontSize:19,fontWeight:700,letterSpacing:2,color:G.deepBlue,margin:0}}>⭐ JORNADA {jf.numeroJornada}</p>
                             <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.5)',margin:0}}>
-                                {jf.equipoLocal} {jf.resultadoLocal !== undefined ? jf.resultadoLocal : ''} – {jf.resultadoVisitante !== undefined ? jf.resultadoVisitante : ''} {jf.equipoVisitante}{lineup && lineup.formation ? ' · ' + lineup.formation : ''}
+                                {jf.equipoLocal} {jf.resultadoLocal !== undefined ? jf.resultadoLocal : ''} – {jf.resultadoVisitante !== undefined ? jf.resultadoVisitante : ''} {jf.equipoVisitante}{esquemaLabel ? ' · ' + esquemaLabel : ''}
                             </p>
                         </div>
                         <button onClick={function(){ setIdxJornada(Math.max(idxJornada - 1, 0)); }}
@@ -11212,8 +11448,8 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                             style={{border:'none',background:idxJornada <= 0 ? 'rgba(0,31,107,0.05)' : G.deepBlue,color:idxJornada <= 0 ? 'rgba(0,31,107,0.25)' : '#FFD700',borderRadius:10,width:38,height:38,fontSize:16,cursor:'pointer'}}>›</button>
                     </div>
 
-                    {/* Campo con la alineación */}
-                    {lineup && filasCampo.length > 0 ? (
+                    {/* Campo con la alineación (construida con datos propios) */}
+                    {hayCampo ? (
                         <div style={{background:'linear-gradient(180deg,#1e7a3c,#14522a)',borderRadius:18,padding:'18px 8px 14px',position:'relative',overflow:'hidden',boxShadow:'inset 0 0 40px rgba(0,0,0,0.25)'}}>
                             <div style={{position:'absolute',top:'50%',left:8,right:8,height:1,background:'rgba(255,255,255,0.25)'}} />
                             <div style={{position:'absolute',top:'50%',left:'50%',width:74,height:74,border:'1px solid rgba(255,255,255,0.25)',borderRadius:'50%',transform:'translate(-50%,-50%)'}} />
@@ -11222,7 +11458,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                             <div style={{display:'flex',flexDirection:'column-reverse',gap:14,position:'relative'}}>
                                 {filasCampo.map(function(fila, fi) {
                                     return (
-                                        <div key={fi} style={{display:'flex',justifyContent:'space-evenly',alignItems:'flex-end'}}>
+                                        <div key={fi} style={{display:'flex',justifyContent:'space-evenly',alignItems:'flex-end',flexWrap:'wrap',gap:4}}>
                                             {fila.map(function(p) { return <FichaFutbolista key={p.id} p={p} />; })}
                                         </div>
                                     );
@@ -11232,13 +11468,13 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                     ) : (
                         <div style={{background:'rgba(0,31,107,0.04)',border:'1px dashed rgba(0,31,107,0.15)',borderRadius:16,padding:20,textAlign:'center'}}>
                             <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',margin:0}}>
-                                {avisoLineup || (metaJornada === undefined ? 'Cargando tablero…' : 'Cargando alineación…')}
+                                {metaJornada === undefined ? 'Cargando tablero…' : 'El tablero de esta jornada estará disponible muy pronto.'}
                             </p>
                         </div>
                     )}
-                    {!tableroConDatos && metaJornada !== undefined && (
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',textAlign:'center',marginTop:6}}>
-                            ⭐ Las estrellas por futbolista se generan al recalcular esta jornada (Admin → Recalcular toda la Liga de Estrellas).
+                    {!tableroConDatos && metaJornada !== undefined && esAdminVista && (
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#b8860b',background:'rgba(255,215,0,0.1)',border:'1px dashed rgba(255,215,0,0.5)',borderRadius:8,padding:'6px 10px',textAlign:'center',marginTop:6}}>
+                            🔧 SOLO ADMIN: las estrellas por futbolista de esta jornada se generan al pulsar «Recalcular toda la Liga de Estrellas» en Herramientas.
                         </p>
                     )}
 
