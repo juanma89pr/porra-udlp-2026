@@ -274,9 +274,13 @@ function getJornadaFinMs(jornada) {
 var VENTANA_POST_JORNADA_MS = 72 * 60 * 60 * 1000; // 72 horas
 
 function jornadaDentroVentana72h(jornada, ahoraMs) {
+    var ahora = ahoraMs || Date.now();
+    // CIERRE EXTENDIDO DE LA JORNADA 1: por el arranque con mantenimiento, la
+    // exposición del resultado de la J1 se alarga hasta el 20/08/2026 a las
+    // 22:00 (Canarias). Pasada esa hora, esta excepción deja de aplicar sola.
+    if (jornada && jornada.numeroJornada === 1 && ahora < 1755723600000) return true;
     var finMs = getJornadaFinMs(jornada);
     if (!finMs) return false;
-    var ahora = ahoraMs || Date.now();
     return ahora >= finMs && ahora < (finMs + VENTANA_POST_JORNADA_MS);
 }
 
@@ -4444,17 +4448,39 @@ const PlazosCard = ({ tipo, fechaPartidoUDLP }) => {
 const CierreExtendidoJ1 = ({ userProfiles, currentUser }) => {
     var [clasif, setClasif] = useState([]);
     var [plazos, setPlazos] = useState(null);
+    var [estrellasPendCE, setEstrellasPendCE] = useState({});
     useEffect(function() {
         var unsub1 = onSnapshot(collection(db, 'clasificacion'), function(snap) {
-            var datos = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
-                .sort(function(a, b) { return (b.puntosTotales || 0) - (a.puntosTotales || 0); });
+            var datos = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
             setClasif(datos);
         }, function(){});
         var unsub2 = onSnapshot(doc(db, 'configuracion', 'plazos'), function(snap) {
             setPlazos(snap.exists() ? snap.data() : null);
         }, function(){});
+        // Puntos de 5 Estrellas de jornadas aún sin cierre definitivo: se
+        // suman al total mostrado para que la tabla los refleje YA.
+        (async function() {
+            try {
+                var pend = {};
+                var jSnap = await getDocs(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada')));
+                var sumarPend = function(docs) {
+                    docs.forEach(function(d) {
+                        pend[d.id] = (pend[d.id] || 0) + Number((d.data() || {}).puntosRanking || 0);
+                    });
+                };
+                for (var i = 0; i < jSnap.docs.length; i++) {
+                    if ((jSnap.docs[i].data() || {}).cierreDefinitivo) continue;
+                    var rSnap = await getDocs(collection(db, 'estrellas_resultados', jSnap.docs[i].id, 'jugadores'));
+                    sumarPend(rSnap.docs);
+                }
+                setEstrellasPendCE(pend);
+            } catch(e) {}
+        })();
         return function() { unsub1(); unsub2(); };
     }, []);
+    var clasifMostrada = clasif.map(function(j) {
+        return { ...j, puntosTotales: (j.puntosTotales || 0) + Number(estrellasPendCE[j.id] || 0) };
+    }).sort(function(a, b) { return (b.puntosTotales || 0) - (a.puntosTotales || 0); });
 
     var finJ1 = plazos && plazos.primeraJ1UltimoPartido ? formatearFechaPlazoCorta(plazos.primeraJ1UltimoPartido) : '';
     var limJ2 = plazos && plazos.primeraJ2LimiteOtro ? formatearFechaPlazoCorta(plazos.primeraJ2LimiteOtro) : '';
@@ -4469,7 +4495,7 @@ const CierreExtendidoJ1 = ({ userProfiles, currentUser }) => {
                 {/* Clasificación total actual */}
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:8,fontWeight:700}}>CLASIFICACIÓN TOTAL HASTA AHORA *</p>
                 <div style={{border:'1px solid rgba(0,31,107,0.08)',borderRadius:12,overflow:'hidden',marginBottom:10}}>
-                    {clasif.map(function(j, i) {
+                    {clasifMostrada.map(function(j, i) {
                         var perf = userProfiles[j.id] || {};
                         return (
                             <div key={j.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',borderBottom:'1px solid rgba(0,31,107,0.04)',background: j.id === currentUser ? 'rgba(255,215,0,0.07)' : 'transparent'}}>
@@ -5707,15 +5733,26 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
         (async function() {
             try {
                 var ex = {};
-                var asegurar = function(uid) { if (!ex[uid]) ex[uid] = { estrellas: 0, ganadoOtro: 0, perdidoOtro: 0 }; return ex[uid]; };
+                var asegurar = function(uid) { if (!ex[uid]) ex[uid] = { estrellas: 0, estrellasPend: 0, ganadoOtro: 0, perdidoOtro: 0 }; return ex[uid]; };
                 var pendiente = false;
+                var acumularEstrellasJornada = function(docs, cierreHecho) {
+                    docs.forEach(function(d) {
+                        var ptsRk = Number((d.data() || {}).puntosRanking || 0);
+                        var reg = asegurar(d.id);
+                        reg.estrellas += ptsRk;
+                        // Si la jornada aún no pasó por el cierre definitivo, estos
+                        // puntos de Estrellas todavía NO están dentro de
+                        // clasificacion.puntosTotales: se suman aquí para que la
+                        // tabla los muestre YA, sin esperar a la animación del +.
+                        if (!cierreHecho) reg.estrellasPend += ptsRk;
+                    });
+                };
                 var jSnap = await getDocs(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada')));
                 for (var i = 0; i < jSnap.docs.length; i++) {
                     var jid = jSnap.docs[i].id;
+                    var jd = jSnap.docs[i].data() || {};
                     var rSnap = await getDocs(collection(db, 'estrellas_resultados', jid, 'jugadores'));
-                    rSnap.forEach(function(d) {
-                        asegurar(d.id).estrellas += Number((d.data() || {}).puntosRanking || 0);
-                    });
+                    acumularEstrellasJornada(rSnap.docs, !!jd.cierreDefinitivo);
                     var pSnap = await getDocs(collection(db, 'pronosticos', jid, 'jugadores'));
                     var hayPendienteAqui = pSnap.docs.some(function(d) {
                         var p = d.data() || {};
@@ -5787,9 +5824,13 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
 
     var clasificacionCompleta = inscritos.map(function(nombre) {
         var datos = clasificacionMapa[nombre] || {};
+        var extra = extrasClasif[nombre] || {};
+        // Los puntos de las 5 Estrellas de jornadas todavía sin cierre
+        // definitivo se suman al total MOSTRADO desde ya.
+        var totalMostrado = (datos.puntosTotales || 0) + Number(extra.estrellasPend || 0);
         return {
             id: nombre,
-            puntosTotales: datos.puntosTotales || 0,
+            puntosTotales: totalMostrado,
             puntosResultadoExacto: datos.puntosResultadoExacto || 0,
         };
     }).sort(function(a, b) {
@@ -5809,12 +5850,14 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
 
             {/* Ranking — estilo La Jornada, no tabla antigua */}
             <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,overflow:'hidden',marginBottom:20}}>
-                {/* Leyenda superior de columnas */}
-                <div style={{display:'flex',alignItems:'center',gap:10,padding:'7px 14px',background:'rgba(0,31,107,0.04)',borderBottom:'1px solid rgba(0,31,107,0.07)'}}>
-                    <span style={{width:24}}></span>
-                    <span style={{width:32}}></span>
-                    <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:2,color:'rgba(0,31,107,0.4)'}}>JUGADOR · ⭐ ESTRELLAS · 🛡️× GANADO · 🛡️÷ PERDIDO</span>
-                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:2,color:'rgba(0,31,107,0.4)'}}>PTS TOTALES{otroPendienteCL ? ' *' : ''}</span>
+                {/* Cabecera de columnas — estilo periódico deportivo */}
+                <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 10px',background:'rgba(0,31,107,0.05)',borderBottom:'1px solid rgba(0,31,107,0.08)'}}>
+                    <span style={{width:22,fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:1,color:'rgba(0,31,107,0.45)',textAlign:'center'}}>#</span>
+                    <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:2,color:'rgba(0,31,107,0.45)',paddingLeft:36}}>JUGADOR</span>
+                    <span style={{width:34,fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(0,31,107,0.55)',textAlign:'center'}} title="Puntos de 5 Estrellas">⭐</span>
+                    <span style={{width:40,fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(0,31,107,0.55)',textAlign:'center'}} title="Ganado con multiplicador de El Otro">🛡️×</span>
+                    <span style={{width:40,fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(0,31,107,0.55)',textAlign:'center'}} title="Perdido por división de El Otro">🛡️÷</span>
+                    <span style={{width:48,fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:1,color:'rgba(0,31,107,0.55)',textAlign:'right'}}>PTS{otroPendienteCL ? '*' : ''}</span>
                 </div>
                 {clasificacionCompleta.map(function(jugador, index) {
                     var esMio = jugador.id === currentUser;
@@ -5824,32 +5867,29 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
                     var exactos = jugador.puntosResultadoExacto || 0;
                     var ext = extrasClasif[jugador.id] || { estrellas: 0, ganadoOtro: 0, perdidoOtro: 0 };
                     return (
-                        <div key={jugador.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
+                        <div key={jugador.id} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 10px',
                             borderBottom:'1px solid rgba(0,31,107,0.06)',
                             background: esMio ? 'rgba(255,215,0,0.08)' : index < 3 ? 'rgba(0,31,107,0.02)' : 'transparent'}}>
-                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,width:24,textAlign:'center',
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,width:22,textAlign:'center',
                                 color: index === 0 ? '#FFD700' : index === 1 ? '#C0C0C0' : index === 2 ? '#CD7F32' : 'rgba(0,31,107,0.3)'}}>
                                 {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : (index+1)}
                             </span>
-                            <IconoPerfilClickable nombre={jugador.id} perfil={perf} size={32} />
-                            <div style={{flex:1,minWidth:0}}>
-                                <div>
-                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight: esMio ? 700 : 500,color:'#001F6B'}}>
-                                        {nombreVisible(jugador.id, perf)}
-                                    </span>
-                                    {isOnline && <span style={{width:6,height:6,backgroundColor:'#10b981',borderRadius:'50%',display:'inline-block',marginLeft:6,boxShadow:'0 0 6px #10b981'}}></span>}
-                                    {exactos > 0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)',marginLeft:8}}>{exactos} 🎯</span>}
-                                </div>
-                                {/* Filas secundarias, más pequeñas */}
-                                <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:3}}>
-                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:11,color:'#8a6a00',background:'rgba(255,215,0,0.14)',borderRadius:8,padding:'1px 7px'}}>⭐ {ext.estrellas}</span>
-                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:11,color: ext.ganadoOtro > 0 ? '#0f8a61' : 'rgba(0,31,107,0.3)',background: ext.ganadoOtro > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(0,31,107,0.04)',borderRadius:8,padding:'1px 7px'}}>🛡️× +{ext.ganadoOtro}{otroPendienteCL ? '*' : ''}</span>
-                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:11,color: ext.perdidoOtro > 0 ? '#e63946' : 'rgba(0,31,107,0.3)',background: ext.perdidoOtro > 0 ? 'rgba(230,57,70,0.08)' : 'rgba(0,31,107,0.04)',borderRadius:8,padding:'1px 7px'}}>🛡️÷ −{ext.perdidoOtro}{otroPendienteCL ? '*' : ''}</span>
-                                </div>
+                            <div style={{flex:1,minWidth:0,display:'flex',alignItems:'center',gap:8}}>
+                                <IconoPerfilClickable nombre={jugador.id} perfil={perf} size={30} />
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight: esMio ? 700 : 500,color:'#001F6B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                    {nombreVisible(jugador.id, perf)}
+                                    {isOnline && <span style={{width:6,height:6,backgroundColor:'#10b981',borderRadius:'50%',display:'inline-block',marginLeft:5,boxShadow:'0 0 6px #10b981'}}></span>}
+                                    {exactos > 0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)',marginLeft:5}}>{exactos}🎯</span>}
+                                </span>
                             </div>
-                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,
+                            {/* Columnas pequeñas */}
+                            <span style={{width:34,textAlign:'center',fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color: ext.estrellas > 0 ? '#b8860b' : 'rgba(0,31,107,0.22)'}}>{ext.estrellas}</span>
+                            <span style={{width:40,textAlign:'center',fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color: ext.ganadoOtro > 0 ? '#0f8a61' : 'rgba(0,31,107,0.22)'}}>{ext.ganadoOtro > 0 ? '+' + ext.ganadoOtro : '0'}{otroPendienteCL ? '*' : ''}</span>
+                            <span style={{width:40,textAlign:'center',fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color: ext.perdidoOtro > 0 ? '#e63946' : 'rgba(0,31,107,0.22)'}}>{ext.perdidoOtro > 0 ? '−' + ext.perdidoOtro : '0'}{otroPendienteCL ? '*' : ''}</span>
+                            {/* Columna principal: PTS totales, en grande */}
+                            <span style={{width:48,textAlign:'right',fontFamily:"'Teko',sans-serif",fontSize:23,fontWeight:700,
                                 color: index === 0 ? '#FFD700' : pts > 0 ? '#001F6B' : 'rgba(0,31,107,0.25)'}}>
-                                {pts}{otroPendienteCL ? <span style={{fontSize:13,color:'rgba(0,31,107,0.4)'}}>*</span> : null}
+                                {pts}{otroPendienteCL ? <span style={{fontSize:12,color:'rgba(0,31,107,0.4)'}}>*</span> : null}
                             </span>
                         </div>
                     );
@@ -5860,11 +5900,11 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
             <div style={{background:'rgba(0,31,107,0.035)',border:'1px dashed rgba(0,31,107,0.18)',borderRadius:12,padding:'10px 14px',marginBottom:16}}>
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:5,fontWeight:700}}>📖 CÓMO LEER LA TABLA</p>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.65)',lineHeight:1.7,margin:0}}>
-                    · <strong>Número grande</strong>: puntos TOTALES en la clasificación general.<br/>
-                    · <strong>⭐</strong>: puntos aportados por las 5 Estrellas (5/4/3/2/1 por jornada).<br/>
+                    · <strong>PTS</strong> (número grande): puntos TOTALES de la clasificación general — ya incluyen los puntos de las 5 Estrellas de cada jornada.<br/>
+                    · <strong>⭐</strong>: puntos aportados por las 5 Estrellas (5/4/3/2/1 según el ranking de cada jornada).<br/>
                     · <strong>🛡️×</strong>: puntos EXTRA ganados al multiplicar con El Otro Equipo.<br/>
                     · <strong>🛡️÷</strong>: puntos PERDIDOS por división al fallar El Otro Equipo.<br/>
-                    {otroPendienteCL ? <span>· <strong>*</strong>: hay jornadas con El Otro aún SIN resolver — es el último dato actualizado y puede variar al cerrarse la jornada de Primera.</span> : null}
+                    {otroPendienteCL ? <span>· <strong>*</strong>: hay jornadas con El Otro aún SIN resolver — último dato actualizado; puede variar al cerrarse la jornada de Primera.</span> : null}
                 </p>
             </div>
 
