@@ -7380,6 +7380,91 @@ const VinculadorPlantillaAPI = ({ plantilla }) => {
     var [asignacion, setAsignacion] = useState({});   // apiId (string) -> nombre nuestro
     var [msgV, setMsgV] = useState('');
     var [guardando, setGuardando] = useState(false);
+    // 🔎 Búsqueda global en TODA la API (canteranos, filial, ligas inferiores)
+    var [busqueda, setBusqueda] = useState('');
+    var [buscando, setBuscando] = useState(false);
+    var [resultadosBusqueda, setResultadosBusqueda] = useState([]);
+    // Docs de fotosJugadores para gestionar bajas/restauraciones
+    var [fotosDocs, setFotosDocs] = useState({});
+
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, 'fotosJugadores'), function(snap) {
+            var m = {};
+            snap.forEach(function(d) { m[d.id] = d.data(); });
+            setFotosDocs(m);
+        }, function(){});
+        return function() { unsub(); };
+    }, []);
+
+    var mapearPosicionApi = function(pos) {
+        var p = String(pos || '').toLowerCase();
+        if (p.indexOf('goal') !== -1) return 'Portero';
+        if (p.indexOf('def') !== -1) return 'Defensa';
+        if (p.indexOf('mid') !== -1) return 'Centrocampista';
+        if (p.indexOf('att') !== -1 || p.indexOf('forw') !== -1) return 'Delantero';
+        return 'Centrocampista';
+    };
+
+    // Busca al futbolista por nombre en TODA la base de datos de la API
+    // (players/profiles no está limitado a un equipo ni a una liga: encuentra
+    // también a los del filial y de categorías inferiores).
+    var buscarEnTodaLaApi = async function() {
+        var termino = busqueda.trim();
+        if (termino.length < 3) { setMsgV('❌ Escribe al menos 3 letras del nombre o apellido.'); return; }
+        if (!API_FOOTBALL_KEY) { setMsgV('❌ No hay clave de API configurada.'); return; }
+        setBuscando(true); setMsgV(''); setResultadosBusqueda([]);
+        try {
+            var res = await fetch('https://v3.football.api-sports.io/players/profiles?search=' + encodeURIComponent(termino), { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var data = await res.json();
+            var lista = (data.response || []).map(function(r) { return r.player || r; }).filter(function(p) { return p && p.id; });
+            if (!lista.length) {
+                setMsgV('❌ La API no encontró ningún futbolista con «' + termino + '». Prueba solo con el apellido, o sin tildes.');
+            } else {
+                setResultadosBusqueda(lista.slice(0, 15));
+                setMsgV('✅ ' + lista.length + ' resultado(s). Verifica por la foto antes de dar de alta o vincular.');
+            }
+        } catch(e) { setMsgV('❌ Error consultando la API: ' + e.message); }
+        setBuscando(false);
+    };
+
+    // Da de alta un perfil NUEVO en la plantilla de la app a partir de la
+    // ficha de la API (sin asociarlo a nadie existente).
+    var crearPerfilDesdeApi = async function(p, posicionApi) {
+        var nombreNuevo = String(p.name || ((p.firstname || '') + ' ' + (p.lastname || ''))).trim().replace(/\//g, '-');
+        if (!nombreNuevo) { setMsgV('❌ La ficha de la API no trae nombre utilizable.'); return; }
+        var yaExiste = plantilla.some(function(j) { return j.nombre === nombreNuevo; });
+        if (yaExiste) { setMsgV('❌ Ya existe «' + nombreNuevo + '» en la plantilla. Usa el selector para vincularlo en vez de crearlo.'); return; }
+        var idYaUsado = plantilla.find(function(j) { return (parseInt(j.apiId) || 0) === p.id; });
+        if (idYaUsado) { setMsgV('❌ El ID ' + p.id + ' ya lo tiene «' + idYaUsado.nombre + '». Si es la misma persona, no hace falta crearla.'); return; }
+        try {
+            await setDoc(doc(db, 'fotosJugadores', nombreNuevo), {
+                extra: true,
+                eliminado: false,
+                apiId: p.id,
+                nombreApi: p.name || nombreNuevo,
+                posicion: mapearPosicionApi(posicionApi !== undefined ? posicionApi : p.position),
+                actualizadoEn: serverTimestamp(),
+            }, { merge: true });
+            setMsgV('✅ «' + nombreNuevo + '» dado de alta en la plantilla con ID ' + p.id + '. Ya puede elegirse en las 5 Estrellas y entra en los recálculos.');
+        } catch(e) { setMsgV('❌ Error dando de alta: ' + e.message); }
+    };
+
+    var darDeBaja = async function(nombre) {
+        if (!window.confirm('¿Dar de baja a «' + nombre + '»? Dejará de aparecer en la plantilla y en las 5 Estrellas. Sus estrellas ya ganadas en jornadas pasadas se conservan, y podrás restaurarlo cuando quieras.')) return;
+        try {
+            await setDoc(doc(db, 'fotosJugadores', nombre), { eliminado: true, actualizadoEn: serverTimestamp() }, { merge: true });
+            setMsgV('✅ «' + nombre + '» dado de baja. Puedes restaurarlo desde la lista de bajas.');
+        } catch(e) { setMsgV('❌ ' + e.message); }
+    };
+
+    var restaurarJugador = async function(nombre) {
+        try {
+            await setDoc(doc(db, 'fotosJugadores', nombre), { eliminado: false, actualizadoEn: serverTimestamp() }, { merge: true });
+            setMsgV('✅ «' + nombre + '» restaurado en la plantilla.');
+        } catch(e) { setMsgV('❌ ' + e.message); }
+    };
+
+    var jugadoresDeBaja = Object.keys(fotosDocs).filter(function(n) { return fotosDocs[n] && fotosDocs[n].eliminado === true; }).sort();
 
     // Estado actual: apiId -> nombre nuestro que ya lo tiene guardado
     var vinculadosActuales = {};
@@ -7525,6 +7610,12 @@ const VinculadorPlantillaAPI = ({ plantilla }) => {
                                         {nombresOrdenados.map(function(n) { return <option key={n} value={n}>{n}</option>; })}
                                     </select>
                                     <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.5)'}}>{estado}</span>
+                                    {!sel && !yaVinculadoA && (
+                                        <button onClick={function(){ crearPerfilDesdeApi(p, p.position); }}
+                                            style={{border:'1px solid rgba(16,185,129,0.4)',background:'rgba(16,185,129,0.08)',color:'#0f8a61',borderRadius:7,padding:'3px 8px',fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer'}}>
+                                            ➕ CREAR PERFIL NUEVO
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         );
@@ -7536,6 +7627,94 @@ const VinculadorPlantillaAPI = ({ plantilla }) => {
                 </button>
                 </>
             )}
+
+            {/* ── 🔎 BÚSQUEDA GLOBAL: canteranos, filial y ligas inferiores ── */}
+            <div style={{marginTop:16,borderTop:'1px solid rgba(0,31,107,0.08)',paddingTop:14}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:600}}>🔎 Buscar futbolista en TODA la API</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.5)',lineHeight:1.6,marginBottom:8}}>
+                    Para canteranos y jugadores del filial que la UD no da de alta en el primer equipo (p. ej. Rafa Cruz): búscalos aquí por nombre o apellido — la búsqueda recorre toda la base de datos de la API, incluidas categorías inferiores — y dales de alta o vincúlalos.
+                </p>
+                <div style={{display:'flex',gap:8,marginBottom:10}}>
+                    <input value={busqueda} onChange={function(e){ setBusqueda(e.target.value); }}
+                        onKeyDown={function(e){ if (e.key === 'Enter') buscarEnTodaLaApi(); }}
+                        placeholder="Ej: Rafa Cruz, cruz, mella…"
+                        style={{flex:1,padding:'9px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:9,fontFamily:"'Inter',sans-serif",fontSize:13}} />
+                    <button onClick={buscarEnTodaLaApi} disabled={buscando}
+                        style={{border:'none',borderRadius:9,padding:'9px 16px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:buscando?'default':'pointer'}}>
+                        {buscando ? '⏳' : 'BUSCAR'}
+                    </button>
+                </div>
+                {resultadosBusqueda.length > 0 && (
+                    <div style={{maxHeight:300,overflowY:'auto',border:'1px solid rgba(0,31,107,0.08)',borderRadius:12,marginBottom:6}}>
+                        {resultadosBusqueda.map(function(p) {
+                            var idUsadoPor = plantilla.find(function(j) { return (parseInt(j.apiId) || 0) === p.id; });
+                            return (
+                                <div key={p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                                    <img src={p.photo || ('https://media.api-sports.io/football/players/' + p.id + '.png')} alt=""
+                                        style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',background:'rgba(0,31,107,0.06)'}}
+                                        onError={function(e){ e.target.style.visibility='hidden'; }} />
+                                    <div style={{flex:1,minWidth:0}}>
+                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,color:'#001F6B',margin:0,lineHeight:1.1}}>{p.name || ((p.firstname || '') + ' ' + (p.lastname || ''))}</p>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',margin:0}}>
+                                            ID {p.id}{p.position ? ' · ' + mapearPosicionApi(p.position) : ''}{p.birth && p.birth.date ? ' · ' + p.birth.date : ''}{p.nationality ? ' · ' + p.nationality : ''}
+                                        </p>
+                                        {idUsadoPor && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#0f8a61',margin:0}}>✅ Ya vinculado a «{idUsadoPor.nombre}»</p>}
+                                    </div>
+                                    {!idUsadoPor && (
+                                        <button onClick={function(){ crearPerfilDesdeApi(p, p.position); }}
+                                            style={{border:'1px solid rgba(16,185,129,0.4)',background:'rgba(16,185,129,0.08)',color:'#0f8a61',borderRadius:8,padding:'6px 10px',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,cursor:'pointer',whiteSpace:'nowrap'}}>
+                                            ➕ DAR DE ALTA
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
+            {/* ── 🗂️ ALTAS Y BAJAS DE LA PLANTILLA ── */}
+            <div style={{marginTop:16,borderTop:'1px solid rgba(0,31,107,0.08)',paddingTop:14}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:600}}>🗂️ Plantilla actual de la app ({plantilla.length})</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,0,0,0.5)',lineHeight:1.6,marginBottom:8}}>
+                    Da de baja a quien ya no pertenezca (cesión, traspaso…). Sus estrellas de jornadas pasadas se conservan y siempre puedes restaurarlo.
+                </p>
+                <div style={{maxHeight:260,overflowY:'auto',border:'1px solid rgba(0,31,107,0.08)',borderRadius:12}}>
+                    {plantilla.slice().sort(function(a,b){ return a.nombre.localeCompare(b.nombre); }).map(function(j) {
+                        var esExtra = fotosDocs[j.nombre] && fotosDocs[j.nombre].extra === true;
+                        return (
+                            <div key={j.nombre} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderBottom:'1px solid rgba(0,31,107,0.04)'}}>
+                                <div style={{flex:1,minWidth:0}}>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#001F6B'}}>{j.nombre}</span>
+                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',marginLeft:6}}>
+                                        {j.posicion || ''}{(parseInt(j.apiId)||0) > 0 ? ' · ID ' + j.apiId : ' · ⚠️ sin ID'}{esExtra ? ' · alta manual' : ''}
+                                    </span>
+                                </div>
+                                <button onClick={function(){ darDeBaja(j.nombre); }}
+                                    style={{border:'1px solid rgba(230,57,70,0.3)',background:'rgba(230,57,70,0.06)',color:'#e63946',borderRadius:7,padding:'3px 9px',fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer'}}>
+                                    🗑️ BAJA
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
+                {jugadoresDeBaja.length > 0 && (
+                    <div style={{marginTop:10}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'rgba(0,31,107,0.45)',textTransform:'uppercase',marginBottom:6}}>Bajas ({jugadoresDeBaja.length})</p>
+                        {jugadoresDeBaja.map(function(n) {
+                            return (
+                                <div key={n} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'rgba(0,31,107,0.03)',borderRadius:9,marginBottom:4}}>
+                                    <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(0,31,107,0.55)',textDecoration:'line-through'}}>{n}</span>
+                                    <button onClick={function(){ restaurarJugador(n); }}
+                                        style={{border:'1px solid rgba(16,185,129,0.35)',background:'rgba(16,185,129,0.07)',color:'#0f8a61',borderRadius:7,padding:'3px 9px',fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer'}}>
+                                        ↩️ RESTAURAR
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
@@ -11678,11 +11857,26 @@ function App() {
     // Plantilla combinada: la base + las fotos verificadas a mano en Admin.
     // Se usa en TODAS las pantallas en vez de "plantilla" a secas, para que
     // una foto guardada se vea al instante en toda la app.
-    const plantillaConFotos = plantilla.map(function(j) {
-        var override = fotosJugadores[j.nombre];
-        if (!override) return j;
-        return { ...j, ...override };
-    });
+    // Plantilla dinámica: la base fija del código + overrides de fotosJugadores
+    // (fotos, apiIds) + ALTAS creadas desde el Vinculador (extra:true, p. ej.
+    // canteranos del filial que la API no lista en el primer equipo) — y sin
+    // los jugadores dados de BAJA (eliminado:true).
+    const plantillaConFotos = (function() {
+        var base = plantilla.map(function(j) {
+            var override = fotosJugadores[j.nombre];
+            if (!override) return j;
+            return { ...j, ...override };
+        });
+        var nombresBase = {};
+        base.forEach(function(j) { nombresBase[j.nombre] = true; });
+        var extras = Object.keys(fotosJugadores)
+            .filter(function(n) { return fotosJugadores[n] && fotosJugadores[n].extra === true && !nombresBase[n]; })
+            .map(function(n) {
+                var f = fotosJugadores[n];
+                return { nombre: n, posicion: f.posicion || 'Centrocampista', apiId: f.apiId || 0, ...f };
+            });
+        return base.concat(extras).filter(function(j) { return j.eliminado !== true; });
+    })();
     const [userProfiles, setUserProfiles] = useState({});
     const [onlineUsers, setOnlineUsers] = useState({});
     const [clasificacionData, setClasificacionData] = useState([]);
