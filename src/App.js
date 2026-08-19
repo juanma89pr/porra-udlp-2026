@@ -7365,6 +7365,181 @@ const RecalculoGlobalEstrellas = ({ plantilla }) => {
     );
 };
 
+// ============================================================================
+// VINCULADOR PLANTILLA ↔ API (el "camino de vuelta")
+// ============================================================================
+// En lugar de adivinar los IDs desde nuestros nombres, descarga la plantilla
+// OFICIAL de API-Football (nombre exacto, ID y foto de cada futbolista) y
+// permite vincular cada ficha de la API con nuestro jugador mediante un
+// selector visual. Detecta además IDs duplicados o que apuntan a futbolistas
+// que ya no existen en el squad. Al guardar, escribe el apiId en el perfil
+// del jugador (fotosJugadores) y desde ahí lo usa todo el sistema.
+const VinculadorPlantillaAPI = ({ plantilla }) => {
+    var [squad, setSquad] = useState([]);
+    var [cargandoSquad, setCargandoSquad] = useState(false);
+    var [asignacion, setAsignacion] = useState({});   // apiId (string) -> nombre nuestro
+    var [msgV, setMsgV] = useState('');
+    var [guardando, setGuardando] = useState(false);
+
+    // Estado actual: apiId -> nombre nuestro que ya lo tiene guardado
+    var vinculadosActuales = {};
+    var idsPorNombre = {};
+    plantilla.forEach(function(j) {
+        var id = parseInt(j.apiId) || 0;
+        idsPorNombre[j.nombre] = id;
+        if (id > 0) {
+            if (!vinculadosActuales[id]) vinculadosActuales[id] = [];
+            vinculadosActuales[id].push(j.nombre);
+        }
+    });
+
+    // 🚨 Diagnóstico de duplicados: dos jugadores nuestros con el mismo apiId
+    var duplicados = Object.keys(vinculadosActuales).filter(function(id) { return vinculadosActuales[id].length > 1; });
+
+    var descargarSquad = async function() {
+        if (!API_FOOTBALL_KEY) { setMsgV('❌ No hay clave de API configurada.'); return; }
+        setCargandoSquad(true); setMsgV('');
+        try {
+            var res = await fetch('https://v3.football.api-sports.io/players/squads?team=' + API_TEAM_ID_UDLP, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var data = await res.json();
+            var jugadores = data.response && data.response[0] && data.response[0].players ? data.response[0].players : [];
+            if (!jugadores.length) { setMsgV('❌ La API no devolvió la plantilla. Puede ser el límite diario de llamadas — inténtalo más tarde.'); setCargandoSquad(false); return; }
+            jugadores.sort(function(a, b) { return String(a.position || '').localeCompare(String(b.position || '')) || String(a.name).localeCompare(String(b.name)); });
+            setSquad(jugadores);
+            // Preselección: primero lo ya vinculado; si no, sugerencia por nombre
+            var pre = {};
+            jugadores.forEach(function(p) {
+                if (vinculadosActuales[p.id] && vinculadosActuales[p.id].length === 1) {
+                    pre[String(p.id)] = vinculadosActuales[p.id][0];
+                } else {
+                    var sugerido = plantilla.find(function(j) {
+                        if ((parseInt(j.apiId) || 0) > 0) return false;
+                        var obj = normalizarNombreJugadorAPI(j.nombre);
+                        return !!emparejarNombreEnSquad([p], obj);
+                    });
+                    pre[String(p.id)] = sugerido ? sugerido.nombre : '';
+                }
+            });
+            setAsignacion(pre);
+            setMsgV('✅ Plantilla oficial descargada: ' + jugadores.length + ' futbolistas. Revisa las vinculaciones y guarda.');
+        } catch(e) { setMsgV('❌ Error consultando la API: ' + e.message); }
+        setCargandoSquad(false);
+    };
+
+    // Nombres nuestros elegidos más de una vez (conflicto al vincular)
+    var conteoSeleccion = {};
+    Object.keys(asignacion).forEach(function(id) {
+        var n = asignacion[id];
+        if (n) conteoSeleccion[n] = (conteoSeleccion[n] || 0) + 1;
+    });
+
+    var guardarVinculaciones = async function() {
+        var conflictos = Object.keys(conteoSeleccion).filter(function(n) { return conteoSeleccion[n] > 1; });
+        if (conflictos.length) { setMsgV('❌ Has asignado el mismo jugador a varias fichas de la API: ' + conflictos.join(', ') + '. Corrígelo antes de guardar.'); return; }
+        setGuardando(true); setMsgV('');
+        try {
+            var cambios = 0;
+            var idsDelSquad = {};
+            for (var i = 0; i < squad.length; i++) {
+                var p = squad[i];
+                idsDelSquad[p.id] = true;
+                var nombreElegido = asignacion[String(p.id)];
+                if (!nombreElegido) continue;
+                if ((idsPorNombre[nombreElegido] || 0) !== p.id) {
+                    await setDoc(doc(db, 'fotosJugadores', nombreElegido), {
+                        apiId: p.id,
+                        nombreApi: p.name,
+                        actualizadoEn: serverTimestamp(),
+                    }, { merge: true });
+                    cambios++;
+                }
+            }
+            // Jugadores nuestros cuyo apiId guardado NO existe en el squad
+            // oficial y que no han sido re-vinculados ahora: ID obsoleto → se
+            // limpia a 0 para que deje de apuntar a un futbolista equivocado.
+            var seleccionadosAhora = {};
+            Object.keys(asignacion).forEach(function(id) { if (asignacion[id]) seleccionadosAhora[asignacion[id]] = true; });
+            var limpiados = [];
+            for (var k = 0; k < plantilla.length; k++) {
+                var nuestro = plantilla[k];
+                var idAct = parseInt(nuestro.apiId) || 0;
+                if (idAct > 0 && !idsDelSquad[idAct] && !seleccionadosAhora[nuestro.nombre]) {
+                    await setDoc(doc(db, 'fotosJugadores', nuestro.nombre), {
+                        apiId: 0,
+                        actualizadoEn: serverTimestamp(),
+                    }, { merge: true });
+                    limpiados.push(nuestro.nombre);
+                }
+            }
+            setMsgV('✅ Vinculaciones guardadas: ' + cambios + ' actualizadas.' + (limpiados.length ? ' 🧹 IDs obsoletos limpiados: ' + limpiados.join(', ') + '.' : '') + ' Ahora pulsa "RECALCULAR TODA LA LIGA DE ESTRELLAS" para regenerar los puntos con los IDs correctos.');
+        } catch(e) { setMsgV('❌ Error guardando: ' + e.message); }
+        setGuardando(false);
+    };
+
+    var nombresOrdenados = plantilla.map(function(j) { return j.nombre; }).sort();
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>🔗 Vinculador plantilla ↔ API (camino de vuelta)</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.55)',lineHeight:1.6,marginBottom:10}}>
+                La API te enseña su plantilla oficial con el nombre exacto, la foto y el ID de cada futbolista, y tú vinculas cada ficha con tu jugador. Es la forma definitiva de arreglar IDs cruzados o duplicados.
+            </p>
+
+            {duplicados.length > 0 && (
+                <div style={{background:'rgba(230,57,70,0.08)',border:'1px solid rgba(230,57,70,0.25)',borderRadius:10,padding:10,marginBottom:10}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'#e63946',marginBottom:4}}>🚨 IDs DUPLICADOS DETECTADOS</p>
+                    {duplicados.map(function(id) {
+                        return <p key={id} style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946',margin:'0 0 2px'}}>ID {id} lo comparten: {vinculadosActuales[id].join(' y ')} — sus estrellas se están mezclando. Revíncúlalos abajo.</p>;
+                    })}
+                </div>
+            )}
+
+            <button onClick={descargarSquad} disabled={cargandoSquad}
+                style={{width:'100%',border:'none',borderRadius:10,padding:'10px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:cargandoSquad?'default':'pointer',marginBottom:10}}>
+                {cargandoSquad ? '⏳ CONSULTANDO API-FOOTBALL…' : '📥 DESCARGAR PLANTILLA OFICIAL DE LA API'}
+            </button>
+
+            {msgV && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msgV.indexOf('✅') === 0 ? '#10b981' : '#e63946',lineHeight:1.5,marginBottom:10}}>{msgV}</p>}
+
+            {squad.length > 0 && (
+                <>
+                <div style={{maxHeight:420,overflowY:'auto',border:'1px solid rgba(0,31,107,0.08)',borderRadius:12,marginBottom:10}}>
+                    {squad.map(function(p) {
+                        var sel = asignacion[String(p.id)] || '';
+                        var yaVinculadoA = vinculadosActuales[p.id] ? vinculadosActuales[p.id].join(', ') : '';
+                        var enConflicto = sel && conteoSeleccion[sel] > 1;
+                        var estado = enConflicto ? '🔴 conflicto' : (sel ? ((idsPorNombre[sel] || 0) === p.id ? '✅ vinculado' : '🟡 pendiente de guardar') : '⚪ sin vincular');
+                        return (
+                            <div key={p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderBottom:'1px solid rgba(0,31,107,0.05)',background: enConflicto ? 'rgba(230,57,70,0.05)' : 'transparent'}}>
+                                <img src={'https://media.api-sports.io/football/players/' + p.id + '.png'} alt=""
+                                    style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',background:'rgba(0,31,107,0.06)'}}
+                                    onError={function(e){ e.target.style.visibility='hidden'; }} />
+                                <div style={{flex:1,minWidth:0}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,color:'#001F6B',margin:0,lineHeight:1.1}}>{p.name}</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',margin:0}}>ID {p.id}{p.position ? ' · ' + p.position : ''}{p.number ? ' · dorsal ' + p.number : ''}{yaVinculadoA ? ' · ahora: ' + yaVinculadoA : ''}</p>
+                                </div>
+                                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2}}>
+                                    <select value={sel} onChange={function(e){ var v = e.target.value; setAsignacion(function(prev){ var c = {...prev}; c[String(p.id)] = v; return c; }); }}
+                                        style={{padding:'6px 8px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12,maxWidth:170}}>
+                                        <option value="">— No vincular —</option>
+                                        {nombresOrdenados.map(function(n) { return <option key={n} value={n}>{n}</option>; })}
+                                    </select>
+                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.5)'}}>{estado}</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+                <button onClick={guardarVinculaciones} disabled={guardando}
+                    style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#10b981',color:'#fff',cursor:guardando?'default':'pointer'}}>
+                    {guardando ? '⏳ GUARDANDO…' : '💾 GUARDAR VINCULACIONES EN LOS PERFILES'}
+                </button>
+                </>
+            )}
+        </div>
+    );
+};
+
 const VerificarEstadisticasJugadoresAdmin = ({ plantilla }) => {
     var [fixtureIdInput, setFixtureIdInput] = useState('');
     var [resultado, setResultado] = useState(null);
@@ -9613,6 +9788,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>⭐ Plantilla y Estrellas</p>
                     {/* Recálculo global: un botón que lo arregla todo */}
                     <RecalculoGlobalEstrellas plantilla={plantilla} />
+
+                    {/* Camino de vuelta: la API dicta nombres e IDs y el admin vincula */}
+                    <VinculadorPlantillaAPI plantilla={plantilla} />
                     {/* Buscador de IDs de API-Football para la plantilla */}
                     {/* Verificación real del enlace plantilla ↔ estadísticas */}
                     <VerificarEstadisticasJugadoresAdmin plantilla={plantilla} />
