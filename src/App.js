@@ -1807,8 +1807,8 @@ const TABLA_PUNTOS_ESTRELLAS = [
     { accion: '2 regates completados', estrellas: 1 },
     { accion: '3 tackles', estrellas: 1 },
     { accion: '3 intercepciones', estrellas: 1 },
-    { accion: '5 recuperaciones', estrellas: null, disponible: false },
-    { accion: '5 despejes', estrellas: null, disponible: false },
+    { accion: '2 bloqueos', estrellas: 1 },
+    { accion: '25 pases acertados', estrellas: 1 },
     { accion: '2 pases clave', estrellas: 1 },
     { accion: '4 duelos ganados', estrellas: 1 },
 ];
@@ -2171,11 +2171,12 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
                 });
                 var costeJornada = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
                 var jugadoresValidos = todosSnap.docs.filter(function(d){ return !(d.data() || {}).noContabilizado; });
-                var bote = Number(jornada.bote || 0) + jugadoresValidos.length * costeJornada;
-                var esGanador = exactos.indexOf(user) !== -1 || (jornada.ganadores || []).indexOf(user) !== -1;
+                var bote = jornada.boteTotal !== undefined ? Number(jornada.boteTotal) : Number(jornada.bote || 0) + jugadoresValidos.length * costeJornada;
+                var esGanador = (jornada.ganadores || []).indexOf(user) !== -1 || exactos.indexOf(user) !== -1;
                 if (activo) {
                     setGanador(esGanador);
-                    setPremio(esGanador && exactos.length ? (bote / exactos.length).toFixed(2) : '0.00');
+                    var premioOficial = jornada.premioPorGanador !== undefined ? Number(jornada.premioPorGanador) : (exactos.length ? bote / exactos.length : 0);
+                    setPremio(esGanador ? premioOficial.toFixed(2) : '0.00');
                 }
 
                 var cobroSnap = await getDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user));
@@ -2323,32 +2324,464 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
 };
 
 
+// ============================================================================
+// --- RIFAS · helpers globales ----------------------------------------------
+// ============================================================================
+function numeroPapeleta2Cifras(n) {
+    var s = String(n);
+    return s.length < 2 ? '0' + s : s;
+}
+
+var RIFA_ESTADOS_INFO = {
+    abierta:          { label: 'ABIERTA',              color: '#d4a017', emoji: '🟡' },
+    casi_completa:    { label: 'CASI COMPLETA',        color: '#e07b28', emoji: '🟠' },
+    completa:         { label: 'COMPLETA',             color: '#e63946', emoji: '🔴' },
+    pendiente_sorteo: { label: 'PENDIENTE DE SORTEO',  color: '#2563eb', emoji: '🔵' },
+    sorteada:         { label: 'SORTEADA',             color: '#10b981', emoji: '🟢' },
+    finalizada:       { label: 'FINALIZADA',           color: '#333333', emoji: '⚫' },
+    activa:           { label: 'ABIERTA',              color: '#d4a017', emoji: '🟡' }, // compatibilidad con rifas antiguas
+};
+
+function infoEstadoRifa(rifa) {
+    var estado = rifa && rifa.estado ? rifa.estado : 'abierta';
+    var vendidas = Number(rifa && rifa.papeletasVendidas ? rifa.papeletasVendidas : 0);
+    var total = Number(rifa && rifa.totalPapeletas ? rifa.totalPapeletas : 100);
+    if ((estado === 'abierta' || estado === 'activa') && vendidas >= total * 0.8 && vendidas < total) estado = 'casi_completa';
+    return RIFA_ESTADOS_INFO[estado] || RIFA_ESTADOS_INFO.abierta;
+}
+
+// Busca el próximo partido de la UDLP jugando COMO LOCAL — es el partido de
+// referencia del sorteo (las dos últimas cifras de la asistencia oficial).
+async function buscarProximoPartidoLocalUDLP() {
+    if (!API_FOOTBALL_KEY) return null;
+    try {
+        var url = 'https://v3.football.api-sports.io/fixtures?team=' + API_TEAM_ID_UDLP + '&season=2026&next=10';
+        var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+        var data = await res.json();
+        var lista = data.response || [];
+        for (var i = 0; i < lista.length; i++) {
+            var p = lista[i];
+            if (p.teams && p.teams.home && p.teams.home.id === API_TEAM_ID_UDLP) {
+                return { fixtureId: p.fixture.id, fecha: p.fixture.date, local: p.teams.home.name, visitante: p.teams.away.name,
+                    estadio: p.fixture.venue && p.fixture.venue.name ? p.fixture.venue.name : '' };
+            }
+        }
+        return null;
+    } catch(e) { console.warn('Próximo partido local UDLP:', e.message); return null; }
+}
+
+// ============================================================================
+// --- RIFAS · PANTALLA DEL JUGADOR ------------------------------------------
+// 100 papeletas (00–99). El ganador sale de las dos últimas cifras de la
+// asistencia oficial del siguiente partido de la UDLP como LOCAL.
+// ============================================================================
+const RifasScreen = ({ currentUser, userProfiles }) => {
+    var [rifa, setRifa] = useState(null);
+    var [historialRifas, setHistorialRifas] = useState([]);
+    var [papeletas, setPapeletas] = useState({});         // numero -> {usuario, metodo, ...}
+    var [saldo, setSaldo] = useState(0);
+    var [seleccion, setSeleccion] = useState([]);          // números elegidos para comprar
+    var [comprando, setComprando] = useState(false);
+    var [msg, setMsg] = useState('');
+    var [cargandoRifa, setCargandoRifa] = useState(true);
+
+    // Rifa "vigente": la más reciente que no esté finalizada.
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, 'rifas'), function(snap) {
+            var todas = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+            todas.sort(function(a, b) {
+                var fa = a.creadaEn && a.creadaEn.seconds ? a.creadaEn.seconds : 0;
+                var fb = b.creadaEn && b.creadaEn.seconds ? b.creadaEn.seconds : 0;
+                return fb - fa;
+            });
+            var vigente = todas.find(function(r) { return r.estado !== 'finalizada'; }) || null;
+            setRifa(vigente);
+            setHistorialRifas(todas.filter(function(r) { return r.estado === 'finalizada'; }));
+            setCargandoRifa(false);
+        }, function() { setCargandoRifa(false); });
+        return function() { unsub(); };
+    }, []);
+
+    // Papeletas de la rifa vigente, en vivo.
+    var rifaIdActual = rifa ? rifa.id : null;
+    useEffect(function() {
+        if (!rifaIdActual) { setPapeletas({}); return; }
+        var unsub = onSnapshot(collection(db, 'rifas', rifaIdActual, 'papeletas'), function(snap) {
+            var m = {};
+            snap.forEach(function(d) { m[d.id] = d.data(); });
+            setPapeletas(m);
+        }, function(){});
+        return function() { unsub(); };
+    }, [rifaIdActual]);
+
+    // Saldo de rifas del usuario (dinero de premios destinado voluntariamente).
+    useEffect(function() {
+        if (!currentUser) return;
+        var unsub = onSnapshot(doc(db, 'saldos_rifa', currentUser), function(snap) {
+            setSaldo(snap.exists() ? Number(snap.data().saldo || 0) : 0);
+        }, function(){});
+        return function() { unsub(); };
+    }, [currentUser]);
+
+    var precio = rifa ? Number(rifa.precio || 0) : 0;
+    var total = rifa ? Number(rifa.totalPapeletas || 100) : 100;
+    var vendidas = Object.keys(papeletas).length;
+    var costeSeleccion = Number((seleccion.length * precio).toFixed(2));
+    var rifaAbierta = !!(rifa && (rifa.estado === 'abierta' || rifa.estado === 'activa' || !rifa.estado));
+
+    var toggleNumero = function(num) {
+        if (!rifaAbierta || papeletas[num]) return;
+        setSeleccion(function(prev) {
+            return prev.indexOf(num) !== -1 ? prev.filter(function(n) { return n !== num; }) : prev.concat([num]);
+        });
+    };
+
+    // Compra transaccional: ningún número puede comprarse dos veces, y el
+    // saldo nunca puede quedar en negativo. Todo o nada.
+    var comprar = async function(metodo) {
+        if (!rifa || !seleccion.length || comprando) return;
+        if (metodo === 'saldo' && saldo < costeSeleccion) { setMsg('❌ Saldo insuficiente para esa selección.'); return; }
+        setComprando(true); setMsg('');
+        try {
+            await runTransaction(db, async function(tx) {
+                var rifaRef = doc(db, 'rifas', rifa.id);
+                var rifaSnap = await tx.get(rifaRef);
+                if (!rifaSnap.exists()) throw new Error('La rifa ya no existe.');
+                var rd = rifaSnap.data();
+                if (rd.estado && rd.estado !== 'abierta' && rd.estado !== 'activa') throw new Error('La rifa ya no admite compras.');
+                var refsPapeletas = seleccion.map(function(n) { return doc(db, 'rifas', rifa.id, 'papeletas', n); });
+                for (var i = 0; i < refsPapeletas.length; i++) {
+                    var pSnap = await tx.get(refsPapeletas[i]);
+                    if (pSnap.exists()) throw new Error('El número ' + seleccion[i] + ' acaba de ser comprado por otro jugador.');
+                }
+                var saldoRef = doc(db, 'saldos_rifa', currentUser);
+                var saldoTx = 0;
+                if (metodo === 'saldo') {
+                    var sSnap = await tx.get(saldoRef);
+                    saldoTx = sSnap.exists() ? Number(sSnap.data().saldo || 0) : 0;
+                    if (saldoTx < costeSeleccion) throw new Error('Saldo insuficiente.');
+                }
+                for (var k = 0; k < refsPapeletas.length; k++) {
+                    tx.set(refsPapeletas[k], {
+                        numero: seleccion[k], usuario: currentUser, precio: precio,
+                        metodo: metodo, pagoVerificado: metodo === 'saldo',
+                        fecha: serverTimestamp(),
+                    });
+                }
+                if (metodo === 'saldo') {
+                    tx.set(saldoRef, { saldo: Number((saldoTx - costeSeleccion).toFixed(2)), actualizadoEn: serverTimestamp() }, { merge: true });
+                }
+                var nuevasVendidas = Number(rd.papeletasVendidas || 0) + seleccion.length;
+                var actualizacion = { papeletasVendidas: nuevasVendidas };
+                if (nuevasVendidas >= Number(rd.totalPapeletas || 100)) actualizacion.estado = 'completa';
+                tx.set(rifaRef, actualizacion, { merge: true });
+            });
+            for (var m2 = 0; m2 < seleccion.length; m2++) {
+                await addDoc(collection(db, 'saldos_rifa', currentUser, 'movimientos'), {
+                    tipo: 'compra_papeleta', importe: -precio, rifaId: rifa.id,
+                    numero: seleccion[m2], metodo: metodo, fecha: serverTimestamp(),
+                });
+            }
+            setMsg(metodo === 'saldo' ? '✅ ¡Números comprados con tu saldo de premios!' : '✅ Números reservados. Recuerda enviar el Bizum al administrador.');
+            setSeleccion([]);
+        } catch(e) { setMsg('❌ ' + e.message); }
+        setComprando(false);
+    };
+
+    if (cargandoRifa) return <LoadingSkeleton />;
+
+    var estadoInfo = rifa ? infoEstadoRifa({ ...rifa, papeletasVendidas: vendidas }) : null;
+    var misNumeros = Object.keys(papeletas).filter(function(n) { return papeletas[n].usuario === currentUser; }).sort();
+
+    return (
+        <div style={{paddingBottom:40}}>
+            <h2 style={styles.title}>🎟️ RIFAS</h2>
+
+            <button onClick={function(){ window.dispatchEvent(new CustomEvent('reabrirNovedad')); }}
+                style={{width:'100%',border:'1px solid rgba(0,31,107,.12)',background:'#fff',color:'#001F6B',borderRadius:12,padding:'9px 12px',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,cursor:'pointer',marginBottom:14}}>
+                📢 VER ÚLTIMA NOVEDAD
+            </button>
+
+            {!rifa && (
+                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:18,padding:22,textAlign:'center'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:2,color:'#001F6B',marginBottom:6}}>NO HAY RIFAS ACTIVAS</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,.55)',margin:0}}>Cuando se abra una rifa la verás aquí y te avisaremos con una novedad.</p>
+                </div>
+            )}
+
+            {rifa && (
+                <>
+                {/* ── Cabecera de la rifa ── */}
+                <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:20,padding:20,marginBottom:16,position:'relative',overflow:'hidden'}}>
+                    <span style={{position:'absolute',top:14,right:14,fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,background:'rgba(255,255,255,.12)',color:'#fff',padding:'4px 10px',borderRadius:10}}>
+                        {estadoInfo.emoji} {estadoInfo.label}
+                    </span>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:4,color:'rgba(255,215,0,.6)',textTransform:'uppercase',marginBottom:6}}>RIFA DE LA PORRA</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#FFD700',letterSpacing:1,marginBottom:4}}>{rifa.titulo}</p>
+                    {rifa.subtitulo && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,.7)',marginBottom:8}}>{rifa.subtitulo}</p>}
+                    {rifa.imagenUrl && <img src={rifa.imagenUrl} alt={rifa.titulo} style={{width:'100%',maxHeight:180,objectFit:'cover',borderRadius:12,marginBottom:10}} onError={function(e){e.target.style.display='none';}} />}
+                    {rifa.descripcion && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,.65)',lineHeight:1.6,marginBottom:10}}>{rifa.descripcion}</p>}
+                    <div style={{display:'flex',gap:14,flexWrap:'wrap'}}>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,color:'#fff'}}>🎟️ {precio.toFixed(2)}€ / número</span>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,color:'#fff'}}>📊 {vendidas}/{total} vendidos</span>
+                    </div>
+                    <div style={{height:8,background:'rgba(255,255,255,.12)',borderRadius:6,marginTop:10,overflow:'hidden'}}>
+                        <div style={{height:'100%',width:Math.min(100,(vendidas/total)*100)+'%',background:'#FFD700',borderRadius:6,transition:'width .5s'}} />
+                    </div>
+                </div>
+
+                {/* ── Estado del sorteo ── */}
+                {(rifa.estado === 'completa' || rifa.estado === 'pendiente_sorteo') && (
+                    <div style={{background:'rgba(37,99,235,.07)',border:'1px solid rgba(37,99,235,.2)',borderRadius:14,padding:14,marginBottom:16}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#2563eb',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>🔵 RIFA COMPLETA — PENDIENTE DE SORTEO</p>
+                        {rifa.partidoReferencia ? (
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,.7)',lineHeight:1.6,margin:0}}>
+                                El número ganador saldrá de las <strong>dos últimas cifras de la asistencia oficial</strong> del partido <strong>{rifa.partidoReferencia.local} — {rifa.partidoReferencia.visitante}</strong>{rifa.partidoReferencia.fecha ? ' (' + new Date(rifa.partidoReferencia.fecha).toLocaleDateString('es-ES',{day:'numeric',month:'long',timeZone:'Atlantic/Canary'}) + ')' : ''}.
+                            </p>
+                        ) : (
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,.7)',lineHeight:1.6,margin:0}}>
+                                Esperando al <strong>próximo partido de la UD Las Palmas como LOCAL</strong> para determinar el número ganador con las dos últimas cifras de la asistencia oficial.
+                            </p>
+                        )}
+                    </div>
+                )}
+                {(rifa.estado === 'sorteada') && rifa.numeroGanador !== undefined && (
+                    <div style={{background:'linear-gradient(135deg,#0a3d2c,#10b981)',borderRadius:16,padding:18,marginBottom:16,textAlign:'center'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'#fff',marginBottom:6}}>🏆 ¡TENEMOS GANADOR!</p>
+                        {rifa.asistenciaOficial !== undefined && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.75)',marginBottom:8}}>ASISTENCIA OFICIAL: {Number(rifa.asistenciaOficial).toLocaleString('es-ES')}</p>}
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:44,fontWeight:700,color:'#FFD700',letterSpacing:6,margin:'0 0 6px'}}>{numeroPapeleta2Cifras(rifa.numeroGanador)}</p>
+                        {rifa.ganadorUserId && <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,color:'#fff',margin:0}}>{nombreVisible(rifa.ganadorUserId, userProfiles[rifa.ganadorUserId] || {})}</p>}
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.8)',marginTop:6}}>PREMIO: {rifa.descripcion || rifa.titulo}</p>
+                    </div>
+                )}
+
+                {/* ── Mi saldo y mis números ── */}
+                <div style={{display:'flex',gap:10,marginBottom:16}}>
+                    <div style={{flex:1,background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,padding:12}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(0,31,107,.45)',marginBottom:4}}>MI SALDO DE PREMIOS</p>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#001F6B',margin:0}}>{saldo.toFixed(2)}€</p>
+                    </div>
+                    <div style={{flex:1,background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,padding:12}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(0,31,107,.45)',marginBottom:4}}>MIS NÚMEROS</p>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:'#001F6B',margin:0,lineHeight:1.4}}>{misNumeros.length ? misNumeros.join(' · ') : '—'}</p>
+                    </div>
+                </div>
+
+                {/* ── Tablero de 100 papeletas ── */}
+                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:16,padding:14,marginBottom:16}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:10,fontWeight:700}}>ELIGE TUS NÚMEROS</p>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(10,1fr)',gap:4}}>
+                        {Array.from({length:total},function(_,i){return numeroPapeleta2Cifras(i);}).map(function(num){
+                            var duenyo = papeletas[num];
+                            var esMia = duenyo && duenyo.usuario === currentUser;
+                            var sel = seleccion.indexOf(num) !== -1;
+                            var fondo = esMia ? '#FFD700' : duenyo ? 'rgba(0,31,107,.85)' : sel ? '#10b981' : 'rgba(0,31,107,.05)';
+                            var colorTxt = esMia ? '#001F6B' : duenyo ? 'rgba(255,255,255,.85)' : sel ? '#fff' : 'rgba(0,31,107,.55)';
+                            return (
+                                <button key={num} onClick={function(){toggleNumero(num);}}
+                                    disabled={!rifaAbierta || !!duenyo}
+                                    title={duenyo ? (esMia ? 'Tuyo' : nombreVisible(duenyo.usuario, userProfiles[duenyo.usuario] || {})) : 'Disponible'}
+                                    style={{aspectRatio:'1',border:'none',borderRadius:8,background:fondo,color:colorTxt,
+                                        fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,cursor:(!rifaAbierta||duenyo)?'default':'pointer',padding:0}}>
+                                    {num}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <div style={{display:'flex',gap:12,marginTop:10,flexWrap:'wrap'}}>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.5)'}}>🟨 Tuyos</span>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.5)'}}>🟦 Ocupados</span>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.5)'}}>🟩 Tu selección</span>
+                    </div>
+                </div>
+
+                {/* ── Panel de compra ── */}
+                {rifaAbierta && seleccion.length > 0 && (
+                    <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:16,marginBottom:16}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#FFD700',marginBottom:8}}>
+                            {seleccion.length} NÚMERO{seleccion.length>1?'S':''} · TOTAL {costeSeleccion.toFixed(2)}€
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.65)',marginBottom:10}}>Seleccionados: {seleccion.slice().sort().join(' · ')}</p>
+                        <button onClick={function(){comprar('saldo');}} disabled={comprando || saldo < costeSeleccion}
+                            style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:saldo>=costeSeleccion?'#FFD700':'rgba(255,255,255,.15)',color:saldo>=costeSeleccion?'#001F6B':'rgba(255,255,255,.4)',cursor:saldo>=costeSeleccion?'pointer':'default',marginBottom:8}}>
+                            💰 PAGAR CON MI SALDO ({saldo.toFixed(2)}€)
+                        </button>
+                        <button onClick={function(){comprar('bizum');}} disabled={comprando}
+                            style={{width:'100%',border:'1px solid rgba(255,255,255,.25)',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'transparent',color:'#fff',cursor:'pointer'}}>
+                            📲 RESERVAR Y PAGAR POR BIZUM
+                        </button>
+                    </div>
+                )}
+                {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:msg.indexOf('✅')===0?'#10b981':'#e63946',marginBottom:14,textAlign:'center'}}>{msg}</p>}
+
+                {/* ── Normas y condiciones ── */}
+                <AcordeonAyuda icono="📜" titulo="Normas de la rifa" abiertoPorDefecto={false}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,.65)',lineHeight:1.7,whiteSpace:'pre-wrap',margin:0}}>
+                        {rifa.normas || ('· ' + total + ' números (00–' + numeroPapeleta2Cifras(total-1) + ').\n· La rifa solo se sortea cuando estén vendidos todos los números.\n· El ganador sale de las DOS ÚLTIMAS CIFRAS de la asistencia oficial del siguiente partido de la UD Las Palmas como LOCAL tras completarse la rifa.\n· Si la rifa se completa en jornada a domicilio, se espera al siguiente partido en casa.\n· Puedes pagar con tu saldo de premios de la Porra o por Bizum.')}
+                    </p>
+                </AcordeonAyuda>
+                {rifa.fechaApertura && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.4)',textAlign:'center',marginTop:10}}>Rifa abierta desde el {rifa.fechaApertura}</p>}
+                </>
+            )}
+
+            {/* ── Historial de rifas finalizadas ── */}
+            {historialRifas.length > 0 && (
+                <div style={{marginTop:20}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:'rgba(0,31,107,.4)',textTransform:'uppercase',marginBottom:10}}>Rifas anteriores</p>
+                    {historialRifas.map(function(r){
+                        return (
+                            <div key={r.id} style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,padding:12,marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
+                                <span style={{fontSize:18}}>⚫</span>
+                                <div style={{flex:1}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,color:'#001F6B',margin:0}}>{r.titulo}</p>
+                                    {r.ganadorUserId && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.5)',margin:0}}>🏆 {nombreVisible(r.ganadorUserId, userProfiles[r.ganadorUserId] || {})} · nº {numeroPapeleta2Cifras(r.numeroGanador)}</p>}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const PremioMiJornadaCard = ({ user, jornada }) => {
-    var [importe,setImporte]=useState(0), [confirmado,setConfirmado]=useState(false), [cargando,setCargando]=useState(true);
+    var [importe,setImporte]=useState(0), [cargando,setCargando]=useState(true);
+    var [premioDoc,setPremioDoc]=useState(null);      // documento premios_jornada del usuario
+    var [rifaActiva,setRifaActiva]=useState(null);    // rifa abierta a la que se puede destinar dinero
+    var [modoReparto,setModoReparto]=useState(false); // selector de reparto abierto
+    var [eurosARifa,setEurosARifa]=useState(0);
+    var [guardandoDestino,setGuardandoDestino]=useState(false);
+
     useEffect(function(){
         var activo=true;
         (async function(){
             try{
-                var ps=await getDocs(collection(db,'pronosticos',jornada.id,'jugadores'));
-                var vals=ps.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(x){return !x.noContabilizado;});
-                var exactos=vals.filter(function(x){return parseInt(x.golesLocal)===parseInt(jornada.resultadoLocal)&&parseInt(x.golesVisitante)===parseInt(jornada.resultadoVisitante);});
-                var bote=parseFloat(jornada.bote||0)+vals.length*(jornada.esVip?APUESTA_VIP:APUESTA_NORMAL);
-                var mi=exactos.some(function(x){return x.id===user})&&exactos.length?Number((bote/exactos.length).toFixed(2)):0;
-                // El cobro se ESCRIBE en la subcolección premios_jornada/{jornada}/usuarios/{user},
-                // así que hay que leerlo del mismo sitio (antes se consultaba la colección raíz
-                // y nunca encontraba nada: el botón volvía a salir tras recargar).
+                var mi=0;
+                // FUENTE DE VERDAD: el reparto guardado por el admin al cerrar
+                // la jornada. Solo si la jornada es antigua y no lo tiene, se
+                // recalcula como antes (comportamiento de respaldo).
+                if (jornada.premioPorGanador !== undefined && Array.isArray(jornada.ganadores)) {
+                    mi = jornada.ganadores.indexOf(user) !== -1 ? Number(jornada.premioPorGanador||0) : 0;
+                } else {
+                    var ps=await getDocs(collection(db,'pronosticos',jornada.id,'jugadores'));
+                    var vals=ps.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(x){return !x.noContabilizado;});
+                    var exactos=vals.filter(function(x){return parseInt(x.golesLocal)===parseInt(jornada.resultadoLocal)&&parseInt(x.golesVisitante)===parseInt(jornada.resultadoVisitante);});
+                    var bote=parseFloat(jornada.bote||0)+vals.length*(jornada.esVip?APUESTA_VIP:APUESTA_NORMAL);
+                    mi=exactos.some(function(x){return x.id===user})&&exactos.length?Number((bote/exactos.length).toFixed(2)):0;
+                }
                 var cs=await getDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user));
-                if(activo){setImporte(mi);setConfirmado(cs.exists()&&!!cs.data().recibido);setCargando(false);}
+                if(activo){setImporte(mi);setPremioDoc(cs.exists()?cs.data():null);setCargando(false);}
             }catch(e){if(activo)setCargando(false);}
         })(); return function(){activo=false;};
-    },[user,jornada?.id,jornada?.resultadoLocal,jornada?.resultadoVisitante,jornada?.bote,jornada?.esVip]);
+    },[user,jornada?.id,jornada?.premioPorGanador,jornada?.ganadores,jornada?.resultadoLocal,jornada?.resultadoVisitante,jornada?.bote,jornada?.esVip]);
+
+    // Rifa abierta (si la hay) para poder ofrecer el destino 🎟️
+    useEffect(function(){
+        var unsub=onSnapshot(query(collection(db,'rifas'),where('estado','==','abierta'),limit(1)),function(snap){
+            setRifaActiva(snap.empty?null:{id:snap.docs[0].id,...snap.docs[0].data()});
+        },function(){});
+        return function(){unsub();};
+    },[]);
+
+    var registrarDestino=async function(aRifa,aCobro){
+        if(guardandoDestino)return;
+        setGuardandoDestino(true);
+        try{
+            var datos={
+                jornadaId:jornada.id,usuario:user,importe:importe,
+                importeRifa:Number(aRifa.toFixed(2)),importeCobro:Number(aCobro.toFixed(2)),
+                destinoElegido:aRifa>0?(aCobro>0?'reparto':'rifa'):'cobro',
+                rifaId:aRifa>0&&rifaActiva?rifaActiva.id:null,
+                recibido:false,decididoEn:serverTimestamp(),
+            };
+            await setDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user),datos,{merge:true});
+            if(aRifa>0){
+                // El dinero destinado se convierte en saldo de rifas, con su
+                // movimiento registrado para que todo quede trazable.
+                await runTransaction(db,async function(tx){
+                    var sRef=doc(db,'saldos_rifa',user);
+                    var sSnap=await tx.get(sRef);
+                    var saldoActual=sSnap.exists()?Number(sSnap.data().saldo||0):0;
+                    tx.set(sRef,{saldo:Number((saldoActual+aRifa).toFixed(2)),actualizadoEn:serverTimestamp()},{merge:true});
+                });
+                await addDoc(collection(db,'saldos_rifa',user,'movimientos'),{
+                    tipo:'ingreso_premio',importe:Number(aRifa.toFixed(2)),
+                    jornadaId:jornada.id,rifaId:rifaActiva?rifaActiva.id:null,fecha:serverTimestamp(),
+                });
+            }
+            setPremioDoc(datos);setModoReparto(false);
+        }catch(e){alert('No se pudo registrar el destino del premio: '+e.message);}
+        setGuardandoDestino(false);
+    };
+
+    var confirmarCobro=async function(){
+        try{
+            await setDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user),{recibido:true,recibidoEn:serverTimestamp()},{merge:true});
+            setPremioDoc(function(p){return {...(p||{}),recibido:true};});
+        }catch(e){alert('No se pudo registrar el cobro: '+e.message);}
+    };
+
     if(cargando) return null;
+
+    var precioPapeleta=rifaActiva?Number(rifaActiva.precio||0):0;
+    var destinoDecidido=!!(premioDoc&&premioDoc.destinoElegido);
+    var importeCobroPend=destinoDecidido?Number(premioDoc.importeCobro||0):importe;
+    var importeRifaUsado=destinoDecidido?Number(premioDoc.importeRifa||0):0;
+
+    var estiloBtn=function(bg,color,borde){return {width:'100%',border:borde||'none',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:bg,color:color,cursor:'pointer',marginBottom:8};};
+
     return <div style={{background:importe>0?'rgba(255,215,0,.12)':'rgba(0,31,107,.04)',border:'1px solid '+(importe>0?'rgba(212,175,55,.35)':'rgba(0,31,107,.08)'),borderRadius:16,padding:16,marginBottom:16}}>
-        <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:5,fontWeight:700}}>{importe>0?'🏆 PREMIO DE LA JORNADA':'📊 JORNADA RESUELTA'}</p>
+        <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:5,fontWeight:700}}>{importe>0?'🏆 PREMIO DE LA JORNADA '+(jornada.numeroJornada?'· J'+jornada.numeroJornada:''):'📊 JORNADA RESUELTA'}</p>
         {importe>0 ? <>
-            <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#001F6B',marginBottom:8}}>{importe.toFixed(2)}€</p>
-            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.55)',lineHeight:1.5,marginBottom:9}}>Cuando recibas el ingreso, confírmalo aquí. Quedará registrado para ti y para Administración.</p>
-            <button disabled={confirmado} onClick={async function(){try{await setDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user),{jornadaId:jornada.id,usuario:user,importe:importe,recibido:true,recibidoEn:serverTimestamp()},{merge:true});setConfirmado(true);}catch(e){alert('No se pudo registrar el cobro: '+e.message);}}} style={{width:'100%',border:'none',borderRadius:10,padding:'10px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:confirmado?'#10b981':'#001F6B',color:'#fff',cursor:confirmado?'default':'pointer'}}>{confirmado?'✅ COBRO CONFIRMADO':'💰 HE RECIBIDO EL INGRESO'}</button>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#001F6B',marginBottom:8}}>HAS GANADO {importe.toFixed(2)}€</p>
+
+            {/* ── PASO 1: elegir destino (decisión SIEMPRE voluntaria) ── */}
+            {!destinoDecidido && <>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.6)',lineHeight:1.5,marginBottom:10}}>¿Qué quieres hacer con tu premio?</p>
+                <button onClick={function(){registrarDestino(0,importe);}} disabled={guardandoDestino} style={estiloBtn('#001F6B','#fff')}>💰 RECIBIR EL PREMIO</button>
+                {rifaActiva && <>
+                    <button onClick={function(){registrarDestino(importe,0);}} disabled={guardandoDestino} style={estiloBtn('rgba(255,215,0,.9)','#001F6B')}>🎟️ USARLO EN LA RIFA</button>
+                    <button onClick={function(){setModoReparto(!modoReparto);var maxP=precioPapeleta>0?Math.floor(importe/precioPapeleta)*precioPapeleta:0;setEurosARifa(maxP);}} disabled={guardandoDestino} style={estiloBtn('#fff','#001F6B','1px solid rgba(0,31,107,.2)')}>💰 + 🎟️ REPARTIRLO</button>
+                </>}
+                {!rifaActiva && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.4)',margin:0}}>Ahora mismo no hay ninguna rifa abierta.</p>}
+
+                {/* Selector de reparto */}
+                {modoReparto && rifaActiva && (function(){
+                    var papeletasPosibles=precioPapeleta>0?Math.floor(importe/precioPapeleta):0;
+                    return <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.1)',borderRadius:12,padding:12,marginBottom:8}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#001F6B',marginBottom:8}}>REPARTE TU PREMIO · papeleta a {precioPapeleta.toFixed(2)}€</p>
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>
+                            {Array.from({length:papeletasPosibles+1},function(_,i){return i;}).map(function(n){
+                                var euros=Number((n*precioPapeleta).toFixed(2));
+                                var sel=Math.abs(eurosARifa-euros)<0.001;
+                                return <button key={n} onClick={function(){setEurosARifa(euros);}} style={{padding:'7px 10px',borderRadius:9,border:sel?'none':'1px solid rgba(0,31,107,.15)',background:sel?'#001F6B':'#f8f8f8',color:sel?'#FFD700':'rgba(0,31,107,.6)',fontFamily:"'Teko',sans-serif",fontSize:13,cursor:'pointer'}}>{n} 🎟️ · {euros.toFixed(2)}€</button>;
+                            })}
+                        </div>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.6)',marginBottom:10}}>
+                            🎟️ {eurosARifa.toFixed(2)}€ a la rifa · 💰 {(importe-eurosARifa).toFixed(2)}€ a cobrar
+                        </p>
+                        <button onClick={function(){registrarDestino(eurosARifa,importe-eurosARifa);}} disabled={guardandoDestino} style={estiloBtn('#10b981','#fff')}>CONFIRMAR REPARTO</button>
+                    </div>;
+                })()}
+            </>}
+
+            {/* ── PASO 2: desglose trazable + confirmación de cobro ── */}
+            {destinoDecidido && <>
+                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:12,padding:12,marginBottom:10}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'rgba(0,31,107,.5)',textTransform:'uppercase',marginBottom:6}}>DESTINO DE TU PREMIO</p>
+                    {importeRifaUsado>0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginBottom:4}}>🎟️ {importeRifaUsado.toFixed(2)}€ → saldo para la rifa{rifaActiva?' «'+(rifaActiva.titulo||'')+'»':''}</p>}
+                    {importeCobroPend>0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginBottom:0}}>💰 {importeCobroPend.toFixed(2)}€ → {premioDoc.recibido?'✅ premio recibido':'pendiente de cobro'}</p>}
+                    {importeCobroPend===0 && importeRifaUsado>0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.5)',margin:0}}>Premio destinado íntegramente a la rifa.</p>}
+                </div>
+                {importeRifaUsado>0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.55)',marginBottom:8}}>Entra en la sección 🎟️ RIFAS para elegir tus números.</p>}
+                {importeCobroPend>0 && !premioDoc.recibido && (
+                    <button onClick={confirmarCobro} style={estiloBtn('#001F6B','#fff')}>💰 HE RECIBIDO {importeCobroPend.toFixed(2)}€</button>
+                )}
+                {importeCobroPend>0 && premioDoc.recibido && (
+                    <button disabled style={{...estiloBtn('#10b981','#fff'),cursor:'default'}}>✅ COBRO CONFIRMADO</button>
+                )}
+            </>}
         </> : <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.55)',margin:0}}>Esta jornada no tienes premio económico. El resultado y los puntos se gestionan por separado.</p>}
     </div>;
 };
@@ -2598,6 +3031,11 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 getDoc(doc(db,'pronosticos',cj.id,'jugadores',user)).then(function(ps){
                     if(ps.exists()){
                         var pd=ps.data();
+                        // Preferencia por el reparto oficial guardado al cerrar
+                        // la jornada — el recálculo local queda solo de respaldo.
+                        if (cj.premioPorGanador !== undefined && Array.isArray(cj.ganadores)) {
+                            setPremioMiJornada(cj.ganadores.indexOf(user) !== -1 ? Number(cj.premioPorGanador||0) : 0);
+                        } else {
                         var exacto=parseInt(pd.golesLocal)===parseInt(cj.resultadoLocal)&&parseInt(pd.golesVisitante)===parseInt(cj.resultadoVisitante);
                         if(exacto){
                             getDocs(collection(db,'pronosticos',cj.id,'jugadores')).then(function(all){
@@ -2608,6 +3046,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                 setPremioMiJornada(pd && exactos.some(function(x){return x.id===user;}) ? premio : 0);
                             });
                         } else setPremioMiJornada(0);
+                        }
                         getDoc(doc(db,'premios_jornada',cj.id,'usuarios',user)).then(function(rc){setPremioCobradoMiJornada(rc.exists()&&!!rc.data().recibido);}).catch(function(){});
                     }
                 }).catch(function(){});
@@ -5702,21 +6141,29 @@ function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACe
         var regatesCompletados = Number(st.dribbles && st.dribbles.success ? st.dribbles.success : 0);
         var tackles = Number(st.tackles && st.tackles.total ? st.tackles.total : 0);
         var intercepciones = Number(st.tackles && st.tackles.interceptions ? st.tackles.interceptions : 0);
+        var bloqueos = Number(st.tackles && st.tackles.blocks ? st.tackles.blocks : 0);
         var pasesClave = Number(st.passes && st.passes.key ? st.passes.key : 0);
+        // En /fixtures/players, passes.accuracy es el NÚMERO de pases
+        // acertados del jugador en ese partido (no un porcentaje).
+        var pasesAcertados = Number(st.passes && st.passes.accuracy ? parseInt(st.passes.accuracy) || 0 : 0);
         var duelosGanados = Number(st.duels && st.duels.won ? st.duels.won : 0);
 
         var eRemates = veces(rematesAPuerta, 2);
         var eRegates = veces(regatesCompletados, 2);
         var eTackles = veces(tackles, 3);
         var eIntercepciones = veces(intercepciones, 3);
+        var eBloqueos = veces(bloqueos, 2);
         var ePasesClave = veces(pasesClave, 2);
+        var ePasesAcertados = veces(pasesAcertados, 25);
         var eDuelos = veces(duelosGanados, 4);
 
         if (eRemates) { pts += eRemates; extras.rematesAPuerta = eRemates; }
         if (eRegates) { pts += eRegates; extras.regates = eRegates; }
         if (eTackles) { pts += eTackles; extras.tackles = eTackles; }
         if (eIntercepciones) { pts += eIntercepciones; extras.intercepciones = eIntercepciones; }
+        if (eBloqueos) { pts += eBloqueos; extras.bloqueos = eBloqueos; }
         if (ePasesClave) { pts += ePasesClave; extras.pasesClave = ePasesClave; }
+        if (ePasesAcertados) { pts += ePasesAcertados; extras.pasesAcertados = ePasesAcertados; }
         if (eDuelos) { pts += eDuelos; extras.duelosGanados = eDuelos; }
 
         puntosPorNombre[jug.nombre] = pts;
@@ -5725,7 +6172,7 @@ function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACe
             extras: extras,
             statsDisponibles: {
                 rematesAPuerta, regatesCompletados, tackles, intercepciones,
-                pasesClave, duelosGanados
+                bloqueos, pasesClave, pasesAcertados, duelosGanados
             }
         };
     });
@@ -6125,6 +6572,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     const handleSaveChanges = async () => {
         const jornadaRef = doc(db, "jornadas", jornada.id);
         let ganadoresArray = [];
+        var jugadoresContabilizados = 0;
         
         // --- INYECCIÓN AUTOMÁTICA CLAUDIO (Jornada 44) ---
         if (jornada.numeroJornada === 44) {
@@ -6291,6 +6739,16 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                     }
                     return; // no suma nada a clasificación, no entra en ganadores
                 }
+                // Contabilizado: entra en el bote. Si arrastraba la marca
+                // noContabilizado de un cálculo anterior erróneo, se limpia —
+                // esa marca residual era la que hacía que las tarjetas del
+                // cliente calcularan un reparto distinto al real.
+                jugadoresContabilizados++;
+                if (!puntosYaCalculados && p.noContabilizado) {
+                    batch.set(doc(db, "pronosticos", jornada.id, "jugadores", userId), {
+                        noContabilizado: false, motivoNoContabilizado: '',
+                    }, { merge: true });
+                }
 
                 // 1. EXACTO
                 if (parseInt(p.golesLocal) === resL && parseInt(p.golesVisitante) === resV) {
@@ -6336,6 +6794,15 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
         if (estado === 'Finalizada') {
             updateData.ganadores = ganadoresArray;
             updateData.premiosCalculados = true;
+            // FUENTE ÚNICA DE VERDAD DEL REPARTO ECONÓMICO: se calcula UNA
+            // vez aquí y se guarda. Las tarjetas del cliente leen estos
+            // valores y ya no recalculan por su cuenta (que era lo que
+            // producía repartos distintos, p. ej. 5,67€ en vez de 4,50€).
+            var costeReparto = esVip ? APUESTA_VIP : APUESTA_NORMAL;
+            var boteTotalReparto = (parseFloat(bote) || 0) + jugadoresContabilizados * costeReparto;
+            updateData.jugadoresContabilizados = jugadoresContabilizados;
+            updateData.boteTotal = Number(boteTotalReparto.toFixed(2));
+            updateData.premioPorGanador = ganadoresArray.length ? Number((boteTotalReparto / ganadoresArray.length).toFixed(2)) : 0;
             if (!jornada.finalizadaEn) updateData.finalizadaEn = serverTimestamp();
             if (!jornada.cierreDefinitivo) updateData.puntosCalculados = false;
         }
@@ -7780,6 +8247,62 @@ const VerificarFotosPlantilla = ({ plantilla }) => {
         cambiar(jug.nombre, 'fotoManual', '');
     };
 
+    // ── BÚSQUEDA AUTOMÁTICA DE apiIds ──────────────────────────────────────
+    // Descarga la plantilla oficial de la UDLP desde API-Football
+    // (players/squads?team=534) y asigna el apiId a cada jugador de nuestra
+    // plantilla emparejando por nombre (sin tildes, ignorando mayúsculas).
+    // Solo rellena a quien no tenga apiId — nunca pisa uno ya guardado.
+    var [buscandoIds, setBuscandoIds] = useState(false);
+    var normalizarNombre = function(s) {
+        return String(s || '').toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+    };
+    var emparejarConSquad = function(squad, objetivo) {
+        var partes = objetivo.split(' ');
+        return squad.find(function(p) {
+            var n = normalizarNombre(p.name);
+            if (n === objetivo) return true;
+            // El nombre de la API suele ser "N. Apellido" o "Nombre Apellido":
+            // damos match si todas las palabras de 3+ letras de nuestro nombre
+            // aparecen en el suyo, o al revés.
+            var nuestras = partes.filter(function(w){ return w.length >= 3; });
+            if (nuestras.length && nuestras.every(function(w){ return n.indexOf(w) !== -1; })) return true;
+            var suyas = n.split(' ').filter(function(w){ return w.length >= 3; });
+            if (suyas.length && suyas.every(function(w){ return objetivo.indexOf(w) !== -1; })) return true;
+            return false;
+        });
+    };
+    var buscarApiIdsAutomatico = async function() {
+        if (!API_FOOTBALL_KEY) { setMsg('❌ No hay clave de API configurada.'); return; }
+        setBuscandoIds(true); setMsg('');
+        try {
+            var res = await fetch('https://v3.football.api-sports.io/players/squads?team=' + API_TEAM_ID_UDLP, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var data = await res.json();
+            var squad = data.response && data.response[0] && data.response[0].players ? data.response[0].players : [];
+            if (!squad.length) { setMsg('❌ La API no devolvió la plantilla. Inténtalo más tarde.'); setBuscandoIds(false); return; }
+            var asignados = [], sinMatch = [];
+            for (var i = 0; i < plantilla.length; i++) {
+                var jug = plantilla[i];
+                var apiIdActual = parseInt(valorActual(jug, 'apiId')) || 0;
+                if (apiIdActual) continue; // ya tiene id — no se toca
+                var match = emparejarConSquad(squad, normalizarNombre(jug.nombre));
+                if (match) {
+                    await setDoc(doc(db, 'fotosJugadores', jug.nombre), {
+                        apiId: match.id, actualizadoEn: serverTimestamp(),
+                    }, { merge: true });
+                    asignados.push(jug.nombre + ' → ' + match.id);
+                } else {
+                    sinMatch.push(jug.nombre);
+                }
+            }
+            var texto = asignados.length ? '✅ apiIds asignados: ' + asignados.join(' · ') : 'ℹ️ Ningún jugador nuevo por asignar.';
+            if (sinMatch.length) texto += ' ⚠️ Sin coincidencia en la API (asígnalos a mano): ' + sinMatch.join(', ');
+            setMsg(texto);
+        } catch(e) { setMsg('❌ Error consultando la API: ' + e.message); }
+        setBuscandoIds(false);
+    };
+
     return (
         <div style={ADMIN_STYLES.card}>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
@@ -7789,6 +8312,10 @@ const VerificarFotosPlantilla = ({ plantilla }) => {
                 Si la foto de alguien no es la suya, pega aquí la URL de una foto correcta (de Wikipedia, Sofascore, o donde sea) — se guarda para toda la app y gana siempre a la foto automática. Puedes guardar uno detrás de otro sin problema, cada uno es independiente.
             </p>
             {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msg.startsWith('✅') ? '#10b981' : '#e63946',marginBottom:12}}>{msg}</p>}
+            <button onClick={buscarApiIdsAutomatico} disabled={buscandoIds}
+                style={{width:'100%',border:'none',borderRadius:10,padding:'10px 12px',marginBottom:14,fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:buscandoIds?'default':'pointer'}}>
+                {buscandoIds ? 'CONSULTANDO API-FOOTBALL…' : '🔎 BUSCAR apiIds AUTOMÁTICAMENTE (jugadores sin ID)'}
+            </button>
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
                 {plantilla.map(function(jug) {
                     var fotoManual = valorActual(jug, 'fotoManual');
@@ -7915,37 +8442,64 @@ const ConfirmacionesPremiosAdmin = ({ jornadas }) => {
 
 // Popup de novedades — se muestra una sola vez al abrir la app, con scroll
 // interno. El admin puede crear/editar el mensaje desde el panel.
-const PopupNovedad = ({ currentUser, onClose }) => {
+const PopupNovedad = ({ currentUser, onClose, onIrARifas }) => {
     var [novedad, setNovedad] = useState(null);
     var [animado, setAnimado] = useState(false);
     useEffect(function() {
-        onSnapshot(doc(db, 'configuracion', 'novedad_activa'), function(snap) {
+        var ultima = null;
+        var unsub = onSnapshot(doc(db, 'configuracion', 'novedad_activa'), function(snap) {
             if (snap.exists() && snap.data().activa) {
+                ultima = snap.data();
                 var yaVisto = localStorage.getItem('novedad_vista_' + snap.data().version + '_' + currentUser);
                 if (!yaVisto) setNovedad(snap.data());
-            }
+            } else { ultima = null; }
         });
+        // Reapertura bajo demanda (botón "Ver última novedad" en Rifas):
+        // ignora el marcador de "ya visto" y vuelve a mostrar el popup.
+        var reabrir = function() { if (ultima) { setAnimado(false); setNovedad(ultima); } };
+        window.addEventListener('reabrirNovedad', reabrir);
+        return function() { unsub(); window.removeEventListener('reabrirNovedad', reabrir); };
     }, [currentUser]);
     useEffect(function() { if (novedad) requestAnimationFrame(function() { setAnimado(true); }); }, [novedad]);
     if (!novedad) return null;
+    var esRifa = novedad.tipo === 'rifa';
+    var cerrar = function() {
+        localStorage.setItem('novedad_vista_' + novedad.version + '_' + currentUser, '1');
+        setNovedad(null);
+        if (onClose) onClose();
+    };
     return (
         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10000,background:'rgba(0,0,0,0.85)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
             <div style={{maxWidth:400,width:'100%',maxHeight:'85vh',background:'linear-gradient(135deg,#0a0a14,#0d1b3e)',border:'1px solid rgba(255,215,0,0.15)',borderRadius:24,overflow:'hidden',
                 transform: animado ? 'scale(1)' : 'scale(0.9)', opacity: animado ? 1 : 0, transition:'all 0.4s cubic-bezier(0.34,1.56,0.64,1)'}}>
                 <div style={{overflowY:'auto',maxHeight:'85vh',padding:'28px 24px'}}>
                     {novedad.icono && <p style={{fontSize:40,textAlign:'center',marginBottom:12}}>{novedad.icono}</p>}
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,letterSpacing:3,color:'#FFD700',textTransform:'uppercase',textAlign:'center',marginBottom:16}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,letterSpacing:3,color:'#FFD700',textTransform:'uppercase',textAlign:'center',marginBottom:esRifa&&novedad.subtitulo?6:16}}>
                         {novedad.titulo || 'Novedad'}
                     </p>
+                    {esRifa && novedad.subtitulo && (
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.6)',textAlign:'center',marginBottom:14}}>{novedad.subtitulo}</p>
+                    )}
+                    {esRifa && novedad.imagenUrl && (
+                        <img src={novedad.imagenUrl} alt="" style={{width:'100%',maxHeight:170,objectFit:'cover',borderRadius:14,marginBottom:14}} onError={function(e){e.target.style.display='none';}} />
+                    )}
                     <div style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.7)',lineHeight:1.8,whiteSpace:'pre-wrap'}}>
                         {novedad.cuerpo}
                     </div>
-                    <button onClick={function() {
-                        localStorage.setItem('novedad_vista_' + novedad.version + '_' + currentUser, '1');
-                        setNovedad(null);
-                        if (onClose) onClose();
-                    }} style={{width:'100%',marginTop:24,fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:3,background:'#FFD700',color:'#001F6B',border:'none',borderRadius:30,padding:14,cursor:'pointer',fontWeight:700}}>
-                        ENTENDIDO
+                    {esRifa && (
+                        <div style={{marginTop:16,background:'rgba(255,215,0,0.07)',border:'1px solid rgba(255,215,0,0.2)',borderRadius:14,padding:12}}>
+                            {novedad.precio !== undefined && novedad.precio !== '' && <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,color:'#fff',margin:'0 0 4px'}}>🎟️ Número: {Number(novedad.precio).toFixed(2)} €</p>}
+                            {novedad.premio && <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,color:'#fff',margin:0}}>🏆 Premio: {novedad.premio}</p>}
+                        </div>
+                    )}
+                    {esRifa && (
+                        <button onClick={function(){ cerrar(); if (onIrARifas) onIrARifas(); }}
+                            style={{width:'100%',marginTop:18,fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,background:'#FFD700',color:'#001F6B',border:'none',borderRadius:30,padding:13,cursor:'pointer',fontWeight:700}}>
+                            {novedad.cta || '🎟️ IR A RIFAS Y PARTICIPAR'}
+                        </button>
+                    )}
+                    <button onClick={cerrar} style={{width:'100%',marginTop:esRifa?10:24,fontFamily:"'Teko',sans-serif",fontSize:esRifa?13:16,letterSpacing:3,background:esRifa?'transparent':'#FFD700',color:esRifa?'rgba(255,255,255,.6)':'#001F6B',border:esRifa?'1px solid rgba(255,255,255,.2)':'none',borderRadius:30,padding:esRifa?11:14,cursor:'pointer',fontWeight:700}}>
+                        {esRifa ? 'AHORA NO' : 'ENTENDIDO'}
                     </button>
                 </div>
             </div>
@@ -7953,7 +8507,8 @@ const PopupNovedad = ({ currentUser, onClose }) => {
     );
 };
 
-// Herramienta de admin para crear/editar novedades
+// Herramienta de admin para crear/editar novedades — reutilizable: novedad
+// normal o novedad de RIFA (vinculada a una rifa existente, sin tocar código).
 const GestionNovedadesAdmin = () => {
     var [titulo, setTitulo] = useState('');
     var [cuerpo, setCuerpo] = useState('');
@@ -7961,6 +8516,14 @@ const GestionNovedadesAdmin = () => {
     var [version, setVersion] = useState('');
     var [activa, setActiva] = useState(false);
     var [cargado, setCargado] = useState(false);
+    var [tipo, setTipo] = useState('normal');           // 'normal' | 'rifa'
+    var [subtitulo, setSubtitulo] = useState('');
+    var [imagenUrl, setImagenUrl] = useState('');
+    var [premioTexto, setPremioTexto] = useState('');
+    var [precioNov, setPrecioNov] = useState('');
+    var [cta, setCta] = useState('');
+    var [rifaVinculada, setRifaVinculada] = useState('');
+    var [rifasDisponibles, setRifasDisponibles] = useState([]);
 
     useEffect(function() {
         getDoc(doc(db, 'configuracion', 'novedad_activa')).then(function(snap) {
@@ -7969,16 +8532,48 @@ const GestionNovedadesAdmin = () => {
                 setTitulo(d.titulo || ''); setCuerpo(d.cuerpo || '');
                 setIcono(d.icono || '📢'); setVersion(d.version || '');
                 setActiva(!!d.activa);
+                setTipo(d.tipo || 'normal');
+                setSubtitulo(d.subtitulo || ''); setImagenUrl(d.imagenUrl || '');
+                setPremioTexto(d.premio || ''); setPrecioNov(d.precio !== undefined ? String(d.precio) : '');
+                setCta(d.cta || ''); setRifaVinculada(d.rifaId || '');
             }
             setCargado(true);
         });
+        var unsubR = onSnapshot(collection(db, 'rifas'), function(snap) {
+            setRifasDisponibles(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+                .filter(function(r) { return r.estado !== 'finalizada'; }));
+        }, function(){});
+        return function() { unsubR(); };
     }, []);
+
+    // Al vincular una rifa, se autocompletan los campos desde la propia rifa
+    // (siempre se pueden retocar a mano después).
+    var vincularRifa = function(rifaId) {
+        setRifaVinculada(rifaId);
+        var r = rifasDisponibles.find(function(x) { return x.id === rifaId; });
+        if (!r) return;
+        setTipo('rifa'); setIcono('🔥');
+        if (!titulo) setTitulo('NUEVA RIFA DE LA PORRA');
+        setSubtitulo(r.subtitulo || r.titulo || '');
+        setImagenUrl(r.imagenUrl || '');
+        setPremioTexto(r.descripcion || r.titulo || '');
+        setPrecioNov(r.precio !== undefined ? String(r.precio) : '');
+        if (!cta) setCta('🎟️ IR A RIFAS Y PARTICIPAR');
+        if (!cuerpo) setCuerpo('Esta semana puedes llevarte: ' + (r.descripcion || r.titulo) + '.\n\n' + (r.totalPapeletas || 100) + ' números.\nUn premio.\nUn ganador.\n\nCuando se completen todos los números, el ganador saldrá de las dos últimas cifras de la asistencia oficial del próximo partido de la UD Las Palmas como local.\n\nConsulta las condiciones y participa desde la sección RIFAS.');
+    };
 
     var guardar = async function() {
         var ver = version || ('v' + Date.now());
         await setDoc(doc(db, 'configuracion', 'novedad_activa'), {
             titulo: titulo, cuerpo: cuerpo, icono: icono,
             version: ver, activa: activa, actualizadoEn: serverTimestamp(),
+            tipo: tipo,
+            subtitulo: tipo === 'rifa' ? subtitulo : '',
+            imagenUrl: tipo === 'rifa' ? imagenUrl : '',
+            premio: tipo === 'rifa' ? premioTexto : '',
+            precio: tipo === 'rifa' && precioNov !== '' ? Number(precioNov) : '',
+            cta: tipo === 'rifa' ? cta : '',
+            rifaId: tipo === 'rifa' ? rifaVinculada : '',
         });
         setVersion(ver);
         alert('✅ Novedad ' + (activa ? 'publicada' : 'guardada (inactiva)'));
@@ -7989,8 +8584,26 @@ const GestionNovedadesAdmin = () => {
         <div style={ADMIN_STYLES.card}>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:12,fontWeight:600}}>📢 Publicar novedad</p>
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                <div style={{display:'flex',gap:8}}>
+                    {[['normal','📢 Normal'],['rifa','🎟️ Rifa']].map(function(t){
+                        return <button key={t[0]} onClick={function(){setTipo(t[0]);}} style={{flex:1,padding:'8px 0',border:tipo===t[0]?'none':'1px solid rgba(0,31,107,0.15)',borderRadius:9,background:tipo===t[0]?'#001F6B':'#fff',color:tipo===t[0]?'#FFD700':'rgba(0,31,107,0.6)',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,cursor:'pointer'}}>{t[1]}</button>;
+                    })}
+                </div>
+                {tipo === 'rifa' && (
+                    <select value={rifaVinculada} onChange={function(e){vincularRifa(e.target.value);}} style={{padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:13}}>
+                        <option value="">— Vincular rifa existente —</option>
+                        {rifasDisponibles.map(function(r){return <option key={r.id} value={r.id}>{r.titulo}</option>;})}
+                    </select>
+                )}
                 <input value={icono} onChange={function(e){setIcono(e.target.value);}} placeholder="Icono (emoji)" style={{padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:14,width:60}} />
                 <input value={titulo} onChange={function(e){setTitulo(e.target.value);}} placeholder="Título de la novedad" style={{padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:13}} />
+                {tipo === 'rifa' && <>
+                    <input value={subtitulo} onChange={function(e){setSubtitulo(e.target.value);}} placeholder="Subtítulo" style={{padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:13}} />
+                    <input value={imagenUrl} onChange={function(e){setImagenUrl(e.target.value);}} placeholder="URL de la imagen del premio" style={{padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
+                    <input value={premioTexto} onChange={function(e){setPremioTexto(e.target.value);}} placeholder="Premio (texto)" style={{padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:13}} />
+                    <input value={precioNov} onChange={function(e){setPrecioNov(e.target.value);}} type="number" placeholder="Precio papeleta (€)" style={{padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:13,width:'50%'}} />
+                    <input value={cta} onChange={function(e){setCta(e.target.value);}} placeholder="Texto del botón (llamada a la acción)" style={{padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:13}} />
+                </>}
                 <textarea value={cuerpo} onChange={function(e){setCuerpo(e.target.value);}} placeholder="Cuerpo del mensaje..." rows={6} style={{padding:'10px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12,resize:'vertical',lineHeight:1.7}} />
                 <label style={{fontFamily:"'Inter',sans-serif",fontSize:12,display:'flex',alignItems:'center',gap:8}}>
                     <input type="checkbox" checked={activa} onChange={function(e){setActiva(e.target.checked);}} /> Activa (visible para los jugadores)
@@ -8013,7 +8626,11 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
     var [pagos, setPagos] = useState([]);
     var [msgAdmin, setMsgAdmin] = useState('');
     var [rifas, setRifas] = useState([]);
-    var [nuevaRifa, setNuevaRifa] = useState({ titulo:'', descripcion:'', precio:'', fecha:'' });
+    var [nuevaRifa, setNuevaRifa] = useState({ titulo:'', subtitulo:'', descripcion:'', imagenUrl:'', precio:'', totalPapeletas:'100', fechaApertura:'', normas:'', cta:'', fecha:'' });
+    var [rifaGestion, setRifaGestion] = useState(null);          // rifa seleccionada para gestionar
+    var [papeletasGestion, setPapeletasGestion] = useState({});  // papeletas de la rifa en gestión
+    var [asistenciaInput, setAsistenciaInput] = useState('');
+    var [buscandoPartidoRef, setBuscandoPartidoRef] = useState(false);
     var [elOtroDatosAdmin, setElOtroDatosAdmin] = useState({});
 
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
@@ -8185,14 +8802,86 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
     };
 
     var crearRifa = async function() {
-        if (!nuevaRifa.titulo || !nuevaRifa.fecha) { setMsgAdmin('Rellena título y fecha de la rifa'); return; }
+        if (!nuevaRifa.titulo || !nuevaRifa.precio) { setMsgAdmin('Rellena al menos título y precio de papeleta'); return; }
         await addDoc(collection(db, 'rifas'), {
-            ...nuevaRifa,
-            estado: 'activa',
-            creadoEn: serverTimestamp(),
+            titulo: nuevaRifa.titulo,
+            subtitulo: nuevaRifa.subtitulo || '',
+            descripcion: nuevaRifa.descripcion || '',
+            imagenUrl: nuevaRifa.imagenUrl || '',
+            precio: Number(nuevaRifa.precio) || 0,
+            totalPapeletas: parseInt(nuevaRifa.totalPapeletas) || 100,
+            fechaApertura: nuevaRifa.fechaApertura || '',
+            normas: nuevaRifa.normas || '',
+            cta: nuevaRifa.cta || '',
+            estado: 'abierta',
+            papeletasVendidas: 0,
+            creadaEn: serverTimestamp(),
         });
-        setNuevaRifa({ titulo:'', descripcion:'', precio:'', fecha:'' });
-        setMsgAdmin('✅ Rifa creada');
+        setNuevaRifa({ titulo:'', subtitulo:'', descripcion:'', imagenUrl:'', precio:'', totalPapeletas:'100', fechaApertura:'', normas:'', cta:'', fecha:'' });
+        setMsgAdmin('✅ Rifa creada y ABIERTA. Publica la novedad desde Herramientas → Novedades.');
+    };
+
+    // Papeletas en vivo de la rifa que se está gestionando
+    var rifaGestionId = rifaGestion ? rifaGestion.id : null;
+    useEffect(function() {
+        if (!rifaGestionId) { setPapeletasGestion({}); return; }
+        var unsub = onSnapshot(collection(db, 'rifas', rifaGestionId, 'papeletas'), function(snap) {
+            var m = {};
+            snap.forEach(function(d) { m[d.id] = d.data(); });
+            setPapeletasGestion(m);
+        }, function(){});
+        return function() { unsub(); };
+    }, [rifaGestionId]);
+
+    var cambiarEstadoRifa = async function(rifa, estado) {
+        await setDoc(doc(db, 'rifas', rifa.id), { estado: estado }, { merge: true });
+        setMsgAdmin('✅ Rifa «' + rifa.titulo + '» → ' + estado.toUpperCase());
+    };
+
+    // Busca por API el próximo partido de la UDLP COMO LOCAL y lo fija como
+    // partido de referencia del sorteo. Si el próximo es fuera, salta al
+    // siguiente en casa (regla de la rifa).
+    var fijarPartidoReferencia = async function(rifa) {
+        setBuscandoPartidoRef(true);
+        try {
+            var p = await buscarProximoPartidoLocalUDLP();
+            if (!p) { setMsgAdmin('❌ La API no devolvió ningún partido de la UDLP como local. Puedes introducir los datos a mano si hace falta.'); }
+            else {
+                await setDoc(doc(db, 'rifas', rifa.id), {
+                    partidoReferencia: { fixtureId: p.fixtureId, local: p.local, visitante: p.visitante, fecha: p.fecha, estadio: p.estadio || '' },
+                    estado: 'pendiente_sorteo',
+                }, { merge: true });
+                setMsgAdmin('✅ Partido de referencia: ' + p.local + ' — ' + p.visitante);
+            }
+        } catch(e) { setMsgAdmin('❌ ' + e.message); }
+        setBuscandoPartidoRef(false);
+    };
+
+    // Registra la asistencia oficial (SIEMPRE introducida/confirmada a mano)
+    // y calcula el ganador con las dos últimas cifras.
+    var registrarAsistenciaYSortear = async function(rifa) {
+        var asistencia = parseInt(String(asistenciaInput).replace(/[.\s]/g, ''), 10);
+        if (isNaN(asistencia) || asistencia <= 0) { setMsgAdmin('❌ Introduce la asistencia oficial (número de espectadores).'); return; }
+        var numeroGanador = asistencia % 100;
+        var numStr = numeroPapeleta2Cifras(numeroGanador);
+        var papeletaGanadora = papeletasGestion[numStr] || null;
+        await setDoc(doc(db, 'rifas', rifa.id), {
+            asistenciaOficial: asistencia,
+            numeroGanador: numeroGanador,
+            ganadorUserId: papeletaGanadora ? papeletaGanadora.usuario : null,
+            estado: 'sorteada',
+            sorteadaEn: serverTimestamp(),
+        }, { merge: true });
+        setMsgAdmin(papeletaGanadora
+            ? '🏆 Número ganador ' + numStr + ' — ganador: ' + papeletaGanadora.usuario
+            : '⚠️ Número ganador ' + numStr + ', pero esa papeleta no consta vendida. Revisa el tablero.');
+        setAsistenciaInput('');
+    };
+
+    var marcarPremioEntregado = async function(rifa) {
+        await setDoc(doc(db, 'rifas', rifa.id), { premioEntregado: true, estado: 'finalizada', entregadoEn: serverTimestamp() }, { merge: true });
+        setMsgAdmin('✅ Premio entregado — rifa finalizada y archivada en el historial.');
+        setRifaGestion(null);
     };
 
     // ── ESTILOS INTERNOS DEL ADMIN ──────────────────────────────────────────
@@ -8807,51 +9496,177 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                     {/* Recordatorio privado */}
                     <div style={{background:'rgba(255,215,0,0.1)',border:'1px solid rgba(255,215,0,0.3)',borderRadius:14,padding:16,marginBottom:16}}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:600}}>
-                            🎟️ Recordatorio privado — Rifas y eventos
+                            🎟️ Gestión de rifas
                         </p>
                         <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,0,0,0.6)',lineHeight:1.6}}>
-                            Las rifas de navidad y eventos a lo largo de la temporada son la forma de generar ingresos adicionales para reinvertir en la app y en premios (con Bizum ya no hay comisiones que compensar). <strong>Esta sección es solo visible para ti.</strong> Los jugadores no ven nada de esto.
+                            Las rifas generan ingresos para reinvertir en la app y en premios. Los jugadores las ven en su sección 🎟️ RIFAS. El ganador sale de las <strong>dos últimas cifras de la asistencia oficial</strong> del siguiente partido de la UDLP como LOCAL tras completarse la rifa.
                         </p>
                     </div>
 
-                    {/* Crear nueva rifa/evento */}
+                    {/* Crear nueva rifa */}
                     <div style={A.card}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:12,fontWeight:600}}>
-                            Nueva rifa o evento
+                            1️⃣ Crear rifa
                         </p>
                         <label style={A.label}>Título</label>
                         <input style={A.input} value={nuevaRifa.titulo}
                             onChange={function(e){setNuevaRifa(function(r){return {...r,titulo:e.target.value};});}}
-                            placeholder="Ej: Rifa de Navidad 2026" />
+                            placeholder="Ej: Camiseta oficial UD Las Palmas 26/27" />
+                        <label style={A.label}>Subtítulo</label>
+                        <input style={A.input} value={nuevaRifa.subtitulo}
+                            onChange={function(e){setNuevaRifa(function(r){return {...r,subtitulo:e.target.value};});}}
+                            placeholder="Ej: 100 números. Una camiseta. Un ganador." />
                         <label style={A.label}>Descripción del premio</label>
                         <input style={A.input} value={nuevaRifa.descripcion}
                             onChange={function(e){setNuevaRifa(function(r){return {...r,descripcion:e.target.value};});}}
-                            placeholder="Ej: Pack merchandising UDLP + entrada al estadio" />
-                        <label style={A.label}>Precio del ticket (€)</label>
-                        <input style={{...A.input,width:'50%'}} type="number" value={nuevaRifa.precio}
-                            onChange={function(e){setNuevaRifa(function(r){return {...r,precio:e.target.value};});}}
-                            placeholder="2" />
-                        <label style={A.label}>Fecha del sorteo</label>
-                        <input style={{...A.input,width:'60%'}} type="date" value={nuevaRifa.fecha}
-                            onChange={function(e){setNuevaRifa(function(r){return {...r,fecha:e.target.value};});}} />
+                            placeholder="Ej: Camiseta oficial de la UD Las Palmas temporada actual" />
+                        <label style={A.label}>Imagen del premio (URL)</label>
+                        <input style={A.input} value={nuevaRifa.imagenUrl}
+                            onChange={function(e){setNuevaRifa(function(r){return {...r,imagenUrl:e.target.value};});}}
+                            placeholder="https://..." />
+                        <div style={{display:'flex',gap:10}}>
+                            <div style={{flex:1}}>
+                                <label style={A.label}>Precio papeleta (€)</label>
+                                <input style={A.input} type="number" value={nuevaRifa.precio}
+                                    onChange={function(e){setNuevaRifa(function(r){return {...r,precio:e.target.value};});}}
+                                    placeholder="2" />
+                            </div>
+                            <div style={{flex:1}}>
+                                <label style={A.label}>Total papeletas</label>
+                                <input style={A.input} type="number" value={nuevaRifa.totalPapeletas}
+                                    onChange={function(e){setNuevaRifa(function(r){return {...r,totalPapeletas:e.target.value};});}}
+                                    placeholder="100" />
+                            </div>
+                        </div>
+                        <label style={A.label}>Fecha de apertura</label>
+                        <input style={{...A.input,width:'60%'}} type="date" value={nuevaRifa.fechaApertura}
+                            onChange={function(e){setNuevaRifa(function(r){return {...r,fechaApertura:e.target.value};});}} />
+                        <label style={A.label}>Normas (opcional, se muestran a los jugadores)</label>
+                        <textarea rows={4} style={{...A.input,resize:'vertical',lineHeight:1.6}} value={nuevaRifa.normas}
+                            onChange={function(e){setNuevaRifa(function(r){return {...r,normas:e.target.value};});}}
+                            placeholder="Si lo dejas vacío se muestran las normas estándar." />
+                        <label style={A.label}>Llamada a la acción (botón de la novedad)</label>
+                        <input style={A.input} value={nuevaRifa.cta}
+                            onChange={function(e){setNuevaRifa(function(r){return {...r,cta:e.target.value};});}}
+                            placeholder="🎟️ IR A RIFAS Y PARTICIPAR" />
                         <button onClick={crearRifa} style={A.btnPrimary}>Crear rifa →</button>
                     </div>
 
-                    {/* Lista de rifas */}
+                    {/* Lista y gestión de rifas */}
                     {rifas.length > 0 && (
                         <div>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10}}>Rifas creadas</p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10}}>2️⃣ Rifas creadas</p>
                             {rifas.map(function(r) {
+                                var enGestion = rifaGestion && rifaGestion.id === r.id;
+                                var infoR = infoEstadoRifa(r);
                                 return (
                                     <div key={r.id} style={A.card}>
                                         <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
                                             <div style={{flex:1}}>
                                                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,color:'#001F6B',letterSpacing:1,marginBottom:2}}>{r.titulo}</p>
                                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)'}}>{r.descripcion}</p>
-                                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',marginTop:4}}>Sorteo: {r.fecha} · {r.precio}€/ticket</p>
+                                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',marginTop:4}}>{Number(r.precio||0).toFixed(2)}€/papeleta · {Number(r.papeletasVendidas||0)}/{Number(r.totalPapeletas||100)} vendidas</p>
                                             </div>
-                                            <span style={A.tag(r.estado==='activa'?'#10b981':'rgba(0,31,107,0.4)')}>{r.estado}</span>
+                                            <span style={A.tag(infoR.color)}>{infoR.emoji} {infoR.label}</span>
                                         </div>
+                                        <button onClick={function(){setRifaGestion(enGestion?null:r);setAsistenciaInput('');}}
+                                            style={{...A.btnPrimary,marginTop:10,padding:'8px 14px',fontSize:12,background:enGestion?'rgba(0,31,107,0.08)':'#001F6B',color:enGestion?'#001F6B':'#fff'}}>
+                                            {enGestion?'Cerrar gestión':'Gestionar →'}
+                                        </button>
+
+                                        {enGestion && (function(){
+                                            var numeros = Object.keys(papeletasGestion);
+                                            var totalR = Number(r.totalPapeletas || 100);
+                                            var dineroTotal = 0, dineroPremios = 0, dineroDirecto = 0, pendientesBizum = 0;
+                                            numeros.forEach(function(n){
+                                                var pp = papeletasGestion[n];
+                                                var precioP = Number(pp.precio || 0);
+                                                dineroTotal += precioP;
+                                                if (pp.metodo === 'saldo') dineroPremios += precioP; else dineroDirecto += precioP;
+                                                if (pp.metodo === 'bizum' && !pp.pagoVerificado) pendientesBizum++;
+                                            });
+                                            return (
+                                            <div style={{marginTop:12,borderTop:'1px solid rgba(0,31,107,0.08)',paddingTop:12}}>
+                                                {/* Dinero */}
+                                                <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+                                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(16,185,129,0.1)',color:'#0f8a61',padding:'5px 10px',borderRadius:9}}>💶 Total: {dineroTotal.toFixed(2)}€</span>
+                                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(255,215,0,0.15)',color:'#8a6a00',padding:'5px 10px',borderRadius:9}}>🏆 De premios: {dineroPremios.toFixed(2)}€</span>
+                                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(0,31,107,0.06)',color:'#001F6B',padding:'5px 10px',borderRadius:9}}>💳 Directo: {dineroDirecto.toFixed(2)}€</span>
+                                                    {pendientesBizum>0 && <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(230,57,70,0.1)',color:'#e63946',padding:'5px 10px',borderRadius:9}}>⏳ {pendientesBizum} Bizum sin verificar</span>}
+                                                </div>
+
+                                                {/* Tablero admin */}
+                                                <div style={{display:'grid',gridTemplateColumns:'repeat(10,1fr)',gap:3,marginBottom:8}}>
+                                                    {Array.from({length:totalR},function(_,i){return numeroPapeleta2Cifras(i);}).map(function(num){
+                                                        var pp = papeletasGestion[num];
+                                                        var esGanadora = r.numeroGanador !== undefined && numeroPapeleta2Cifras(r.numeroGanador) === num;
+                                                        return (
+                                                            <div key={num} title={pp ? pp.usuario + ' · ' + (pp.metodo==='saldo'?'saldo de premios':'Bizum'+(pp.pagoVerificado?'':' (sin verificar)')) : 'Libre'}
+                                                                style={{aspectRatio:'1',display:'flex',alignItems:'center',justifyContent:'center',borderRadius:6,
+                                                                    background: esGanadora ? '#10b981' : pp ? (pp.metodo==='saldo' ? 'rgba(255,215,0,0.8)' : (pp.pagoVerificado ? 'rgba(0,31,107,0.85)' : 'rgba(230,57,70,0.7)')) : 'rgba(0,31,107,0.05)',
+                                                                    color: esGanadora ? '#fff' : pp ? (pp.metodo==='saldo' ? '#001F6B' : '#fff') : 'rgba(0,31,107,0.4)',
+                                                                    fontFamily:"'Teko',sans-serif",fontSize:11,fontWeight:700}}>
+                                                                {num}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',marginBottom:12}}>🟨 Pagadas con premios · 🟦 Bizum verificado · 🟥 Bizum pendiente · 🟩 Número ganador</p>
+
+                                                {/* Propietarios */}
+                                                {numeros.length > 0 && (
+                                                    <div style={{maxHeight:160,overflowY:'auto',border:'1px solid rgba(0,31,107,0.07)',borderRadius:10,marginBottom:12}}>
+                                                        {numeros.sort().map(function(n){
+                                                            var pp = papeletasGestion[n];
+                                                            return <div key={n} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderBottom:'1px solid rgba(0,31,107,0.04)'}}>
+                                                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color:'#001F6B',width:26}}>{n}</span>
+                                                                <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11,color:'#001F6B'}}>{pp.usuario}</span>
+                                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:pp.metodo==='saldo'?'#8a6a00':(pp.pagoVerificado?'#0f8a61':'#e63946')}}>{pp.metodo==='saldo'?'🏆 premio':(pp.pagoVerificado?'✅ Bizum':'⏳ Bizum')}</span>
+                                                                {pp.metodo==='bizum' && !pp.pagoVerificado && (
+                                                                    <button onClick={async function(){await setDoc(doc(db,'rifas',r.id,'papeletas',n),{pagoVerificado:true},{merge:true});}}
+                                                                        style={{border:'none',background:'#10b981',color:'#fff',borderRadius:7,padding:'3px 8px',fontFamily:"'Teko',sans-serif",fontSize:10,cursor:'pointer'}}>Verificar</button>
+                                                                )}
+                                                            </div>;
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {/* Estados y flujo de sorteo */}
+                                                <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+                                                    {(r.estado==='abierta'||r.estado==='activa') && <button onClick={function(){cambiarEstadoRifa(r,'completa');}} style={{...A.btnPrimary,padding:'7px 12px',fontSize:11,background:'#e63946'}}>Marcar COMPLETA</button>}
+                                                    {r.estado!=='abierta' && r.estado!=='activa' && r.estado!=='finalizada' && <button onClick={function(){cambiarEstadoRifa(r,'abierta');}} style={{...A.btnPrimary,padding:'7px 12px',fontSize:11,background:'rgba(0,31,107,0.08)',color:'#001F6B'}}>Reabrir</button>}
+                                                </div>
+
+                                                {(r.estado==='completa'||r.estado==='pendiente_sorteo') && (
+                                                    <div style={{background:'rgba(37,99,235,0.06)',border:'1px solid rgba(37,99,235,0.15)',borderRadius:12,padding:12,marginBottom:10}}>
+                                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#2563eb',marginBottom:8}}>3️⃣ PARTIDO DE REFERENCIA</p>
+                                                        {r.partidoReferencia ? (
+                                                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginBottom:8}}>{r.partidoReferencia.local} — {r.partidoReferencia.visitante}{r.partidoReferencia.fecha ? ' · ' + new Date(r.partidoReferencia.fecha).toLocaleDateString('es-ES',{day:'numeric',month:'short',timeZone:'Atlantic/Canary'}) : ''}</p>
+                                                        ) : (
+                                                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.55)',marginBottom:8}}>Aún sin partido de referencia. Se usará el próximo partido de la UDLP como LOCAL (si la rifa se completó en jornada a domicilio, se salta automáticamente al siguiente en casa).</p>
+                                                        )}
+                                                        <button onClick={function(){fijarPartidoReferencia(r);}} disabled={buscandoPartidoRef} style={{...A.btnPrimary,padding:'8px 12px',fontSize:11,marginBottom:10}}>{buscandoPartidoRef?'Buscando…':'🔎 Buscar próximo partido LOCAL (API)'}</button>
+                                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#2563eb',marginBottom:6}}>4️⃣ ASISTENCIA OFICIAL (manual)</p>
+                                                        <div style={{display:'flex',gap:8}}>
+                                                            <input style={{...A.input,flex:1,marginBottom:0}} type="text" inputMode="numeric" value={asistenciaInput}
+                                                                onChange={function(e){setAsistenciaInput(e.target.value);}} placeholder="Ej: 4919" />
+                                                            <button onClick={function(){registrarAsistenciaYSortear(r);}} style={{...A.btnPrimary,padding:'8px 14px',fontSize:12}}>Sortear</button>
+                                                        </div>
+                                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',marginTop:6}}>El ganador SIEMPRE se calcula con la asistencia que confirmes aquí — nunca depende solo de la API.</p>
+                                                    </div>
+                                                )}
+
+                                                {r.estado==='sorteada' && (
+                                                    <div style={{background:'rgba(16,185,129,0.07)',border:'1px solid rgba(16,185,129,0.2)',borderRadius:12,padding:12}}>
+                                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#0f8a61',marginBottom:4}}>🏆 GANADOR</p>
+                                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginBottom:2}}>Asistencia: {Number(r.asistenciaOficial||0).toLocaleString('es-ES')} → número <strong>{numeroPapeleta2Cifras(r.numeroGanador)}</strong></p>
+                                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginBottom:10}}>{r.ganadorUserId ? 'Usuario: ' + r.ganadorUserId : '⚠️ Papeleta sin dueño registrado'}</p>
+                                                        <button onClick={function(){marcarPremioEntregado(r);}} style={{...A.btnPrimary,padding:'8px 14px',fontSize:12,background:'#10b981'}}>5️⃣ Registrar entrega del premio</button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            );
+                                        })()}
                                     </div>
                                 );
                             })}
@@ -9626,6 +10441,14 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                         ['👟','Titular (+60 min)','+2⭐',false],
                         ['👟','Suplente (entra)','+1⭐',false],
                         ['🧤','Parada genérica (portero)','+1⭐',false],
+                        ['🎯','Cada 2 remates a puerta','+1⭐',false],
+                        ['🪄','Cada 2 regates completados','+1⭐',false],
+                        ['🛡️','Cada 3 tackles','+1⭐',false],
+                        ['🛡️','Cada 3 intercepciones','+1⭐',false],
+                        ['🧱','Cada 2 bloqueos','+1⭐',false],
+                        ['📬','Cada 25 pases acertados','+1⭐',false],
+                        ['🔑','Cada 2 pases clave','+1⭐',false],
+                        ['💪','Cada 4 duelos ganados','+1⭐',false],
                         ['🟨','Tarjeta amarilla','-1⭐',true],
                         ['❌','Penalti fallado','-2⭐',true],
                         ['🟥','Tarjeta roja','-3⭐',true],
@@ -10705,6 +11528,7 @@ function App() {
             case 'elOtro':      return <ElOtroScreen currentUser={currentUser} userProfiles={userProfiles} pagos={pagosGlobal} teamLogos={teamLogos} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'estrellas':   return <MisEstrellasScreen currentUser={currentUser} plantilla={plantillaConFotos} userProfiles={userProfiles} pagos={pagosGlobal} onIrAPagos={function(){setActiveTab('pagos');}} />;
             case 'clasificacion': return <ClasificacionScreen currentUser={currentUser} userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} />;
+            case 'rifas':       return <RifasScreen currentUser={currentUser} userProfiles={userProfiles} />;
             case 'normativa':     return <NormativaScreen />;
             case 'calendario':  return <CalendarioScreen teamLogos={teamLogos} />;
             case 'estadisticas': return <EstadisticasScreen userProfiles={userProfiles} onlineUsers={onlineUsers} pagos={pagosGlobal} />;
@@ -10716,7 +11540,7 @@ function App() {
     };
 
     // Popup de novedades — se superpone a todo, una sola vez
-    var novedadOverlay = currentUser ? <PopupNovedad currentUser={currentUser} /> : null;
+    var novedadOverlay = currentUser ? <PopupNovedad currentUser={currentUser} onIrARifas={function(){ setActiveTab('rifas'); }} /> : null;
 
     var TABS = [
         { id: 'miJornada', label: 'Mi Jornada', icon: 'ti-calendar-event' },
@@ -10724,6 +11548,7 @@ function App() {
         { id: 'elOtro', label: 'El Otro Equipo', icon: 'ti-shield-half' },
         { id: 'estrellas', label: '5 Estrellas', icon: 'ti-star' },
         { id: 'clasificacion', label: 'Clasificación', icon: 'ti-chart-bar' },
+        { id: 'rifas', label: 'Rifas', icon: 'ti-ticket' },
         { id: 'normativa', label: 'Normativa', icon: 'ti-gavel' },
         { id: 'calendario', label: 'Calendario', icon: 'ti-calendar' },
         { id: 'estadisticas', label: 'Estadísticas', icon: 'ti-chart-dots' },
