@@ -6329,6 +6329,26 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
     pronosticosSnap.forEach(function(d) { pronosticoExiste[d.id] = true; });
 
     var batch = writeBatch(db);
+
+    // ── Datos para el TABLERO de la jornada (campo con fichas) ─────────────
+    // Se guardan las estrellas de CADA futbolista de la plantilla (los haya
+    // elegido alguien o no) y qué apiIds jugaron minutos, para pintar el
+    // campo con la alineación y la estrella numerada de cada ficha.
+    var jugaronApiIds = [];
+    Object.keys(statsPorApiId).forEach(function(idApi) {
+        var g = (statsPorApiId[idApi] && statsPorApiId[idApi].games) || {};
+        if (Number(g.minutes || 0) > 0) jugaronApiIds.push(parseInt(idApi));
+    });
+    var puntosJugadoresArr = plantillaEfectiva.map(function(j) {
+        return { nombre: j.nombre, apiId: parseInt(j.apiId) || 0, estrellas: Number(puntosPorNombre[j.nombre] || 0) };
+    });
+    batch.set(doc(db, 'estrellas_resultados', jornadaId), {
+        puntosJugadores: puntosJugadoresArr,
+        jugaronApiIds: jugaronApiIds,
+        fixtureId: fixtureId,
+        calculadoEn: serverTimestamp(),
+    }, { merge: true });
+
     resultados.forEach(function(r) {
         // El acumulado de la Liga de Estrellas YA NO se toca aquí con sumas
         // incrementales (eran la causa de los descuadres al recalcular).
@@ -10851,10 +10871,15 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     const [yaGuardado, setYaGuardado] = useState(false);
     const [loading, setLoading] = useState(true);
     const [posicionFiltro, setPosicionFiltro] = useState('Todos');
-    // Historial de jornadas finalizadas con selecciones de estrellas
+    const [mostrarSeleccion, setMostrarSeleccion] = useState(false);
+    // ── Tablero por jornada ──
     const [jornadasFinalizadas, setJornadasFinalizadas] = useState([]);
-    const [historialEstrellas, setHistorialEstrellas] = useState({}); // { jornadaId: { userId: { jugadores, puntosEstrellas } } }
-    const [jornadaHistorialAbierta, setJornadaHistorialAbierta] = useState(null);
+    const [idxJornada, setIdxJornada] = useState(0);          // 0 = última finalizada
+    const [datosJornada, setDatosJornada] = useState({});      // userId -> doc de estrellas_seleccion
+    const [metaJornada, setMetaJornada] = useState(undefined); // doc estrellas_resultados/{jid}: undefined=cargando, null=no existe
+    const [expandido, setExpandido] = useState(null);          // userId con desglose abierto
+    const [avisoLineup, setAvisoLineup] = useState('');
+    const lineupIntentadoRef = useRef({});
 
     useEffect(() => {
         if (!currentUser) return;
@@ -10874,7 +10899,6 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
             else if (miPos === 2) setMiBeneficio('sexta_estrella');
             else setMiBeneficio(null);
         });
-        // Cargar jornadas finalizadas para el historial
         const unsubFinalizadas = onSnapshot(
             query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc")),
             (snap) => {
@@ -10884,15 +10908,58 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         return () => { unsubJornada(); unsubClasif(); unsubFinalizadas(); };
     }, [currentUser]);
 
-    // Cargar selecciones de estrellas de una jornada específica al abrirla
+    var jf = jornadasFinalizadas.length ? jornadasFinalizadas[Math.min(idxJornada, jornadasFinalizadas.length - 1)] : null;
+    var jfId = jf ? jf.id : null;
+    var jfFixtureId = jf ? jf.fixtureId : null;
+
+    // Datos en vivo de la jornada mostrada: selecciones/resultados + meta (tablero)
     useEffect(() => {
-        if (!jornadaHistorialAbierta) return;
-        getDocs(collection(db, "estrellas_seleccion", jornadaHistorialAbierta, "jugadores")).then(function(snap) {
-            var datos = {};
-            snap.forEach(function(d) { datos[d.id] = d.data(); });
-            setHistorialEstrellas(function(prev) { var c = { ...prev }; c[jornadaHistorialAbierta] = datos; return c; });
-        });
-    }, [jornadaHistorialAbierta, historialEstrellas]);
+        if (!jfId) { setDatosJornada({}); setMetaJornada(undefined); return; }
+        setExpandido(null); setAvisoLineup('');
+        const unsubSels = onSnapshot(collection(db, "estrellas_seleccion", jfId, "jugadores"), function(snap) {
+            var m = {};
+            snap.forEach(function(d) { m[d.id] = d.data(); });
+            setDatosJornada(m);
+        }, function(){});
+        const unsubMeta = onSnapshot(doc(db, "estrellas_resultados", jfId), function(snap) {
+            setMetaJornada(snap.exists() ? snap.data() : null);
+        }, function(){ setMetaJornada(null); });
+        return () => { unsubSels(); unsubMeta(); };
+    }, [jfId]);
+
+    // Alineación: se pide a la API UNA vez por jornada y queda cacheada en
+    // Firestore (estrellas_resultados/{jid}.lineup) para no gastar llamadas.
+    var necesitaLineup = !!(jfId && jfFixtureId && metaJornada !== undefined && (!metaJornada || !metaJornada.lineup));
+    useEffect(() => {
+        if (!necesitaLineup || !jfId) return;
+        if (lineupIntentadoRef.current[jfId]) return;
+        lineupIntentadoRef.current[jfId] = true;
+        (async function() {
+            try {
+                if (!API_FOOTBALL_KEY) { setAvisoLineup('Sin clave de API para cargar la alineación.'); return; }
+                var res = await fetch('https://v3.football.api-sports.io/fixtures/lineups?fixture=' + jfFixtureId, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+                var data = await res.json();
+                var udlp = (data.response || []).find(function(t) { return t.team && t.team.id === API_TEAM_ID_UDLP; });
+                if (!udlp) { setAvisoLineup('La API aún no tiene la alineación de este partido.'); return; }
+                var lineup = {
+                    formation: udlp.formation || '',
+                    startXI: (udlp.startXI || []).map(function(x) { var p = x.player || {}; return { id: p.id, name: p.name || '', number: p.number || '', pos: p.pos || '', grid: p.grid || '' }; }),
+                    substitutes: (udlp.substitutes || []).map(function(x) { var p = x.player || {}; return { id: p.id, name: p.name || '', number: p.number || '', pos: p.pos || '' }; }),
+                };
+                await setDoc(doc(db, 'estrellas_resultados', jfId), { lineup: lineup, lineupGuardadoEn: serverTimestamp() }, { merge: true });
+            } catch(e) { setAvisoLineup('No se pudo cargar la alineación: ' + e.message); }
+        })();
+    }, [necesitaLineup, jfId, jfFixtureId]);
+
+    const toggleJugador = (jugador) => {
+        if (jornadaActual.estado !== 'Abierta') return;
+        const maxEstrellas = miBeneficio === 'sexta_estrella' ? 6 : 5;
+        if (seleccion.find(j => j.nombre === jugador.nombre)) {
+            setSeleccion(seleccion.filter(j => j.nombre !== jugador.nombre));
+        } else if (seleccion.length < maxEstrellas) {
+            setSeleccion([...seleccion, jugador]);
+        }
+    };
 
     useEffect(() => {
         if (!jornadaActual || !currentUser) return;
@@ -10902,16 +10969,6 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         });
         return () => unsubSel();
     }, [jornadaActual, currentUser]);
-
-    const toggleJugador = (jugador) => {
-        if (jornadaActual.estado !== 'Abierta') return; // solo bloqueado cuando la jornada realmente cierra
-        const maxEstrellas = miBeneficio === 'sexta_estrella' ? 6 : 5;
-        if (seleccion.find(j => j.nombre === jugador.nombre)) {
-            setSeleccion(seleccion.filter(j => j.nombre !== jugador.nombre));
-        } else if (seleccion.length < maxEstrellas) {
-            setSeleccion([...seleccion, jugador]);
-        }
-    };
 
     const guardarSeleccion = async () => {
         if (!jornadaActual || seleccion.length === 0) return;
@@ -10925,13 +10982,23 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         setGuardando(false);
     };
 
+    // "+": puramente ceremonial — los puntos se aplican igual; el botón es la
+    // celebración compartida. Todos ven la animación al momento vía onSnapshot.
+    const reclamarPuntos = async () => {
+        if (!jfId || !currentUser) return;
+        try {
+            await setDoc(doc(db, "estrellas_seleccion", jfId, "jugadores", currentUser), {
+                reclamado: true, reclamadoEn: serverTimestamp(),
+            }, { merge: true });
+        } catch(e) { alert('No se pudo registrar: ' + e.message); }
+    };
+
     const posiciones = ['Todos', 'Portero', 'Defensa', 'Centrocampista', 'Mediapunta', 'Delantero'];
     const plantillaFiltrada = posicionFiltro === 'Todos' ? plantilla : plantilla.filter(j => j.posicion === posicionFiltro);
     const maxEstrellas = miBeneficio === 'sexta_estrella' ? 6 : 5;
 
     if (loading) return <div style={{padding:40,textAlign:'center',color:G.deepBlue}}>Cargando...</div>;
 
-    // Bloqueo hasta que pague
     if (!jugadorHaPagado(currentUser, pagos || [])) {
         return (
             <div style={{paddingBottom:40}}>
@@ -10941,257 +11008,352 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         );
     }
 
+    // ── Preparación de datos del tablero de la jornada mostrada ──
+    var lineup = metaJornada && metaJornada.lineup ? metaJornada.lineup : null;
+    var estrellasPorApiId = {};
+    var jugoSet = {};
+    var tableroConDatos = !!(metaJornada && metaJornada.puntosJugadores);
+    if (metaJornada) {
+        (metaJornada.puntosJugadores || []).forEach(function(pj) { if (pj.apiId) estrellasPorApiId[pj.apiId] = pj.estrellas; });
+        (metaJornada.jugaronApiIds || []).forEach(function(idA) { jugoSet[idA] = true; });
+    }
+    var filasCampo = [];
+    if (lineup && lineup.startXI && lineup.startXI.length) {
+        var porFila = {};
+        lineup.startXI.forEach(function(p) {
+            var fila = parseInt(String(p.grid || '1:1').split(':')[0]) || 1;
+            if (!porFila[fila]) porFila[fila] = [];
+            porFila[fila].push(p);
+        });
+        filasCampo = Object.keys(porFila).map(function(f) { return parseInt(f); }).sort(function(a,b){ return a - b; })
+            .map(function(f) {
+                return porFila[f].sort(function(a,b){
+                    return (parseInt(String(a.grid||'0:0').split(':')[1])||0) - (parseInt(String(b.grid||'0:0').split(':')[1])||0);
+                });
+            });
+    }
+    var suplentesQueJugaron = lineup ? (lineup.substitutes || []).filter(function(s) { return jugoSet[s.id]; }) : [];
+    var nombreCorto = function(n) {
+        var partes = String(n || '').trim().split(' ');
+        return partes.length > 1 ? partes[partes.length - 1] : (partes[0] || '');
+    };
+
+    // Ranking de participantes de la jornada mostrada
+    var rankingJornada = Object.keys(datosJornada).map(function(uid) { return { uid: uid, ...datosJornada[uid] }; })
+        .sort(function(a, b) {
+            var ea = Number(a.estrellasJornada !== undefined ? a.estrellasJornada : (a.puntosEstrellas || 0));
+            var eb = Number(b.estrellasJornada !== undefined ? b.estrellasJornada : (b.puntosEstrellas || 0));
+            if (eb !== ea) return eb - ea;
+            return (b.puntosRanking || 0) - (a.puntosRanking || 0);
+        });
+    var autoAplicado = !!(jf && (jf.cierreDefinitivo || (jf.finalizadaEn && jf.finalizadaEn.seconds && (Date.now()/1000 - jf.finalizadaEn.seconds) > 72*3600)));
+    var ahoraSeg = Date.now() / 1000;
+
+    // Ficha de futbolista para el campo / banquillo
+    var FichaFutbolista = function(props) {
+        var p = props.p;
+        var mini = props.mini;
+        var estrellas = estrellasPorApiId[p.id];
+        var tam = mini ? 40 : 48;
+        return (
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',width:mini?56:64,gap:2}}>
+                <div style={{position:'relative'}}>
+                    <img src={'https://media.api-sports.io/football/players/' + p.id + '.png'} alt=""
+                        style={{width:tam,height:tam,borderRadius:'50%',objectFit:'cover',background:'rgba(255,255,255,0.9)',border:'2px solid rgba(255,255,255,0.85)',boxShadow:'0 2px 6px rgba(0,0,0,0.35)'}}
+                        onError={function(e){ e.target.style.visibility='hidden'; }} />
+                    <span style={{position:'absolute',top:-7,right:-9,minWidth:20,height:20,borderRadius:11,padding:'0 4px',
+                        background: estrellas === undefined ? 'rgba(255,255,255,0.65)' : (estrellas > 0 ? '#FFD700' : (estrellas < 0 ? '#e63946' : 'rgba(255,255,255,0.85)')),
+                        color: estrellas !== undefined && estrellas < 0 ? '#fff' : '#001F6B',
+                        display:'flex',alignItems:'center',justifyContent:'center',gap:1,
+                        fontFamily:"'Teko',sans-serif",fontSize:12,fontWeight:700,boxShadow:'0 1px 3px rgba(0,0,0,0.35)'}}>
+                        ⭐{estrellas === undefined ? '–' : estrellas}
+                    </span>
+                </div>
+                <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,fontWeight:700,color:'#fff',textShadow:'0 1px 2px rgba(0,0,0,0.7)',textAlign:'center',lineHeight:1.1,maxWidth:mini?56:66,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {nombreCorto(p.name)}
+                </span>
+            </div>
+        );
+    };
+
     return (
         <div style={{padding:'20px 16px'}}>
+            <style>{'@keyframes estrellaPop{0%{transform:scale(1);}25%{transform:scale(1.06);box-shadow:0 0 0 6px rgba(255,215,0,0.35);}60%{transform:scale(0.99);}100%{transform:scale(1);box-shadow:none;}}@keyframes estrellaFloat{0%{opacity:0;transform:translateY(6px) scale(0.6);}40%{opacity:1;transform:translateY(-4px) scale(1.15);}100%{opacity:0;transform:translateY(-18px) scale(0.9);}}'}</style>
             <h2 style={styles.title}>MIS 5 ESTRELLAS</h2>
 
-            {/* Premio de la Liga de Estrellas — teaser, sin desvelar todavía */}
-            <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:'16px 18px',marginBottom:16,border:'1px solid rgba(255,215,0,0.3)'}}>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>
-                    🏆 Premio Liga de Estrellas
-                </p>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.8)',lineHeight:1.6,margin:0}}>
-                    El ganador de la Liga de Estrellas se llevará un premio <strong>a la altura de las Estrellas</strong> — de alto valor. Todavía no lo desvelamos del todo: iremos soltando pistas durante la temporada. 👀
-                </p>
-            </div>
-
-            {/* Carta de puntuación — misma burbuja desplegable que en El Otro Equipo */}
-            <AcordeonAyuda icono="⭐" titulo="Tabla de puntuación" abiertoPorDefecto={false}>
-                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:10,overflow:'hidden'}}>
-                    {[
-                        ['⚽','Gol portero / defensa','+8⭐',false],
-                        ['⚽','Gol centrocampista','+6⭐',false],
-                        ['⚽','Gol delantero','+5⭐',false],
-                        ['🧤','Parada de penalti','+5⭐',false],
-                        ['🅰️','Asistencia','+3⭐',false],
-                        ['🧤','Portería a 0 — portero','+4⭐',false],
-                        ['🧤','Portería a 0 — defensa','+2⭐',false],
-                        ['👟','Titular (+60 min)','+2⭐',false],
-                        ['👟','Suplente (entra)','+1⭐',false],
-                        ['🧤','Parada genérica (portero)','+1⭐',false],
-                        ['🎯','Cada 2 remates a puerta','+1⭐',false],
-                        ['🪄','Cada 2 regates completados','+1⭐',false],
-                        ['🛡️','Cada 3 tackles','+1⭐',false],
-                        ['🛡️','Cada 3 intercepciones','+1⭐',false],
-                        ['🧱','Cada 2 bloqueos','+1⭐',false],
-                        ['📬','Cada 25 pases acertados','+1⭐',false],
-                        ['🔑','Cada 2 pases clave','+1⭐',false],
-                        ['💪','Cada 4 duelos ganados','+1⭐',false],
-                        ['🟨','Tarjeta amarilla','-1⭐',true],
-                        ['❌','Penalti fallado','-2⭐',true],
-                        ['🟥','Tarjeta roja','-3⭐',true],
-                    ].map(function(r,i){return(
-                        <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
-                            <span style={{fontSize:14,flexShrink:0}}>{r[0]}</span>
-                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)',flex:1}}>{r[1]}</span>
-                            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:r[3]?'#e63946':'#001F6B',flexShrink:0}}>{r[2]}</span>
-                        </div>
-                    );})}
-                    <div style={{padding:'10px 14px',background:'rgba(0,31,107,0.03)'}}>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)',lineHeight:1.6,textAlign:'center'}}>
-                            Las estrellas acumuladas determinan tu posición en la jornada.<br/>
-                            🥇 +5 pts · 🥈 +4 pts · 🥉 +3 pts · 4º +2 pts · 5º +1 pt<br/>
-                            Los puntos también cuentan en la <strong>clasificación general</strong>.
-                        </p>
-                    </div>
-                </div>
-            </AcordeonAyuda>
-
-            {/* Beneficio activo */}
-            {miBeneficio && (
-                <div style={{background:`linear-gradient(135deg,${G.deepBlue},#0035b8)`,borderRadius:14,padding:14,marginBottom:20,textAlign:'center'}}>
-                    <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'0.9rem',color:G.golden,letterSpacing:3}}>
-                        {miBeneficio === 'ver_apuestas' && '👁 PUEDES VER LAS APUESTAS DEL RESTO ANTES DEL CIERRE'}
-                        {miBeneficio === 'bloquear' && '🔒 PUEDES BLOQUEAR A UN JUGADOR EN EL OTRO O EN ESTRELLAS'}
-                        {miBeneficio === 'sexta_estrella' && '⭐ PUEDES ELEGIR UNA 6ª ESTRELLA COMODÍN ESTA JORNADA'}
-                    </p>
-                </div>
-            )}
-
-            {!jornadaActual ? (
-                <p style={{textAlign:'center',color:G.deepBlue,opacity:.5,fontFamily:"'Inter',sans-serif",padding:40}}>
-                    No hay jornada activa en este momento.
-                </p>
-            ) : (
-                <>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.6,textAlign:'center',marginBottom:16}}>
-                        Jornada {jornadaActual.numeroJornada} — Elige entre 1 y {maxEstrellas} jugadores
-                        {jornadaActual.estado === 'Abierta' && yaGuardado ? ' · puedes seguir cambiando hasta el cierre' : ''}
-                    </p>
-
-                    {/* Selección actual — con foto */}
-                    <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:20,minHeight:44}}>
-                        {seleccion.map((j,i) => (
-                            <span key={i} onClick={() => toggleJugador(j)} style={{
-                                display:'inline-flex',alignItems:'center',gap:6,
-                                background:G.golden,color:'#0a0a0a',borderRadius:20,padding:'4px 14px 4px 4px',
-                                fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
-                                cursor: jornadaActual.estado==='Abierta' ? 'pointer' : 'default'
-                            }}>
-                                {getFotoJugador(j) ? (
-                                    <img src={getFotoJugador(j)} alt="" style={{width:22,height:22,borderRadius:'50%',objectFit:'cover',background:'#fff'}}
-                                        onError={function(e){e.target.style.display='none';}} />
-                                ) : <span>⭐</span>}
-                                {j.nombre}
-                            </span>
-                        ))}
-                        {seleccion.length === 0 && (
-                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.4}}>Ningún jugador seleccionado</span>
-                        )}
-                    </div>
-
-                    {/* Filtro de posición */}
-                    <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:16}}>
-                        {posiciones.map(p => (
-                            <button key={p} onClick={() => setPosicionFiltro(p)} style={{
-                                padding:'6px 14px',borderRadius:20,border:'none',cursor:'pointer',
-                                fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,
-                                background: posicionFiltro===p ? G.deepBlue : '#f0f0f0',
-                                color: posicionFiltro===p ? G.golden : G.deepBlue,
-                            }}>{p}</button>
-                        ))}
-                    </div>
-
-                    {/* Plantilla visual — solo bloqueada cuando la jornada realmente cierra */}
-                    {jornadaActual.estado === 'Abierta' && (
-                        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(96px,1fr))',gap:12,marginBottom:20}}>
-                            {plantillaFiltrada.map((j,i) => {
-                                const seleccionado = seleccion.find(s => s.nombre === j.nombre);
-                                const lleno = seleccion.length >= maxEstrellas && !seleccionado;
-                                const foto = getFotoJugador(j);
-                                return (
-                                    <button key={i} onClick={() => toggleJugador(j)} disabled={lleno}
-                                        style={{
-                                            display:'flex',flexDirection:'column',alignItems:'center',gap:6,
-                                            padding:'12px 6px 10px',borderRadius:16,cursor:lleno?'not-allowed':'pointer',
-                                            border:`2px solid ${seleccionado?G.golden:'rgba(0,31,107,0.1)'}`,
-                                            background: seleccionado?'linear-gradient(180deg,rgba(255,215,0,0.12),rgba(255,215,0,0.03))':'#fff',
-                                            opacity:lleno?0.35:1, position:'relative', boxShadow: seleccionado?'0 4px 14px rgba(255,215,0,0.25)':'0 1px 4px rgba(0,31,107,0.06)'
-                                        }}>
-                                        {seleccionado && (
-                                            <span style={{position:'absolute',top:-6,right:-6,fontSize:18,filter:'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'}}>⭐</span>
-                                        )}
-                                        <div style={{position:'relative'}}>
-                                            {foto ? (
-                                                <img src={foto} alt={j.nombre}
-                                                    style={{width:56,height:56,borderRadius:'50%',objectFit:'cover',
-                                                        border: seleccionado?'2.5px solid #FFD700':'2px solid rgba(0,31,107,0.1)',background:'#f0f0f0'}}
-                                                    onError={function(e){e.target.style.display='none';e.target.nextSibling.style.display='flex';}} />
-                                            ) : null}
-                                            <div style={{width:56,height:56,borderRadius:'50%',
-                                                display: foto ? 'none' : 'flex',alignItems:'center',justifyContent:'center',
-                                                background: seleccionado?'rgba(255,215,0,0.15)':'rgba(0,31,107,0.06)',
-                                                border: seleccionado?'2.5px solid #FFD700':'2px solid rgba(0,31,107,0.1)',
-                                                fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:G.deepBlue}}>
-                                                {j.dorsal}
-                                            </div>
-                                        </div>
-                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,color:'rgba(0,31,107,0.35)',
-                                            background:'rgba(0,31,107,0.06)',borderRadius:6,padding:'1px 6px'}}>{j.posicion}</span>
-                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
-                                            color:seleccionado?G.deepBlue:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.2}}>{j.nombre}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {jornadaActual.estado !== 'Abierta' ? (
-                        <div style={{background:'rgba(0,31,107,0.05)',border:'1px solid rgba(0,31,107,0.12)',borderRadius:12,padding:16,textAlign:'center'}}>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,fontWeight:600}}>🔒 Jornada cerrada</p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Tu selección quedó fijada al cerrarse la jornada.</p>
-                        </div>
-                    ) : (
-                        <button onClick={guardarSeleccion} disabled={guardando || seleccion.length===0} style={{
-                            width:'100%',fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.1rem',letterSpacing:2,
-                            background: yaGuardado ? '#10b981' : G.deepBlue, color: yaGuardado ? '#fff' : G.golden,
-                            border:'none',borderRadius:30,padding:14,cursor:'pointer',boxShadow:'0 6px 20px rgba(0,31,107,0.25)',
-                            opacity: seleccion.length===0 ? 0.5 : 1
-                        }}>
-                            {guardando ? 'GUARDANDO...' : yaGuardado ? '✅ GUARDADO — ACTUALIZAR SELECCIÓN' : 'GUARDAR MIS ESTRELLAS'}
-                        </button>
-                    )}
-                </>
-            )}
-
-            {/* Historial de Estrellas — jornada por jornada, qué eligió
-                cada jugador y cuántos puntos sumó cada estrella */}
-            {jornadasFinalizadas.length > 0 && (
-                <div style={{marginTop:32}}>
-                    <h3 style={{...styles.title,fontSize:'1.1rem',marginBottom:16}}>HISTORIAL POR JORNADA</h3>
-                    {jornadasFinalizadas.map(function(jf) {
-                        var abierta = jornadaHistorialAbierta === jf.id;
-                        var seleccionesJornada = historialEstrellas[jf.id] || {};
-                        return (
-                            <div key={jf.id} style={{marginBottom:10}}>
-                                <button onClick={function(){setJornadaHistorialAbierta(abierta ? null : jf.id);}}
-                                    style={{width:'100%',padding:'10px 14px',borderRadius:12,border:'1px solid rgba(0,31,107,0.1)',
-                                        background: abierta ? 'rgba(0,31,107,0.06)' : '#fff',
-                                        fontFamily:"'Teko',sans-serif",fontSize:14,color:G.deepBlue,cursor:'pointer',
-                                        display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                                    <span>⭐ Jornada {jf.numeroJornada}</span>
-                                    <span style={{fontSize:12,opacity:0.5}}>{abierta ? '▲' : '▼'}</span>
-                                </button>
-                                {abierta && (
-                                    <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.08)',borderRadius:'0 0 12px 12px',padding:12}}>
-                                        {Object.keys(seleccionesJornada).length === 0 ? (
-                                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.4)',textAlign:'center'}}>Cargando selecciones...</p>
-                                        ) : (
-                                            Object.keys(seleccionesJornada).sort(function(a,b) {
-                                                var pa = seleccionesJornada[a].puntosRanking !== undefined ? seleccionesJornada[a].puntosRanking : 0;
-                                                var pb = seleccionesJornada[b].puntosRanking !== undefined ? seleccionesJornada[b].puntosRanking : 0;
-                                                if (pb !== pa) return pb - pa;
-                                                return (seleccionesJornada[b].estrellasJornada||seleccionesJornada[b].puntosEstrellas||0) - (seleccionesJornada[a].estrellasJornada||seleccionesJornada[a].puntosEstrellas||0);
-                                            }).map(function(userId, idx) {
-                                                var sel = seleccionesJornada[userId];
-                                                var perf = userProfiles[userId] || {};
-                                                var jugadoresElegidos = sel.jugadores || [];
-                                                var ptsTotal = sel.puntosEstrellas || 0;
-                                                return (
-                                                    <div key={userId} style={{padding:'8px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
-                                                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
-                                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color: idx < 3 ? '#FFD700' : 'rgba(0,31,107,0.3)',width:18,fontWeight:700}}>{idx+1}</span>
-                                                            <IconoPerfil perfil={perf} size={24} />
-                                                            <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,color:G.deepBlue}}>{nombreVisible(userId, perf)}</span>
-                                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: (sel.puntosRanking||0) > 0 ? G.deepBlue : 'rgba(0,31,107,0.25)'}}>
-                                                                {(sel.puntosRanking||0) > 0 ? '+'+(sel.puntosRanking||0)+' pts' : '0 pts'}
-                                                            </span>
-                                                        </div>
-                                                        <div style={{display:'flex',gap:4,flexWrap:'wrap',marginLeft:26}}>
-                                                            {jugadoresElegidos.map(function(j) {
-                                                                var ptosJugador = (sel.desglosePorJugador && sel.desglosePorJugador[j.nombre]) || 0;
-                                                                return (
-                                                                    <span key={j.nombre} style={{fontFamily:"'Inter',sans-serif",fontSize:10,
-                                                                        background: ptosJugador > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(0,31,107,0.04)',
-                                                                        color: ptosJugador > 0 ? '#10b981' : 'rgba(0,31,107,0.5)',
-                                                                        padding:'2px 8px',borderRadius:8}}>
-                                                                        {j.nombre} {ptosJugador > 0 ? '+' + ptosJugador : '0'}
-                                                                    </span>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })
-                                        )}
-                                    </div>
+            {/* ── Selección para la jornada activa (desplegable) ── */}
+            {jornadaActual && (
+                <div style={{marginBottom:18}}>
+                    <button onClick={function(){ setMostrarSeleccion(!mostrarSeleccion); }}
+                        style={{width:'100%',border:'none',borderRadius:14,padding:'13px 16px',cursor:'pointer',
+                            background:'linear-gradient(135deg,#001F6B,#0035b8)',color:'#FFD700',
+                            fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,display:'flex',justifyContent:'space-between',alignItems:'center',
+                            boxShadow:'0 4px 14px rgba(0,31,107,0.25)'}}>
+                        <span>⭐ JORNADA {jornadaActual.numeroJornada} — {jornadaActual.estado === 'Abierta' ? (yaGuardado ? 'TUS 5 GUARDADOS · TOCA PARA CAMBIAR' : 'ELIGE TUS ' + maxEstrellas) : 'SELECCIÓN CERRADA'}</span>
+                        <span style={{fontSize:12}}>{mostrarSeleccion ? '▲' : '▼'}</span>
+                    </button>
+                    {mostrarSeleccion && (
+                        <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.08)',borderRadius:'0 0 14px 14px',padding:'14px 10px'}}>
+                            {miBeneficio && (
+                                <div style={{background:'rgba(0,31,107,0.05)',borderRadius:10,padding:10,marginBottom:12,textAlign:'center'}}>
+                                    <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'0.8rem',color:G.deepBlue,letterSpacing:2,margin:0}}>
+                                        {miBeneficio === 'ver_apuestas' && '👁 PUEDES VER LAS APUESTAS DEL RESTO ANTES DEL CIERRE'}
+                                        {miBeneficio === 'bloquear' && '🔒 PUEDES BLOQUEAR A UN JUGADOR EN EL OTRO O EN ESTRELLAS'}
+                                        {miBeneficio === 'sexta_estrella' && '⭐ PUEDES ELEGIR UNA 6ª ESTRELLA COMODÍN ESTA JORNADA'}
+                                    </p>
+                                </div>
+                            )}
+                            <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:14,minHeight:36}}>
+                                {seleccion.map((j,i) => (
+                                    <span key={i} onClick={() => toggleJugador(j)} style={{
+                                        display:'inline-flex',alignItems:'center',gap:6,
+                                        background:G.golden,color:'#0a0a0a',borderRadius:20,padding:'4px 14px 4px 4px',
+                                        fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
+                                        cursor: jornadaActual.estado==='Abierta' ? 'pointer' : 'default'
+                                    }}>
+                                        {getFotoJugador(j) ? (
+                                            <img src={getFotoJugador(j)} alt="" style={{width:22,height:22,borderRadius:'50%',objectFit:'cover',background:'#fff'}}
+                                                onError={function(e){e.target.style.display='none';}} />
+                                        ) : <span>⭐</span>}
+                                        {j.nombre}
+                                    </span>
+                                ))}
+                                {seleccion.length === 0 && (
+                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.4}}>Ningún jugador seleccionado</span>
                                 )}
                             </div>
-                        );
-                    })}
+                            <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:14}}>
+                                {posiciones.map(p => (
+                                    <button key={p} onClick={() => setPosicionFiltro(p)} style={{
+                                        padding:'6px 14px',borderRadius:20,border:'none',cursor:'pointer',
+                                        fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,
+                                        background: posicionFiltro===p ? G.deepBlue : '#f0f0f0',
+                                        color: posicionFiltro===p ? G.golden : G.deepBlue,
+                                    }}>{p}</button>
+                                ))}
+                            </div>
+                            {jornadaActual.estado === 'Abierta' && (
+                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(96px,1fr))',gap:12,marginBottom:16}}>
+                                    {plantillaFiltrada.map((j,i) => {
+                                        const seleccionado = seleccion.find(s => s.nombre === j.nombre);
+                                        const lleno = seleccion.length >= maxEstrellas && !seleccionado;
+                                        const foto = getFotoJugador(j);
+                                        return (
+                                            <button key={i} onClick={() => toggleJugador(j)} disabled={lleno}
+                                                style={{
+                                                    display:'flex',flexDirection:'column',alignItems:'center',gap:6,
+                                                    padding:'12px 6px 10px',borderRadius:16,cursor:lleno?'not-allowed':'pointer',
+                                                    border:`2px solid ${seleccionado?G.golden:'rgba(0,31,107,0.1)'}`,
+                                                    background: seleccionado?'linear-gradient(180deg,rgba(255,215,0,0.12),rgba(255,215,0,0.03))':'#fff',
+                                                    opacity:lleno?0.35:1, position:'relative', boxShadow: seleccionado?'0 4px 14px rgba(255,215,0,0.25)':'0 1px 4px rgba(0,31,107,0.06)'
+                                                }}>
+                                                {seleccionado && (
+                                                    <span style={{position:'absolute',top:-6,right:-6,fontSize:18,filter:'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'}}>⭐</span>
+                                                )}
+                                                <div style={{position:'relative'}}>
+                                                    {foto ? (
+                                                        <img src={foto} alt={j.nombre}
+                                                            style={{width:56,height:56,borderRadius:'50%',objectFit:'cover',
+                                                                border: seleccionado?'2.5px solid #FFD700':'2px solid rgba(0,31,107,0.1)',background:'#f0f0f0'}}
+                                                            onError={function(e){e.target.style.display='none';e.target.nextSibling.style.display='flex';}} />
+                                                    ) : null}
+                                                    <div style={{width:56,height:56,borderRadius:'50%',
+                                                        display: foto ? 'none' : 'flex',alignItems:'center',justifyContent:'center',
+                                                        background: seleccionado?'rgba(255,215,0,0.15)':'rgba(0,31,107,0.06)',
+                                                        border: seleccionado?'2.5px solid #FFD700':'2px solid rgba(0,31,107,0.1)',
+                                                        fontFamily:"'Teko',sans-serif",fontSize:20,fontWeight:700,color:G.deepBlue}}>
+                                                        {j.dorsal}
+                                                    </div>
+                                                </div>
+                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,color:'rgba(0,31,107,0.35)',
+                                                    background:'rgba(0,31,107,0.06)',borderRadius:6,padding:'1px 6px'}}>{j.posicion}</span>
+                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,
+                                                    color:seleccionado?G.deepBlue:'rgba(0,31,107,0.7)',textAlign:'center',lineHeight:1.2}}>{j.nombre}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {jornadaActual.estado !== 'Abierta' ? (
+                                <div style={{background:'rgba(0,31,107,0.05)',border:'1px solid rgba(0,31,107,0.12)',borderRadius:12,padding:16,textAlign:'center'}}>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,fontWeight:600}}>🔒 Jornada cerrada</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Tu selección quedó fijada al cerrarse la jornada.</p>
+                                </div>
+                            ) : (
+                                <button onClick={guardarSeleccion} disabled={guardando || seleccion.length===0} style={{
+                                    width:'100%',fontFamily:"'Bebas Neue',sans-serif",fontSize:'1.1rem',letterSpacing:2,
+                                    background: yaGuardado ? '#10b981' : G.deepBlue, color: yaGuardado ? '#fff' : G.golden,
+                                    border:'none',borderRadius:30,padding:14,cursor:'pointer',boxShadow:'0 6px 20px rgba(0,31,107,0.25)',
+                                    opacity: seleccion.length===0 ? 0.5 : 1
+                                }}>
+                                    {guardando ? 'GUARDANDO...' : yaGuardado ? '✅ GUARDADO — ACTUALIZAR SELECCIÓN' : 'GUARDAR MIS ESTRELLAS'}
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
-            {/* Clasificación global de estrellas — la liga paralela */}
-            <div style={{marginTop:32}}>
+            {/* ══════════ 1 · TABLERO DE LA JORNADA ══════════ */}
+            {jf && (
+                <div style={{marginBottom:24}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                        <button onClick={function(){ setIdxJornada(Math.min(idxJornada + 1, jornadasFinalizadas.length - 1)); }}
+                            disabled={idxJornada >= jornadasFinalizadas.length - 1}
+                            style={{border:'none',background:idxJornada >= jornadasFinalizadas.length - 1 ? 'rgba(0,31,107,0.05)' : G.deepBlue,color:idxJornada >= jornadasFinalizadas.length - 1 ? 'rgba(0,31,107,0.25)' : '#FFD700',borderRadius:10,width:38,height:38,fontSize:16,cursor:'pointer'}}>‹</button>
+                        <div style={{textAlign:'center'}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:19,fontWeight:700,letterSpacing:2,color:G.deepBlue,margin:0}}>⭐ JORNADA {jf.numeroJornada}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.5)',margin:0}}>
+                                {jf.equipoLocal} {jf.resultadoLocal !== undefined ? jf.resultadoLocal : ''} – {jf.resultadoVisitante !== undefined ? jf.resultadoVisitante : ''} {jf.equipoVisitante}{lineup && lineup.formation ? ' · ' + lineup.formation : ''}
+                            </p>
+                        </div>
+                        <button onClick={function(){ setIdxJornada(Math.max(idxJornada - 1, 0)); }}
+                            disabled={idxJornada <= 0}
+                            style={{border:'none',background:idxJornada <= 0 ? 'rgba(0,31,107,0.05)' : G.deepBlue,color:idxJornada <= 0 ? 'rgba(0,31,107,0.25)' : '#FFD700',borderRadius:10,width:38,height:38,fontSize:16,cursor:'pointer'}}>›</button>
+                    </div>
+
+                    {/* Campo con la alineación */}
+                    {lineup && filasCampo.length > 0 ? (
+                        <div style={{background:'linear-gradient(180deg,#1e7a3c,#14522a)',borderRadius:18,padding:'18px 8px 14px',position:'relative',overflow:'hidden',boxShadow:'inset 0 0 40px rgba(0,0,0,0.25)'}}>
+                            <div style={{position:'absolute',top:'50%',left:8,right:8,height:1,background:'rgba(255,255,255,0.25)'}} />
+                            <div style={{position:'absolute',top:'50%',left:'50%',width:74,height:74,border:'1px solid rgba(255,255,255,0.25)',borderRadius:'50%',transform:'translate(-50%,-50%)'}} />
+                            <div style={{position:'absolute',top:0,left:'50%',width:130,height:44,border:'1px solid rgba(255,255,255,0.22)',borderTop:'none',transform:'translateX(-50%)'}} />
+                            <div style={{position:'absolute',bottom:0,left:'50%',width:130,height:44,border:'1px solid rgba(255,255,255,0.22)',borderBottom:'none',transform:'translateX(-50%)'}} />
+                            <div style={{display:'flex',flexDirection:'column-reverse',gap:14,position:'relative'}}>
+                                {filasCampo.map(function(fila, fi) {
+                                    return (
+                                        <div key={fi} style={{display:'flex',justifyContent:'space-evenly',alignItems:'flex-end'}}>
+                                            {fila.map(function(p) { return <FichaFutbolista key={p.id} p={p} />; })}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{background:'rgba(0,31,107,0.04)',border:'1px dashed rgba(0,31,107,0.15)',borderRadius:16,padding:20,textAlign:'center'}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',margin:0}}>
+                                {avisoLineup || (metaJornada === undefined ? 'Cargando tablero…' : 'Cargando alineación…')}
+                            </p>
+                        </div>
+                    )}
+                    {!tableroConDatos && metaJornada !== undefined && (
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',textAlign:'center',marginTop:6}}>
+                            ⭐ Las estrellas por futbolista se generan al recalcular esta jornada (Admin → Recalcular toda la Liga de Estrellas).
+                        </p>
+                    )}
+
+                    {/* Banquillo: suplentes que jugaron */}
+                    {suplentesQueJugaron.length > 0 && (
+                        <div style={{marginTop:10,background:'rgba(0,31,107,0.04)',borderRadius:14,padding:'10px 8px'}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:3,color:'rgba(0,31,107,0.45)',textTransform:'uppercase',textAlign:'center',marginBottom:8}}>🔁 Desde el banquillo</p>
+                            <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap',background:'linear-gradient(180deg,#1e7a3c,#175c30)',borderRadius:10,padding:'10px 6px'}}>
+                                {suplentesQueJugaron.map(function(p) { return <FichaFutbolista key={p.id} p={p} mini={true} />; })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ══════════ 2 · PUNTUACIONES DE LA JORNADA ══════════ */}
+            {jf && rankingJornada.length > 0 && (
+                <div style={{marginBottom:26}}>
+                    <h3 style={{...styles.title,fontSize:'1.05rem',marginBottom:12}}>PUNTUACIONES · JORNADA {jf.numeroJornada}</h3>
+                    <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,overflow:'hidden'}}>
+                        {rankingJornada.map(function(sel, idx) {
+                            var uid = sel.uid;
+                            var perf = userProfiles[uid] || {};
+                            var estrellas = Number(sel.estrellasJornada !== undefined ? sel.estrellasJornada : (sel.puntosEstrellas || 0));
+                            var pts = Number(sel.puntosRanking || 0);
+                            var top5 = pts > 0;
+                            var sumado = !!sel.reclamado || autoAplicado;
+                            var animando = !!(sel.reclamadoEn && sel.reclamadoEn.seconds && (ahoraSeg - sel.reclamadoEn.seconds) < 6);
+                            var abierto = expandido === uid;
+                            return (
+                                <div key={uid} style={{borderBottom:'1px solid rgba(0,31,107,0.05)',background: uid === currentUser ? 'rgba(255,215,0,0.06)' : 'transparent',
+                                    animation: animando ? 'estrellaPop 0.9s ease' : 'none'}}>
+                                    <div onClick={function(){ setExpandido(abierto ? null : uid); }}
+                                        style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px',cursor:'pointer',position:'relative'}}>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,width:20,textAlign:'center',color: idx < 3 ? '#FFD700' : 'rgba(0,31,107,0.3)'}}>{idx + 1}</span>
+                                        <IconoPerfil perfil={perf} size={26} />
+                                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight: uid === currentUser ? 700 : 500,color:G.deepBlue}}>{nombreVisible(uid, perf)}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color:G.deepBlue}}>⭐{estrellas}</span>
+                                        {top5 && (
+                                            sumado ? (
+                                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color:'#10b981',background:'rgba(16,185,129,0.1)',borderRadius:12,padding:'3px 10px',whiteSpace:'nowrap'}}>
+                                                    ✔ +{pts} pts
+                                                </span>
+                                            ) : uid === currentUser ? (
+                                                <button onClick={function(e){ e.stopPropagation(); reclamarPuntos(); }}
+                                                    style={{display:'flex',alignItems:'center',gap:4,border:'none',borderRadius:14,padding:'5px 11px',
+                                                        background:'#FFD700',color:'#001F6B',fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,cursor:'pointer',
+                                                        boxShadow:'0 3px 10px rgba(255,215,0,0.45)'}}>
+                                                    <span style={{fontSize:15,lineHeight:1}}>＋</span>{pts} pts
+                                                </button>
+                                            ) : (
+                                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(0,31,107,0.35)',background:'rgba(0,31,107,0.05)',borderRadius:12,padding:'3px 10px',whiteSpace:'nowrap'}}>
+                                                    +{pts} pts…
+                                                </span>
+                                            )
+                                        )}
+                                        {animando && <span style={{position:'absolute',right:16,top:-2,fontSize:16,animation:'estrellaFloat 1.4s ease forwards'}}>⭐</span>}
+                                        <span style={{fontSize:9,color:'rgba(0,31,107,0.3)'}}>{abierto ? '▲' : '▼'}</span>
+                                    </div>
+                                    {abierto && (
+                                        <div style={{padding:'0 12px 12px 40px'}}>
+                                            <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:6}}>
+                                                {(sel.jugadores || []).map(function(j) {
+                                                    var ptosJ = (sel.desglosePorJugador && sel.desglosePorJugador[j.nombre] !== undefined) ? sel.desglosePorJugador[j.nombre] : 0;
+                                                    return (
+                                                        <span key={j.nombre} style={{display:'inline-flex',alignItems:'center',gap:5,
+                                                            background: ptosJ > 0 ? 'rgba(16,185,129,0.08)' : (ptosJ < 0 ? 'rgba(230,57,70,0.08)' : 'rgba(0,31,107,0.04)'),
+                                                            border:'1px solid ' + (ptosJ > 0 ? 'rgba(16,185,129,0.25)' : (ptosJ < 0 ? 'rgba(230,57,70,0.25)' : 'rgba(0,31,107,0.08)')),
+                                                            borderRadius:14,padding:'3px 10px 3px 3px'}}>
+                                                            {getFotoJugador(j) ? (
+                                                                <img src={getFotoJugador(j)} alt="" style={{width:20,height:20,borderRadius:'50%',objectFit:'cover',background:'#fff'}}
+                                                                    onError={function(e){e.target.style.display='none';}} />
+                                                            ) : <span style={{fontSize:11}}>⭐</span>}
+                                                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600,color:G.deepBlue}}>{j.nombre}</span>
+                                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color: ptosJ > 0 ? '#10b981' : (ptosJ < 0 ? '#e63946' : 'rgba(0,31,107,0.35)')}}>⭐{ptosJ}</span>
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color:G.deepBlue,margin:0,textAlign:'right'}}>TOTAL: ⭐{estrellas}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    {!autoAplicado && (
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',textAlign:'center',marginTop:6}}>
+                            El top 5 puede pulsar ＋ para celebrar sus puntos. Si alguien no lo hace, se suman automáticamente a las 72h del cierre.
+                        </p>
+                    )}
+                </div>
+            )}
+            {jf && rankingJornada.length === 0 && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.4)',textAlign:'center',marginBottom:24}}>Nadie participó en las Estrellas de esta jornada.</p>
+            )}
+            {!jf && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.4)',textAlign:'center',marginBottom:24}}>Cuando se finalice la primera jornada, aquí verás el tablero con las estrellas de cada futbolista.</p>
+            )}
+
+            {/* ══════════ 3 · LIGA DE ESTRELLAS (acumulada) ══════════ */}
+            <div style={{marginTop:8}}>
                 <h3 style={{...styles.title,fontSize:'1.1rem',marginBottom:16}}>🏆 LIGA DE ESTRELLAS</h3>
                 <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,overflow:'hidden'}}>
                 {clasificacionEstrellas.map((j,i) => {
                     var perf = userProfiles[j.id] || {};
+                    var fondoPodio = i === 0 ? 'linear-gradient(90deg,rgba(255,215,0,0.18),rgba(255,215,0,0.04))'
+                        : i === 1 ? 'linear-gradient(90deg,rgba(192,192,192,0.22),rgba(192,192,192,0.05))'
+                        : i === 2 ? 'linear-gradient(90deg,rgba(205,127,50,0.2),rgba(205,127,50,0.05))'
+                        : (j.id === currentUser ? 'rgba(255,215,0,0.07)' : 'transparent');
                     return (
                     <div key={j.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
                         borderBottom:'1px solid rgba(0,31,107,0.06)',
-                        background: j.id === currentUser ? 'rgba(255,215,0,0.08)' : i < 3 ? 'rgba(0,31,107,0.02)' : 'transparent'}}>
+                        borderLeft: i === 0 ? '3px solid #FFD700' : i === 1 ? '3px solid #C0C0C0' : i === 2 ? '3px solid #CD7F32' : '3px solid transparent',
+                        background: fondoPodio}}>
                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,width:24,textAlign:'center',
                             color: i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : 'rgba(0,31,107,0.3)'}}>
                             {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)}
@@ -11199,13 +11361,67 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                         <IconoPerfil perfil={perf} size={28} />
                         <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight: j.id === currentUser ? 700 : 500,color:G.deepBlue}}>
                             {nombreVisible(j.id, perf)}
+                            {i < 3 && <span style={{marginLeft:6,fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.45)',background:'rgba(0,31,107,0.06)',borderRadius:8,padding:'1px 7px'}}>🎁 puesto con premio</span>}
                         </span>
-                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: i === 0 ? '#FFD700' : G.deepBlue}}>{j.puntosEstrellas||0}⭐</span>
-                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.38)',minWidth:46,textAlign:'right'}}>{i < 5 ? 'puesto '+(i+1) : ''}</span>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: i === 0 ? '#d4a017' : G.deepBlue}}>{j.puntosEstrellas||0}⭐</span>
                     </div>
                     );
                 })}
                 </div>
+            </div>
+
+            {/* ══════════ 4 · PREMIOS ══════════ */}
+            <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:'16px 18px',marginTop:22,border:'1px solid rgba(255,215,0,0.3)'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>
+                    🏆 Premios de la Liga de Estrellas
+                </p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.8)',lineHeight:1.6,margin:0}}>
+                    Los <strong>tres primeros puestos</strong> 🥇🥈🥉 tendrán premio al final de la temporada — de alto valor y todavía por desvelar. Iremos soltando pistas durante la liga. 👀
+                </p>
+            </div>
+
+            {/* ══════════ 5 · TABLA DE PUNTUACIÓN (tras el botón) ══════════ */}
+            <div style={{marginTop:16}}>
+                <AcordeonAyuda icono="⭐" titulo="Tabla de puntuación" abiertoPorDefecto={false}>
+                    <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:10,overflow:'hidden'}}>
+                        {[
+                            ['⚽','Gol portero / defensa','+8⭐',false],
+                            ['⚽','Gol centrocampista','+6⭐',false],
+                            ['⚽','Gol delantero','+5⭐',false],
+                            ['🧤','Parada de penalti','+5⭐',false],
+                            ['🅰️','Asistencia','+3⭐',false],
+                            ['🧤','Portería a 0 — portero','+4⭐',false],
+                            ['🧤','Portería a 0 — defensa','+2⭐',false],
+                            ['👟','Titular (+60 min)','+2⭐',false],
+                            ['👟','Suplente (entra)','+1⭐',false],
+                            ['🧤','Parada genérica (portero)','+1⭐',false],
+                            ['🎯','Cada 2 remates a puerta','+1⭐',false],
+                            ['🪄','Cada 2 regates completados','+1⭐',false],
+                            ['🛡️','Cada 3 tackles','+1⭐',false],
+                            ['🛡️','Cada 3 intercepciones','+1⭐',false],
+                            ['🧱','Cada 2 bloqueos','+1⭐',false],
+                            ['📬','Cada 25 pases acertados','+1⭐',false],
+                            ['🔑','Cada 2 pases clave','+1⭐',false],
+                            ['💪','Cada 4 duelos ganados','+1⭐',false],
+                            ['🟨','Tarjeta amarilla','-1⭐',true],
+                            ['❌','Penalti fallado','-2⭐',true],
+                            ['🟥','Tarjeta roja','-3⭐',true],
+                        ].map(function(r,i){return(
+                            <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                                <span style={{fontSize:14,flexShrink:0}}>{r[0]}</span>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.6)',flex:1}}>{r[1]}</span>
+                                <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:r[3]?'#e63946':'#001F6B',flexShrink:0}}>{r[2]}</span>
+                            </div>
+                        );})}
+                        <div style={{padding:'10px 14px',background:'rgba(0,31,107,0.03)'}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)',lineHeight:1.6,textAlign:'center'}}>
+                                Las estrellas acumuladas determinan tu posición en la jornada.<br/>
+                                🥇 +5 pts · 🥈 +4 pts · 🥉 +3 pts · 4º +2 pts · 5º +1 pt<br/>
+                                Los puntos también cuentan en la <strong>clasificación general</strong>.
+                            </p>
+                        </div>
+                    </div>
+                </AcordeonAyuda>
             </div>
         </div>
     );
