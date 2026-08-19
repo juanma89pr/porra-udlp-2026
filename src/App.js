@@ -2178,8 +2178,8 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
                     setPremio(esGanador && exactos.length ? (bote / exactos.length).toFixed(2) : '0.00');
                 }
 
-                var cobroSnap = await getDocs(query(collection(db,'premios_jornada'),where('jornadaId','==',jornada.id),where('usuario','==',user),limit(1)));
-                if (activo) setCobroConfirmado(!cobroSnap.empty && !!cobroSnap.docs[0].data().recibido);
+                var cobroSnap = await getDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user));
+                if (activo) setCobroConfirmado(cobroSnap.exists() && !!cobroSnap.data().recibido);
 
                 var estSnap = await getDocs(collection(db, 'estrellas_resultados', jornada.id, 'jugadores'));
                 var est = estSnap.docs.map(function(d){ return { id:d.id, ...d.data() }; })
@@ -2334,8 +2334,11 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
                 var exactos=vals.filter(function(x){return parseInt(x.golesLocal)===parseInt(jornada.resultadoLocal)&&parseInt(x.golesVisitante)===parseInt(jornada.resultadoVisitante);});
                 var bote=parseFloat(jornada.bote||0)+vals.length*(jornada.esVip?APUESTA_VIP:APUESTA_NORMAL);
                 var mi=exactos.some(function(x){return x.id===user})&&exactos.length?Number((bote/exactos.length).toFixed(2)):0;
-                var cs=await getDocs(query(collection(db,'premios_jornada'),where('jornadaId','==',jornada.id),where('usuario','==',user),limit(1)));
-                if(activo){setImporte(mi);setConfirmado(!cs.empty&&!!cs.docs[0].data().recibido);setCargando(false);}
+                // El cobro se ESCRIBE en la subcolección premios_jornada/{jornada}/usuarios/{user},
+                // así que hay que leerlo del mismo sitio (antes se consultaba la colección raíz
+                // y nunca encontraba nada: el botón volvía a salir tras recargar).
+                var cs=await getDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user));
+                if(activo){setImporte(mi);setConfirmado(cs.exists()&&!!cs.data().recibido);setCargando(false);}
             }catch(e){if(activo)setCargando(false);}
         })(); return function(){activo=false;};
     },[user,jornada?.id,jornada?.resultadoLocal,jornada?.resultadoVisitante,jornada?.bote,jornada?.esVip]);
@@ -2530,6 +2533,11 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     // mantiene visible en Mi Jornada.
     useEffect(function() {
         if (!user) return;
+        // Igual que en La Jornada: el listener de pronósticos se recreaba en
+        // cada snapshot de jornadas sin darse de baja el anterior, acumulando
+        // listeners duplicados que pisaban el estado (saltos de pantalla).
+        var unsubPronMJ = null;
+        var jornadaSuscritaMJ = null;
         var unsub = onSnapshot(
             query(collection(db, "jornadas"), orderBy("numeroJornada", "desc"), limit(10)),
             function(snap) {
@@ -2552,12 +2560,18 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             setGuardado(false);
                         }
                     }).catch(function(){});
-                    onSnapshot(collection(db, "pronosticos", seleccion.id, "jugadores"), function(ps) {
-                        var docs = ps.docs.map(function(d) { return { id: d.id, ...d.data() }; });
-                        setParticipantes(docs.map(function(d) { return d.id; }));
-                        setPronosticosTodos(docs);
-                    }, function(){});
+                    if (jornadaSuscritaMJ !== seleccion.id) {
+                        if (unsubPronMJ) { unsubPronMJ(); unsubPronMJ = null; }
+                        jornadaSuscritaMJ = seleccion.id;
+                        unsubPronMJ = onSnapshot(collection(db, "pronosticos", seleccion.id, "jugadores"), function(ps) {
+                            var docs = ps.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+                            setParticipantes(docs.map(function(d) { return d.id; }));
+                            setPronosticosTodos(docs);
+                        }, function(){});
+                    }
                 } else {
+                    if (unsubPronMJ) { unsubPronMJ(); unsubPronMJ = null; }
+                    jornadaSuscritaMJ = null;
                     setJornada(null);
                     setParticipantes([]);
                     setPronosticosTodos([]);
@@ -2594,7 +2608,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                 setPremioMiJornada(pd && exactos.some(function(x){return x.id===user;}) ? premio : 0);
                             });
                         } else setPremioMiJornada(0);
-                        getDocs(query(collection(db,'premios_jornada'),where('jornadaId','==',cj.id),where('usuario','==',user),limit(1))).then(function(rc){setPremioCobradoMiJornada(!rc.empty&&!!rc.docs[0].data().recibido);}).catch(function(){});
+                        getDoc(doc(db,'premios_jornada',cj.id,'usuarios',user)).then(function(rc){setPremioCobradoMiJornada(rc.exists()&&!!rc.data().recibido);}).catch(function(){});
                     }
                 }).catch(function(){});
             }
@@ -2604,7 +2618,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             if (snap.exists()) setMiElOtro(snap.data());
             else setMiElOtro(null);
         });
-        return function() { unsub(); unsubOtro(); unsubCierre(); };
+        return function() { unsub(); unsubOtro(); unsubCierre(); if (unsubPronMJ) unsubPronMJ(); };
     }, [user]);
 
     // Buscar el partido de Primera del Otro Equipo en cuanto sepamos qué
@@ -2853,6 +2867,13 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
 
     return (
         <div style={{paddingBottom:40}}>
+            {/* Premio de la jornada ANTERIOR: mientras dure la ventana de 72h,
+                la tarjeta de "He recibido el ingreso" sigue visible aunque ya
+                haya una jornada nueva abierta — antes desaparecía en cuanto
+                el admin abría la siguiente y nadie podía confirmar el cobro. */}
+            {jornadaCierre && jornadaCierre.id !== jornada.id && (
+                <PremioMiJornadaCard user={user} jornada={jornadaCierre} />
+            )}
             {/* Banner jornada */}
             <div style={{background:'#001F6B',borderRadius:18,padding:20,marginBottom:20,position:'relative',overflow:'hidden'}}>
                 <div style={{position:'absolute',top:0,right:0,width:120,height:120,background:'rgba(255,215,0,0.04)',borderRadius:'0 18px 0 120px'}} />
@@ -3919,11 +3940,15 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     var [proximaUDLP, setProximaUDLP] = useState(null);
     var [ultimosUDLP, setUltimosUDLP] = useState([]);
     var [detalleFixtureActual, setDetalleFixtureActual] = useState(null);
-    var fechaJornadaLJ = jornada && jornada.fecha ? fechaAString(jornada.fecha) : new Date().toISOString();
+    // OJO: aquí NO se puede usar new Date().toISOString() como valor por
+    // defecto — cambia en cada render, el useEffect que depende de esta
+    // variable se re-dispara en bucle y la pantalla refetchea y "salta"
+    // constantemente. El valor por defecto se resuelve DENTRO del efecto.
+    var fechaJornadaLJ = jornada && jornada.fecha ? fechaAString(jornada.fecha) : '';
     var fixtureIdLJ = jornada && jornada.fixtureId ? jornada.fixtureId : null;
 
     useEffect(function() {
-        var base = fechaJornadaLJ;
+        var base = fechaJornadaLJ || new Date().toISOString();
         buscarJornadaCompletaPrimera(base, 8).then(function(r){setPartidosPrimera(r||[]);}).catch(function(){});
         buscarProximoPartidoUDLP().then(setProximaUDLP).catch(function(){});
         buscarUltimosPartidosUDLP(3).then(setUltimosUDLP).catch(function(){});
@@ -3970,6 +3995,14 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     }, []);
 
     useEffect(function() {
+        // Los listeners de pronósticos/estrellas se recrean cada vez que el
+        // snapshot de jornadas dispara. Antes se creaban SIN darse de baja los
+        // anteriores: se acumulaban listeners duplicados que pisaban el estado
+        // entre sí y provocaban los saltos de imagen. Ahora se guarda la
+        // referencia y solo se resuscribe si cambia la jornada seleccionada.
+        var unsubPron = null;
+        var unsubEstSel = null;
+        var jornadaSuscrita = null;
         var q = query(collection(db, "jornadas"), orderBy("numeroJornada","desc"), limit(10));
         var unsub = onSnapshot(q, function(snap) {
             var lista = snap.docs.map(function(d){ return {id:d.id,...d.data()}; });
@@ -3978,13 +4011,21 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
             var j = activa || reciente || null;
             setJornada(j);
             if (j) {
-                onSnapshot(collection(db, "pronosticos", j.id, "jugadores"), function(ps) {
-                    setParticipantes(ps.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
-                }, function(){});
-                onSnapshot(collection(db, "estrellas_seleccion", j.id, "jugadores"), function(es) {
-                    setSeleccionesEstrellasJornada(es.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
-                }, function(){});
+                if (jornadaSuscrita !== j.id) {
+                    if (unsubPron) { unsubPron(); unsubPron = null; }
+                    if (unsubEstSel) { unsubEstSel(); unsubEstSel = null; }
+                    jornadaSuscrita = j.id;
+                    unsubPron = onSnapshot(collection(db, "pronosticos", j.id, "jugadores"), function(ps) {
+                        setParticipantes(ps.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
+                    }, function(){});
+                    unsubEstSel = onSnapshot(collection(db, "estrellas_seleccion", j.id, "jugadores"), function(es) {
+                        setSeleccionesEstrellasJornada(es.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
+                    }, function(){});
+                }
             } else {
+                if (unsubPron) { unsubPron(); unsubPron = null; }
+                if (unsubEstSel) { unsubEstSel(); unsubEstSel = null; }
+                jornadaSuscrita = null;
                 setParticipantes([]);
                 setSeleccionesEstrellasJornada([]);
             }
@@ -3996,7 +4037,12 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
             snap.forEach(function(d) { m[d.id] = d.data(); });
             setElOtroTodos(m);
         });
-        return function() { unsub(); unsubOtro(); };
+        return function() {
+            unsub();
+            unsubOtro();
+            if (unsubPron) unsubPron();
+            if (unsubEstSel) unsubEstSel();
+        };
     }, []);
 
     if (loading) return <LoadingSkeleton />;
@@ -4025,7 +4071,12 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
         );
     }
 
-    if ((!jornada || jornada.estado === 'Finalizada') && proximaUDLP) {
+    // Solo cuando NO hay jornada seleccionable (ni activa ni finalizada en
+    // ventana de 72h) se muestra el atajo de "próxima jornada". Antes también
+    // entraba aquí la jornada Finalizada y se ocultaba toda la información
+    // post-partido (marcador, pronósticos, estrellas, ganadores) que es
+    // exactamente lo que procede ver durante esas 72 horas.
+    if (!jornada && proximaUDLP) {
         var fp=new Date(proximaUDLP.fecha);
         return <div style={{paddingBottom:40}}>
             <h2 style={styles.title}>LA JORNADA</h2>
@@ -4601,6 +4652,20 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     </div>
                 </div>
             )}
+
+            {/* Con la jornada ya Finalizada, además del resumen completo se
+                enseña abajo cuál es el siguiente partido de la UDLP. */}
+            {jornada.estado === 'Finalizada' && proximaUDLP && (function() {
+                var fpn = new Date(proximaUDLP.fecha);
+                return (
+                    <div style={{marginTop:24,background:'#001F6B',borderRadius:18,padding:20,textAlign:'center'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:6}}>🔜 PRÓXIMA JORNADA</p>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#fff',marginBottom:5}}>{proximaUDLP.local} — {proximaUDLP.visitante}</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#FFD700',margin:0}}>{fpn.toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}</p>
+                        {proximaUDLP.estadio && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.4)',marginTop:4}}>🏟️ {proximaUDLP.estadio}</p>}
+                    </div>
+                );
+            })()}
         </div>
     );
 };
@@ -5743,6 +5808,15 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
         anterior = r.estrellasJornada;
     });
 
+    // Los pronósticos existentes de esta jornada: el ranking 5/4/3/2/1 se
+    // vuelca también en el pronóstico de cada jugador (puntosEstrellasJornada),
+    // que es el campo que leen los puntos provisionales y el cierre definitivo.
+    // ANTES ese campo no se escribía en ningún sitio y por eso las Estrellas
+    // nunca llegaban a la clasificación general.
+    var pronosticosSnap = await getDocs(collection(db, 'pronosticos', jornadaId, 'jugadores'));
+    var pronosticoExiste = {};
+    pronosticosSnap.forEach(function(d) { pronosticoExiste[d.id] = true; });
+
     var batch = writeBatch(db);
     resultados.forEach(function(r) {
         var viejo = antiguos[r.userId] || {};
@@ -5779,6 +5853,14 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
             recalculoVersion: 2,
             calculadoEn: serverTimestamp(),
         });
+
+        // Solo si el pronóstico existe — no se crean pronósticos fantasma
+        // que inflarían el bote y la lista de participantes.
+        if (pronosticoExiste[r.userId]) {
+            batch.set(doc(db, 'pronosticos', jornadaId, 'jugadores', r.userId), {
+                puntosEstrellasJornada: r.puntosRanking,
+            }, { merge: true });
+        }
     });
 
     // Si había resultados anteriores para usuarios que ya no tienen selección,
@@ -5796,6 +5878,11 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
             }
             batch.delete(doc(db, 'estrellas_resultados', jornadaId, 'jugadores', uid));
             batch.delete(doc(db, 'estrellas_seleccion', jornadaId, 'jugadores', uid));
+            if (pronosticoExiste[uid]) {
+                batch.set(doc(db, 'pronosticos', jornadaId, 'jugadores', uid), {
+                    puntosEstrellasJornada: 0,
+                }, { merge: true });
+            }
         }
     });
 
@@ -5823,12 +5910,18 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
 
 async function actualizarPuntosProvisionalesJornada(jornadaId) {
     var snap=await getDocs(collection(db,'pronosticos',jornadaId,'jugadores'));
+    // Fuente de verdad del ranking 5/4/3/2/1: estrellas_resultados. Así se
+    // corrigen también jornadas calculadas antes de que el campo
+    // puntosEstrellasJornada se escribiera en los pronósticos.
+    var estSnap=await getDocs(collection(db,'estrellas_resultados',jornadaId,'jugadores'));
+    var rankingEstrellas={};
+    estSnap.forEach(function(d){ rankingEstrellas[d.id]=Number((d.data()||{}).puntosRanking||0); });
     var batch=writeBatch(db);
     snap.forEach(function(d){
         var p=d.data()||{};
         var base=Number(p.puntosBaseSinOtro!==undefined ? p.puntosBaseSinOtro : 0);
-        var estrellas=Number(p.puntosEstrellasJornada!==undefined ? p.puntosEstrellasJornada : 0);
-        batch.set(d.ref,{puntosProvisionales:base+estrellas},{merge:true});
+        var estrellas=rankingEstrellas[d.id]!==undefined ? rankingEstrellas[d.id] : Number(p.puntosEstrellasJornada||0);
+        batch.set(d.ref,{puntosEstrellasJornada:estrellas,puntosProvisionales:base+estrellas},{merge:true});
     });
     await batch.commit();
 }
@@ -5844,6 +5937,11 @@ async function cerrarJornadaDefinitivamenteAdmin(jornadaId) {
     var pSnap=await getDocs(collection(db,'pronosticos',jornadaId,'jugadores'));
     var clasSnap=await getDocs(collection(db,'clasificacion')); var clas={}; clasSnap.forEach(function(d){clas[d.id]=d.data();});
     var otroSnap=await getDocs(collection(db,'elOtro')); var otro={}; otroSnap.forEach(function(d){otro[d.id]=d.data();});
+    // Ranking de Estrellas de la jornada (5/4/3/2/1) leído de su fuente de
+    // verdad. Se suma a la clasificación general de TODOS los que puntuaron
+    // en Estrellas — también de quien no llegó a echar la porra esa jornada.
+    var estCierreSnap=await getDocs(collection(db,'estrellas_resultados',jornadaId,'jugadores'));
+    var estrellasCierre={}; estCierreSnap.forEach(function(d){ estrellasCierre[d.id]=Number((d.data()||{}).puntosRanking||0); });
     var fixtureIds=[]; pSnap.forEach(function(d){var p=d.data()||{}; if(p.elOtroActivado&&p.elOtroFixtureId&&fixtureIds.indexOf(p.elOtroFixtureId)===-1)fixtureIds.push(p.elOtroFixtureId);});
     var fxMap={};
     for(var i=0;i<fixtureIds.length;i++){
@@ -5853,21 +5951,38 @@ async function cerrarJornadaDefinitivamenteAdmin(jornadaId) {
     pSnap.forEach(function(d){
         var p=d.data()||{}, userId=d.id;
         if(p.noContabilizado) return;
-        var provisional=Number(p.puntosProvisionales!==undefined?p.puntosProvisionales:(Number(p.puntosBaseSinOtro||0)+Number(p.puntosEstrellasJornada||0)));
-        var definitivo=provisional, otroResultado=null, otroMult=null;
+        // REGLA: el multiplicador de El Otro afecta SOLO a la base de la
+        // porra. Los puntos de Estrellas se suman después, intactos —
+        // antes se multiplicaba/dividía el total (base+estrellas) y las
+        // Estrellas quedaban alteradas por el multiplicador.
+        var base=Number(p.puntosBaseSinOtro||0);
+        var estrellasJug=estrellasCierre[userId]!==undefined?estrellasCierre[userId]:Number(p.puntosEstrellasJornada||0);
+        delete estrellasCierre[userId];
+        var baseTrasOtro=base, otroResultado=null, otroMult=null;
         if(p.elOtroActivado&&p.elOtroFixtureId&&p.elOtroEquipoUsado){
             var fx=fxMap[p.elOtroFixtureId];
             if(fx&&fx.finalizado){
                 var local=nombresSonSimilares(fx.local,p.elOtroEquipoUsado);var gf=local?fx.gl:fx.gv;var gc=local?fx.gv:fx.gl;
                 otroResultado=gf>gc?'gana':gf<gc?'pierde':'empate';
                 var prev=(otro[userId]&&otro[userId].activaciones)||0; otroMult=getMultiplicadorOtro(prev);
-                definitivo=aplicarMultiplicadorOtro(provisional,otroResultado,otroMult);
-                batch.set(doc(db,'elOtro',userId),{activaciones:increment(1),historial:arrayUnion({jornada:jornada.numeroJornada,equipo:p.elOtroEquipoUsado,resultado:otroResultado,multiplicador:otroMult,ptosAntes:provisional,ptosDespues:definitivo})},{merge:true});
+                baseTrasOtro=aplicarMultiplicadorOtro(base,otroResultado,otroMult);
+                batch.set(doc(db,'elOtro',userId),{activaciones:increment(1),historial:arrayUnion({jornada:jornada.numeroJornada,equipo:p.elOtroEquipoUsado,resultado:otroResultado,multiplicador:otroMult,ptosAntes:base,ptosDespues:baseTrasOtro})},{merge:true});
             }
         }
+        var definitivo=baseTrasOtro+estrellasJug;
         var c=clas[userId]||{};
         batch.set(doc(db,'clasificacion',userId),{puntosTotales:Number(c.puntosTotales||0)+definitivo,puntosResultadoExacto:Number(c.puntosResultadoExacto||0)+Number(p.puntosResultadoExacto||0)},{merge:true});
-        batch.set(d.ref,{puntosObtenidos:definitivo,puntosDefinitivos:definitivo,puntosProvisionales:provisional,elOtroResultado:otroResultado,elOtroMultiplicador:otroMult,elOtroAplicado:!!otroResultado,elOtroPendiente:false,definitivoEn:serverTimestamp()},{merge:true});
+        batch.set(d.ref,{puntosObtenidos:definitivo,puntosDefinitivos:definitivo,puntosEstrellasJornada:estrellasJug,puntosProvisionales:base+estrellasJug,elOtroResultado:otroResultado,elOtroMultiplicador:otroMult,elOtroAplicado:!!otroResultado,elOtroPendiente:false,definitivoEn:serverTimestamp()},{merge:true});
+    });
+    // Jugadores con puntos de Estrellas pero SIN pronóstico esta jornada
+    // (o no contabilizados en la porra): sus puntos de Estrellas entran
+    // igualmente en la clasificación general — la Liga de Estrellas es una
+    // competición aparte y sus puntos no dependen de haber echado la porra.
+    Object.keys(estrellasCierre).forEach(function(uid){
+        var ptsE=Number(estrellasCierre[uid]||0);
+        if(!ptsE) return;
+        var cE=clas[uid]||{};
+        batch.set(doc(db,'clasificacion',uid),{puntosTotales:Number(cE.puntosTotales||0)+ptsE},{merge:true});
     });
     batch.set(doc(db,'jornadas',jornadaId),{cierreDefinitivo:true,puntosCalculados:true,cierreDefinitivoEn:serverTimestamp(),estado:'Finalizada'},{merge:true});
     await batch.commit();
@@ -5923,7 +6038,10 @@ async function resolverElOtroPendienteJornada(jornada) {
         var activacionesPrevias=(usuariosOtro[d.id]&&usuariosOtro[d.id].activaciones)||0;
         var mult=getMultiplicadorOtro(activacionesPrevias);
         var base=Number(p.puntosBaseSinOtro !== undefined ? p.puntosBaseSinOtro : p.puntosObtenidos || 0);
-        var nuevo=aplicarMultiplicadorOtro(base,resultado,mult);
+        // Estrellas fuera del multiplicador: se aplica el ×/÷ SOLO a la base
+        // de la porra y las Estrellas se suman después tal cual.
+        var estrellasPend=Number(p.puntosEstrellasJornada||0);
+        var nuevo=aplicarMultiplicadorOtro(base,resultado,mult)+estrellasPend;
         var anterior=Number(p.puntosObtenidos||0);
         var delta=nuevo-anterior;
         if (delta!==0) batch.set(doc(db,'clasificacion',d.id),{puntosTotales:increment(delta)},{merge:true});
