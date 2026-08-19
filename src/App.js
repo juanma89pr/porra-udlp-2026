@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-19.C · cierre extendido J1 + previa + columnas';
+const APP_BUILD = 'v2026-08-19.D · inscripciones + J1 extendida + columnas';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 const JUGADORES_BASE = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
@@ -8031,6 +8031,124 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
 //    que se resuelva la jornada.
 // 3) Si hay anulaciones, publica automáticamente una NOVEDAD informando a
 //    todos, con los nombres y el recordatorio de los plazos por pantalla.
+// ============================================================================
+// 💶 ESTADO DE INSCRIPCIONES — pagos, abandonos y devoluciones
+// ============================================================================
+// Vista única para el admin: quién ha pagado la inscripción (con su estado),
+// quién ha abandonado, y un interruptor por abandono para dejar registrado si
+// se le devolvió el dinero o no. Las devoluciones se guardan en
+// configuracion/devoluciones_inscripcion.
+const InscripcionesAdmin = () => {
+    var [pagosIns, setPagosIns] = useState([]);
+    var [inactivosIns, setInactivosIns] = useState([]);
+    var [devoluciones, setDevoluciones] = useState({});
+    var [guardandoDev, setGuardandoDev] = useState('');
+
+    useEffect(function() {
+        var unsub1 = onSnapshot(collection(db, 'pagos'), function(snap) {
+            setPagosIns(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+                .filter(function(p) { return p.tipo === 'inscripcion'; }));
+        }, function(){});
+        var unsub2 = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(snap) {
+            setInactivosIns(snap.exists() ? (snap.data().nombres || []) : []);
+        }, function(){});
+        var unsub3 = onSnapshot(doc(db, 'configuracion', 'devoluciones_inscripcion'), function(snap) {
+            setDevoluciones(snap.exists() ? (snap.data().porJugador || {}) : {});
+        }, function(){});
+        return function() { unsub1(); unsub2(); unsub3(); };
+    }, []);
+
+    // Estado de pago por jugador: 'pagada' | 'pendiente' | 'sin_pago'
+    var estadoPagoDe = function(nombre) {
+        var suyos = pagosIns.filter(function(p) { return p.jugador === nombre; });
+        if (!suyos.length) return 'sin_pago';
+        var valida = suyos.some(function(p) {
+            return p.estado !== 'pendiente_confirmacion' && p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido';
+        });
+        if (valida) return 'pagada';
+        var pendiente = suyos.some(function(p) { return p.estado === 'pendiente_confirmacion'; });
+        return pendiente ? 'pendiente' : 'sin_pago';
+    };
+
+    // Universo: la lista base + cualquier nombre que aparezca en pagos o en bajas
+    var universo = {};
+    JUGADORES_FUNDADORES.forEach(function(n) { universo[n] = true; });
+    pagosIns.forEach(function(p) { if (p.jugador) universo[p.jugador] = true; });
+    inactivosIns.forEach(function(n) { universo[n] = true; });
+    var nombresTodos = Object.keys(universo).sort(function(a, b) {
+        var ia = inactivosIns.indexOf(a) !== -1 ? 1 : 0;
+        var ib = inactivosIns.indexOf(b) !== -1 ? 1 : 0;
+        if (ia !== ib) return ia - ib; // activos primero, abandonos al final
+        return a.localeCompare(b);
+    });
+
+    var activos = nombresTodos.filter(function(n) { return inactivosIns.indexOf(n) === -1; });
+    var pagadasActivos = activos.filter(function(n) { return estadoPagoDe(n) === 'pagada'; }).length;
+    var abandonos = nombresTodos.filter(function(n) { return inactivosIns.indexOf(n) !== -1; });
+    var devueltas = abandonos.filter(function(n) { return devoluciones[n] && devoluciones[n].devuelto; }).length;
+
+    var alternarDevolucion = async function(nombre) {
+        if (guardandoDev) return;
+        setGuardandoDev(nombre);
+        try {
+            var nuevas = { ...devoluciones };
+            var actual = nuevas[nombre] && nuevas[nombre].devuelto;
+            nuevas[nombre] = { devuelto: !actual, marcadoEn: new Date().toISOString() };
+            await setDoc(doc(db, 'configuracion', 'devoluciones_inscripcion'), {
+                porJugador: nuevas, actualizadoEn: serverTimestamp(),
+            }, { merge: true });
+        } catch(e) { alert('No se pudo guardar la devolución: ' + e.message); }
+        setGuardandoDev('');
+    };
+
+    var chip = function(texto, bg, color) {
+        return <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,background:bg,color:color,padding:'4px 10px',borderRadius:10,whiteSpace:'nowrap'}}>{texto}</span>;
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:10,fontWeight:600}}>💶 Estado de inscripciones</p>
+
+            {/* Resumen */}
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+                {chip('✅ Pagadas: ' + pagadasActivos + ' / ' + activos.length + ' activos', 'rgba(16,185,129,0.1)', '#0f8a61')}
+                {chip('👋 Abandonos: ' + abandonos.length, 'rgba(0,31,107,0.06)', '#001F6B')}
+                {abandonos.length > 0 && chip('↩️ Devueltas: ' + devueltas + ' / ' + abandonos.length, 'rgba(255,215,0,0.15)', '#8a6a00')}
+            </div>
+
+            {/* Lista */}
+            <div style={{border:'1px solid rgba(0,31,107,0.08)',borderRadius:12,overflow:'hidden'}}>
+                {nombresTodos.map(function(nombre) {
+                    var esBaja = inactivosIns.indexOf(nombre) !== -1;
+                    var estadoP = estadoPagoDe(nombre);
+                    var dev = devoluciones[nombre] && devoluciones[nombre].devuelto;
+                    return (
+                        <div key={nombre} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderBottom:'1px solid rgba(0,31,107,0.05)',background: esBaja ? 'rgba(0,31,107,0.03)' : 'transparent'}}>
+                            <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,color:'#001F6B',textDecoration: esBaja ? 'line-through' : 'none',opacity: esBaja ? 0.6 : 1}}>
+                                {nombre}{esBaja ? ' 👋' : ''}
+                            </span>
+                            {estadoP === 'pagada' && chip('✅ PAGADA', 'rgba(16,185,129,0.1)', '#0f8a61')}
+                            {estadoP === 'pendiente' && chip('⏳ POR CONFIRMAR', 'rgba(255,215,0,0.15)', '#8a6a00')}
+                            {estadoP === 'sin_pago' && chip('❌ SIN PAGAR', 'rgba(230,57,70,0.08)', '#e63946')}
+                            {esBaja && (
+                                <button onClick={function(){ alternarDevolucion(nombre); }} disabled={guardandoDev === nombre}
+                                    style={{border: dev ? 'none' : '1px solid rgba(0,31,107,0.2)',borderRadius:9,padding:'4px 10px',cursor:'pointer',
+                                        background: dev ? '#10b981' : '#fff',color: dev ? '#fff' : 'rgba(0,31,107,0.6)',
+                                        fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,whiteSpace:'nowrap'}}>
+                                    {dev ? '💸 DEVUELTO ✔' : '💸 MARCAR DEVUELTO'}
+                                </button>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',lineHeight:1.6,marginTop:8,marginBottom:0}}>
+                Los abandonos salen de la lista de jugadores inactivos (Herramientas → pausar/retirar jugador). El interruptor de devolución solo registra el estado — el Bizum de vuelta lo haces tú.
+            </p>
+        </div>
+    );
+};
+
 const AuditoriaPlazosElOtro = () => {
     var [enMarcha, setEnMarcha] = useState(false);
     var [logA, setLogA] = useState([]);
@@ -10364,6 +10482,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'pagos' && (
                 <div>
+                    {/* 💶 Estado de inscripciones: pagos, abandonos y devoluciones */}
+                    <InscripcionesAdmin />
+
                     <ConfirmacionesPremiosAdmin jornadas={jornadas} />
                     <ConfiguracionBizum />
 
