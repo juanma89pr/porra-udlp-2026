@@ -6184,15 +6184,63 @@ function calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACe
     };
 }
 
+// Normaliza un nombre para emparejar con la API (sin tildes ni mayúsculas).
+function normalizarNombreJugadorAPI(s) {
+    return String(s || '').toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Busca un jugador de nuestra plantilla dentro del squad de la API.
+function emparejarNombreEnSquad(squad, objetivo) {
+    var partes = objetivo.split(' ');
+    return squad.find(function(p) {
+        var n = normalizarNombreJugadorAPI(p.name);
+        if (n === objetivo) return true;
+        var nuestras = partes.filter(function(w){ return w.length >= 3; });
+        if (nuestras.length && nuestras.every(function(w){ return n.indexOf(w) !== -1; })) return true;
+        var suyas = n.split(' ').filter(function(w){ return w.length >= 3; });
+        if (suyas.length && suyas.every(function(w){ return objetivo.indexOf(w) !== -1; })) return true;
+        return false;
+    });
+}
+
 async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornadaInfo) {
     if (!fixtureId) throw new Error('Esta jornada no tiene fixtureId guardado. Sincroniza con la API antes de recalcular.');
     if (!API_FOOTBALL_KEY) throw new Error('Falta configurar REACT_APP_API_FOOTBALL_KEY en el entorno.');
+
+    // ── PASO 0 · AUTORRESOLUCIÓN DE apiIds ─────────────────────────────────
+    // Si algún jugador de la plantilla no tiene apiId, se intenta resolver
+    // automáticamente contra la plantilla oficial de la API y se guarda en
+    // fotosJugadores para siempre. El recálculo deja de depender de que se
+    // haya pasado antes por la herramienta manual.
+    var plantillaEfectiva = plantilla.map(function(j) { return { ...j }; });
+    var sinId = plantillaEfectiva.filter(function(j) { return !(parseInt(j.apiId) > 0); });
+    if (sinId.length > 0) {
+        try {
+            var resSquad = await fetch('https://v3.football.api-sports.io/players/squads?team=' + API_TEAM_ID_UDLP, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var dataSquad = await resSquad.json();
+            var squad = dataSquad.response && dataSquad.response[0] && dataSquad.response[0].players ? dataSquad.response[0].players : [];
+            if (squad.length) {
+                for (var si = 0; si < sinId.length; si++) {
+                    var jugSin = sinId[si];
+                    var matchSquad = emparejarNombreEnSquad(squad, normalizarNombreJugadorAPI(jugSin.nombre));
+                    if (matchSquad) {
+                        jugSin.apiId = matchSquad.id;
+                        await setDoc(doc(db, 'fotosJugadores', jugSin.nombre), {
+                            apiId: matchSquad.id, actualizadoEn: serverTimestamp(),
+                        }, { merge: true });
+                    }
+                }
+            }
+        } catch(eSquad) { console.warn('Estrellas: no se pudo autorresolver apiIds:', eSquad.message); }
+    }
 
     var url = 'https://v3.football.api-sports.io/fixtures/players?fixture=' + fixtureId;
     var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
     var data = await res.json();
     if (!data.response || data.response.length === 0) {
-        throw new Error('La API no tiene todavía las estadísticas de jugadores de este partido. Espera unos minutos y vuelve a intentarlo.');
+        throw new Error('La API no tiene todavía las estadísticas de jugadores de este partido. No se ha tocado nada — vuelve a intentarlo en unos minutos.');
     }
 
     // Mapa apiId -> estadísticas del jugador en este partido concreto.
@@ -6206,7 +6254,7 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
     var udlpEsLocal = jornadaInfo.equipoLocal === 'UD Las Palmas';
     var golesEncajados = parseInt(udlpEsLocal ? jornadaInfo.resultadoVisitante : jornadaInfo.resultadoLocal);
     var porteriaACero = golesEncajados === 0;
-    var calculo = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantilla, porteriaACero);
+    var calculo = calcularPuntosPlantillaDesdeStats(statsPorApiId, plantillaEfectiva, porteriaACero);
     var puntosPorNombre = calculo.puntosPorNombre;
     var detallesPorNombre = calculo.detallesPorNombre;
     var jugadoresSinApiId = calculo.jugadoresSinApiId;
@@ -6255,6 +6303,22 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
         anterior = r.estrellasJornada;
     });
 
+    // ── ESCUDO ANTI-PISADO ─────────────────────────────────────────────────
+    // Si esta jornada YA tenía estrellas guardadas y el cálculo nuevo sale a
+    // cero para todo el mundo, es señal inequívoca de un fallo de datos de la
+    // API (o de apiIds sin resolver), no de que nadie puntuara. Se aborta SIN
+    // escribir nada: los datos buenos nunca se sustituyen por ceros.
+    var sumaNueva = 0;
+    resultados.forEach(function(r) { sumaNueva += Number(r.estrellasJornada || 0); });
+    var sumaAntigua = 0;
+    Object.keys(antiguos).forEach(function(uid) {
+        var v = antiguos[uid] || {};
+        sumaAntigua += Number(v.estrellasJornada !== undefined ? v.estrellasJornada : (v.puntosJornada || 0));
+    });
+    if (sumaAntigua > 0 && sumaNueva === 0) {
+        throw new Error('El nuevo cálculo daba 0 estrellas para todos los participantes, pero esta jornada ya tenía ' + sumaAntigua + ' estrellas guardadas. Se ha ABORTADO sin tocar nada para proteger los datos. Causa probable: la API no devolvió estadísticas o faltan apiIds' + (jugadoresSinApiId.length ? ' (' + jugadoresSinApiId.join(', ') + ')' : '') + '.');
+    }
+
     // Los pronósticos existentes de esta jornada: el ranking 5/4/3/2/1 se
     // vuelca también en el pronóstico de cada jugador (puntosEstrellasJornada),
     // que es el campo que leen los puntos provisionales y el cierre definitivo.
@@ -6266,22 +6330,10 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
 
     var batch = writeBatch(db);
     resultados.forEach(function(r) {
-        var viejo = antiguos[r.userId] || {};
-        // Compatibilidad con el cálculo anterior: antes se guardaba el total
-        // de estrellas de acción en puntosJornada y se sumaba por error a la
-        // clasificación general. Si encontramos ese formato antiguo, lo
-        // tratamos como el valor anterior para que el recálculo lo corrija.
-        var formatoNuevo = viejo.estrellasJornada !== undefined || viejo.puntosRanking !== undefined;
-        var estrellasAnteriores = Number(viejo.estrellasJornada !== undefined ? viejo.estrellasJornada : (viejo.puntosJornada !== undefined ? viejo.puntosJornada : 0));
-        var puntosRankingAnteriores = Number(viejo.puntosRanking !== undefined ? viejo.puntosRanking : 0);
-        var deltaEstrellas = r.estrellasJornada - estrellasAnteriores;
-        // Acumulado de estrellas: solo cambia por la diferencia. La puntuación
-        // 5/4/3/2/1 de esta jornada NO entra aún en la clasificación general;
-        // queda guardada como provisional hasta el cierre total de Primera.
-        batch.set(doc(db, 'clasificacion_estrellas', r.userId), {
-            puntosEstrellas: increment(deltaEstrellas),
-            ultimaJornada: jornadaId,
-        }, { merge: true });
+        // El acumulado de la Liga de Estrellas YA NO se toca aquí con sumas
+        // incrementales (eran la causa de los descuadres al recalcular).
+        // Ahora se reconstruye entero desde estrellas_resultados con
+        // reconstruirClasificacionEstrellas() justo después de este cálculo.
 
         batch.set(doc(db, 'estrellas_seleccion', jornadaId, 'jugadores', r.userId), {
             puntosEstrellas: r.estrellasJornada,
@@ -6311,18 +6363,12 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
     });
 
     // Si había resultados anteriores para usuarios que ya no tienen selección,
-    // se eliminan y su acumulado de Estrellas se corrige también.
+    // se eliminan sus documentos de esta jornada. El acumulado se corrige solo
+    // al reconstruir la clasificación después.
     var nuevosIds = {};
     resultados.forEach(function(r){ nuevosIds[r.userId] = true; });
     Object.keys(antiguos).forEach(function(uid){
         if (!nuevosIds[uid]) {
-            var viejo = antiguos[uid] || {};
-            var oldStars = Number(viejo.estrellasJornada || viejo.puntosJornada || 0);
-            if (oldStars) {
-                batch.set(doc(db, 'clasificacion_estrellas', uid), {
-                    puntosEstrellas: increment(-oldStars)
-                }, { merge: true });
-            }
             batch.delete(doc(db, 'estrellas_resultados', jornadaId, 'jugadores', uid));
             batch.delete(doc(db, 'estrellas_seleccion', jornadaId, 'jugadores', uid));
             if (pronosticoExiste[uid]) {
@@ -6353,6 +6399,51 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
         }),
         jugadoresSinApiId: jugadoresSinApiId,
     };
+}
+
+// ============================================================================
+// RECONSTRUCCIÓN TOTAL DE LA LIGA DE ESTRELLAS
+// ============================================================================
+// Suma desde cero las estrellas de TODAS las jornadas leyendo directamente
+// estrellas_resultados (la fuente de verdad jornada a jornada) y escribe el
+// acumulado como valor ABSOLUTO. Al no usar sumas incrementales es matemática-
+// mente imposible que el total se descuadre: recalcular una jornada 20 veces
+// da siempre el mismo resultado. Se ejecuta automáticamente tras cada cálculo
+// de jornada y también desde el botón global del admin.
+async function reconstruirClasificacionEstrellas() {
+    var jornadasSnap = await getDocs(collection(db, 'jornadas'));
+    var totales = {};        // userId -> estrellas acumuladas
+    var jornadasConDatos = 0;
+
+    for (var i = 0; i < jornadasSnap.docs.length; i++) {
+        var jid = jornadasSnap.docs[i].id;
+        var resSnap = await getDocs(collection(db, 'estrellas_resultados', jid, 'jugadores'));
+        if (resSnap.empty) continue;
+        jornadasConDatos++;
+        resSnap.forEach(function(d) {
+            var v = d.data() || {};
+            // Formato nuevo: estrellasJornada. Formato antiguo: puntosJornada
+            // contenía las estrellas de acción.
+            var estrellas = Number(v.estrellasJornada !== undefined ? v.estrellasJornada : (v.puntosJornada || 0));
+            totales[d.id] = (totales[d.id] || 0) + estrellas;
+        });
+    }
+
+    // Usuarios que estaban en el acumulado pero ya no aparecen en ninguna
+    // jornada: se ponen a 0 (no se borra el doc para conservar otros campos).
+    var clasifSnap = await getDocs(collection(db, 'clasificacion_estrellas'));
+    clasifSnap.forEach(function(d) { if (totales[d.id] === undefined) totales[d.id] = 0; });
+
+    var batch = writeBatch(db);
+    Object.keys(totales).forEach(function(uid) {
+        batch.set(doc(db, 'clasificacion_estrellas', uid), {
+            puntosEstrellas: totales[uid],
+            reconstruidaEn: serverTimestamp(),
+        }, { merge: true });
+    });
+    await batch.commit();
+
+    return { usuarios: Object.keys(totales).length, jornadasConDatos: jornadasConDatos };
 }
 
 async function actualizarPuntosProvisionalesJornada(jornadaId) {
@@ -6822,6 +6913,9 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 // actualizarPuntosProvisionales recoge el ranking 5/4/3/2/1
                 // guardado por el cálculo de Estrellas sin tocar aún la general.
                 await actualizarPuntosProvisionalesJornada(jornada.id);
+                // El acumulado de la Liga de Estrellas se reconstruye entero
+                // desde los resultados guardados: imposible que se descuadre.
+                await reconstruirClasificacionEstrellas();
             } catch(e) {
                 console.error('Error calculando Estrellas:', e);
                 alert('⚠️ El reparto económico y el resultado de la Porra están guardados. Las Estrellas se pueden recalcular después.');
@@ -6842,8 +6936,9 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                 resultadoLocal: jornada.resultadoLocal, resultadoVisitante: jornada.resultadoVisitante
             });
             await actualizarPuntosProvisionalesJornada(jornada.id);
+            var recon = await reconstruirClasificacionEstrellas();
             var sinIds = resultado.jugadoresSinApiId || [];
-            alert('✅ Estrellas recalculadas desde cero para esta jornada. El cálculo anterior ha sido sustituido y no se han duplicado acumulados.\n\n' + (sinIds.length ? 'Sin apiId: ' + sinIds.join(', ') : 'Todos los jugadores con ID están preparados.') );
+            alert('✅ Estrellas de esta jornada recalculadas desde cero y Liga de Estrellas reconstruida (' + recon.usuarios + ' participantes, ' + recon.jornadasConDatos + ' jornadas con datos).\n\n' + (sinIds.length ? '⚠️ Sin apiId ni coincidencia en la API: ' + sinIds.join(', ') : 'Todos los jugadores emparejados con la API.') );
         } catch(e) { alert('❌ Error: ' + e.message); }
     };
 
@@ -7196,6 +7291,80 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
 // se sincronizó) y cruza cada jugador de la plantilla contra las
 // estadísticas reales de ESE partido, mostrando encontrado/no encontrado
 // con datos de verdad, no una suposición.
+// ============================================================================
+// RECÁLCULO GLOBAL DE LA LIGA DE ESTRELLAS (botón único del admin)
+// ============================================================================
+// Recorre todas las jornadas Finalizadas con fixtureId, recalcula las
+// Estrellas de cada una contra la API (con autorresolución de apiIds y escudo
+// anti-pisado) y al final reconstruye el acumulado completo desde cero.
+const RecalculoGlobalEstrellas = ({ plantilla }) => {
+    var [enMarcha, setEnMarcha] = useState(false);
+    var [log, setLog] = useState([]);
+
+    var ejecutar = async function() {
+        if (enMarcha) return;
+        if (!window.confirm('Se recalcularán las Estrellas de TODAS las jornadas finalizadas contra la API (una consulta por jornada) y después se reconstruirá el acumulado completo desde cero.\n\nLas jornadas cuyo cálculo nuevo salga a cero por un fallo de la API quedan protegidas y no se tocan.\n\n¿Continuar?')) return;
+        setEnMarcha(true); setLog([{ t: '⏳ Leyendo jornadas…', ok: true }]);
+        var lineas = [];
+        var anotar = function(texto, ok) { lineas = lineas.concat([{ t: texto, ok: ok }]); setLog(lineas.slice()); };
+        try {
+            var snap = await getDocs(collection(db, 'jornadas'));
+            var finalizadas = snap.docs
+                .map(function(d) { return { id: d.id, ...d.data() }; })
+                .filter(function(j) { return j.estado === 'Finalizada' && j.fixtureId; })
+                .sort(function(a, b) { return (a.numeroJornada || 0) - (b.numeroJornada || 0); });
+            if (!finalizadas.length) { anotar('No hay jornadas finalizadas con fixtureId.', false); setEnMarcha(false); return; }
+            anotar('📋 ' + finalizadas.length + ' jornadas a recalcular.', true);
+            var conCierre = [];
+            for (var i = 0; i < finalizadas.length; i++) {
+                var j = finalizadas[i];
+                var etiqueta = 'J' + (j.numeroJornada || '?') + ' (' + (j.equipoLocal || '') + '–' + (j.equipoVisitante || '') + ')';
+                try {
+                    var r = await calcularEstrellasJornada(j.id, j.fixtureId, plantilla, {
+                        equipoLocal: j.equipoLocal, equipoVisitante: j.equipoVisitante,
+                        resultadoLocal: j.resultadoLocal, resultadoVisitante: j.resultadoVisitante,
+                    });
+                    await actualizarPuntosProvisionalesJornada(j.id);
+                    var aviso = r.jugadoresSinApiId && r.jugadoresSinApiId.length ? ' · sin apiId: ' + r.jugadoresSinApiId.join(', ') : '';
+                    anotar('✅ ' + etiqueta + aviso, true);
+                    if (j.cierreDefinitivo) conCierre.push(etiqueta);
+                } catch(e1) {
+                    anotar('⚠️ ' + etiqueta + ': ' + e1.message, false);
+                }
+            }
+            anotar('🔁 Reconstruyendo acumulado…', true);
+            var recon = await reconstruirClasificacionEstrellas();
+            anotar('🏁 Liga de Estrellas reconstruida: ' + recon.usuarios + ' participantes, ' + recon.jornadasConDatos + ' jornadas con datos.', true);
+            if (conCierre.length) {
+                anotar('ℹ️ Jornadas con cierre definitivo recalculadas: ' + conCierre.join(', ') + '. Si sus Estrellas cambiaron, resetea puntos y vuelve a cerrar esas jornadas para que la clasificación GENERAL recoja el cambio.', true);
+            }
+        } catch(e) {
+            anotar('❌ ' + e.message, false);
+        }
+        setEnMarcha(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>⭐ Recálculo global de la Liga de Estrellas</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.55)',lineHeight:1.6,marginBottom:10}}>
+                Un solo botón: resuelve apiIds pendientes, recalcula todas las jornadas finalizadas contra la API y reconstruye el acumulado desde cero. Los datos buenos nunca se sustituyen por ceros.
+            </p>
+            <button onClick={ejecutar} disabled={enMarcha}
+                style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:enMarcha?'default':'pointer'}}>
+                {enMarcha ? '⏳ RECALCULANDO… NO CIERRES LA APP' : '⭐ RECALCULAR TODA LA LIGA DE ESTRELLAS'}
+            </button>
+            {log.length > 0 && (
+                <div style={{marginTop:10,maxHeight:220,overflowY:'auto',background:'rgba(0,31,107,0.03)',border:'1px solid rgba(0,31,107,0.07)',borderRadius:10,padding:10}}>
+                    {log.map(function(l, i) {
+                        return <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:11,lineHeight:1.5,color:l.ok?'rgba(0,31,107,0.75)':'#e63946',margin:'0 0 4px'}}>{l.t}</p>;
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const VerificarEstadisticasJugadoresAdmin = ({ plantilla }) => {
     var [fixtureIdInput, setFixtureIdInput] = useState('');
     var [resultado, setResultado] = useState(null);
@@ -9442,6 +9611,8 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
 
                     {herramientaSub === 'estrellas' && <div>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>⭐ Plantilla y Estrellas</p>
+                    {/* Recálculo global: un botón que lo arregla todo */}
+                    <RecalculoGlobalEstrellas plantilla={plantilla} />
                     {/* Buscador de IDs de API-Football para la plantilla */}
                     {/* Verificación real del enlace plantilla ↔ estadísticas */}
                     <VerificarEstadisticasJugadoresAdmin plantilla={plantilla} />
