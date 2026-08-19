@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-19.D · inscripciones + J1 extendida + columnas';
+const APP_BUILD = 'v2026-08-19.F · normativa oficial completa';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 const JUGADORES_BASE = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
@@ -3427,6 +3427,29 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         return (
             <div style={{paddingBottom:40}}>
                 <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:10,fontWeight:700}}>MI JORNADA</h2>
+
+                {/* 📅 PORRA ANUAL — disponible hasta que empiece la J6, en TODAS las vistas */}
+                {jornada.numeroJornada <= 5 && (
+                    <button onClick={function() { setShowPorraAnual(true); }}
+                        style={{width:'100%',background:'linear-gradient(135deg,#001F6B,#0035b8)',
+                            border:'none',borderRadius:18,padding:'16px 18px',cursor:'pointer',
+                            marginBottom:14,textAlign:'left',display:'flex',alignItems:'center',gap:14,
+                            boxShadow:'0 8px 28px rgba(0,31,107,0.25)'}}>
+                        <div style={{width:46,height:46,background:'rgba(255,215,0,0.15)',borderRadius:12,
+                            display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,flexShrink:0}}>📅</div>
+                        <div style={{flex:1}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color:'#FFD700',letterSpacing:2,textTransform:'uppercase',marginBottom:3}}>
+                                PORRA ANUAL · ABIERTA HASTA LA J6
+                            </p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.65)',lineHeight:1.5,margin:0}}>
+                                ¿Asciende la UDLP? ¿En qué puesto acaba? <strong style={{color:'#FFD700'}}>+5</strong> ascenso · <strong style={{color:'#FFD700'}}>+10</strong> puesto · <strong style={{color:'#FFD700'}}>20 si aciertas AMBOS</strong>
+                            </p>
+                        </div>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:20,color:'rgba(255,215,0,0.7)'}}>→</span>
+                    </button>
+                )}
+                {showPorraAnual && <PorraAnualModal user={user} onClose={function() { setShowPorraAnual(false); }} />}
+
                 <PremioMiJornadaCard user={user} jornada={jornada} />
                 <div style={{background:jornada.cierreDefinitivo?'rgba(16,185,129,.08)':'rgba(255,215,0,.08)',border:'1px solid '+(jornada.cierreDefinitivo?'rgba(16,185,129,.22)':'rgba(212,175,55,.28)'),borderRadius:14,padding:14,marginBottom:16}}>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:jornada.cierreDefinitivo?'#0f8a61':'#8a6a00',margin:0,textTransform:'uppercase'}}>{jornada.cierreDefinitivo?'✅ PUNTOS DEFINITIVOS':'⏳ PUNTOS PROVISIONALES'}</p>
@@ -4727,9 +4750,9 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
         // 0 · PORTADA
         function() { return (
             <div style={{textAlign:'center'}}>
-                <p style={{fontSize:52,marginBottom:14}}>🎬</p>
+                <p style={{fontSize:40,marginBottom:8}}>🎬</p>
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:6,color:'rgba(255,215,0,0.55)',textTransform:'uppercase',marginBottom:8}}>PORRA UDLP 26/27</p>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:38,fontWeight:700,letterSpacing:3,color:'#FFD700',lineHeight:1.05,marginBottom:14}}>LA GALA DE LA<br/>JORNADA 1</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,letterSpacing:3,color:'#FFD700',lineHeight:1.05,marginBottom:10}}>LA GALA DE LA<br/>JORNADA 1</p>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.65)',lineHeight:1.7}}>
                     La primera edición ya es historia.<br/>Resultado, premios, multiplicadores…<br/>y lo que viene. 👀
                 </p>
@@ -4742,7 +4765,7 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
                 {j1 ? (
                     <>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,color:'#fff',marginBottom:4}}>{j1.equipoLocal}</p>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:62,fontWeight:700,color:'#FFD700',letterSpacing:8,lineHeight:1,margin:'6px 0'}}>{j1.resultadoLocal} – {j1.resultadoVisitante}</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:52,fontWeight:700,color:'#FFD700',letterSpacing:7,lineHeight:1,margin:'5px 0'}}>{j1.resultadoLocal} – {j1.resultadoVisitante}</p>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,color:'#fff',marginBottom:16}}>{j1.equipoVisitante}</p>
                     {j1.primerGoleador && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.6)'}}>Primer goleador: <strong style={{color:'#FFD700'}}>{j1.primerGoleador}</strong></p>}
                     </>
@@ -4786,7 +4809,7 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
                     La jornada 1 de Primera División quedó cerrada y con ella se aplicaron los multiplicadores y divisores de <strong>El Otro Equipo</strong>:
                 </p>
                 {multiplicadores.length ? (
-                    <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:220,overflowY:'auto',marginBottom:14}}>
+                    <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:'34dvh',overflowY:'auto',marginBottom:12}}>
                         {multiplicadores.map(function(m) {
                             var perf = userProfiles[m.usuario] || {};
                             var sube = m.multiplicador > 1;
@@ -4849,8 +4872,8 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
         // 6 · CIERRE
         function() { return (
             <div style={{textAlign:'center'}}>
-                <p style={{fontSize:52,marginBottom:14}}>🏁</p>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:34,fontWeight:700,color:'#FFD700',letterSpacing:3,lineHeight:1.15,marginBottom:14}}>QUE EMPIECE<br/>LA LIGA</p>
+                <p style={{fontSize:40,marginBottom:8}}>🏁</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:30,fontWeight:700,color:'#FFD700',letterSpacing:3,lineHeight:1.15,marginBottom:10}}>QUE EMPIECE<br/>LA LIGA</p>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.65)',lineHeight:1.8,marginBottom:14}}>
                     41 jornadas por delante.<br/>Estrellas, rifas, multiplicadores…<br/>y una porra que ganar.<br/><br/>Suerte a todos. 💙💛
                 </p>
@@ -4865,29 +4888,32 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
     var esUltima = slide >= slides.length - 1;
 
     return (
-        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10500,background:'linear-gradient(160deg,#060614,#0d1b3e 55%,#001F6B)',display:'flex',flexDirection:'column',padding:'26px 22px'}}>
+        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10500,background:'linear-gradient(160deg,#060614,#0d1b3e 55%,#001F6B)',display:'flex',flexDirection:'column',padding:'14px 18px calc(12px + env(safe-area-inset-bottom))',height:'100dvh',maxHeight:'100dvh',boxSizing:'border-box',overflow:'hidden'}}>
             <style>{'@keyframes galaIn{0%{opacity:0;transform:translateY(16px);}100%{opacity:1;transform:translateY(0);}}'}</style>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,color:'rgba(255,255,255,0.35)'}}>PORRA UDLP · GALA J1</span>
-                <button onClick={onClose} style={{border:'none',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',borderRadius:20,padding:'5px 14px',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,cursor:'pointer'}}>SALIR ✕</button>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
+                <span style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:3,color:'rgba(255,255,255,0.35)'}}>PORRA UDLP · GALA J1</span>
+                <button onClick={onClose} style={{border:'none',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',borderRadius:20,padding:'4px 12px',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,cursor:'pointer'}}>SALIR ✕</button>
             </div>
-            <div key={slide} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',animation:'galaIn 0.5s ease'}}>
-                <div style={{maxWidth:380,width:'100%'}}>
+            {/* Zona central: si el contenido es más alto que la pantalla, hace
+                scroll AQUÍ DENTRO — la cabecera, los puntos y los botones no se
+                mueven nunca y SIGUIENTE siempre queda a la vista. */}
+            <div key={slide} style={{flex:1,minHeight:0,overflowY:'auto',display:'flex',animation:'galaIn 0.5s ease',WebkitOverflowScrolling:'touch'}}>
+                <div style={{maxWidth:380,width:'100%',margin:'auto',padding:'10px 0'}}>
                     {cargando && slide > 0 ? <p style={{textAlign:'center',fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.5)'}}>Cargando…</p> : slides[slide]()}
                 </div>
             </div>
-            <div style={{display:'flex',justifyContent:'center',gap:6,marginBottom:14}}>
+            <div style={{display:'flex',justifyContent:'center',gap:6,marginBottom:10,flexShrink:0,paddingTop:8}}>
                 {slides.map(function(_, i) {
                     return <span key={i} style={{width:i===slide?18:7,height:7,borderRadius:4,background:i===slide?'#FFD700':'rgba(255,255,255,0.2)',transition:'all 0.3s'}} />;
                 })}
             </div>
-            <div style={{display:'flex',gap:10}}>
+            <div style={{display:'flex',gap:10,flexShrink:0}}>
                 {slide > 0 && (
                     <button onClick={function(){ setSlide(slide - 1); }}
-                        style={{flex:1,border:'1px solid rgba(255,255,255,0.2)',background:'transparent',color:'rgba(255,255,255,0.6)',borderRadius:30,padding:13,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,cursor:'pointer'}}>ATRÁS</button>
+                        style={{flex:1,border:'1px solid rgba(255,255,255,0.2)',background:'transparent',color:'rgba(255,255,255,0.6)',borderRadius:30,padding:11,fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,cursor:'pointer'}}>ATRÁS</button>
                 )}
                 <button onClick={function(){ if (esUltima) onClose(); else setSlide(slide + 1); }}
-                    style={{flex:2,border:'none',background:'#FFD700',color:'#001F6B',borderRadius:30,padding:13,fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,fontWeight:700,cursor:'pointer',boxShadow:'0 6px 18px rgba(255,215,0,0.35)'}}>
+                    style={{flex:2,border:'none',background:'#FFD700',color:'#001F6B',borderRadius:30,padding:11,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,fontWeight:700,cursor:'pointer',boxShadow:'0 6px 18px rgba(255,215,0,0.35)'}}>
                     {slide === 0 ? '🎬 EMPEZAR' : esUltima ? 'CERRAR LA GALA 🏁' : 'SIGUIENTE →'}
                 </button>
             </div>
@@ -9852,17 +9878,40 @@ const NormativaScreen = () => {
     return (
         <div style={{padding:'20px 16px'}}>
             <h2 style={styles.title}>NORMATIVA</h2>
-            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5,textAlign:'center',marginBottom:18,lineHeight:1.6}}>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:G.deepBlue,opacity:.5,textAlign:'center',marginBottom:6,lineHeight:1.6}}>
                 Todas las reglas de la temporada 26/27, por apartado. Toca cada título para desplegarlo.
             </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:G.deepBlue,opacity:.35,textAlign:'center',marginBottom:18}}>
+                Normativa oficial · actualizada el 19/08/2026
+            </p>
 
-            <AcordeonAyuda icono="⚽" titulo="La Porra" abiertoPorDefecto={true}>
+            <AcordeonAyuda icono="🕐" titulo="Plazos oficiales de apuesta" abiertoPorDefecto={true}>
+                <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
+                    <p style={{marginBottom:8}}><strong>🎯 Porra de la jornada (marcador, 1X2, goleador):</strong> editable hasta el cierre publicado de cada jornada — <strong>5 minutos antes</strong> del partido de la UDLP. El pago de la jornada también debe estar hecho antes del cierre para que el resultado cuente.</p>
+                    <p style={{marginBottom:8}}><strong>🛡️ El Otro Equipo:</strong> la activación se puede marcar o desmarcar hasta <strong>1 HORA ANTES de que empiece el PRIMER partido de esa jornada de Primera División</strong>. Toda activación registrada después de ese momento queda <strong>ANULADA</strong>: no multiplica ni divide en esa jornada.</p>
+                    <p style={{marginBottom:8}}><strong>⭐ 5 Estrellas:</strong> la selección se puede crear y cambiar hasta <strong>2 HORAS ANTES</strong> del partido de la UDLP de la jornada.</p>
+                    <p style={{marginBottom:8}}><strong>📅 Porra Anual:</strong> abierta y modificable hasta que <strong>empiece la Jornada 6</strong>.</p>
+                    <p style={{margin:0}}>Estos plazos aparecen también marcados dentro de cada pantalla (Mi Jornada, El Otro y 5 Estrellas), con la fecha y hora límite concreta de la jornada en curso, porque cada estructura maneja sus propios datos y tiempos.</p>
+                </div>
+            </AcordeonAyuda>
+
+            <AcordeonAyuda icono="⚽" titulo="La Porra" abiertoPorDefecto={false}>
                 <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
                     <p style={{marginBottom:8}}>Cada jornada de la UDLP, adivinas el <strong>marcador exacto</strong> y el <strong>1X2</strong> (quién gana, pierde o empata).</p>
-                    <p style={{marginBottom:8}}><strong>Puntos:</strong> marcador exacto +3 (jornada VIP +6) · 1X2 acertado +2 (VIP +4).</p>
+                    <p style={{marginBottom:8}}><strong>Puntos:</strong> marcador exacto <strong>+3</strong> (jornada VIP +6) · 1X2 acertado <strong>+2</strong> (VIP +4) · primer goleador acertado <strong>+2</strong> (VIP +4) · acertar que no habrá goles marcando "sin goleador" <strong>+1</strong>.</p>
                     <p style={{marginBottom:8}}><strong>Cierre:</strong> las apuestas se cierran <strong>5 minutos antes</strong> del partido de la UDLP. Puedes cambiar tu apuesta cuantas veces quieras hasta ese momento.</p>
                     <p style={{marginBottom:8}}><strong>Secreto hasta el cierre:</strong> nadie ve el resultado de nadie mientras la jornada está abierta. Solo se ven estadísticas agregadas (qué marcadores se repiten, cuántos Local/Empate/Visitante) — y solo a partir de <strong>5 apuestas guardadas</strong>, para que nunca se pueda intuir quién puso qué con pocos datos.</p>
                     <p style={{margin:0}}><strong>⚠️ Pago obligatorio por jornada:</strong> el sistema te deja apostar siempre, pero tu resultado <strong>solo cuenta si pagas esa jornada por Bizum</strong> antes del cierre. Pagar no bloquea que sigas cambiando tu apuesta — solo confirma tu participación. Si no pagas, tu apuesta se guarda pero no puntúa.</p>
+                </div>
+            </AcordeonAyuda>
+
+            <AcordeonAyuda icono="📅" titulo="Porra Anual">
+                <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
+                    <p style={{marginBottom:8}}>Una única apuesta a temporada completa, desde <strong>Mi Jornada</strong>: dices si la UDLP <strong>asciende o no</strong> y en <strong>qué puesto exacto</strong> acaba la liga regular.</p>
+                    <p style={{marginBottom:8}}><strong>Plazo:</strong> se puede guardar y modificar libremente hasta que <strong>empiece la Jornada 6</strong>. Desde ese momento queda sellada para toda la temporada.</p>
+                    <p style={{marginBottom:8}}><strong>Puntos (se suman a la clasificación general al terminar la liga regular):</strong></p>
+                    <p style={{marginBottom:8}}>· Acertar si asciende o no: <strong>+5 puntos</strong> — el ascenso vale igual si es <strong>directo o por playoff</strong>.<br/>· Acertar el <strong>puesto exacto</strong> de la clasificación: <strong>+10 puntos</strong> (si hay playoff, cuenta la posición al cierre de la liga regular, antes del playoff).<br/>· Acertar <strong>AMBAS</strong> cosas: <strong>20 puntos en total</strong>.</p>
+                    <p style={{margin:0}}>La apuesta es secreta: solo se muestran estadísticas agregadas y nunca con menos de 5 apuestas guardadas.</p>
                 </div>
             </AcordeonAyuda>
 
@@ -9873,8 +9922,13 @@ const NormativaScreen = () => {
                     <p style={{marginBottom:8}}><strong>Turnos:</strong> cuando te toca, tienes <strong>60 minutos</strong> para elegir. Si se agota el tiempo, pasas al final de la cola — no pierdes el turno del todo, solo se retrasa.</p>
                     <p style={{marginBottom:8}}><strong>Pausa nocturna:</strong> de <strong>01:00 a 09:00</strong> (hora canaria) el draft se pausa cada noche, por igualdad de condiciones ya que hay gente durmiendo. Se retoma exactamente donde se quedó, sin que esas horas cuenten contra el cronómetro de nadie.</p>
                     <p style={{marginBottom:8}}><strong>Secreto:</strong> tu equipo es secreto durante tus <strong>3 primeras activaciones</strong>. A partir de la 4ª (cuando llegas a ×2.5) se hace público para todos, automáticamente.</p>
-                    <p style={{marginBottom:8}}><strong>Activación por jornada:</strong> decides si lo activas o no, y tienes que hacerlo <strong>antes de que empiece el partido de Primera de tu equipo</strong> — no después.</p>
-                    <p style={{marginBottom:8}}><strong>Efecto:</strong> si tu equipo gana, tus puntos de esa jornada se <strong>multiplican</strong> (redondeo al alza). Si empata, no cambian. Si pierde, se <strong>dividen</strong> (redondeo a la baja). El multiplicador sube con el uso: <strong>×2</strong> al principio, <strong>×2.5</strong> desde la 3ª activación, <strong>×3</strong> desde la 5ª.</p>
+                    <p style={{marginBottom:8}}><strong>Activación por jornada:</strong> decides si lo activas o no. El plazo cierra <strong>1 HORA ANTES de que empiece el PRIMER partido de esa jornada de Primera División</strong>. Toda activación registrada fuera de plazo queda <strong>ANULADA</strong> (sin multiplicar ni dividir esa jornada) — se comprueba con la hora oficial de la API y la hora de guardado.</p>
+                    <p style={{marginBottom:8}}><strong>Escala del multiplicador (según tus activaciones acumuladas en la temporada):</strong> 1ª y 2ª activación → <strong>×2</strong> · 3ª y 4ª → <strong>×2.5</strong> · <strong>desde la 5ª activación → ×3</strong>, que es el máximo. La escala solo sube, nunca baja.</p>
+                    <p style={{marginBottom:8}}><strong>Si tu equipo GANA:</strong> tus puntos de esa jornada se multiplican por tu multiplicador vigente, con redondeo AL ALZA.</p>
+                    <p style={{marginBottom:8}}><strong>Si tu equipo EMPATA:</strong> tus puntos se quedan <strong>exactamente igual</strong> — el empate ni suma ni resta, sea cual sea tu multiplicador.</p>
+                    <p style={{marginBottom:8}}><strong>Si tu equipo PIERDE:</strong> tus puntos de esa jornada se dividen <strong>SIEMPRE entre 2</strong>, con redondeo A LA BAJA — da igual que tu multiplicador sea ×2, ×2.5 o ×3: la división nunca crece con la escala. La división nunca deja puntos negativos ni resta de otras jornadas: como mínimo te quedas en 0 en esa jornada.</p>
+                    <p style={{marginBottom:8}}><strong>Cuándo se aplica:</strong> el multiplicador o divisor se resuelve al <strong>terminar la jornada de Primera División</strong>. Hasta entonces, tus puntos figuran como provisionales (marcados con * en la clasificación).</p>
+                    <p style={{marginBottom:8}}><strong>🔄 RE-DRAFT DE MITAD DE TEMPORADA (Jornada 22):</strong> al empezar la segunda vuelta, la elección de El Otro Equipo <strong>se reinicia por completo</strong> y todos vuelven a elegir equipo. El orden del nuevo draft es <strong>el INVERSO a la clasificación general</strong> en ese momento: el último clasificado elige primero… y el líder elige el último.</p>
                     <p style={{margin:0}}><strong>Plaza vacante:</strong> si alguien se da de baja, cualquiera puede pagar <strong>2€</strong> para ocupar su hueco en la cola, en la misma posición que tenía.</p>
                 </div>
             </AcordeonAyuda>
@@ -9882,11 +9936,13 @@ const NormativaScreen = () => {
             <AcordeonAyuda icono="⭐" titulo="Mis 5 Estrellas">
                 <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
                     <p style={{marginBottom:8}}>Eliges hasta <strong>5 jugadores de la UDLP</strong> antes de cada partido. Sus goles, asistencias, paradas y tarjetas generan estrellas según una tabla de puntos fija.</p>
-                    <p style={{marginBottom:8}}><strong>Cierre:</strong> se cierra a la vez que la porra — 5 minutos antes del partido de la UDLP. Editable libremente hasta ese momento.</p>
+                    <p style={{marginBottom:8}}><strong>Cierre:</strong> la selección se puede crear y cambiar hasta <strong>2 HORAS ANTES</strong> del inicio del partido de la UDLP de la jornada. Después de esa hora queda fijada.</p>
                     <p style={{marginBottom:8}}><strong>Cálculo:</strong> automático, tras el partido, con estadísticas oficiales de API-Football. Además del baremo propio de la Porra, se usan umbrales conocidos de fantasy: <strong>2 remates a puerta +1⭐</strong> · <strong>2 regates +1⭐</strong> · <strong>3 tackles +1⭐</strong> · <strong>3 intercepciones +1⭐</strong> · <strong>2 pases clave +1⭐</strong> · <strong>4 duelos ganados +1⭐</strong>.</p>
                     <p style={{marginBottom:8}}><strong>No se aplican todavía</strong> recuperaciones ni despejes porque API-Football no los entrega como campos individuales fiables en <code>/fixtures/players</code> para este cálculo.</p>
                     <p style={{marginBottom:0}}><strong>Recalcular:</strong> cada recálculo vuelve a leer la API y <strong>sustituye completamente el cálculo anterior de esa jornada</strong>. No duplica Estrellas ni puntos. Esto queda blindado para todas las jornadas.</p>
-                    <p style={{margin:0}}>Las estrellas acumuladas forman una <strong>clasificación paralela</strong>, con su propio premio.</p>
+                    <p style={{marginBottom:8}}><strong>Puntos por jornada al ranking general:</strong> las estrellas de tus 5 elegidos se suman y forman el ranking de la jornada. Los 5 primeros puntúan: 🥇 <strong>+5</strong> · 🥈 <strong>+4</strong> · 🥉 <strong>+3</strong> · 4º <strong>+2</strong> · 5º <strong>+1</strong>. Esos puntos <strong>suman a la clasificación general desde el momento del cálculo</strong> — el botón ＋ de la pantalla es solo la celebración: pulsarlo o no pulsarlo <strong>no cambia los puntos</strong>, y a las 72 horas del cierre se marca automáticamente.</p>
+                    <p style={{marginBottom:8}}><strong>Beneficios del podio de la Liga de Estrellas:</strong> mientras vas 1º puedes <strong>ver las apuestas del resto antes del cierre</strong>; 2º puedes <strong>bloquear a un jugador</strong> en El Otro o en Estrellas; 3º puedes elegir una <strong>6ª estrella comodín</strong> esa jornada.</p>
+                    <p style={{margin:0}}>Las estrellas acumuladas forman una <strong>clasificación paralela (Liga de Estrellas)</strong>: los <strong>3 primeros puestos tendrán premio</strong> al final de la temporada, aparte del bote de la porra (premio por desvelar).</p>
                 </div>
             </AcordeonAyuda>
 
@@ -9903,6 +9959,7 @@ const NormativaScreen = () => {
             <AcordeonAyuda icono="🏆" titulo="Premios">
                 <div style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.8}}>
                     <p style={{marginBottom:8}}><strong>Bote de la porra</strong> (solo de las inscripciones, 5€ × jugadores): se reparte <strong>65%</strong> para el 1º, <strong>25%</strong> para el 2º, <strong>10%</strong> para el 3º.</p>
+                    <p style={{marginBottom:8}}><strong>Premio de cada jornada:</strong> el bote de esa jornada (los pagos de jornada de los participantes contabilizados) se reparte <strong>a partes iguales entre los acertantes del marcador exacto</strong>. Si nadie lo acierta, el bote se acumula. El ganador elige el destino de su premio en Mi Jornada: <strong>cobrarlo</strong>, <strong>usarlo como saldo de rifa</strong> o <strong>repartirlo</strong> — y confirma cuando lo recibe.</p>
                     <p style={{marginBottom:8}}><strong>Campeón de Invierno:</strong> reconocimiento propio para quien vaya primero al terminar la primera vuelta.</p>
                     <p style={{marginBottom:8}}><strong>Rifas:</strong> durante toda la temporada, con premios propios, para todos los jugadores.</p>
                     <p style={{margin:0}}><strong>Liga de Estrellas:</strong> premio aparte, de alto valor — todavía sin desvelar del todo. Este y el resto de premios (Campeón de Invierno, rifas) salen de <strong>botes internos</strong>, no del bote de la porra.</p>
