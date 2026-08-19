@@ -247,9 +247,8 @@ async function buscarUltimosPartidosUDLP(cantidad) {
 }
 
 // Ventana de presentación del cierre: la jornada recién finalizada se muestra
-// durante 48 h desde su cierre económico/postpartido. Se prioriza siempre una
-// jornada activa si ya existe. Si no hay activa y han pasado 48 h, se muestra
-// la próxima jornada.
+// durante 72 h desde su cierre. Se prioriza siempre una jornada activa si ya
+// existe. Si no hay activa y han pasado 72 h, se muestra la próxima jornada.
 function getJornadaFinMs(jornada) {
     if (!jornada) return null;
     var candidatos = [
@@ -272,11 +271,13 @@ function getJornadaFinMs(jornada) {
     return null;
 }
 
-function jornadaDentroVentana48h(jornada, ahoraMs) {
+var VENTANA_POST_JORNADA_MS = 72 * 60 * 60 * 1000; // 72 horas
+
+function jornadaDentroVentana72h(jornada, ahoraMs) {
     var finMs = getJornadaFinMs(jornada);
     if (!finMs) return false;
     var ahora = ahoraMs || Date.now();
-    return ahora >= finMs && ahora < (finMs + 48 * 60 * 60 * 1000);
+    return ahora >= finMs && ahora < (finMs + VENTANA_POST_JORNADA_MS);
 }
 
 async function comprobarCierrePrimeraJornada(fechaReferenciaStr) {
@@ -2535,7 +2536,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 var ahoraMs = Date.now();
                 var lista = snap.docs.map(function(d){ return { id:d.id, ...d.data() }; });
                 var activa = lista.find(function(j){ return j.estado === 'Abierta' || j.estado === 'En vivo'; });
-                var reciente = lista.find(function(j){ return j.estado === 'Finalizada' && jornadaDentroVentana48h(j, ahoraMs); });
+                var reciente = lista.find(function(j){ return j.estado === 'Finalizada' && jornadaDentroVentana72h(j, ahoraMs); });
                 var seleccion = activa || reciente || null;
                 if (seleccion) {
                     setJornada(seleccion);
@@ -2577,7 +2578,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             query(collection(db,'jornadas'), where('estado','==','Finalizada'), orderBy('numeroJornada','desc'), limit(5)),
             function(cs){
                 var candidatas = cs.docs.map(function(d){ return {id:d.id,...d.data()}; });
-                var cj = candidatas.find(function(j){ return jornadaDentroVentana48h(j, Date.now()); });
+                var cj = candidatas.find(function(j){ return jornadaDentroVentana72h(j, Date.now()); });
                 if (!cj) { setJornadaCierre(null); return; }
                 setJornadaCierre(cj);
                 getDoc(doc(db,'pronosticos',cj.id,'jugadores',user)).then(function(ps){
@@ -2728,18 +2729,10 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
 
     if (loading) return <LoadingSkeleton />;
 
-    if (jornadaCierre) {
-        return (
-            <CierreJornadaTransicion
-                user={user}
-                jornada={jornadaCierre}
-                userProfiles={userProfiles}
-                teamLogos={teamLogos}
-                onIrEstrellas={function(){ setJornadaCierre(null); setShowEstrellas(true); }}
-                onCerrar={function(){ setJornadaCierre(null); }}
-            />
-        );
-    }
+    // Ya no es un return que reemplaza toda la pantalla — el resumen de
+    // cierre se integra DENTRO de Mi Jornada como una sección más, para
+    // que no haya un "salto" al abrirla o cerrarla.
+    var tieneCierre = !!jornadaCierre;
 
     // Bloqueo hasta que pague la inscripción
     if (!jugadorHaPagado(user, pagos || [])) {
@@ -2751,13 +2744,25 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         );
     }
 
-    // Blindaje entre jornadas: Mi Jornada también puede quedar temporalmente sin
-    // jornada activa cuando ya han pasado las 48h de la anterior. No intentamos
-    // leer jornada.esVip/jornada.id en ese estado; mostramos histórico y próximo partido.
+    // Blindaje entre jornadas: cuando no hay jornada activa, mostramos
+    // el resumen del cierre (si estamos dentro de las 72h) integrado como
+    // sección, más el próximo partido y el histórico — todo junto, sin saltos.
     if (!jornada) {
         return (
             <div style={{paddingBottom:40}}>
                 <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:14,fontWeight:700}}>MI JORNADA</h2>
+
+                {/* Resumen de la última jornada (72h) integrado */}
+                {tieneCierre && (
+                    <div style={{marginBottom:20}}>
+                        <PremioMiJornadaCard user={user} jornada={jornadaCierre} />
+                        <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:16,marginBottom:12}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>Última jornada · J{jornadaCierre.numeroJornada}</p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:'#fff',textAlign:'center',letterSpacing:6}}>{jornadaCierre.resultadoLocal} — {jornadaCierre.resultadoVisitante}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center'}}>{jornadaCierre.equipoLocal} vs {jornadaCierre.equipoVisitante}</p>
+                        </div>
+                    </div>
+                )}
                 <div style={{background:'#001F6B',borderRadius:18,padding:20,marginBottom:16}}>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:3,color:'rgba(255,255,255,.45)',marginBottom:6}}>PRÓXIMO PARTIDO</p>
                     {proximaUDLPMJ ? (function(){ var fp=new Date(proximaUDLPMJ.fecha); return <>
@@ -3969,7 +3974,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
         var unsub = onSnapshot(q, function(snap) {
             var lista = snap.docs.map(function(d){ return {id:d.id,...d.data()}; });
             var activa = lista.find(function(j){ return j.estado === 'Abierta' || j.estado === 'En vivo'; });
-            var reciente = lista.find(function(j){ return j.estado === 'Finalizada' && jornadaDentroVentana48h(j, Date.now()); });
+            var reciente = lista.find(function(j){ return j.estado === 'Finalizada' && jornadaDentroVentana72h(j, Date.now()); });
             var j = activa || reciente || null;
             setJornada(j);
             if (j) {
@@ -4518,6 +4523,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(255,255,255,0.4)',width:35,textAlign:'center'}}>{p.golesLocal}-{p.golesVisitante}</span>
                                         {exacto && <span style={{fontSize:10}}>🎯</span>}
                                         {p.elOtroActivado && <span style={{fontSize:10}}>🛡️</span>}
+                                        {(p.puntosEstrellas||0) > 0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,215,0,0.7)',background:'rgba(255,215,0,0.15)',padding:'1px 5px',borderRadius:6}}>{p.puntosEstrellas}⭐</span>}
                                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: (p.puntosObtenidos||0) > 0 ? '#FFD700' : 'rgba(255,255,255,0.25)',minWidth:24,textAlign:'right'}}>{p.puntosObtenidos||0}</span>
                                     </div>
                                 );
@@ -4526,6 +4532,44 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     </div>
                 );
             })()}
+
+            {/* Estrellas de la jornada finalizada — muestra el ranking de
+                estrellas con desglose, visible después del partido */}
+            {jornada && jornada.estado === 'Finalizada' && seleccionesEstrellasJornada.length > 0 && (
+                <div style={{marginTop:20,background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:20}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:3,color:'#FFD700',textTransform:'uppercase',marginBottom:14}}>
+                        ⭐ 5 Estrellas · Jornada {jornada.numeroJornada}
+                    </p>
+                    <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                        {seleccionesEstrellasJornada.sort(function(a,b) { return (b.puntosEstrellas||0)-(a.puntosEstrellas||0); }).map(function(sel, idx) {
+                            var perf = userProfiles[sel.id] || {};
+                            var ptsE = sel.puntosEstrellas || 0;
+                            var jugadores = sel.jugadores || [];
+                            return (
+                                <div key={sel.id} style={{background:'rgba(255,255,255,0.04)',borderRadius:10,padding:'8px 12px'}}>
+                                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color: idx < 3 ? '#FFD700' : 'rgba(255,255,255,0.3)',width:18,fontWeight:700}}>{idx+1}</span>
+                                        <IconoPerfil perfil={perf} size={22} />
+                                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11,color:'#fff'}}>{nombreVisible(sel.id, perf)}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:'#FFD700'}}>{ptsE}⭐</span>
+                                    </div>
+                                    <div style={{display:'flex',gap:4,flexWrap:'wrap',marginLeft:26}}>
+                                        {jugadores.map(function(j) {
+                                            var ptJ = (sel.desglosePorJugador && sel.desglosePorJugador[j.nombre]) || 0;
+                                            return (
+                                                <span key={j.nombre} style={{fontFamily:"'Inter',sans-serif",fontSize:9,
+                                                    background: ptJ > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)',
+                                                    color: ptJ > 0 ? '#10b981' : 'rgba(255,255,255,0.4)',
+                                                    padding:'2px 6px',borderRadius:6}}>{j.nombre} {ptJ > 0 ? '+'+ptJ : '0'}</span>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Partidos de Primera relevantes — los que afectan a jugadores
                 del grupo que tienen equipo elegido en El Otro, para que se
@@ -6403,7 +6447,12 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
                     posibleConflicto: !!(jug.apiId && match && match.id !== jug.apiId),
                 };
             });
-            setResultado(cruce);
+            // Jugadores de la API que NO cruzaron con nadie de tu plantilla —
+            // para que puedas asignarlos manualmente a quien corresponda.
+            var sinCruzar = apiPorNombre.filter(function(a) {
+                return !plantilla.some(function(j) { return nombresSonSimilares(a.nombre, j.nombre) || j.apiId === a.id; });
+            });
+            setResultado({ cruce: cruce, sinCruzar: sinCruzar, totalApi: apiPorNombre.length });
         } catch(e) { setErrorMsg('Error consultando la API: ' + e.message); }
         setBuscando(false);
     };
@@ -6474,8 +6523,10 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
 
             {errorMsg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#e63946',marginTop:10}}>{errorMsg}</p>}
             {resultado && (
-                <div style={{marginTop:14,background:'rgba(0,31,107,0.03)',borderRadius:8,overflow:'hidden'}}>
-                    {resultado.map(function(r) {
+                <div style={{marginTop:14}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'#001F6B',marginBottom:8}}>TU PLANTILLA ({resultado.cruce.length} jugadores) · API ({resultado.totalApi} registrados)</p>
+                    <div style={{background:'rgba(0,31,107,0.03)',borderRadius:8,overflow:'hidden',marginBottom:16}}>
+                    {resultado.cruce.map(function(r) {
                         var sinIdAntes = !r.apiIdActual || r.apiIdActual === 0;
                         return (
                             <div key={r.nombre} style={{padding:'10px 12px',borderBottom:'1px solid rgba(0,31,107,0.06)',background:r.posibleConflicto?'rgba(230,57,70,0.06)':(sinIdAntes&&r.apiIdEncontrado?'rgba(16,185,129,0.06)':'transparent')}}>
@@ -6489,6 +6540,41 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
                             </div>
                         );
                     })}
+                    </div>
+
+                    {/* Jugadores de la API que NO cruzaron — para asignar manualmente */}
+                    {resultado.sinCruzar && resultado.sinCruzar.length > 0 && (
+                        <div>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'#e63946',marginBottom:8,marginTop:16}}>
+                                JUGADORES EN LA API SIN ASIGNAR ({resultado.sinCruzar.length})
+                            </p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)',marginBottom:10}}>
+                                Estos jugadores están en la plantilla de la API pero no coinciden con nadie de tu lista. Si reconoces a alguno, usa el desplegable para asignarlo.
+                            </p>
+                            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                                {resultado.sinCruzar.map(function(a) {
+                                    var sinId = plantilla.filter(function(j) { return !j.apiId || j.apiId === 0; });
+                                    return (
+                                        <div key={a.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'#fff',borderRadius:8,border:'1px solid rgba(0,31,107,0.08)',flexWrap:'wrap'}}>
+                                            <img src={a.foto} alt="" style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}} onError={function(e){e.target.style.opacity=0.2;}} />
+                                            <div style={{flex:1,minWidth:120}}>
+                                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#001F6B',margin:0}}>{a.nombre}</p>
+                                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)',margin:0}}>ID: {a.id}</p>
+                                            </div>
+                                            {sinId.length > 0 ? (
+                                                <select onChange={function(e) { if (e.target.value) { var jug = plantilla.find(function(j){ return j.nombre === e.target.value; }); if (jug) guardarApiId(jug, a.id); } }} style={{padding:'5px 8px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:6,fontFamily:"'Inter',sans-serif",fontSize:10}}>
+                                                    <option value="">Asignar a...</option>
+                                                    {sinId.map(function(j) { return <option key={j.nombre} value={j.nombre}>{j.nombre}</option>; })}
+                                                </select>
+                                            ) : (
+                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#10b981'}}>Todos asignados</span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
@@ -10105,9 +10191,190 @@ const IntroPresentacionGate = ({ onFinish, user }) => {
     );
 };
 
+// Pantalla de fin de jornada — se muestra UNA VEZ tras finalizar la jornada.
+// Animación de reveal: primero puntos base, luego se descubren los
+// multiplicadores/divisores de El Otro sin mostrar el equipo (secreto).
+// Después estrellas y resumen final.
+const PantallaFinJornada = ({ jornada, currentUser, userProfiles, participantes, teamLogos, onCerrar }) => {
+    var [fase, setFase] = useState(0); // 0=intro, 1=puntos base, 2=reveal multiplicadores, 3=estrellas, 4=resumen
+    var [elOtroData, setElOtroData] = useState({});
+    var [misEstrellas, setMisEstrellas] = useState(null);
+    var [partidosPrimera, setPartidosPrimera] = useState([]);
+    var [revealIdx, setRevealIdx] = useState(-1);
+
+    useEffect(function() {
+        if (!jornada) return;
+        // Cargar datos de El Otro de todos los participantes
+        getDocs(collection(db, 'elOtro')).then(function(snap) {
+            var m = {}; snap.forEach(function(d) { m[d.id] = d.data(); }); setElOtroData(m);
+        });
+        // Cargar mis estrellas
+        if (currentUser) {
+            getDoc(doc(db, 'estrellas_seleccion', jornada.id, 'jugadores', currentUser)).then(function(snap) {
+                if (snap.exists()) setMisEstrellas(snap.data());
+            });
+        }
+        // Cargar partidos de Primera pendientes
+        buscarJornadaCompletaPrimera(new Date().toISOString(), 7).then(function(r) { setPartidosPrimera(r || []); }).catch(function(){});
+        // Arrancar animación
+        setTimeout(function() { setFase(1); }, 1500);
+    }, [jornada, currentUser]);
+
+    // Animación de reveal de multiplicadores
+    useEffect(function() {
+        if (fase !== 2) return;
+        var jugadoresConOtro = participantes.filter(function(p) { return !p.sinApuesta && p.elOtroActivado; });
+        if (jugadoresConOtro.length === 0) { setFase(3); return; }
+        var i = -1;
+        var t = setInterval(function() {
+            i++;
+            setRevealIdx(i);
+            if (i >= jugadoresConOtro.length - 1) {
+                clearInterval(t);
+                setTimeout(function() { setFase(3); }, 2000);
+            }
+        }, 800);
+        return function() { clearInterval(t); };
+    }, [fase, participantes]);
+
+    // Auto-avanzar de fase 1 a 2
+    useEffect(function() {
+        if (fase === 1) { var t = setTimeout(function() { setFase(2); }, 3000); return function() { clearTimeout(t); }; }
+        if (fase === 3) { var t2 = setTimeout(function() { setFase(4); }, 3000); return function() { clearTimeout(t2); }; }
+    }, [fase]);
+
+    if (!jornada) return null;
+    var rL = parseInt(jornada.resultadoLocal); var rV = parseInt(jornada.resultadoVisitante);
+    var miPron = participantes.find(function(p) { return p.id === currentUser; });
+    var misPuntos = miPron ? (miPron.puntosObtenidos || 0) : 0;
+    var ganadores = participantes.filter(function(p) { return !p.sinApuesta && parseInt(p.golesLocal) === rL && parseInt(p.golesVisitante) === rV; });
+    var bote = participantes.filter(function(p) { return !p.sinApuesta; }).length;
+    var premio = ganadores.length > 0 ? (bote / ganadores.length).toFixed(2) : '0.00';
+    var soyGanador = ganadores.some(function(g) { return g.id === currentUser; });
+    var jugadoresConOtro = participantes.filter(function(p) { return !p.sinApuesta && p.elOtroActivado; });
+    var ranking = participantes.filter(function(p) { return !p.sinApuesta; }).sort(function(a, b) { return (b.puntosObtenidos || 0) - (a.puntosObtenidos || 0); });
+
+    return (
+        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10000,background:'#0a0a14',overflowY:'auto'}}>
+            <style>{"\
+                @keyframes fadeSlideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}\
+                @keyframes pulseGold{0%,100%{text-shadow:0 0 10px rgba(255,215,0,0.3)}50%{text-shadow:0 0 30px rgba(255,215,0,0.6)}}\
+                @keyframes revealFlash{0%{background:rgba(255,215,0,0.3)}100%{background:transparent}}\
+            "}</style>
+            <div style={{maxWidth:440,margin:'0 auto',padding:'40px 20px 60px'}}>
+
+                {/* Resultado */}
+                <div style={{textAlign:'center',marginBottom:30,animation:'fadeSlideUp 0.8s ease'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:4,color:'rgba(255,255,255,0.3)',textTransform:'uppercase'}}>Jornada {jornada.numeroJornada} · Final</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:52,fontWeight:700,color:'#fff',letterSpacing:6,animation:'pulseGold 3s infinite'}}>{rL} — {rV}</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.4)'}}>{jornada.equipoLocal} vs {jornada.equipoVisitante}</p>
+                </div>
+
+                {/* Fase 1+: Mensaje personal */}
+                {fase >= 1 && (
+                    <div style={{background: soyGanador ? 'rgba(255,215,0,0.12)' : 'rgba(255,255,255,0.04)',border: soyGanador ? '2px solid #FFD700' : '1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:24,textAlign:'center',marginBottom:24,animation:'fadeSlideUp 0.6s ease'}}>
+                        {soyGanador ? (<>
+                            <p style={{fontSize:48}}>🏆</p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#FFD700',letterSpacing:2}}>¡HAS GANADO!</p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:36,fontWeight:700,color:'#fff'}}>{premio}€</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.5)'}}>{ganadores.length === 1 ? 'Todo el bote es tuyo' : 'Repartido entre ' + ganadores.length}</p>
+                        </>) : (<>
+                            <p style={{fontSize:36}}>{misPuntos > 0 ? '💪' : '😤'}</p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,color:'#fff'}}>{misPuntos > 0 ? 'Sumas puntos' : 'Esta vez no ha sido'}</p>
+                        </>)}
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color: misPuntos > 0 ? '#FFD700' : 'rgba(255,255,255,0.2)',marginTop:8}}>+{misPuntos} pts</p>
+                    </div>
+                )}
+
+                {/* Fase 2: Reveal de multiplicadores */}
+                {fase >= 2 && jugadoresConOtro.length > 0 && (
+                    <div style={{marginBottom:24,animation:'fadeSlideUp 0.6s ease'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:4,color:'rgba(255,215,0,0.4)',textTransform:'uppercase',textAlign:'center',marginBottom:12}}>🛡️ El Otro Equipo</p>
+                        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                            {jugadoresConOtro.map(function(p, idx) {
+                                var perf = userProfiles[p.id] || {};
+                                var revelado = idx <= revealIdx;
+                                var otroD = elOtroData[p.id];
+                                var mult = otroD ? getMultiplicadorOtro(otroD.activaciones || 0) : 2;
+                                // No mostramos el equipo, solo si multiplica o divide
+                                return (
+                                    <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:10,
+                                        background: revelado ? 'rgba(255,255,255,0.04)' : 'transparent',
+                                        animation: revelado ? 'revealFlash 0.5s ease' : 'none',
+                                        opacity: revelado ? 1 : 0.3, transition:'opacity 0.4s ease'}}>
+                                        <IconoPerfil perfil={perf} size={24} />
+                                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,color:'#fff'}}>{nombreVisible(p.id, perf)}</span>
+                                        {revelado ? (
+                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,
+                                                color: p.elOtroResultado === 'gana' ? '#10b981' : p.elOtroResultado === 'pierde' ? '#e63946' : '#FFD700'}}>
+                                                {p.elOtroResultado === 'gana' ? '×' + mult : p.elOtroResultado === 'pierde' ? '÷2' : '='}
+                                            </span>
+                                        ) : (
+                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'rgba(255,255,255,0.2)'}}>???</span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Fase 3: Estrellas */}
+                {fase >= 3 && misEstrellas && misEstrellas.jugadores && (
+                    <div style={{marginBottom:24,animation:'fadeSlideUp 0.6s ease'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:4,color:'rgba(255,215,0,0.4)',textTransform:'uppercase',textAlign:'center',marginBottom:12}}>⭐ Tus 5 Estrellas</p>
+                        <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
+                            {misEstrellas.jugadores.map(function(j) {
+                                var pts = (misEstrellas.desglosePorJugador && misEstrellas.desglosePorJugador[j.nombre]) || 0;
+                                return (
+                                    <div key={j.nombre} style={{textAlign:'center',minWidth:56}}>
+                                        <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.06)',border: pts > 0 ? '2px solid #FFD700' : '2px solid rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 4px',fontSize:16}}>⭐</div>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.6)'}}>{j.nombre}</p>
+                                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color: pts > 0 ? '#FFD700' : 'rgba(255,255,255,0.2)'}}>{pts > 0 ? '+' + pts : '0'}</p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Fase 4: Ranking final */}
+                {fase >= 4 && (
+                    <div style={{animation:'fadeSlideUp 0.6s ease'}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:4,color:'rgba(255,215,0,0.4)',textTransform:'uppercase',textAlign:'center',marginBottom:12}}>Ranking Final</p>
+                        <div style={{background:'rgba(255,255,255,0.03)',borderRadius:16,overflow:'hidden',marginBottom:24}}>
+                            {ranking.slice(0, 10).map(function(p, idx) {
+                                var perf = userProfiles[p.id] || {};
+                                var esMio = p.id === currentUser;
+                                return (
+                                    <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderBottom:'1px solid rgba(255,255,255,0.04)',background: esMio ? 'rgba(255,215,0,0.08)' : 'transparent'}}>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color: idx < 3 ? '#FFD700' : 'rgba(255,255,255,0.3)',width:18,fontWeight:700}}>{idx+1}</span>
+                                        <IconoPerfil perfil={perf} size={22} />
+                                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11,color:'#fff',fontWeight: esMio ? 700 : 400}}>{nombreVisible(p.id, perf)}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:'#FFD700'}}>{p.puntosObtenidos||0}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <button onClick={function() {
+                            localStorage.setItem('finJornada_visto_' + jornada.id + '_' + currentUser, '1');
+                            onCerrar();
+                        }} style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:18,letterSpacing:3,background:'#FFD700',color:'#001F6B',border:'none',borderRadius:30,padding:16,cursor:'pointer',fontWeight:700}}>
+                            CONTINUAR
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 function App() {
     const [screen, setScreen] = useState('login');
     const [activeTab, setActiveTab] = useState('miJornada');
+    const [mostrarFinJornada, setMostrarFinJornada] = useState(false);
+    const [jornadaFinData, setJornadaFinData] = useState(null);
+    const [participantesFin, setParticipantesFin] = useState([]);
     const [contextoPago, setContextoPago] = useState(null); // { tipo, jornada } — para llegar a Pagos ya con todo relleno
     const [drawerOpen, setDrawerOpen] = useState(true);
     const [drawerHintShown, setDrawerHintShown] = useState(false);
@@ -10201,6 +10468,20 @@ function App() {
             // jugador no da permiso.
             registrarNotificacionesPush(user);
 
+            // Detectar jornada finalizada no vista → pantalla de fin de jornada
+            onSnapshot(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada'), orderBy('numeroJornada', 'desc'), limit(1)), function(snap) {
+                if (snap.empty) return;
+                var jf = { id: snap.docs[0].id, ...snap.docs[0].data() };
+                var yaVisto = localStorage.getItem('finJornada_visto_' + jf.id + '_' + user);
+                if (!yaVisto) {
+                    setJornadaFinData(jf);
+                    getDocs(collection(db, 'pronosticos', jf.id, 'jugadores')).then(function(pSnap) {
+                        setParticipantesFin(pSnap.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
+                        setMostrarFinJornada(true);
+                    });
+                }
+            });
+
             // Listeners de Firestore post-login
             onSnapshot(collection(db, 'pagos'), function(snap) {
                 setPagosGlobal(snap.docs.map(function(d){return{id:d.id,...d.data()};}));
@@ -10292,6 +10573,11 @@ function App() {
 
     if (APP_EN_CONSTRUCCION) return <ModoConstruccion />;
     if (mostrarPresentacion) return <IntroPresentacionGate user={currentUser} onFinish={function() { setMostrarPresentacion(false); comprobarTutorial(currentUser); }} />;
+
+    // Pantalla de fin de jornada — se superpone a todo
+    if (mostrarFinJornada && jornadaFinData) {
+        return <PantallaFinJornada jornada={jornadaFinData} currentUser={currentUser} userProfiles={userProfiles} participantes={participantesFin} teamLogos={teamLogos} onCerrar={function(){ setMostrarFinJornada(false); }} />;
+    }
     if (screen === 'login') return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
 
     var renderContent = function() {
