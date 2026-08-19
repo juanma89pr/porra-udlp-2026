@@ -278,7 +278,7 @@ function jornadaDentroVentana72h(jornada, ahoraMs) {
     // CIERRE EXTENDIDO DE LA JORNADA 1: por el arranque con mantenimiento, la
     // exposición del resultado de la J1 se alarga hasta el 20/08/2026 a las
     // 22:00 (Canarias). Pasada esa hora, esta excepción deja de aplicar sola.
-    if (jornada && jornada.numeroJornada === 1 && ahora < 1755723600000) return true;
+    if (jornada && jornada.numeroJornada === 1 && ahora < 1787259600000) return true;
     var finMs = getJornadaFinMs(jornada);
     if (!finMs) return false;
     return ahora >= finMs && ahora < (finMs + VENTANA_POST_JORNADA_MS);
@@ -2795,6 +2795,153 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
     </div>;
 };
 
+// ============================================================================
+// 🔎 PREVIA DEL PARTIDO — forma de los DOS equipos + cara a cara (H2H)
+// ============================================================================
+// Muestra los últimos partidos de la UDLP Y del rival de la jornada, con la
+// competición de cada uno (Liga, Copa, amistoso…), y el histórico directo
+// entre ambos. Se consulta a la API UNA vez por jornada y queda cacheado en
+// el documento de la jornada (jornadas/{id}.previa) para no gastar llamadas.
+const PreviaPartidoMJ = ({ jornada }) => {
+    var [previa, setPrevia] = useState(null);
+    var [cargandoPrevia, setCargandoPrevia] = useState(true);
+    var intentadoRef = useRef({});
+
+    var abreviarComp = function(nombreLiga) {
+        var n = String(nombreLiga || '').toLowerCase();
+        if (n.indexOf('segunda') !== -1 || n.indexOf('hypermotion') !== -1) return 'LIGA';
+        if (n.indexOf('la liga') !== -1 || n.indexOf('primera') !== -1) return 'LIGA 1ª';
+        if (n.indexOf('copa del rey') !== -1) return 'COPA';
+        if (n.indexOf('friendl') !== -1 || n.indexOf('amist') !== -1 || n.indexOf('club friendlies') !== -1) return 'AMISTOSO';
+        if (n.indexOf('super') !== -1) return 'SUPERCOPA';
+        return String(nombreLiga || 'OTRO').toUpperCase().slice(0, 12);
+    };
+
+    var jornadaId = jornada ? jornada.id : null;
+    var fixtureIdPrevia = jornada ? jornada.fixtureId : null;
+    var previaGuardada = jornada && jornada.previa ? jornada.previa : null;
+
+    useEffect(function() {
+        if (!jornadaId) return;
+        if (previaGuardada) { setPrevia(previaGuardada); setCargandoPrevia(false); return; }
+        if (!fixtureIdPrevia || !API_FOOTBALL_KEY) { setCargandoPrevia(false); return; }
+        if (intentadoRef.current[jornadaId]) return;
+        intentadoRef.current[jornadaId] = true;
+        (async function() {
+            try {
+                var cab = { headers: { 'x-apisports-key': API_FOOTBALL_KEY } };
+                // 1 · Rival del partido de la jornada
+                var rDet = await fetch('https://v3.football.api-sports.io/fixtures?id=' + fixtureIdPrevia, cab);
+                var dDet = await rDet.json();
+                var fx = dDet.response && dDet.response[0];
+                if (!fx) { setCargandoPrevia(false); return; }
+                var rivalId = fx.teams.home.id === API_TEAM_ID_UDLP ? fx.teams.away.id : fx.teams.home.id;
+                var rivalNombre = fx.teams.home.id === API_TEAM_ID_UDLP ? fx.teams.away.name : fx.teams.home.name;
+
+                var mapear = function(lista, equipoId) {
+                    return (lista || []).filter(function(p) { return p.fixture && p.fixture.status && p.fixture.status.short === 'FT'; })
+                        .slice(0, 5).map(function(p) {
+                        var esLocal = p.teams.home.id === equipoId;
+                        var gf = esLocal ? p.goals.home : p.goals.away;
+                        var gc = esLocal ? p.goals.away : p.goals.home;
+                        return {
+                            fecha: p.fixture.date,
+                            rival: esLocal ? p.teams.away.name : p.teams.home.name,
+                            gf: gf, gc: gc,
+                            res: gf > gc ? 'V' : gf < gc ? 'D' : 'E',
+                            comp: abreviarComp(p.league && p.league.name),
+                            casa: esLocal,
+                        };
+                    });
+                };
+
+                // 2 · Forma reciente de ambos (últimos 5 acabados de cada uno)
+                var rU = await fetch('https://v3.football.api-sports.io/fixtures?team=' + API_TEAM_ID_UDLP + '&last=6', cab);
+                var dU = await rU.json();
+                var rR = await fetch('https://v3.football.api-sports.io/fixtures?team=' + rivalId + '&last=6', cab);
+                var dR = await rR.json();
+                // 3 · Cara a cara histórico
+                var rH = await fetch('https://v3.football.api-sports.io/fixtures/headtohead?h2h=' + API_TEAM_ID_UDLP + '-' + rivalId + '&last=6', cab);
+                var dH = await rH.json();
+                var h2h = (dH.response || []).filter(function(p) { return p.fixture && p.fixture.status && p.fixture.status.short === 'FT'; })
+                    .sort(function(a, b) { return new Date(b.fixture.date) - new Date(a.fixture.date); })
+                    .slice(0, 5).map(function(p) {
+                        return {
+                            fecha: p.fixture.date,
+                            local: p.teams.home.name, visitante: p.teams.away.name,
+                            gl: p.goals.home, gv: p.goals.away,
+                            comp: abreviarComp(p.league && p.league.name),
+                        };
+                    });
+
+                var construida = {
+                    rivalNombre: rivalNombre,
+                    formaUDLP: mapear(dU.response, API_TEAM_ID_UDLP),
+                    formaRival: mapear(dR.response, rivalId),
+                    h2h: h2h,
+                    generadaEn: new Date().toISOString(),
+                };
+                await setDoc(doc(db, 'jornadas', jornadaId), { previa: construida }, { merge: true });
+                setPrevia(construida);
+            } catch(e) { console.warn('Previa del partido:', e.message); }
+            setCargandoPrevia(false);
+        })();
+    }, [jornadaId, fixtureIdPrevia, previaGuardada]);
+
+    if (!previa) {
+        if (cargandoPrevia) return null;
+        return null;
+    }
+
+    var ColorRes = { V: '#10b981', E: '#d4a017', D: '#e63946' };
+    var FilaForma = function(props) {
+        var f = props.f;
+        return (
+            <div style={{display:'flex',alignItems:'center',gap:7,padding:'6px 10px',borderBottom:'1px solid rgba(0,31,107,.05)'}}>
+                <span style={{width:18,height:18,borderRadius:5,background:ColorRes[f.res],color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Teko',sans-serif",fontSize:11,fontWeight:700,flexShrink:0}}>{f.res}</span>
+                <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'#001F6B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.casa ? 'vs' : '@'} {f.rival}</span>
+                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color:'#001F6B'}}>{f.gf}—{f.gc}</span>
+                <span style={{fontFamily:"'Inter',sans-serif",fontSize:8,color:'rgba(0,31,107,.45)',background:'rgba(0,31,107,.06)',borderRadius:6,padding:'1px 6px',flexShrink:0}}>{f.comp}</span>
+            </div>
+        );
+    };
+
+    return (
+        <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,overflow:'hidden',marginBottom:12}}>
+            <div style={{padding:'10px 14px',background:'rgba(0,31,107,.04)'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'#001F6B',margin:0}}>🔎 PREVIA · UDLP vs {previa.rivalNombre}</p>
+            </div>
+            <div style={{display:'flex'}}>
+                <div style={{flex:1,borderRight:'1px solid rgba(0,31,107,.06)'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:2,color:'rgba(0,31,107,.45)',padding:'7px 10px 2px',margin:0}}>UD LAS PALMAS</p>
+                    {previa.formaUDLP.map(function(f, i) { return <FilaForma key={i} f={f} />; })}
+                </div>
+                <div style={{flex:1}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:2,color:'rgba(0,31,107,.45)',padding:'7px 10px 2px',margin:0}}>{String(previa.rivalNombre || '').toUpperCase()}</p>
+                    {previa.formaRival.map(function(f, i) { return <FilaForma key={i} f={f} />; })}
+                </div>
+            </div>
+            {previa.h2h && previa.h2h.length > 0 && (
+                <>
+                <div style={{padding:'8px 14px 2px',background:'rgba(0,31,107,.03)'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:2,color:'rgba(0,31,107,.45)',margin:0}}>⚔️ CARA A CARA</p>
+                </div>
+                {previa.h2h.map(function(p, i) {
+                    return (
+                        <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 14px',borderBottom:'1px solid rgba(0,31,107,.04)',background:'rgba(0,31,107,.015)'}}>
+                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:8.5,color:'rgba(0,31,107,.4)',minWidth:58}}>{new Date(p.fecha).toLocaleDateString('es-ES',{month:'short',year:'2-digit',timeZone:'Atlantic/Canary'})}</span>
+                            <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:12,color:'#001F6B'}}>{p.local} — {p.visitante}</span>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color:'#001F6B'}}>{p.gl}—{p.gv}</span>
+                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:8,color:'rgba(0,31,107,.45)',background:'rgba(0,31,107,.06)',borderRadius:6,padding:'1px 6px'}}>{p.comp}</span>
+                        </div>
+                    );
+                })}
+                </>
+            )}
+        </div>
+    );
+};
+
 const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers, pagos, onIrAPagos }) => {
     var G = styles.colors;
     var [jornada, setJornada] = useState(null);
@@ -3653,6 +3800,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                         {proximaUDLPMJ.estadio && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.42)',margin:'4px 0 0'}}>🏟️ {proximaUDLPMJ.estadio}</p>}
                     </div>;
                 })()}
+                {/* 🔎 Previa completa: forma de los DOS equipos + cara a cara */}
+                <PreviaPartidoMJ jornada={jornada} />
                 {ultimosUDLPMJ.length>0 && <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:14,overflow:'hidden',marginBottom:12}}>
                     <div style={{padding:'10px 14px',background:'rgba(0,31,107,.04)'}}><p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:G.deepBlue,margin:0}}>RESULTADOS UDLP RECIENTES</p></div>
                     {ultimosUDLPMJ.slice(0,3).map(function(p){return <div key={p.fixtureId} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderBottom:'1px solid rgba(0,31,107,.05)'}}>
@@ -4936,7 +5085,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
             </button>
 
             {/* 📣 Cierre extendido de la J1 — visible hasta el 20/08/2026 22:00 (Canarias) */}
-            {Date.now() < 1755723600000 && <CierreExtendidoJ1 userProfiles={userProfiles} currentUser={null} />}
+            {Date.now() < 1787259600000 && <CierreExtendidoJ1 userProfiles={userProfiles} currentUser={null} />}
 
             {/* Banner resultado */}
             <div style={{background:'#001F6B',borderRadius:20,padding:24,marginBottom:20,textAlign:'center'}}>
@@ -6354,6 +6503,26 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers, pagos }) => {
 
     var medallaColor = ['#FFD700','#C0C0C0','#CD7F32'];
 
+    // ⏸️ TEMPORAL: con solo una jornada disputada aún no hay muestra
+    // suficiente para elaborar estadísticas con sentido. Cambiar a true
+    // cuando haya 3-4 jornadas y la pantalla completa vuelve tal cual.
+    var ESTADISTICAS_ACTIVAS = false;
+    if (!ESTADISTICAS_ACTIVAS) {
+        return (
+            <div style={{paddingBottom:40}}>
+                <h2 style={styles.title}>📊 ESTADÍSTICAS</h2>
+                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.08)',borderRadius:18,padding:'34px 22px',textAlign:'center'}}>
+                    <p style={{fontSize:42,marginBottom:12}}>📈</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:20,letterSpacing:2,color:'#001F6B',marginBottom:8}}>AÚN NO HAY DATOS SUFICIENTES</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.55)',lineHeight:1.7,margin:0}}>
+                        Con una sola jornada disputada, las estadísticas todavía no cuentan nada fiable.<br/>
+                        En cuanto se acumulen unas cuantas jornadas, esta pantalla se activará con rachas, medias, aciertos exactos y mucho más. 📊
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div style={{paddingBottom:40}}>
             <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:G.deepBlue,textTransform:'uppercase',marginBottom:16,fontWeight:700}}>
@@ -6709,10 +6878,18 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
     }
 
     // Mapa apiId -> estadísticas del jugador en este partido concreto.
+    // Además se registra el nombre oficial y a qué equipo pertenece cada
+    // apiId, para poder DETECTAR jugadores de la UDLP que jugaron sin estar
+    // vinculados en nuestra plantilla (p. ej. canteranos recién convocados).
     var statsPorApiId = {};
+    var infoApiJugador = {};   // apiId -> { nombre, esUDLP }
     data.response.forEach(function(equipo) {
+        var esUDLP = !!(equipo.team && equipo.team.id === API_TEAM_ID_UDLP);
         (equipo.players || []).forEach(function(p) {
-            if (p && p.player && p.player.id) statsPorApiId[p.player.id] = (p.statistics && p.statistics[0]) || {};
+            if (p && p.player && p.player.id) {
+                statsPorApiId[p.player.id] = (p.statistics && p.statistics[0]) || {};
+                infoApiJugador[p.player.id] = { nombre: p.player.name || ('ID ' + p.player.id), esUDLP: esUDLP };
+            }
         });
     });
 
@@ -6819,13 +6996,36 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
         }
     });
     var puntosJugadoresArr = plantillaEfectiva.map(function(j) {
-        return { nombre: j.nombre, apiId: parseInt(j.apiId) || 0, estrellas: Number(puntosPorNombre[j.nombre] || 0) };
+        var det = detallesPorNombre[j.nombre] || {};
+        return {
+            nombre: j.nombre,
+            apiId: parseInt(j.apiId) || 0,
+            estrellas: Number(puntosPorNombre[j.nombre] || 0),
+            // Desglose de CÓMO consiguió las estrellas (para el popup de la ficha)
+            desglose: det.extras || {},
+            datos: det.statsDisponibles || {},
+        };
+    });
+    // 🔎 Jugadores de la UDLP que JUGARON este partido pero cuyo apiId no
+    // está en nuestra plantilla: es exactamente el caso "Rafa Cruz" — la API
+    // nos da su nombre e ID oficiales para darle de alta con un clic.
+    var idsPlantilla = {};
+    plantillaEfectiva.forEach(function(j) { var idn = parseInt(j.apiId) || 0; if (idn) idsPlantilla[idn] = true; });
+    var jugaronSinVincular = [];
+    Object.keys(statsPorApiId).forEach(function(idApi) {
+        var info = infoApiJugador[idApi] || {};
+        if (!info.esUDLP) return;
+        var g = (statsPorApiId[idApi] && statsPorApiId[idApi].games) || {};
+        if (Number(g.minutes || 0) > 0 && !idsPlantilla[parseInt(idApi)]) {
+            jugaronSinVincular.push({ apiId: parseInt(idApi), nombre: info.nombre, minutos: Number(g.minutes || 0) });
+        }
     });
     batch.set(doc(db, 'estrellas_resultados', jornadaId), {
         puntosJugadores: puntosJugadoresArr,
         jugaronApiIds: jugaronApiIds,
         titularesApiIds: titularesApiIds,
         suplentesApiIds: suplentesApiIds,
+        jugaronSinVincular: jugaronSinVincular,
         fixtureId: fixtureId,
         calculadoEn: serverTimestamp(),
     }, { merge: true });
@@ -6899,6 +7099,7 @@ async function calcularEstrellasJornada(jornadaId, fixtureId, plantilla, jornada
             return { userId: r.userId, estrellasJornada: r.estrellasJornada, puestoEstrellas: r.puestoEstrellas, puntosRanking: r.puntosRanking };
         }),
         jugadoresSinApiId: jugadoresSinApiId,
+        jugaronSinVincular: jugaronSinVincular,
     };
 }
 
@@ -7439,7 +7640,9 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
             await actualizarPuntosProvisionalesJornada(jornada.id);
             var recon = await reconstruirClasificacionEstrellas();
             var sinIds = resultado.jugadoresSinApiId || [];
-            alert('✅ Estrellas de esta jornada recalculadas desde cero y Liga de Estrellas reconstruida (' + recon.usuarios + ' participantes, ' + recon.jornadasConDatos + ' jornadas con datos).\n\n' + (sinIds.length ? '⚠️ Sin apiId ni coincidencia en la API: ' + sinIds.join(', ') : 'Todos los jugadores emparejados con la API.') );
+            var huerfanos = resultado.jugaronSinVincular || [];
+            var msgHuerfanos = huerfanos.length ? '\n\n🔎 JUGARON pero NO están en nuestra plantilla (dales de alta con este ID en el Vinculador y recalcula):\n' + huerfanos.map(function(h){ return '· ' + h.nombre + ' — ID ' + h.apiId + ' (' + h.minutos + ' min)'; }).join('\n') : '';
+            alert('✅ Estrellas de esta jornada recalculadas desde cero y Liga de Estrellas reconstruida (' + recon.usuarios + ' participantes, ' + recon.jornadasConDatos + ' jornadas con datos).\n\n' + (sinIds.length ? '⚠️ Sin apiId ni coincidencia en la API: ' + sinIds.join(', ') : 'Todos los jugadores emparejados con la API.') + msgHuerfanos);
         } catch(e) { alert('❌ Error: ' + e.message); }
     };
 
@@ -7958,6 +8161,9 @@ const RecalculoGlobalEstrellas = ({ plantilla }) => {
                     await actualizarPuntosProvisionalesJornada(j.id);
                     var aviso = r.jugadoresSinApiId && r.jugadoresSinApiId.length ? ' · sin apiId: ' + r.jugadoresSinApiId.join(', ') : '';
                     anotar('✅ ' + etiqueta + aviso, true);
+                    if (r.jugaronSinVincular && r.jugaronSinVincular.length) {
+                        anotar('🔎 ' + etiqueta + ' — jugaron SIN estar en la plantilla: ' + r.jugaronSinVincular.map(function(h){ return h.nombre + ' (ID ' + h.apiId + ', ' + h.minutos + ' min)'; }).join(' · ') + '. Dales de alta en el Vinculador con ese ID y vuelve a recalcular.', false);
+                    }
                     if (j.cierreDefinitivo) conCierre.push(etiqueta);
                 } catch(e1) {
                     anotar('⚠️ ' + etiqueta + ': ' + e1.message, false);
@@ -11493,6 +11699,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     const [datosJornada, setDatosJornada] = useState({});      // userId -> doc de estrellas_seleccion
     const [metaJornada, setMetaJornada] = useState(undefined); // doc estrellas_resultados/{jid}: undefined=cargando, null=no existe
     const [expandido, setExpandido] = useState(null);          // userId con desglose abierto
+    const [fichaAbierta, setFichaAbierta] = useState(null);    // futbolista del tablero con popup de desglose
 
     useEffect(() => {
         if (!currentUser) return;
@@ -11605,11 +11812,16 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     var tableroConDatos = !!(metaJornada && metaJornada.puntosJugadores);
     var estrellasPorApiId = {};
     var nombrePorApiId = {};
+    var desglosePorApiId = {};
     var titularesSet = {};
     var suplentesSet = {};
     if (metaJornada) {
         (metaJornada.puntosJugadores || []).forEach(function(pj) {
-            if (pj.apiId) { estrellasPorApiId[pj.apiId] = pj.estrellas; nombrePorApiId[pj.apiId] = pj.nombre; }
+            if (pj.apiId) {
+                estrellasPorApiId[pj.apiId] = pj.estrellas;
+                nombrePorApiId[pj.apiId] = pj.nombre;
+                desglosePorApiId[pj.apiId] = { desglose: pj.desglose || null, datos: pj.datos || null };
+            }
         });
         if (metaJornada.titularesApiIds && metaJornada.titularesApiIds.length) {
             metaJornada.titularesApiIds.forEach(function(idA) { titularesSet[idA] = true; });
@@ -11671,7 +11883,8 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         var objPlantilla = jugadorPorNombre[p.name];
         var fotoFicha = (objPlantilla && getFotoJugador(objPlantilla)) || ('https://media.api-sports.io/football/players/' + p.id + '.png');
         return (
-            <div style={{display:'flex',flexDirection:'column',alignItems:'center',width:mini?56:64,gap:2}}>
+            <div onClick={function(){ setFichaAbierta({ id: p.id, nombre: p.name, foto: fotoFicha, estrellas: estrellas }); }}
+                style={{display:'flex',flexDirection:'column',alignItems:'center',width:mini?56:64,gap:2,cursor:'pointer'}}>
                 <div style={{position:'relative'}}>
                     <img src={fotoFicha} alt=""
                         style={{width:tam,height:tam,borderRadius:'50%',objectFit:'cover',background:'rgba(255,255,255,0.9)',border:'2px solid rgba(255,255,255,0.85)',boxShadow:'0 2px 6px rgba(0,0,0,0.35)'}}
@@ -11695,6 +11908,68 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         <div style={{padding:'20px 16px'}}>
             <style>{'@keyframes estrellaPop{0%{transform:scale(1);}25%{transform:scale(1.06);box-shadow:0 0 0 6px rgba(255,215,0,0.35);}60%{transform:scale(0.99);}100%{transform:scale(1);box-shadow:none;}}@keyframes estrellaFloat{0%{opacity:0;transform:translateY(6px) scale(0.6);}40%{opacity:1;transform:translateY(-4px) scale(1.15);}100%{opacity:0;transform:translateY(-18px) scale(0.9);}}'}</style>
             <h2 style={styles.title}>MIS 5 ESTRELLAS</h2>
+
+            {/* 🔍 Popup: cómo consiguió sus estrellas cada futbolista */}
+            {fichaAbierta && (function(){
+                var info = desglosePorApiId[fichaAbierta.id] || {};
+                var dg = info.desglose || null;
+                var datos = info.datos || {};
+                var ETIQUETAS = {
+                    titular60: ['👟','Titular (+60 min)'], suplente: ['👟','Entró de suplente'],
+                    goles: ['⚽','Goles'], asistencias: ['🅰️','Asistencias'],
+                    porteriaCero: ['🧤','Portería a cero'], paradas: ['🧤','Paradas'],
+                    penaltisParados: ['🧤','Penaltis parados'], penParado: ['🧤','Penaltis parados'],
+                    amarillas: ['🟨','Tarjeta amarilla'], rojas: ['🟥','Tarjeta roja'],
+                    penaltisFallados: ['❌','Penalti fallado'],
+                    rematesAPuerta: ['🎯','Remates a puerta (' + (datos.rematesAPuerta || 0) + ')'],
+                    regates: ['🪄','Regates completados (' + (datos.regatesCompletados || 0) + ')'],
+                    tackles: ['🛡️','Tackles (' + (datos.tackles || 0) + ')'],
+                    intercepciones: ['🛡️','Intercepciones (' + (datos.intercepciones || 0) + ')'],
+                    bloqueos: ['🧱','Bloqueos (' + (datos.bloqueos || 0) + ')'],
+                    pasesClave: ['🔑','Pases clave (' + (datos.pasesClave || 0) + ')'],
+                    pasesAcertados: ['📬','Pases acertados (' + (datos.pasesAcertados || 0) + ')'],
+                    duelosGanados: ['💪','Duelos ganados (' + (datos.duelosGanados || 0) + ')'],
+                };
+                var claves = dg ? Object.keys(dg).filter(function(k){ return Number(dg[k]) !== 0; }).sort(function(a,b){ return Number(dg[b]) - Number(dg[a]); }) : [];
+                return (
+                    <div onClick={function(){ setFichaAbierta(null); }}
+                        style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10600,background:'rgba(0,0,0,0.7)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',padding:22}}>
+                        <div onClick={function(e){ e.stopPropagation(); }}
+                            style={{maxWidth:340,width:'100%',background:'#fff',borderRadius:20,overflow:'hidden',boxShadow:'0 20px 50px rgba(0,0,0,0.4)'}}>
+                            <div style={{background:'linear-gradient(135deg,#001F6B,#0035b8)',padding:'16px 18px',display:'flex',alignItems:'center',gap:12}}>
+                                <img src={fichaAbierta.foto} alt="" style={{width:52,height:52,borderRadius:'50%',objectFit:'cover',background:'#fff',border:'2px solid rgba(255,215,0,0.6)'}}
+                                    onError={function(e){ e.target.style.visibility='hidden'; }} />
+                                <div style={{flex:1}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:19,color:'#fff',letterSpacing:1,margin:0,lineHeight:1.1}}>{fichaAbierta.nombre}</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.55)',margin:0}}>Jornada {jf ? jf.numeroJornada : ''} · desglose de estrellas</p>
+                                </div>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:'#FFD700'}}>⭐{fichaAbierta.estrellas === undefined ? '–' : fichaAbierta.estrellas}</span>
+                            </div>
+                            <div style={{padding:'12px 16px'}}>
+                                {dg === null && (
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.55)',lineHeight:1.6,margin:'6px 0'}}>El desglose detallado de esta jornada estará disponible muy pronto.</p>
+                                )}
+                                {dg !== null && claves.length === 0 && (
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.55)',lineHeight:1.6,margin:'6px 0'}}>Sin acciones puntuables en este partido.</p>
+                                )}
+                                {claves.map(function(k){
+                                    var et = ETIQUETAS[k] || ['⭐', k];
+                                    var v = Number(dg[k]);
+                                    return (
+                                        <div key={k} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                                            <span style={{fontSize:14,flexShrink:0}}>{et[0]}</span>
+                                            <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.65)'}}>{et[1]}</span>
+                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color: v > 0 ? '#0f8a61' : '#e63946'}}>{v > 0 ? '+' + v : v}⭐</span>
+                                        </div>
+                                    );
+                                })}
+                                <button onClick={function(){ setFichaAbierta(null); }}
+                                    style={{width:'100%',marginTop:12,border:'none',borderRadius:12,padding:'10px 12px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,cursor:'pointer'}}>CERRAR</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             <PlazosCard tipo="estrellas" fechaPartidoUDLP={jornadaActual ? (jornadaActual.fechaPartido || jornadaActual.fecha) : null} />
 
