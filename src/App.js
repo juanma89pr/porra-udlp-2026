@@ -3287,6 +3287,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         return (
             <div style={{paddingBottom:40}}>
                 <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:G.deepBlue,textTransform:'uppercase',marginBottom:12,fontWeight:700}}>MI JORNADA</h2>
+                <PlazosCard tipo="porra" />
                 {proximaUDLPMJ ? (function(){
                     var fp=new Date(proximaUDLPMJ.fecha);
                     return <div style={{background:'#001F6B',borderRadius:18,padding:18,marginBottom:14}}>
@@ -4382,11 +4383,137 @@ function getFotoJugador(jug) {
 // multiplicadores se leen de Firebase (no hay nada que retocar en código en
 // los próximos meses), y los textos fijos (norma J22, plaza libre) pueden
 // ajustarse opcionalmente desde configuracion/gala_j1 sin tocar el código.
+// ============================================================================
+// 🕐 PLAZOS POR ESTRUCTURA — cada pantalla marca sus propios plazos
+// ============================================================================
+// Fechas dinámicas desde configuracion/plazos (las rellena la Auditoría de
+// plazos del admin); si no existen, se muestra la norma fija igualmente.
+function formatearFechaPlazoCorta(iso) {
+    try {
+        return new Date(iso).toLocaleString('es-ES', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary' });
+    } catch(e) { return ''; }
+}
+
+const PlazosCard = ({ tipo, fechaPartidoUDLP }) => {
+    var [plazos, setPlazos] = useState(null);
+    useEffect(function() {
+        var unsub = onSnapshot(doc(db, 'configuracion', 'plazos'), function(snap) {
+            setPlazos(snap.exists() ? snap.data() : null);
+        }, function(){});
+        return function() { unsub(); };
+    }, []);
+
+    var lineas = [];
+    if (tipo === 'porra') {
+        lineas.push(['🎯', 'Apuesta y pago de la jornada: hasta el cierre publicado de cada jornada.']);
+        var limOtroP = plazos && plazos.primeraJ2LimiteOtro ? ' Próximo límite: ' + formatearFechaPlazoCorta(plazos.primeraJ2LimiteOtro) + '.' : '';
+        lineas.push(['🛡️', 'El Otro Equipo: hasta 1 HORA antes del primer partido de la jornada de Primera División.' + limOtroP]);
+        lineas.push(['🏆', 'Porra Anual: apuesta si la UDLP ASCIENDE y en qué PUESTO acaba — da puntos para la clasificación general (modificable hasta la J6).']);
+    } else if (tipo === 'otro') {
+        var limOtro = plazos && plazos.primeraJ2LimiteOtro ? ' Próximo límite (J2): ' + formatearFechaPlazoCorta(plazos.primeraJ2LimiteOtro) + '.' : '';
+        lineas.push(['🛡️', 'El plazo para marcar tu Otro Equipo cierra 1 HORA ANTES de que empiece el primer partido de la jornada de Primera División.' + limOtro]);
+        lineas.push(['⚖️', 'Las activaciones fuera de plazo no aplican multiplicador en esa jornada.']);
+    } else if (tipo === 'estrellas') {
+        var limEst = '';
+        if (fechaPartidoUDLP) {
+            try {
+                var f = new Date(fechaPartidoUDLP);
+                if (!isNaN(f.getTime())) limEst = ' Esta jornada: hasta las ' + new Date(f.getTime() - 2*3600*1000).toLocaleString('es-ES', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary' }) + '.';
+            } catch(e) {}
+        }
+        lineas.push(['⭐', 'Tus 5 Estrellas se pueden elegir y cambiar hasta 2 HORAS ANTES del partido de la UDLP de la jornada.' + limEst]);
+    }
+
+    return (
+        <div style={{background:'rgba(0,31,107,0.035)',border:'1px dashed rgba(0,31,107,0.22)',borderRadius:12,padding:'10px 12px',marginBottom:16}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:3,color:'rgba(0,31,107,0.55)',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>🕐 PLAZOS DE ESTA SECCIÓN</p>
+            {lineas.map(function(l, i) {
+                return (
+                    <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.65)',lineHeight:1.55,margin:'0 0 4px',display:'flex',gap:6}}>
+                        <span style={{flexShrink:0}}>{l[0]}</span><span>{l[1]}</span>
+                    </p>
+                );
+            })}
+        </div>
+    );
+};
+
+// ============================================================================
+// 📣 CIERRE EXTENDIDO DE LA JORNADA 1 — visible hasta el 20/08 a las 22:00
+// ============================================================================
+const CierreExtendidoJ1 = ({ userProfiles, currentUser }) => {
+    var [clasif, setClasif] = useState([]);
+    var [plazos, setPlazos] = useState(null);
+    useEffect(function() {
+        var unsub1 = onSnapshot(collection(db, 'clasificacion'), function(snap) {
+            var datos = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+                .sort(function(a, b) { return (b.puntosTotales || 0) - (a.puntosTotales || 0); });
+            setClasif(datos);
+        }, function(){});
+        var unsub2 = onSnapshot(doc(db, 'configuracion', 'plazos'), function(snap) {
+            setPlazos(snap.exists() ? snap.data() : null);
+        }, function(){});
+        return function() { unsub1(); unsub2(); };
+    }, []);
+
+    var finJ1 = plazos && plazos.primeraJ1UltimoPartido ? formatearFechaPlazoCorta(plazos.primeraJ1UltimoPartido) : '';
+    var limJ2 = plazos && plazos.primeraJ2LimiteOtro ? formatearFechaPlazoCorta(plazos.primeraJ2LimiteOtro) : '';
+
+    return (
+        <div style={{background:'#fff',border:'1px solid rgba(255,215,0,0.5)',borderRadius:18,overflow:'hidden',marginBottom:18,boxShadow:'0 4px 16px rgba(0,31,107,0.08)'}}>
+            <div style={{background:'linear-gradient(120deg,#001F6B,#0035b8)',padding:'12px 16px'}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'#FFD700',textTransform:'uppercase',margin:0,fontWeight:700}}>📣 JORNADA 1 · CIERRE EXTENDIDO</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.6)',margin:'3px 0 0'}}>Alargamos la exposición de la J1 tras el arranque con mantenimiento. Esto es lo que hay y lo que viene:</p>
+            </div>
+            <div style={{padding:'14px 16px'}}>
+                {/* Clasificación total actual */}
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:8,fontWeight:700}}>CLASIFICACIÓN TOTAL HASTA AHORA *</p>
+                <div style={{border:'1px solid rgba(0,31,107,0.08)',borderRadius:12,overflow:'hidden',marginBottom:10}}>
+                    {clasif.map(function(j, i) {
+                        var perf = userProfiles[j.id] || {};
+                        return (
+                            <div key={j.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',borderBottom:'1px solid rgba(0,31,107,0.04)',background: j.id === currentUser ? 'rgba(255,215,0,0.07)' : 'transparent'}}>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,width:20,textAlign:'center',color: i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'rgba(0,31,107,0.3)'}}>{i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)}</span>
+                                <IconoPerfil perfil={perf} size={22} />
+                                <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight: j.id === currentUser ? 700 : 500,color:'#001F6B'}}>{nombreVisible(j.id, perf)}</span>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color:'#001F6B'}}>{j.puntosTotales || 0}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.55)',lineHeight:1.6,marginBottom:12}}>
+                    * <strong>Quedan cambios pendientes:</strong> la J1 no se cierra del todo hasta que se resuelvan los Otros Equipos, al terminar la jornada 1 de Primera División{finJ1 ? ' (último partido: ' + finJ1 + ')' : ' la próxima semana'}. Los multiplicadores y divisores pueden mover esta tabla.
+                </p>
+
+                {/* Agenda */}
+                <div style={{background:'rgba(0,31,107,0.04)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'rgba(0,31,107,0.55)',textTransform:'uppercase',marginBottom:6,fontWeight:700}}>🗓️ LO QUE VIENE</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.7)',lineHeight:1.7,margin:0}}>
+                        · <strong>Mañana 22:00</strong> — preapertura de la Jornada 2.<br/>
+                        · <strong>Viernes 18:00</strong> — apertura de apuestas de la J2.<br/>
+                        · <strong>El Otro Equipo</strong> — límite 1 HORA antes del primer partido de la J2 de Primera{limJ2 ? ' (' + limJ2 + ')' : ''}.<br/>
+                        · <strong>5 Estrellas</strong> — límite 2 HORAS antes del partido de la UDLP de la jornada.
+                    </p>
+                </div>
+
+                {/* Porra anual */}
+                <div style={{background:'rgba(255,215,0,0.08)',border:'1px solid rgba(255,215,0,0.3)',borderRadius:12,padding:'10px 12px'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'#8a6a00',textTransform:'uppercase',marginBottom:4,fontWeight:700}}>🏆 NO OLVIDES LA PORRA ANUAL</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.7)',lineHeight:1.6,margin:0}}>
+                        Apuesta si la UDLP <strong>ASCIENDE o no</strong> y en <strong>qué puesto acaba</strong> la temporada: da puntos para la clasificación general. La tienes en Mi Jornada y puedes modificarla hasta la J6.
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
     var [slide, setSlide] = useState(0);
     var [j1, setJ1] = useState(null);
     var [multiplicadores, setMultiplicadores] = useState([]);
     var [configGala, setConfigGala] = useState({});
+    var [plazosGala, setPlazosGala] = useState({});
     var [cargando, setCargando] = useState(true);
 
     useEffect(function() {
@@ -4404,6 +4531,8 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
                 setMultiplicadores(lista);
                 var cfg = await getDoc(doc(db, 'configuracion', 'gala_j1'));
                 if (cfg.exists()) setConfigGala(cfg.data());
+                var plz = await getDoc(doc(db, 'configuracion', 'plazos'));
+                if (plz.exists()) setPlazosGala(plz.data());
             } catch(e) { console.warn('Gala J1:', e.message); }
             setCargando(false);
         })();
@@ -4496,6 +4625,9 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
                 ) : (
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.55)',marginBottom:14}}>Esta jornada nadie activó su Otro Equipo.</p>
                 )}
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#FFD700',lineHeight:1.7,background:'rgba(255,215,0,0.08)',border:'1px solid rgba(255,215,0,0.25)',borderRadius:10,padding:'8px 12px',marginBottom:8}}>
+                    ⏳ <strong>Pendiente de resolver:</strong> los multiplicadores de esta jornada se aplican cuando termine la J1 de Primera{plazosGala.primeraJ1UltimoPartido ? ' — último partido: ' + formatearFechaPlazoCorta(plazosGala.primeraJ1UltimoPartido) : ', la próxima semana'}.
+                </p>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.45)',lineHeight:1.7,background:'rgba(255,255,255,0.04)',borderRadius:10,padding:'8px 12px'}}>
                     📋 Recordatorio de norma: solo cuentan las elecciones confirmadas <strong>antes del inicio del primer partido de Primera</strong>. Las realizadas fuera de plazo no aplican multiplicador en esa jornada.
                 </p>
@@ -4539,9 +4671,13 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
             <div style={{textAlign:'center'}}>
                 <p style={{fontSize:52,marginBottom:14}}>🏁</p>
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:34,fontWeight:700,color:'#FFD700',letterSpacing:3,lineHeight:1.15,marginBottom:14}}>QUE EMPIECE<br/>LA LIGA</p>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.65)',lineHeight:1.8}}>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.65)',lineHeight:1.8,marginBottom:14}}>
                     41 jornadas por delante.<br/>Estrellas, rifas, multiplicadores…<br/>y una porra que ganar.<br/><br/>Suerte a todos. 💙💛
                 </p>
+                <div style={{background:'rgba(255,215,0,0.08)',border:'1px solid rgba(255,215,0,0.25)',borderRadius:12,padding:'10px 14px'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#FFD700',letterSpacing:2,marginBottom:4}}>🏆 Y NO OLVIDES LA PORRA ANUAL</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.7)',lineHeight:1.6,margin:0}}>¿Asciende la UDLP? ¿En qué puesto acaba? Tu apuesta anual da puntos para la clasificación general — la tienes en Mi Jornada (modificable hasta la J6).</p>
+                </div>
             </div>
         ); },
     ];
@@ -4772,6 +4908,9 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     boxShadow:'0 4px 16px rgba(0,31,107,0.3)'}}>
                 🎬 LA GALA · CIERRE DE LA JORNADA 1 <span style={{fontSize:11,opacity:0.6}}>▶ VER</span>
             </button>
+
+            {/* 📣 Cierre extendido de la J1 — visible hasta el 20/08/2026 22:00 (Canarias) */}
+            {Date.now() < 1755723600000 && <CierreExtendidoJ1 userProfiles={userProfiles} currentUser={null} />}
 
             {/* Banner resultado */}
             <div style={{background:'#001F6B',borderRadius:20,padding:24,marginBottom:20,textAlign:'center'}}>
@@ -5559,6 +5698,44 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
     const [loading, setLoading] = useState(true); 
     const [campeonInvierno, setCampeonInvierno] = useState(null);
     const [jugadoresInactivosCL, setJugadoresInactivosCL] = useState([]); // para no contar en el bote a quien pagó y luego se retiró
+    // Desglose por jugador: ⭐ puntos de 5 Estrellas, 🛡️ ganado con ×, 🛡️ perdido con ÷
+    const [extrasClasif, setExtrasClasif] = useState({});
+    const [otroPendienteCL, setOtroPendienteCL] = useState(false);
+
+    useEffect(() => {
+        var activo = true;
+        (async function() {
+            try {
+                var ex = {};
+                var asegurar = function(uid) { if (!ex[uid]) ex[uid] = { estrellas: 0, ganadoOtro: 0, perdidoOtro: 0 }; return ex[uid]; };
+                var pendiente = false;
+                var jSnap = await getDocs(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada')));
+                for (var i = 0; i < jSnap.docs.length; i++) {
+                    var jid = jSnap.docs[i].id;
+                    var rSnap = await getDocs(collection(db, 'estrellas_resultados', jid, 'jugadores'));
+                    rSnap.forEach(function(d) {
+                        asegurar(d.id).estrellas += Number((d.data() || {}).puntosRanking || 0);
+                    });
+                    var pSnap = await getDocs(collection(db, 'pronosticos', jid, 'jugadores'));
+                    var hayPendienteAqui = pSnap.docs.some(function(d) {
+                        var p = d.data() || {};
+                        return !!(p.elOtroActivado && !p.elOtroAplicado);
+                    });
+                    if (hayPendienteAqui) pendiente = true;
+                }
+                var oSnap = await getDocs(collection(db, 'elOtro'));
+                oSnap.forEach(function(d) {
+                    (d.data().historial || []).forEach(function(h) {
+                        var delta = Number(h.ptosDespues || 0) - Number(h.ptosAntes || 0);
+                        if (Number(h.multiplicador || 1) > 1) asegurar(d.id).ganadoOtro += Math.max(0, delta);
+                        else if (Number(h.multiplicador || 1) < 1) asegurar(d.id).perdidoOtro += Math.max(0, -delta);
+                    });
+                });
+                if (activo) { setExtrasClasif(ex); setOtroPendienteCL(pendiente); }
+            } catch(e) { console.warn('Extras clasificación:', e.message); }
+        })();
+        return function() { activo = false; };
+    }, []);
 
     useEffect(() => { 
         const qClasificacion = query(collection(db, "clasificacion")); 
@@ -5632,12 +5809,20 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
 
             {/* Ranking — estilo La Jornada, no tabla antigua */}
             <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,overflow:'hidden',marginBottom:20}}>
+                {/* Leyenda superior de columnas */}
+                <div style={{display:'flex',alignItems:'center',gap:10,padding:'7px 14px',background:'rgba(0,31,107,0.04)',borderBottom:'1px solid rgba(0,31,107,0.07)'}}>
+                    <span style={{width:24}}></span>
+                    <span style={{width:32}}></span>
+                    <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:2,color:'rgba(0,31,107,0.4)'}}>JUGADOR · ⭐ ESTRELLAS · 🛡️× GANADO · 🛡️÷ PERDIDO</span>
+                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:2,color:'rgba(0,31,107,0.4)'}}>PTS TOTALES{otroPendienteCL ? ' *' : ''}</span>
+                </div>
                 {clasificacionCompleta.map(function(jugador, index) {
                     var esMio = jugador.id === currentUser;
                     var perf = userProfiles[jugador.id] || {};
                     var isOnline = onlineUsers ? onlineUsers[jugador.id] : false;
                     var pts = jugador.puntosTotales || 0;
                     var exactos = jugador.puntosResultadoExacto || 0;
+                    var ext = extrasClasif[jugador.id] || { estrellas: 0, ganadoOtro: 0, perdidoOtro: 0 };
                     return (
                         <div key={jugador.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
                             borderBottom:'1px solid rgba(0,31,107,0.06)',
@@ -5647,20 +5832,40 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
                                 {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : (index+1)}
                             </span>
                             <IconoPerfilClickable nombre={jugador.id} perfil={perf} size={32} />
-                            <div style={{flex:1}}>
-                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight: esMio ? 700 : 500,color:'#001F6B'}}>
-                                    {nombreVisible(jugador.id, perf)}
-                                </span>
-                                {isOnline && <span style={{width:6,height:6,backgroundColor:'#10b981',borderRadius:'50%',display:'inline-block',marginLeft:6,boxShadow:'0 0 6px #10b981'}}></span>}
-                                {exactos > 0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)',marginLeft:8}}>{exactos} 🎯</span>}
+                            <div style={{flex:1,minWidth:0}}>
+                                <div>
+                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight: esMio ? 700 : 500,color:'#001F6B'}}>
+                                        {nombreVisible(jugador.id, perf)}
+                                    </span>
+                                    {isOnline && <span style={{width:6,height:6,backgroundColor:'#10b981',borderRadius:'50%',display:'inline-block',marginLeft:6,boxShadow:'0 0 6px #10b981'}}></span>}
+                                    {exactos > 0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.4)',marginLeft:8}}>{exactos} 🎯</span>}
+                                </div>
+                                {/* Filas secundarias, más pequeñas */}
+                                <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:3}}>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:11,color:'#8a6a00',background:'rgba(255,215,0,0.14)',borderRadius:8,padding:'1px 7px'}}>⭐ {ext.estrellas}</span>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:11,color: ext.ganadoOtro > 0 ? '#0f8a61' : 'rgba(0,31,107,0.3)',background: ext.ganadoOtro > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(0,31,107,0.04)',borderRadius:8,padding:'1px 7px'}}>🛡️× +{ext.ganadoOtro}{otroPendienteCL ? '*' : ''}</span>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:11,color: ext.perdidoOtro > 0 ? '#e63946' : 'rgba(0,31,107,0.3)',background: ext.perdidoOtro > 0 ? 'rgba(230,57,70,0.08)' : 'rgba(0,31,107,0.04)',borderRadius:8,padding:'1px 7px'}}>🛡️÷ −{ext.perdidoOtro}{otroPendienteCL ? '*' : ''}</span>
+                                </div>
                             </div>
-                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,
                                 color: index === 0 ? '#FFD700' : pts > 0 ? '#001F6B' : 'rgba(0,31,107,0.25)'}}>
-                                {pts}
+                                {pts}{otroPendienteCL ? <span style={{fontSize:13,color:'rgba(0,31,107,0.4)'}}>*</span> : null}
                             </span>
                         </div>
                     );
                 })}
+            </div>
+
+            {/* Leyenda de columnas */}
+            <div style={{background:'rgba(0,31,107,0.035)',border:'1px dashed rgba(0,31,107,0.18)',borderRadius:12,padding:'10px 14px',marginBottom:16}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:5,fontWeight:700}}>📖 CÓMO LEER LA TABLA</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.65)',lineHeight:1.7,margin:0}}>
+                    · <strong>Número grande</strong>: puntos TOTALES en la clasificación general.<br/>
+                    · <strong>⭐</strong>: puntos aportados por las 5 Estrellas (5/4/3/2/1 por jornada).<br/>
+                    · <strong>🛡️×</strong>: puntos EXTRA ganados al multiplicar con El Otro Equipo.<br/>
+                    · <strong>🛡️÷</strong>: puntos PERDIDOS por división al fallar El Otro Equipo.<br/>
+                    {otroPendienteCL ? <span>· <strong>*</strong>: hay jornadas con El Otro aún SIN resolver — es el último dato actualizado y puede variar al cerrarse la jornada de Primera.</span> : null}
+                </p>
             </div>
 
             {/* Premios y bote — al final, como pediste */}
@@ -7553,6 +7758,136 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
 // Recorre todas las jornadas Finalizadas con fixtureId, recalcula las
 // Estrellas de cada una contra la API (con autorresolución de apiIds y escudo
 // anti-pisado) y al final reconstruye el acumulado completo desde cero.
+// ============================================================================
+// ⚖️ AUDITORÍA DE PLAZOS · EL OTRO EQUIPO
+// ============================================================================
+// 1) Descarga de la API los partidos de la J1 y J2 de Primera y guarda los
+//    plazos oficiales en configuracion/plazos (fechas que usan las tarjetas
+//    de plazos de todas las pantallas y la Gala).
+// 2) Audita la Jornada 1: quien activó El Otro DESPUÉS del inicio del primer
+//    partido de la J1 de Primera queda ANULADO (sin multiplicador) antes de
+//    que se resuelva la jornada.
+// 3) Si hay anulaciones, publica automáticamente una NOVEDAD informando a
+//    todos, con los nombres y el recordatorio de los plazos por pantalla.
+const AuditoriaPlazosElOtro = () => {
+    var [enMarcha, setEnMarcha] = useState(false);
+    var [logA, setLogA] = useState([]);
+
+    var buscarRondaPrimera = async function(numRonda) {
+        var url = 'https://v3.football.api-sports.io/fixtures?league=140&season=2026&round=' + encodeURIComponent('Regular Season - ' + numRonda);
+        var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+        var data = await res.json();
+        return (data.response || []).map(function(p) {
+            return { fixtureId: p.fixture.id, fecha: p.fixture.date, local: p.teams.home.name, visitante: p.teams.away.name };
+        }).sort(function(a, b) { return new Date(a.fecha) - new Date(b.fecha); });
+    };
+
+    var ejecutarAuditoria = async function() {
+        if (enMarcha) return;
+        if (!window.confirm('Se auditarán los plazos de EL OTRO EQUIPO de la Jornada 1:\n\n· Se descargan las fechas reales de la J1 y J2 de Primera (2 llamadas a la API) y se guardan los plazos oficiales.\n· Quien activó El Otro después del inicio del primer partido de la J1 de Primera quedará ANULADO para esta jornada.\n· Si hay anulaciones, se publicará automáticamente una novedad informando a todos.\n\n¿Ejecutar la auditoría?')) return;
+        setEnMarcha(true); setLogA([]);
+        var lineas = [];
+        var anotar = function(t, ok) { lineas = lineas.concat([{ t: t, ok: ok }]); setLogA(lineas.slice()); };
+        try {
+            if (!API_FOOTBALL_KEY) { anotar('❌ Sin clave de API.', false); setEnMarcha(false); return; }
+
+            // 1 · Fechas oficiales de Primera
+            anotar('⏳ Descargando J1 y J2 de Primera División…', true);
+            var rondaJ1 = await buscarRondaPrimera(1);
+            var rondaJ2 = await buscarRondaPrimera(2);
+            if (!rondaJ1.length) { anotar('❌ La API no devolvió la J1 de Primera. Reintenta más tarde.', false); setEnMarcha(false); return; }
+            var inicioJ1 = rondaJ1[0].fecha;
+            var ultimoJ1 = rondaJ1[rondaJ1.length - 1].fecha;
+            var inicioJ2 = rondaJ2.length ? rondaJ2[0].fecha : null;
+            var limiteJ2 = inicioJ2 ? new Date(new Date(inicioJ2).getTime() - 3600 * 1000).toISOString() : null;
+            await setDoc(doc(db, 'configuracion', 'plazos'), {
+                primeraJ1Inicio: inicioJ1,
+                primeraJ1UltimoPartido: ultimoJ1,
+                primeraJ2Inicio: inicioJ2,
+                primeraJ2LimiteOtro: limiteJ2,
+                actualizadoEn: serverTimestamp(),
+            }, { merge: true });
+            anotar('✅ Plazos guardados. J1 de Primera: del ' + formatearFechaPlazoCorta(inicioJ1) + ' al ' + formatearFechaPlazoCorta(ultimoJ1) + '.', true);
+            if (limiteJ2) anotar('✅ Límite de El Otro para la J2: ' + formatearFechaPlazoCorta(limiteJ2) + ' (1h antes del primer partido).', true);
+
+            // 2 · Auditar la Jornada 1 de la Porra
+            var jSnap = await getDocs(query(collection(db, 'jornadas'), where('numeroJornada', '==', 1), limit(1)));
+            if (jSnap.empty) { anotar('❌ No se encontró la Jornada 1 de la Porra.', false); setEnMarcha(false); return; }
+            var j1 = { id: jSnap.docs[0].id, ...jSnap.docs[0].data() };
+            var deadlineMs = new Date(inicioJ1).getTime();
+            var pSnap = await getDocs(collection(db, 'pronosticos', j1.id, 'jugadores'));
+            var anulados = [];
+            var revisados = 0;
+            for (var i = 0; i < pSnap.docs.length; i++) {
+                var d = pSnap.docs[i];
+                var p = d.data() || {};
+                if (!p.elOtroActivado) continue;
+                revisados++;
+                var guardadoMs = p.guardadoEn && p.guardadoEn.seconds ? p.guardadoEn.seconds * 1000 : 0;
+                if (guardadoMs > deadlineMs) {
+                    if (!p.elOtroAplicado) {
+                        await setDoc(doc(db, 'pronosticos', j1.id, 'jugadores', d.id), {
+                            elOtroActivado: false,
+                            elOtroPendiente: false,
+                            elOtroAnulado: true,
+                            elOtroEquipoAnulado: p.elOtroEquipoUsado || null,
+                            elOtroEquipoUsado: null,
+                            elOtroAnuladoMotivo: 'Activación registrada fuera de plazo (' + formatearFechaPlazoCorta(new Date(guardadoMs).toISOString()) + ', tras el inicio de la J1 de Primera)',
+                            elOtroAnuladoEn: serverTimestamp(),
+                        }, { merge: true });
+                        anulados.push(d.id);
+                        anotar('⚖️ ANULADO: ' + d.id + ' (guardó a las ' + formatearFechaPlazoCorta(new Date(guardadoMs).toISOString()) + ')', false);
+                    } else {
+                        anotar('⚠️ ' + d.id + ' guardó fuera de plazo pero su Otro YA fue aplicado — revísalo a mano si procede.', false);
+                    }
+                }
+            }
+            anotar('📋 Revisados ' + revisados + ' con El Otro activado · ' + anulados.length + ' anulación(es).', true);
+            anotar('ℹ️ Nota: se usa la hora del ÚLTIMO guardado del pronóstico. Si alguien solo retocó el marcador después del plazo, confírmalo con él antes de dar la anulación por definitiva (puedes revertirla editando su pronóstico).', true);
+
+            // 3 · Novedad automática si hubo anulaciones
+            if (anulados.length) {
+                var ver = 'auditoria_otro_j1_' + Date.now();
+                var cuerpo = 'Tras la auditoría de plazos de la Jornada 1, se han anulado las activaciones de EL OTRO EQUIPO registradas fuera de plazo de: ' + anulados.join(', ') + '.\n\nSus multiplicadores/divisores NO se aplicarán cuando se resuelva la jornada.\n\n📋 RECORDATORIO DE PLAZOS (los tienes marcados en cada pantalla):\n\n🎯 MI JORNADA · apuesta y pago hasta el cierre publicado de cada jornada.\n\n🛡️ EL OTRO EQUIPO · hasta 1 HORA antes del primer partido de la jornada de Primera División.\n\n⭐ 5 ESTRELLAS · hasta 2 HORAS antes del partido de la UDLP de la jornada.\n\nCada estructura maneja sus propios datos y plazos. Jugad con margen. 💙💛';
+                await setDoc(doc(db, 'configuracion', 'novedad_activa'), {
+                    titulo: 'AUDITORÍA DE PLAZOS · EL OTRO',
+                    cuerpo: cuerpo,
+                    icono: '⚖️',
+                    tipo: 'normal',
+                    version: ver,
+                    activa: true,
+                    actualizadoEn: serverTimestamp(),
+                }, { merge: true });
+                anotar('📢 Novedad publicada automáticamente: todos verán el aviso al abrir la app.', true);
+            } else {
+                anotar('✅ Nadie activó El Otro fuera de plazo: no se publica aviso.', true);
+            }
+            anotar('🏁 Auditoría completada.', true);
+        } catch(e) { anotar('❌ ' + e.message, false); }
+        setEnMarcha(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>⚖️ Auditoría de plazos · El Otro (J1)</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.55)',lineHeight:1.6,marginBottom:10}}>
+                Guarda los plazos oficiales de la J1/J2 de Primera desde la API, anula las activaciones de El Otro hechas fuera de plazo en la Jornada 1 (antes de que se resuelvan) y, si hay casos, publica automáticamente la novedad informativa para todos.
+            </p>
+            <button onClick={ejecutarAuditoria} disabled={enMarcha}
+                style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:enMarcha?'default':'pointer'}}>
+                {enMarcha ? '⏳ AUDITANDO…' : '⚖️ EJECUTAR AUDITORÍA DE PLAZOS'}
+            </button>
+            {logA.length > 0 && (
+                <div style={{marginTop:10,maxHeight:220,overflowY:'auto',background:'rgba(0,31,107,0.03)',border:'1px solid rgba(0,31,107,0.07)',borderRadius:10,padding:10}}>
+                    {logA.map(function(l, i) {
+                        return <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:11,lineHeight:1.5,color:l.ok?'rgba(0,31,107,0.75)':'#e63946',margin:'0 0 4px'}}>{l.t}</p>;
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const RecalculoGlobalEstrellas = ({ plantilla }) => {
     var [enMarcha, setEnMarcha] = useState(false);
     var [log, setLog] = useState([]);
@@ -10207,6 +10542,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                         </div>
                     </div>
 
+                    {/* ⚖️ Auditoría de plazos con aviso automático */}
+                    <AuditoriaPlazosElOtro />
+
                     {/* Rastreador de tiempos en vivo */}
                     <RastreadorTiemposElOtro jugadoresLista={JUGADORES_LISTA} />
 
@@ -10846,6 +11184,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         return (
             <div style={{paddingBottom:40}}>
                 <h2 style={styles.title}>EL OTRO EQUIPO</h2>
+                <PlazosCard tipo="otro" />
                 <BannerPagoPendiente onIrAPagos={onIrAPagos} />
             </div>
         );
@@ -11316,6 +11655,8 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         <div style={{padding:'20px 16px'}}>
             <style>{'@keyframes estrellaPop{0%{transform:scale(1);}25%{transform:scale(1.06);box-shadow:0 0 0 6px rgba(255,215,0,0.35);}60%{transform:scale(0.99);}100%{transform:scale(1);box-shadow:none;}}@keyframes estrellaFloat{0%{opacity:0;transform:translateY(6px) scale(0.6);}40%{opacity:1;transform:translateY(-4px) scale(1.15);}100%{opacity:0;transform:translateY(-18px) scale(0.9);}}'}</style>
             <h2 style={styles.title}>MIS 5 ESTRELLAS</h2>
+
+            <PlazosCard tipo="estrellas" fechaPartidoUDLP={jornadaActual ? (jornadaActual.fechaPartido || jornadaActual.fecha) : null} />
 
             {/* ── Selección para la jornada activa (desplegable) ── */}
             {jornadaActual && (
