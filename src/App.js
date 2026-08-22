@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.AB · reconstruccion total de clasificacion';
+const APP_BUILD = 'v2026-08-22.AC · auditoria de puntos + reset sin bloqueo';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -8037,7 +8037,11 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
     // --- NUEVO: FUNCIÓN PARA DESHACER EL CÁLCULO DE PUNTOS DE LA JORNADA ---
     const handleResetPuntos = async () => {
-        if (!puntosYaCalculados) { alert("Esta jornada no ha sumado puntos en la clasificación, no hay nada que resetear."); return; }
+        // La guarda antigua bloqueaba el reseteo cuando el flag no estaba puesto,
+        // aunque los puntos SÍ se hubieran repartido. Ahora solo avisa.
+        if (!puntosYaCalculados) {
+            if (!window.confirm("Esta jornada no tiene la marca de 'puntos calculados', pero puede que sí se hayan repartido.\n\n¿Resetear igualmente? (recomendado si los totales no cuadran)")) return;
+        }
         if (!window.confirm("⚠️ PELIGRO: Esto RESTARÁ a la Clasificación General los puntos exactos que se dieron en esta jornada y la abrirá de nuevo. ¿Continuar?")) return;
         
         try {
@@ -8865,6 +8869,129 @@ function calcularBasePronosticoJornada(p, jornada) {
     ptos += ptosGol;
     return { base: ptos, exacto: ptosExacto, goleador: ptosGol };
 }
+
+// ============================================================================
+// 🔍 AUDITORÍA DE PUNTOS — radiografía completa de una jornada
+// ============================================================================
+// Muestra, jugador a jugador, TODOS los datos crudos que intervienen en el
+// cálculo, junto al valor que DEBERÍA tener según la fórmula. Sirve para ver
+// de un vistazo por qué alguien suma 0: si es por falta de pago (marca
+// noContabilizado), por falta del campo de puntos, o por El Otro sin resolver.
+const AuditoriaPuntosAdmin = ({ jornadas }) => {
+    var [jSel, setJSel] = useState('');
+    var [filas, setFilas] = useState(null);
+    var [clasif, setClasif] = useState({});
+    var [cargando, setCargando] = useState(false);
+
+    var finalizadas = (jornadas || []).filter(function(j) { return j.estado === 'Finalizada'; })
+        .sort(function(a, b) { return (b.numeroJornada || 0) - (a.numeroJornada || 0); });
+
+    var auditar = async function(jid) {
+        if (!jid) return;
+        setCargando(true); setFilas(null);
+        try {
+            var jd = finalizadas.find(function(j) { return j.id === jid; });
+            var pSnap = await getDocs(collection(db, 'pronosticos', jid, 'jugadores'));
+            var eSnap = await getDocs(collection(db, 'estrellas_resultados', jid, 'jugadores'));
+            var estrellasMap = {};
+            eSnap.forEach(function(d) { estrellasMap[d.id] = Number((d.data() || {}).puntosRanking || 0); });
+            var pagosSnap = await getDocs(collection(db, 'pagos'));
+            var pagoMap = {};
+            var numJ = String(jd.numeroJornada || '');
+            pagosSnap.forEach(function(d) {
+                var pg = d.data() || {};
+                if (pg.tipo !== 'jornada_normal' && pg.tipo !== 'jornada_vip') return;
+                if (pg.estado === 'cancelado' || pg.estado === 'rechazado' || pg.estado === 'fallido') return;
+                if ((pg.jornada || '').toString().toUpperCase().replace(/[^0-9]/g, '') === numJ) pagoMap[pg.jugador] = pg.estado || 'ok';
+            });
+            var cSnap = await getDocs(collection(db, 'clasificacion'));
+            var cMap = {};
+            cSnap.forEach(function(d) { cMap[d.id] = Number((d.data() || {}).puntosTotales || 0); });
+            setClasif(cMap);
+
+            var lista = [];
+            pSnap.forEach(function(d) {
+                var p = d.data() || {};
+                var calc = calcularBasePronosticoJornada(p, jd);
+                lista.push({
+                    id: d.id,
+                    pago: pagoMap[d.id] || null,
+                    noCuenta: !!p.noContabilizado,
+                    marcador: p.golesLocal + '-' + p.golesVisitante,
+                    baseGuardada: p.puntosBaseSinOtro,
+                    baseCalculada: calc.base,
+                    obtenidos: p.puntosObtenidos,
+                    definitivos: p.puntosDefinitivos,
+                    otroAct: !!p.elOtroActivado,
+                    otroApl: !!p.elOtroAplicado,
+                    otroRes: p.elOtroResultado || null,
+                    estrellas: estrellasMap[d.id] || 0,
+                });
+            });
+            lista.sort(function(a, b) { return (b.baseCalculada || 0) - (a.baseCalculada || 0); });
+            setFilas(lista);
+        } catch(e) { alert('Error auditando: ' + e.message); }
+        setCargando(false);
+    };
+
+    var jdSel = finalizadas.find(function(j) { return j.id === jSel; });
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>🔍 Auditoría de puntos por jornada</p>
+            <select value={jSel} onChange={function(e){ setJSel(e.target.value); auditar(e.target.value); }}
+                style={{width:'100%',border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'8px 10px',fontSize:12,marginBottom:10}}>
+                <option value="">— Elige jornada finalizada —</option>
+                {finalizadas.map(function(j) {
+                    return <option key={j.id} value={j.id}>J{j.numeroJornada} · {j.equipoLocal} {j.resultadoLocal}-{j.resultadoVisitante} {j.equipoVisitante}{j.cierreDefinitivo ? ' · CERRADA' : ''}</option>;
+                })}
+            </select>
+
+            {cargando && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>Auditando…</p>}
+
+            {filas && jdSel && (
+                <>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.6)',lineHeight:1.6,marginBottom:8}}>
+                    Estado: <strong>{jdSel.cierreDefinitivo ? 'cierre definitivo hecho' : 'sin cierre definitivo'}</strong> · puntosCalculados: <strong>{String(!!jdSel.puntosCalculados)}</strong> · VIP: <strong>{String(!!jdSel.esVip)}</strong>
+                </p>
+                <div style={{overflowX:'auto'}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontFamily:"'Inter',sans-serif",fontSize:10}}>
+                        <thead>
+                            <tr style={{background:'rgba(0,31,107,0.06)'}}>
+                                {['JUGADOR','PAGO','APU','BASE guard.','BASE calc.','OBTEN.','DEFIN.','OTRO','⭐','GLOBAL'].map(function(h,i){
+                                    return <th key={i} style={{padding:'5px 4px',textAlign:'left',color:'rgba(0,31,107,0.6)',fontWeight:700,whiteSpace:'nowrap'}}>{h}</th>;
+                                })}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filas.map(function(f) {
+                                var descuadre = f.baseGuardada === undefined || Number(f.baseGuardada) !== Number(f.baseCalculada);
+                                return (
+                                    <tr key={f.id} style={{borderBottom:'1px solid rgba(0,31,107,0.05)',background: f.noCuenta ? 'rgba(230,57,70,0.06)' : (descuadre ? 'rgba(255,215,0,0.12)' : 'transparent')}}>
+                                        <td style={{padding:'5px 4px',fontWeight:700,color:'#001F6B',whiteSpace:'nowrap'}}>{f.id}</td>
+                                        <td style={{padding:'5px 4px',color: f.pago ? '#0f8a61' : '#e63946'}}>{f.pago ? (f.pago === 'pendiente_confirmacion' ? '⏳' : '✅') : '❌'}</td>
+                                        <td style={{padding:'5px 4px',color:'rgba(0,31,107,0.6)'}}>{f.marcador}</td>
+                                        <td style={{padding:'5px 4px',color: f.baseGuardada === undefined ? '#e63946' : '#001F6B',fontWeight:700}}>{f.baseGuardada === undefined ? 'FALTA' : f.baseGuardada}</td>
+                                        <td style={{padding:'5px 4px',color:'#0f8a61',fontWeight:700}}>{f.baseCalculada}</td>
+                                        <td style={{padding:'5px 4px'}}>{f.obtenidos === undefined ? '—' : f.obtenidos}</td>
+                                        <td style={{padding:'5px 4px'}}>{f.definitivos === undefined ? '—' : f.definitivos}</td>
+                                        <td style={{padding:'5px 4px',whiteSpace:'nowrap'}}>{f.otroAct ? (f.otroApl ? '✅' + (f.otroRes || '') : '⏳pend') : '—'}</td>
+                                        <td style={{padding:'5px 4px'}}>{f.estrellas || '—'}</td>
+                                        <td style={{padding:'5px 4px',fontWeight:700,color:'#001F6B'}}>{clasif[f.id] !== undefined ? clasif[f.id] : '—'}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.55)',lineHeight:1.6,marginTop:8}}>
+                    🟡 fila ámbar = la base guardada NO coincide con la calculada (ese es el fallo que deja puntos a 0) · 🔴 fila roja = marcado como NO contabilizado (sin pago detectado de esa jornada) · PAGO: ✅ confirmado · ⏳ pendiente · ❌ sin pago registrado.
+                </p>
+                </>
+            )}
+        </div>
+    );
+};
 
 const ReconstruirClasificacionAdmin = () => {
     var [ejecutando, setEjecutando] = useState(false);
@@ -11533,6 +11660,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'pagos' && (
                 <div>
+                    {/* 🔍 Auditoría: qué dato tiene cada jugador */}
+                    <AuditoriaPuntosAdmin jornadas={jornadas} />
+
                     {/* 🔧 Reparación de la clasificación general */}
                     <ReconstruirClasificacionAdmin />
 
