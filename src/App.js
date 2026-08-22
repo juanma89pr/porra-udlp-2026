@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.R · live con busqueda en cascada';
+const APP_BUILD = 'v2026-08-22.S · diagnostico live en admin';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3386,6 +3386,10 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     try { await setDoc(doc(db, 'jornadas', jornada.id), { fixtureId: encontrado.fixture.id }, { merge: true }); } catch(e3) {}
                 }
                 var data = { response: encontrado ? [encontrado] : [] };
+                window.__liveDiag = { hora: new Date().toLocaleTimeString('es-ES'), ok: !!encontrado,
+                    fixtureId: encontrado ? encontrado.fixture.id : null,
+                    estado: encontrado ? encontrado.fixture.status.short : '—',
+                    marcador: encontrado ? (encontrado.goals.home + '-' + encontrado.goals.away) : '—' };
                 if (data.response && data.response.length > 0) {
                     var f = data.response[0];
                     var isLive = ['LIVE','1H','2H','HT','ET'].includes(f.fixture.status.short);
@@ -3842,6 +3846,24 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             <div style={{paddingBottom:40}}>
                 <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:G.deepBlue,textTransform:'uppercase',marginBottom:12,fontWeight:700}}>MI JORNADA</h2>
                 <PlazosCard tipo="porra" />
+
+                {/* 🔧 SOLO ADMIN · diagnóstico del EN VIVO */}
+                {user === 'Juanma' && (
+                    <div style={{background:'rgba(255,215,0,0.1)',border:'1px dashed rgba(255,215,0,0.5)',borderRadius:8,padding:'6px 10px',marginBottom:10}}>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#b8860b',marginBottom:5}}>
+                            🔧 SOLO ADMIN · Última sincronización: {window.__liveDiag ? window.__liveDiag.hora + ' · ' + (window.__liveDiag.ok ? '✅ partido ' + window.__liveDiag.fixtureId + ' · ' + window.__liveDiag.estado + ' · ' + window.__liveDiag.marcador : '❌ sin partido') : 'aún ninguna en esta sesión'}
+                        </p>
+                        <button onClick={async function(){
+                            try {
+                                var r = await fetch('https://v3.football.api-sports.io/fixtures?team=' + API_TEAM_ID_UDLP + '&last=1', { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+                                var restan = r.headers.get('x-ratelimit-requests-remaining');
+                                var d = await r.json();
+                                var p = d.response && d.response[0];
+                                alert(p ? '✅ API OPERATIVA\n\nÚltimo partido UDLP: ' + p.teams.home.name + ' ' + p.goals.home + '-' + p.goals.away + ' ' + p.teams.away.name + '\nEstado: ' + p.fixture.status.long + '\n\n📊 Peticiones restantes hoy: ' + (restan || '¿?') + '/100' : '⚠️ API responde pero sin datos. Errores: ' + JSON.stringify(d.errors || {}));
+                            } catch(e) { alert('❌ SIN CONEXIÓN CON LA API: ' + e.message); }
+                        }} style={{width:'100%',border:'none',borderRadius:6,padding:'6px 8px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,cursor:'pointer'}}>📡 PROBAR CONEXIÓN API AHORA (1 petición)</button>
+                    </div>
+                )}
 
                 {/* ✅ Pago automático con saldo acumulado */}
                 {autoPagoInfo && (
