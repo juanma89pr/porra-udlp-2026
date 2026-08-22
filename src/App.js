@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-19.F · normativa oficial completa';
+const APP_BUILD = 'v2026-08-20.G · gestion premios + saldo + bandeja pagos';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 const JUGADORES_BASE = ["Juanma", "Lucy", "Antonio", "Mari", "Pedro", "Pedrito", "Himar", "Sarito", "Vicky", "Carmelo", "Laura", "Carlos", "José", "Claudio", "Javi"];
@@ -2665,6 +2665,7 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
     var [rifaActiva,setRifaActiva]=useState(null);    // rifa abierta a la que se puede destinar dinero
     var [modoReparto,setModoReparto]=useState(false); // selector de reparto abierto
     var [eurosARifa,setEurosARifa]=useState(0);
+    var [eurosAAcumular,setEurosAAcumular]=useState(0);
     var [guardandoDestino,setGuardandoDestino]=useState(false);
 
     useEffect(function(){
@@ -2698,18 +2699,38 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
         return function(){unsub();};
     },[]);
 
-    var registrarDestino=async function(aRifa,aCobro){
+    var registrarDestino=async function(aRifa,aAcumular,aCobro){
         if(guardandoDestino)return;
         setGuardandoDestino(true);
         try{
+            var partes=[];
+            if(aCobro>0)partes.push('cobro');
+            if(aAcumular>0)partes.push('acumular');
+            if(aRifa>0)partes.push('rifa');
             var datos={
                 jornadaId:jornada.id,usuario:user,importe:importe,
-                importeRifa:Number(aRifa.toFixed(2)),importeCobro:Number(aCobro.toFixed(2)),
-                destinoElegido:aRifa>0?(aCobro>0?'reparto':'rifa'):'cobro',
+                importeRifa:Number(aRifa.toFixed(2)),
+                importeAcumular:Number(aAcumular.toFixed(2)),
+                importeCobro:Number(aCobro.toFixed(2)),
+                destinoElegido:partes.length>1?'mixto':(partes[0]||'cobro'),
                 rifaId:aRifa>0&&rifaActiva?rifaActiva.id:null,
                 recibido:false,decididoEn:serverTimestamp(),
             };
             await setDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user),datos,{merge:true});
+            if(aAcumular>0){
+                // El dinero acumulado se convierte en saldo para pagar
+                // próximas jornadas: el sistema lo descuenta solo.
+                await runTransaction(db,async function(tx){
+                    var aRef=doc(db,'saldos_jornadas',user);
+                    var aSnap=await tx.get(aRef);
+                    var saldoAct=aSnap.exists()?Number(aSnap.data().saldo||0):0;
+                    tx.set(aRef,{saldo:Number((saldoAct+aAcumular).toFixed(2)),actualizadoEn:serverTimestamp()},{merge:true});
+                });
+                await addDoc(collection(db,'saldos_jornadas',user,'movimientos'),{
+                    tipo:'ingreso_premio',importe:Number(aAcumular.toFixed(2)),
+                    jornadaId:jornada.id,fecha:serverTimestamp(),
+                });
+            }
             if(aRifa>0){
                 // El dinero destinado se convierte en saldo de rifas, con su
                 // movimiento registrado para que todo quede trazable.
@@ -2750,32 +2771,49 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
         {importe>0 ? <>
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:'#001F6B',marginBottom:8}}>HAS GANADO {importe.toFixed(2)}€</p>
 
-            {/* ── PASO 1: elegir destino (decisión SIEMPRE voluntaria) ── */}
+            {/* ── PASO 1: gestionar el premio (aviso + reparto libre) ── */}
             {!destinoDecidido && <>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.6)',lineHeight:1.5,marginBottom:10}}>¿Qué quieres hacer con tu premio?</p>
-                <button onClick={function(){registrarDestino(0,importe);}} disabled={guardandoDestino} style={estiloBtn('#001F6B','#fff')}>💰 RECIBIR EL PREMIO</button>
-                {rifaActiva && <>
-                    <button onClick={function(){registrarDestino(importe,0);}} disabled={guardandoDestino} style={estiloBtn('rgba(255,215,0,.9)','#001F6B')}>🎟️ USARLO EN LA RIFA</button>
-                    <button onClick={function(){setModoReparto(!modoReparto);var maxP=precioPapeleta>0?Math.floor(importe/precioPapeleta)*precioPapeleta:0;setEurosARifa(maxP);}} disabled={guardandoDestino} style={estiloBtn('#fff','#001F6B','1px solid rgba(0,31,107,.2)')}>💰 + 🎟️ REPARTIRLO</button>
-                </>}
-                {!rifaActiva && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,.4)',margin:0}}>Ahora mismo no hay ninguna rifa abierta.</p>}
-
-                {/* Selector de reparto */}
-                {modoReparto && rifaActiva && (function(){
-                    var papeletasPosibles=precioPapeleta>0?Math.floor(importe/precioPapeleta):0;
-                    return <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.1)',borderRadius:12,padding:12,marginBottom:8}}>
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#001F6B',marginBottom:8}}>REPARTE TU PREMIO · papeleta a {precioPapeleta.toFixed(2)}€</p>
-                        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>
-                            {Array.from({length:papeletasPosibles+1},function(_,i){return i;}).map(function(n){
-                                var euros=Number((n*precioPapeleta).toFixed(2));
-                                var sel=Math.abs(eurosARifa-euros)<0.001;
-                                return <button key={n} onClick={function(){setEurosARifa(euros);}} style={{padding:'7px 10px',borderRadius:9,border:sel?'none':'1px solid rgba(0,31,107,.15)',background:sel?'#001F6B':'#f8f8f8',color:sel?'#FFD700':'rgba(0,31,107,.6)',fontFamily:"'Teko',sans-serif",fontSize:13,cursor:'pointer'}}>{n} 🎟️ · {euros.toFixed(2)}€</button>;
-                            })}
-                        </div>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.6)',marginBottom:10}}>
-                            🎟️ {eurosARifa.toFixed(2)}€ a la rifa · 💰 {(importe-eurosARifa).toFixed(2)}€ a cobrar
-                        </p>
-                        <button onClick={function(){registrarDestino(eurosARifa,importe-eurosARifa);}} disabled={guardandoDestino} style={estiloBtn('#10b981','#fff')}>CONFIRMAR REPARTO</button>
+                <div style={{background:'rgba(230,57,70,.07)',border:'1px dashed rgba(230,57,70,.35)',borderRadius:10,padding:'8px 12px',marginBottom:10}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#b02a35',lineHeight:1.5,margin:0}}>📣 <strong>Recuerda avisar al admin de cómo gestionar tu premio</strong> — elige aquí abajo y le llegará directo a su panel.</p>
+                </div>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.6)',lineHeight:1.5,marginBottom:10}}>Reparte tu premio como quieras entre las opciones (puedes combinarlas):</p>
+                {(function(){
+                    var restante=Number((importe-eurosARifa-eurosAAcumular).toFixed(2));
+                    var paso=0.5;
+                    var Fila=function(props){
+                        return <div style={{display:'flex',alignItems:'center',gap:8,background:'#fff',border:'1px solid rgba(0,31,107,.1)',borderRadius:10,padding:'8px 10px',marginBottom:6}}>
+                            <span style={{fontSize:15,flexShrink:0}}>{props.icono}</span>
+                            <div style={{flex:1}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,color:'#001F6B',margin:0}}>{props.titulo}</p>
+                                {props.sub && <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,.45)',margin:0}}>{props.sub}</p>}
+                            </div>
+                            {props.control}
+                        </div>;
+                    };
+                    var Stepper=function(props){
+                        return <div style={{display:'flex',alignItems:'center',gap:6}}>
+                            <button onClick={props.menos} disabled={props.valor<=0} style={{width:26,height:26,borderRadius:8,border:'1px solid rgba(0,31,107,.2)',background:'#fff',color:'#001F6B',fontSize:14,cursor:'pointer',opacity:props.valor<=0?0.3:1}}>−</button>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,color:'#001F6B',minWidth:44,textAlign:'center'}}>{props.valor.toFixed(2)}€</span>
+                            <button onClick={props.mas} disabled={!props.puedeMas} style={{width:26,height:26,borderRadius:8,border:'none',background:props.puedeMas?'#001F6B':'rgba(0,31,107,.1)',color:'#FFD700',fontSize:14,cursor:'pointer'}}>+</button>
+                        </div>;
+                    };
+                    return <div style={{marginBottom:8}}>
+                        {rifaActiva && precioPapeleta>0 && <Fila icono="🎟️" titulo="A LA RIFA" sub={'papeleta a '+precioPapeleta.toFixed(2)+'€'}
+                            control={<Stepper valor={eurosARifa}
+                                menos={function(){setEurosARifa(Math.max(0,Number((eurosARifa-precioPapeleta).toFixed(2))));}}
+                                mas={function(){setEurosARifa(Number((eurosARifa+precioPapeleta).toFixed(2)));}}
+                                puedeMas={restante>=precioPapeleta} />} />}
+                        <Fila icono="📦" titulo="ACUMULAR PARA PRÓXIMAS JORNADAS" sub="el sistema paga tus jornadas solo, hasta agotarlo"
+                            control={<Stepper valor={eurosAAcumular}
+                                menos={function(){setEurosAAcumular(Math.max(0,Number((eurosAAcumular-paso).toFixed(2))));}}
+                                mas={function(){setEurosAAcumular(Number((eurosAAcumular+Math.min(paso,restante)).toFixed(2)));}}
+                                puedeMas={restante>0.001} />} />
+                        <Fila icono="💰" titulo="RECIBIR POR BIZUM" sub="lo que no repartas, se cobra"
+                            control={<span style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color:'#0f8a61'}}>{restante.toFixed(2)}€</span>} />
+                        <button onClick={function(){registrarDestino(eurosARifa,eurosAAcumular,restante);}} disabled={guardandoDestino||restante<-0.001}
+                            style={estiloBtn('#10b981','#fff')}>{guardandoDestino?'GUARDANDO…':'✅ CONFIRMAR GESTIÓN DEL PREMIO'}</button>
+                        <button onClick={function(){setEurosARifa(0);setEurosAAcumular(0);registrarDestino(0,0,importe);}} disabled={guardandoDestino}
+                            style={estiloBtn('#fff','rgba(0,31,107,.6)','1px solid rgba(0,31,107,.15)')}>💰 TODO A COBRAR, SIN REPARTIR</button>
                     </div>;
                 })()}
             </>}
@@ -2785,6 +2823,7 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
                 <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.08)',borderRadius:12,padding:12,marginBottom:10}}>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'rgba(0,31,107,.5)',textTransform:'uppercase',marginBottom:6}}>DESTINO DE TU PREMIO</p>
                     {importeRifaUsado>0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginBottom:4}}>🎟️ {importeRifaUsado.toFixed(2)}€ → saldo para la rifa{rifaActiva?' «'+(rifaActiva.titulo||'')+'»':''}</p>}
+                    {Number(premioDoc.importeAcumular||0)>0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginBottom:4}}>📦 {Number(premioDoc.importeAcumular||0).toFixed(2)}€ → saldo para próximas jornadas (se descuenta solo al abrirse cada jornada)</p>}
                     {importeCobroPend>0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',marginBottom:0}}>💰 {importeCobroPend.toFixed(2)}€ → {premioDoc.recibido?'✅ premio recibido':'pendiente de cobro'}</p>}
                     {importeCobroPend===0 && importeRifaUsado>0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.5)',margin:0}}>Premio destinado íntegramente a la rifa.</p>}
                 </div>
@@ -2948,8 +2987,76 @@ const PreviaPartidoMJ = ({ jornada }) => {
 };
 
 const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers, pagos, onIrAPagos }) => {
+    // ── Pago de jornada: detección + saldo acumulado con pago automático ──
+    var [saldoJornadas, setSaldoJornadas] = useState(0);
+    var [autoPagoInfo, setAutoPagoInfo] = useState(null); // {importe, restante} si esta visita pagó con saldo
+    var autoPagoIntentadoRef = useRef({});
+
+    useEffect(function() {
+        if (!user) return;
+        var unsub = onSnapshot(doc(db, 'saldos_jornadas', user), function(snap) {
+            setSaldoJornadas(snap.exists() ? Number(snap.data().saldo || 0) : 0);
+        }, function(){});
+        return function() { unsub(); };
+    }, [user]);
+
+
+
     var G = styles.colors;
     var [jornada, setJornada] = useState(null);
+    var pagoJornadaHecho = function(j) {
+        if (!j) return false;
+        var numJ = String(j.numeroJornada || '');
+        return (pagos || []).some(function(pg) {
+            if (pg.jugador !== user) return false;
+            if (pg.tipo !== 'jornada_normal' && pg.tipo !== 'jornada_vip') return false;
+            if (pg.estado === 'cancelado' || pg.estado === 'rechazado' || pg.estado === 'fallido') return false;
+            var jp = (pg.jornada || '').toString().toUpperCase().replace(/[^0-9]/g, '');
+            return jp === numJ;
+        });
+    };
+
+    // 📦 AUTO-PAGO: si la jornada está Abierta, no está pagada y hay saldo
+    // acumulado suficiente, el sistema la paga solo y lo deja registrado
+    // como pago confirmado (metodo saldo_acumulado). Un intento por jornada.
+    var jornadaAbiertaAuto = jornada && jornada.estado === 'Abierta' ? jornada : null;
+    var necesitaAutoPago = !!(jornadaAbiertaAuto && !pagoJornadaHecho(jornadaAbiertaAuto));
+    useEffect(function() {
+        if (!necesitaAutoPago || !jornadaAbiertaAuto || !user) return;
+        var precio = jornadaAbiertaAuto.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+        if (saldoJornadas < precio - 0.001) return;
+        var claveIntento = jornadaAbiertaAuto.id;
+        if (autoPagoIntentadoRef.current[claveIntento]) return;
+        autoPagoIntentadoRef.current[claveIntento] = true;
+        (async function() {
+            try {
+                var restanteNuevo = 0;
+                await runTransaction(db, async function(tx) {
+                    var sRef = doc(db, 'saldos_jornadas', user);
+                    var sSnap = await tx.get(sRef);
+                    var saldoAct = sSnap.exists() ? Number(sSnap.data().saldo || 0) : 0;
+                    if (saldoAct < precio - 0.001) throw new Error('saldo insuficiente');
+                    restanteNuevo = Number((saldoAct - precio).toFixed(2));
+                    tx.set(sRef, { saldo: restanteNuevo, actualizadoEn: serverTimestamp() }, { merge: true });
+                });
+                await addDoc(collection(db, 'pagos'), {
+                    jugador: user,
+                    pagoBy: 'sistema_saldo',
+                    tipo: jornadaAbiertaAuto.esVip ? 'jornada_vip' : 'jornada_normal',
+                    jornada: 'J' + jornadaAbiertaAuto.numeroJornada,
+                    importe: precio,
+                    descripcion: 'Jornada ' + jornadaAbiertaAuto.numeroJornada + ' · pagada automáticamente con saldo acumulado',
+                    metodo: 'saldo_acumulado',
+                    estado: 'confirmado',
+                    creadoEn: serverTimestamp(),
+                });
+                await addDoc(collection(db, 'saldos_jornadas', user, 'movimientos'), {
+                    tipo: 'pago_jornada', importe: precio, jornadaId: jornadaAbiertaAuto.id, fecha: serverTimestamp(),
+                });
+                setAutoPagoInfo({ importe: precio, restante: restanteNuevo, numJornada: jornadaAbiertaAuto.numeroJornada });
+            } catch(e) { console.warn('Auto-pago con saldo:', e.message); }
+        })();
+    }, [necesitaAutoPago, jornadaAbiertaAuto, saldoJornadas, user]);
     var [loading, setLoading] = useState(true);
     var [pronostico, setPronostico] = useState({ golesLocal: '', golesVisitante: '', resultado1x2: '' });
     var [elOtroActivado, setElOtroActivado] = useState(false);
@@ -3467,6 +3574,49 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             <div style={{paddingBottom:40}}>
                 <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:G.deepBlue,textTransform:'uppercase',marginBottom:12,fontWeight:700}}>MI JORNADA</h2>
                 <PlazosCard tipo="porra" />
+
+                {/* ✅ Pago automático con saldo acumulado */}
+                {autoPagoInfo && (
+                    <div style={{background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.3)',borderRadius:12,padding:'10px 14px',marginBottom:12}}>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#0f8a61',lineHeight:1.6,margin:0}}>
+                            📦 <strong>Jornada {autoPagoInfo.numJornada} pagada automáticamente con tu saldo acumulado</strong> ({autoPagoInfo.importe.toFixed(2)}€). Te quedan <strong>{autoPagoInfo.restante.toFixed(2)}€</strong> de saldo. Tu porra cuenta: solo te queda apostar. ✅
+                        </p>
+                    </div>
+                )}
+
+                {/* ⚠️ Aviso fuerte: sin pago, la porra NO cuenta */}
+                {jornada && jornada.estado === 'Abierta' && !pagoJornadaHecho(jornada) && !autoPagoInfo && (
+                    <div style={{background:'rgba(230,57,70,.08)',border:'1px solid rgba(230,57,70,.35)',borderRadius:12,padding:'11px 14px',marginBottom:12}}>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#b02a35',lineHeight:1.6,marginBottom:8}}>
+                            ⚠️ <strong>IMPORTANTE:</strong> aunque rellenes tu porra, <strong>NO CONTARÁ</strong> si no pagas la jornada ({(jornada.esVip?APUESTA_VIP:APUESTA_NORMAL).toFixed(2)}€{jornada.esVip?' · VIP':''}) o marcas tu pago antes del cierre.{saldoJornadas > 0 ? ' Tienes ' + saldoJornadas.toFixed(2) + '€ de saldo acumulado, insuficiente para esta jornada.' : ''}
+                        </p>
+                        <button onClick={onIrAPagos} style={{width:'100%',border:'none',borderRadius:10,padding:'9px 12px',background:'#b02a35',color:'#fff',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,cursor:'pointer'}}>💳 PAGAR / MARCAR MI PAGO AHORA</button>
+                    </div>
+                )}
+                {jornada && jornada.estado === 'Abierta' && pagoJornadaHecho(jornada) && !autoPagoInfo && (
+                    <div style={{background:'rgba(16,185,129,.06)',border:'1px solid rgba(16,185,129,.2)',borderRadius:12,padding:'8px 14px',marginBottom:12}}>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#0f8a61',margin:0}}>✅ Jornada pagada — tu porra cuenta.</p>
+                    </div>
+                )}
+
+                {/* ⭐ Recordatorio: Estrellas = premio de final de temporada */}
+                {jornada && jornada.estado === 'Abierta' && (function(){
+                    var limite = '';
+                    var fRef = jornada.fechaPartido || jornada.fecha;
+                    if (fRef) {
+                        try {
+                            var f = new Date(fRef);
+                            if (!isNaN(f.getTime())) limite = new Date(f.getTime() - 2*3600*1000).toLocaleString('es-ES', { weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary' });
+                        } catch(e) {}
+                    }
+                    return (
+                        <div style={{background:'linear-gradient(120deg,rgba(255,215,0,.12),rgba(255,215,0,.04))',border:'1px solid rgba(212,175,55,.35)',borderRadius:12,padding:'10px 14px',marginBottom:12}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#001F6B',lineHeight:1.6,margin:0}}>
+                                ⭐ <strong>No te olvides de tus 5 Estrellas:</strong> jugándolas cada jornada optas al <strong>premio de final de temporada</strong> de la Liga de Estrellas.{limite ? ' Elige antes del ' + limite + ' (2 horas antes del partido).' : ' Elige antes de 2 horas antes del partido de la UDLP.'}
+                            </p>
+                        </div>
+                    );
+                })()}
                 {proximaUDLPMJ ? (function(){
                     var fp=new Date(proximaUDLPMJ.fecha);
                     return <div style={{background:'#001F6B',borderRadius:18,padding:18,marginBottom:14}}>
@@ -8064,6 +8214,82 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
 // quién ha abandonado, y un interruptor por abandono para dejar registrado si
 // se le devolvió el dinero o no. Las devoluciones se guardan en
 // configuracion/devoluciones_inscripcion.
+// ============================================================================
+// ⚡ PAGOS PENDIENTES DE CONFIRMAR — confirmación en un toque
+// ============================================================================
+// Los pagos de jornada e inscripción llegan constantemente: esta bandeja los
+// pone arriba del todo, con botón de confirmar o rechazar en un solo toque,
+// sin tener que rebuscar en el listado completo.
+const PagosPendientesAdmin = () => {
+    var [pendientes, setPendientes] = useState([]);
+    var [procesando, setProcesando] = useState('');
+
+    useEffect(function() {
+        var unsub = onSnapshot(collection(db, 'pagos'), function(snap) {
+            var lista = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+                .filter(function(p) { return p.estado === 'pendiente_confirmacion'; })
+                .sort(function(a, b) {
+                    var ta = a.creadoEn && a.creadoEn.seconds ? a.creadoEn.seconds : 0;
+                    var tb = b.creadoEn && b.creadoEn.seconds ? b.creadoEn.seconds : 0;
+                    return ta - tb; // los más antiguos primero
+                });
+            setPendientes(lista);
+        }, function(){});
+        return function() { unsub(); };
+    }, []);
+
+    var resolver = async function(pago, nuevoEstado) {
+        if (procesando) return;
+        setProcesando(pago.id);
+        try {
+            await setDoc(doc(db, 'pagos', pago.id), {
+                estado: nuevoEstado,
+                resueltoEn: serverTimestamp(),
+                resueltoPor: 'Juanma',
+            }, { merge: true });
+        } catch(e) { alert('No se pudo actualizar el pago: ' + e.message); }
+        setProcesando('');
+    };
+
+    var etiquetaTipo = function(p) {
+        if (p.tipo === 'inscripcion') return '🎫 Inscripción';
+        if (p.tipo === 'jornada_vip') return '💎 ' + (p.jornada || 'Jornada VIP');
+        return '⚽ ' + (p.jornada || 'Jornada');
+    };
+
+    return (
+        <div style={{...ADMIN_STYLES.card, border: pendientes.length ? '2px solid rgba(255,215,0,0.6)' : ADMIN_STYLES.card.border}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>
+                ⚡ Pagos pendientes de confirmar {pendientes.length > 0 && <span style={{background:'#e63946',color:'#fff',borderRadius:10,padding:'1px 8px',fontSize:12,marginLeft:6}}>{pendientes.length}</span>}
+            </p>
+            {pendientes.length === 0 ? (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',margin:0}}>✅ Todo al día — no hay pagos esperando confirmación.</p>
+            ) : (
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {pendientes.map(function(p) {
+                        return (
+                            <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,215,0,0.06)',border:'1px solid rgba(255,215,0,0.25)',borderRadius:10,padding:'8px 10px'}}>
+                                <div style={{flex:1,minWidth:0}}>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,color:'#001F6B',margin:0}}>
+                                        {p.jugador}{p.pagoBy && p.pagoBy !== p.jugador ? <span style={{fontWeight:400,opacity:.5}}> (paga {p.pagoBy})</span> : null}
+                                    </p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.5)',margin:0}}>
+                                        {etiquetaTipo(p)} · {Number(p.importe || 0).toFixed(2)}€ · {p.metodo || 'bizum'}
+                                    </p>
+                                </div>
+                                <button onClick={function(){ resolver(p, 'confirmado'); }} disabled={procesando === p.id}
+                                    style={{border:'none',borderRadius:9,padding:'8px 14px',background:'#10b981',color:'#fff',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,cursor:'pointer',flexShrink:0}}>✅ OK</button>
+                                <button onClick={function(){ if (window.confirm('¿Rechazar el pago de ' + p.jugador + '?')) resolver(p, 'rechazado'); }} disabled={procesando === p.id}
+                                    style={{border:'1px solid rgba(230,57,70,0.4)',borderRadius:9,padding:'8px 10px',background:'#fff',color:'#e63946',fontFamily:"'Teko',sans-serif",fontSize:13,cursor:'pointer',flexShrink:0}}>✕</button>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const InscripcionesAdmin = () => {
     var [pagosIns, setPagosIns] = useState([]);
     var [inactivosIns, setInactivosIns] = useState([]);
@@ -9983,12 +10209,35 @@ const ConfirmacionesPremiosAdmin = ({ jornadas }) => {
     }, [jornadas]);
     if(!jornada) return null;
     var validos = confirmaciones.filter(function(x){return x.recibido;}).length;
+    // Ganadores que aún no han dicho cómo gestionar su premio
+    var sinDecidir = (Array.isArray(jornada.ganadores)?jornada.ganadores:[]).filter(function(g){
+        return !confirmaciones.some(function(c){return c.id===g;});
+    });
+    var descGestion = function(x){
+        var partes=[];
+        if(Number(x.importeCobro||0)>0)partes.push('💰 cobrar '+Number(x.importeCobro).toFixed(2)+'€');
+        if(Number(x.importeAcumular||0)>0)partes.push('📦 acumular '+Number(x.importeAcumular).toFixed(2)+'€');
+        if(Number(x.importeRifa||0)>0)partes.push('🎟️ rifa '+Number(x.importeRifa).toFixed(2)+'€');
+        return partes.length?partes.join(' · '):'—';
+    };
     return <div style={ADMIN_STYLES.card}>
-        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>💸 Confirmaciones de premios · J{jornada.numeroJornada}</p>
-        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,.5)',marginBottom:12,lineHeight:1.5}}>{validos} jugadores han confirmado que han recibido su premio.</p>
+        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>💸 Gestión de premios · J{jornada.numeroJornada}</p>
+        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,.5)',marginBottom:12,lineHeight:1.5}}>Qué ha decidido cada ganador con su premio · {validos} cobro(s) confirmados.</p>
         <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            {confirmaciones.length===0 ? <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.4)'}}>Todavía no hay confirmaciones registradas.</p> : confirmaciones.map(function(x){
-                return <div key={x.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:x.recibido?'rgba(16,185,129,.08)':'rgba(230,57,70,.06)',borderRadius:9}}><span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#001F6B'}}>{x.id}</span><span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:x.recibido?'#0f8a61':'#e63946'}}>{x.recibido?'✅ RECIBIDO':'⏳ PENDIENTE'}</span></div>;
+            {sinDecidir.map(function(g){
+                return <div key={'sd-'+g} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:'rgba(255,215,0,.1)',border:'1px dashed rgba(212,175,55,.5)',borderRadius:9}}>
+                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,color:'#001F6B'}}>{g}</span>
+                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'#8a6a00'}}>⏳ AÚN NO HA ELEGIDO GESTIÓN</span>
+                </div>;
+            })}
+            {confirmaciones.length===0 && sinDecidir.length===0 ? <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.4)'}}>Sin ganadores con premio en esta jornada.</p> : confirmaciones.map(function(x){
+                return <div key={x.id} style={{padding:'8px 10px',background:x.recibido?'rgba(16,185,129,.08)':'rgba(0,31,107,.03)',borderRadius:9}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:2}}>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,color:'#001F6B'}}>{x.id}</span>
+                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:x.recibido?'#0f8a61':(Number(x.importeCobro||0)>0?'#e63946':'#0f8a61')}}>{Number(x.importeCobro||0)>0?(x.recibido?'✅ COBRO RECIBIDO':'⏳ COBRO PENDIENTE'):'✅ SIN COBRO PENDIENTE'}</span>
+                    </div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,.6)',margin:0}}>{descGestion(x)}</p>
+                </div>;
             })}
         </div>
     </div>;
@@ -10539,6 +10788,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'pagos' && (
                 <div>
+                    {/* ⚡ Bandeja rápida: confirmar pagos en un toque */}
+                    <PagosPendientesAdmin />
+
                     {/* 💶 Estado de inscripciones: pagos, abandonos y devoluciones */}
                     <InscripcionesAdmin />
 
@@ -11891,6 +12143,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     const [loading, setLoading] = useState(true);
     const [posicionFiltro, setPosicionFiltro] = useState('Todos');
     const [mostrarSeleccion, setMostrarSeleccion] = useState(false);
+    const seleccionAutoAbiertaRef = useRef(false);
     // ── Tablero por jornada ──
     const [jornadasFinalizadas, setJornadasFinalizadas] = useState([]);
     const [idxJornada, setIdxJornada] = useState(0);          // 0 = última finalizada
@@ -11964,6 +12217,17 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         });
         return () => unsubSel();
     }, [jornadaActual, currentUser]);
+
+    // Con jornada Abierta y sin selección guardada, el panel de elección se
+    // abre solo la primera vez para que nadie se despiste: ahí es donde hay
+    // que rellenar. La jornada anterior queda como tablero de consulta.
+    useEffect(() => {
+        if (seleccionAutoAbiertaRef.current) return;
+        if (jornadaActual && jornadaActual.estado === 'Abierta' && !yaGuardado && !loading) {
+            seleccionAutoAbiertaRef.current = true;
+            setMostrarSeleccion(true);
+        }
+    }, [jornadaActual, yaGuardado, loading]);
 
     const guardarSeleccion = async () => {
         if (!jornadaActual || seleccion.length === 0) return;
@@ -12192,6 +12456,23 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                         <span>⭐ JORNADA {jornadaActual.numeroJornada} — {jornadaActual.estado === 'Abierta' ? (yaGuardado ? 'TUS 5 GUARDADOS · TOCA PARA CAMBIAR' : 'ELIGE TUS ' + maxEstrellas) : 'SELECCIÓN CERRADA'}</span>
                         <span style={{fontSize:12}}>{mostrarSeleccion ? '▲' : '▼'}</span>
                     </button>
+                    {jornadaActual.estado === 'Abierta' && (function(){
+                        var limite = '';
+                        var fRef = jornadaActual.fechaPartido || jornadaActual.fecha;
+                        if (fRef) {
+                            try {
+                                var f = new Date(fRef);
+                                if (!isNaN(f.getTime())) limite = new Date(f.getTime() - 2*3600*1000).toLocaleString('es-ES', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary' });
+                            } catch(e) {}
+                        }
+                        return (
+                            <div style={{background:'rgba(255,215,0,0.1)',borderLeft:'3px solid #FFD700',padding:'8px 12px',borderRadius:'0 0 10px 10px'}}>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'#001F6B',lineHeight:1.5,margin:0}}>
+                                    🏆 Jugando a las Estrellas cada jornada optas al <strong>premio de final de temporada</strong>.{limite ? ' Elige antes del ' + limite + ' (2h antes del partido).' : ' Plazo: hasta 2 horas antes del partido de la UDLP.'}
+                                </p>
+                            </div>
+                        );
+                    })()}
                     {mostrarSeleccion && (
                         <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.08)',borderRadius:'0 0 14px 14px',padding:'14px 10px'}}>
                             {miBeneficio && (
