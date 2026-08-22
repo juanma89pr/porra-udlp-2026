@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.N · bloqueo real 2h estrellas + cierre manual admin';
+const APP_BUILD = 'v2026-08-22.P · boleto de apuesta con pasarela Bizum';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3582,6 +3582,50 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido';
     });
 
+    var [boletoAbierto, setBoletoAbierto] = useState(false);
+    var [bizumCfg, setBizumCfg] = useState(null);
+    var [confirmandoBoleto, setConfirmandoBoleto] = useState(false);
+    useEffect(function() {
+        var u = onSnapshot(doc(db, 'configuracion', 'bizum'), function(s) { setBizumCfg(s.exists() ? s.data() : null); }, function(){});
+        return function() { u(); };
+    }, []);
+
+    // Escritura real del pronóstico (compartida por los dos caminos)
+    var escribirPronostico = async function() {
+        await setDoc(doc(db, "pronosticos", jornada.id, "jugadores", user), {
+            golesLocal: Number(pronostico.golesLocal),
+            golesVisitante: Number(pronostico.golesVisitante),
+            resultado1x2: pronostico.resultado1x2,
+            elOtroActivado: elOtroActivado,
+            elOtroFixtureId: elOtroActivado && partidoOtro ? partidoOtro.fixtureId : null,
+            elOtroEquipoUsado: elOtroActivado ? (miElOtro && miElOtro.equipo) : null,
+            guardadoEn: serverTimestamp(),
+            usuario: user,
+            puntosObtenidos: 0,
+        }, { merge: true });
+    };
+
+    // ✅ Confirmación del boleto: registra el Bizum (pendiente de que el admin
+    // lo valide) Y guarda la apuesta, todo en el mismo visto.
+    var confirmarBoletoYGuardar = async function() {
+        if (confirmandoBoleto) return;
+        setConfirmandoBoleto(true);
+        try {
+            await addDoc(collection(db, 'pagos'), {
+                jugador: user, pagoBy: user,
+                tipo: jornada.esVip ? 'jornada_vip' : 'jornada_normal',
+                jornada: 'J' + jornada.numeroJornada,
+                importe: jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL,
+                descripcion: 'Jornada ' + jornada.numeroJornada + ' · declarado desde el boleto de apuesta',
+                metodo: 'bizum', estado: 'pendiente_confirmacion', creadoEn: serverTimestamp(),
+            });
+            await escribirPronostico();
+            setGuardado(true); setBoletoAbierto(false);
+            setMensaje('✅ Apuesta guardada y Bizum registrado — queda PENDIENTE de que el admin confirme tu pago.');
+        } catch(e) { setMensaje('❌ Error: ' + e.message); }
+        setConfirmandoBoleto(false);
+    };
+
     var guardar = async function() {
         if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || !pronostico.resultado1x2) {
             setMensaje('Rellena el marcador y el 1X2 antes de guardar.'); return;
@@ -3590,22 +3634,13 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             setMensaje('❌ Ya no puedes activar El Otro Equipo — su partido de Primera ya ha empezado.');
             return;
         }
+        // 🎫 BOLETO: si la jornada no está pagada, el guardado pasa por la
+        // pasarela del Bizum — sin el visto, la apuesta no se marca guardada.
+        if (!jornadaPagada && !autoPagoInfo) { setBoletoAbierto(true); return; }
         try {
-            await setDoc(doc(db, "pronosticos", jornada.id, "jugadores", user), {
-                golesLocal: Number(pronostico.golesLocal),
-                golesVisitante: Number(pronostico.golesVisitante),
-                resultado1x2: pronostico.resultado1x2,
-                elOtroActivado: elOtroActivado,
-                // Guardamos el partido exacto en el momento de activar, para
-                // que al cerrar la jornada no haya que adivinar cuál era.
-                elOtroFixtureId: elOtroActivado && partidoOtro ? partidoOtro.fixtureId : null,
-                elOtroEquipoUsado: elOtroActivado ? (miElOtro && miElOtro.equipo) : null,
-                guardadoEn: serverTimestamp(),
-                usuario: user,
-                puntosObtenidos: 0,
-            }, { merge: true });
+            await escribirPronostico();
             setGuardado(true);
-            setMensaje(jornadaPagada ? '✅ Apuesta guardada correctamente.' : '✅ Apuesta guardada — recuerda pagar esta jornada por Bizum para que cuente.');
+            setMensaje('✅ Apuesta guardada correctamente.');
         } catch(e) { setMensaje('❌ Error al guardar: ' + e.message); }
     };
 
@@ -3798,6 +3833,32 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 {jornada && jornada.estado === 'Abierta' && pagoJornadaHecho(jornada) && !autoPagoInfo && (
                     <div style={{background:'rgba(16,185,129,.06)',border:'1px solid rgba(16,185,129,.2)',borderRadius:12,padding:'8px 14px',marginBottom:12}}>
                         <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#0f8a61',margin:0}}>✅ Jornada pagada — tu porra cuenta.</p>
+                    </div>
+                )}
+
+                {/* 🎫 BOLETO DE APUESTA — pasarela Bizum antes de fijar el guardado */}
+                {boletoAbierto && jornada && (
+                    <div onClick={function(){ setBoletoAbierto(false); }} style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10700,background:'rgba(4,10,38,0.85)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+                        <div onClick={function(e){ e.stopPropagation(); }} style={{maxWidth:360,width:'100%',background:'#fff',borderRadius:18,overflow:'hidden',boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}}>
+                            <div style={{background:'linear-gradient(135deg,#001F6B,#0035b8)',padding:'14px 16px'}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:'#FFD700',margin:0}}>🎫 TU BOLETO · JORNADA {jornada.numeroJornada}</p>
+                            </div>
+                            <div style={{padding:'14px 16px'}}>
+                                <div style={{background:'rgba(0,31,107,0.04)',borderRadius:12,padding:'10px 12px',marginBottom:10}}>
+                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#001F6B',margin:'0 0 2px'}}>{jornada.equipoLocal} {pronostico.golesLocal} – {pronostico.golesVisitante} {jornada.equipoVisitante}</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)',margin:0}}>1X2: <strong>{pronostico.resultado1x2}</strong>{pronostico.goleador ? ' · Goleador: ' + pronostico.goleador : ''}{elOtroActivado ? ' · 🛡️ El Otro activado' : ''}</p>
+                                </div>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.7,marginBottom:10}}>
+                                    Para fijar tu apuesta, haz ahora el <strong>Bizum de {(jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL).toFixed(2)}€</strong>{bizumCfg && bizumCfg.telefono ? <span> al <strong>{bizumCfg.telefono}</strong>{bizumCfg.titular ? ' (' + bizumCfg.titular + ')' : ''}</span> : ''} con concepto <strong>"J{jornada.numeroJornada} · {user}"</strong>.
+                                </p>
+                                <button onClick={confirmarBoletoYGuardar} disabled={confirmandoBoleto}
+                                    style={{width:'100%',border:'none',borderRadius:12,padding:13,background:'#10b981',color:'#fff',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,fontWeight:700,cursor:'pointer',marginBottom:8}}>
+                                    {confirmandoBoleto ? 'GUARDANDO…' : '✅ HE HECHO EL BIZUM · GUARDAR MI APUESTA'}
+                                </button>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.5)',lineHeight:1.5,marginBottom:8}}>Tu pago quedará <strong>pendiente de confirmación del admin</strong>. Sin el visto de arriba, la apuesta NO se guarda.</p>
+                                <button onClick={function(){ setBoletoAbierto(false); }} style={{width:'100%',border:'1px solid rgba(0,31,107,0.15)',borderRadius:12,padding:10,background:'#fff',color:'rgba(0,31,107,0.6)',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>VOLVER SIN GUARDAR</button>
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -5116,6 +5177,7 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
     var [multiplicadores, setMultiplicadores] = useState([]);
     var [configGala, setConfigGala] = useState({});
     var [plazosGala, setPlazosGala] = useState({});
+    var [equiposLibresPrimera, setEquiposLibresPrimera] = useState(null);
     var [cargando, setCargando] = useState(true);
 
     useEffect(function() {
@@ -5125,10 +5187,14 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
                 if (!snap.empty) setJ1({ id: snap.docs[0].id, ...snap.docs[0].data() });
                 var otroSnap = await getDocs(collection(db, 'elOtro'));
                 var lista = [];
+                var equiposCogidos = {};
                 otroSnap.forEach(function(d) {
-                    var h = (d.data().historial || []).find(function(x) { return x.jornada === 1; });
+                    var dd = d.data();
+                    if (dd.equipo) equiposCogidos[dd.equipo] = true;
+                    var h = (dd.historial || []).find(function(x) { return x.jornada === 1; });
                     if (h) lista.push({ usuario: d.id, multiplicador: Number(h.multiplicador || 1) });
                 });
+                setEquiposLibresPrimera(Math.max(0, 20 - Object.keys(equiposCogidos).length));
                 lista.sort(function(a, b) { return b.multiplicador - a.multiplicador; });
                 setMultiplicadores(lista);
                 var cfg = await getDoc(doc(db, 'configuracion', 'gala_j1'));
@@ -5250,20 +5316,23 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:14}}>Ir mal en la tabla nunca tuvo tanto premio.</p>
             </div>
         ); },
-        // 5 · UNA PLAZA LIBRE
+        // 5 · 6 PLAZAS LIBRES · RECLUTAMIENTO
         function() { return (
             <div style={{textAlign:'center'}}>
-                <p style={{fontSize:40,marginBottom:10}}>👋</p>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:5,color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:10}}>SE ABRE UNA PLAZA</p>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.9,marginBottom:16}}>
-                    {jugadorSeVa
-                        ? <span><strong style={{color:'#FFD700'}}>{jugadorSeVa}</strong> deja la Porra esta temporada. ¡Gracias por jugar! 💙💛<br/><br/>Su plaza queda <strong>LIBRE</strong>.</span>
-                        : <span>Un jugador deja la Porra esta temporada. ¡Gracias por jugar! 💙💛<br/><br/>Su plaza queda <strong>LIBRE</strong>.</span>}
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:5,color:'rgba(255,215,0,0.5)',textTransform:'uppercase',marginBottom:8}}>📣 BUSCAMOS REFUERZOS</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:44,fontWeight:700,color:'#FFD700',letterSpacing:2,lineHeight:1,marginBottom:4}}>6 PLAZAS<br/>LIBRES</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12.5,color:'rgba(255,255,255,0.75)',lineHeight:1.8,marginBottom:12}}>
+                    Ahora mismo somos <strong style={{color:'#FFD700'}}>14 jugadores</strong> y queremos completar el vestuario esta temporada.
                 </p>
+                <div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 14px',marginBottom:12}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.75)',lineHeight:1.7,margin:0}}>
+                        🛡️ Y ojo, que hay chollo: {equiposLibresPrimera !== null && equiposLibresPrimera > 0 ? <span>todavía quedan <strong style={{color:'#FFD700'}}>{equiposLibresPrimera} equipos de Primera SIN DUEÑO</strong></span> : <span>todavía quedan <strong style={{color:'#FFD700'}}>equipos de Primera SIN DUEÑO</strong></span>} para El Otro Equipo — quien entre ahora elige entre lo que queda de la élite para multiplicar sus puntos.
+                    </p>
+                </div>
                 <div style={{background:'rgba(255,215,0,0.08)',border:'1px solid rgba(255,215,0,0.25)',borderRadius:14,padding:14}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,color:'#FFD700',letterSpacing:1,marginBottom:6}}>📣 TRAE A UN AMIGO</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,color:'#FFD700',letterSpacing:1,marginBottom:6}}>📣 TRAE A LOS TUYOS</p>
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7,margin:0}}>
-                        ¿Conoces a alguien con hambre de porra? Que solicite su plaza desde la pantalla de inicio de la app. Primero en llegar, primero en jugar.
+                        Familia, amigos, compañeros con hambre de porra: que soliciten su plaza desde la pantalla de inicio de la app. <strong>Primero en llegar, primero en elegir equipo.</strong> Comparte esta gala y que corra la voz. 💛💙
                     </p>
                 </div>
             </div>
