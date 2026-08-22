@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.J · hero de rifa nativo (visor interactivo)';
+const APP_BUILD = 'v2026-08-22.K · creacion de rifa con errores visibles';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -10767,6 +10767,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
 
     var crearRifaCamiseta = async function() {
         if (!window.confirm('Se creará la RIFA DE LA 1ª EQUIPACIÓN 26/27:\n\n· 100 números a 2€\n· Apertura programada HOY a las 20:00 (Canarias)\n· Collage oficial incluido\n· Normas completas (sorteo por asistencia del próximo partido en casa)\n\n¿Crear?')) return;
+        try {
         await addDoc(collection(db, 'rifas'), {
             titulo: 'CAMISETA OFICIAL UDLP 26/27',
             subtitulo: '1ª equipación amarilla · talla a elegir por el ganador',
@@ -10783,10 +10784,15 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             creadaEn: serverTimestamp(),
         });
         setMsgAdmin('✅ Rifa de la camiseta creada · abre HOY a las 20:00. Publica la novedad tipo Rifa desde Novedades cuando quieras.');
+        alert('✅ RIFA CREADA. La verás como vigente en Rifas (con cuenta atrás hasta las 20:00) y en tu gestor de rifas.');
+        } catch(e) {
+            alert('❌ NO SE PUDO CREAR LA RIFA: ' + e.message + '\n\nSi dice "Missing or insufficient permissions", publica las reglas de Firestore del último ZIP (añaden permisos de rifas para la app) y reintenta.');
+        }
     };
 
     var crearRifa = async function() {
         if (!nuevaRifa.titulo || !nuevaRifa.precio) { setMsgAdmin('Rellena al menos título y precio de papeleta'); return; }
+        try {
         await addDoc(collection(db, 'rifas'), {
             titulo: nuevaRifa.titulo,
             subtitulo: nuevaRifa.subtitulo || '',
@@ -10803,6 +10809,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
         });
         setNuevaRifa({ titulo:'', subtitulo:'', descripcion:'', imagenUrl:'', precio:'', totalPapeletas:'100', fechaApertura:'', normas:'', cta:'', fecha:'' });
         setMsgAdmin('✅ Rifa creada y ABIERTA. Publica la novedad desde Herramientas → Novedades.');
+        } catch(e) {
+            alert('❌ NO SE PUDO CREAR LA RIFA: ' + e.message);
+        }
     };
 
     // Papeletas en vivo de la rifa que se está gestionando
