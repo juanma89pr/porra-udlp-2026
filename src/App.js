@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.L · doble confirmacion dinero + anular gestion premio';
+const APP_BUILD = 'v2026-08-22.M · bote en juego + insignias de pago';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3172,6 +3172,19 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
 
     var G = styles.colors;
     var [jornada, setJornada] = useState(null);
+    // Quién ha pagado ESTA jornada (para el bote real y las insignias 💶)
+    var jugadorPagoJornada = function(nombreJug, j) {
+        if (!j) return false;
+        var numJ = String(j.numeroJornada || '');
+        return (pagos || []).some(function(pg) {
+            if (pg.jugador !== nombreJug) return false;
+            if (pg.tipo !== 'jornada_normal' && pg.tipo !== 'jornada_vip') return false;
+            if (pg.estado === 'cancelado' || pg.estado === 'rechazado' || pg.estado === 'fallido') return false;
+            var jp = (pg.jornada || '').toString().toUpperCase().replace(/[^0-9]/g, '');
+            return jp === numJ;
+        });
+    };
+
     var pagoJornadaHecho = function(j) {
         if (!j) return false;
         var numJ = String(j.numeroJornada || '');
@@ -3771,6 +3784,51 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     </div>
                 )}
 
+                {/* 💰 EL BOTE EN JUEGO — quién apuesta, quién paga, y cuánto hay */}
+                {jornada && jornada.estado === 'Abierta' && (function(){
+                    var precioJ = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+                    var pagadosLista = participantes.filter(function(pn){ return jugadorPagoJornada(pn, jornada); });
+                    var boteActual = Number(jornada.bote || 0) + pagadosLista.length * precioJ;
+                    var yoPagado = pagoJornadaHecho(jornada) || !!autoPagoInfo;
+                    return (
+                        <div style={{background:'linear-gradient(135deg,#0d1b3e,#001F6B)',border:'1px solid rgba(255,215,0,0.4)',borderRadius:16,padding:'14px 16px',marginBottom:12,boxShadow:'0 6px 20px rgba(0,31,107,0.25)'}}>
+                            <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',marginBottom:4}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:'rgba(255,215,0,0.6)',textTransform:'uppercase',margin:0}}>💰 BOTE EN JUEGO</p>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:30,fontWeight:700,color:'#FFD700',margin:0,lineHeight:1}}>{boteActual.toFixed(2)}€</p>
+                            </div>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(255,255,255,0.65)',margin:'0 0 10px'}}>
+                                {Number(jornada.bote || 0) > 0 ? Number(jornada.bote).toFixed(2) + '€ acumulados + ' : ''}{pagadosLista.length} jornada{pagadosLista.length === 1 ? '' : 's'} pagada{pagadosLista.length === 1 ? '' : 's'} × {precioJ.toFixed(2)}€ — y subiendo con cada pago.
+                            </p>
+                            {/* Tira de avatares: quién ha apostado y quién ha PAGADO */}
+                            {participantes.length > 0 && (
+                                <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>
+                                    {participantes.map(function(pn) {
+                                        var pagoOk = pagadosLista.indexOf(pn) !== -1;
+                                        var perf = userProfiles[pn] || {};
+                                        return (
+                                            <div key={pn} style={{position:'relative',opacity: pagoOk ? 1 : 0.45,filter: pagoOk ? 'none' : 'grayscale(0.7)'}} title={pn + (pagoOk ? ' · pagada' : ' · apostó pero SIN pagar')}>
+                                                <IconoPerfil perfil={perf} size={30} />
+                                                <span style={{position:'absolute',bottom:-3,right:-4,fontSize:10,background: pagoOk ? '#10b981' : 'rgba(255,255,255,0.2)',borderRadius:8,padding:'0 3px',lineHeight:'13px'}}>{pagoOk ? '💶' : '·'}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.35)',margin:'0 0 8px'}}>💶 = jornada pagada · en gris: han apostado pero aún no pagan (no suman al bote ni entran al reparto)</p>
+                            {!yoPagado ? (
+                                <div style={{background:'rgba(255,215,0,0.1)',border:'1px dashed rgba(255,215,0,0.5)',borderRadius:10,padding:'9px 12px'}}>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#FFD700',lineHeight:1.55,marginBottom:8}}>
+                                        👀 <strong>Si quieres optar a llevarte {boteActual > 0 ? 'estos ' + boteActual.toFixed(2) + '€' : 'el bote'}</strong> acertando el resultado exacto, tienes que <strong>pagar tu jornada</strong>. Sin pago, tu porra no entra al reparto por muy clavada que esté.
+                                    </p>
+                                    <button onClick={onIrAPagos} style={{width:'100%',border:'none',borderRadius:10,padding:'9px 12px',background:'#FFD700',color:'#001F6B',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,fontWeight:700,cursor:'pointer'}}>💳 PAGAR Y ENTRAR AL BOTE</button>
+                                </div>
+                            ) : (
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'#10b981',margin:0}}>✅ Estás dentro del reparto: si clavas el exacto, este bote es tuyo (o a repartir entre los acertantes).</p>
+                            )}
+                        </div>
+                    );
+                })()}
+
                 {/* ⭐ Recordatorio: Estrellas = premio de final de temporada */}
                 {jornada && jornada.estado === 'Abierta' && (function(){
                     var limite = '';
@@ -3853,8 +3911,10 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     </div>
                 )}
                 <div style={{position:'absolute',top:16,right:16,textAlign:'right'}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,color:'rgba(255,255,255,0.3)',letterSpacing:2}}>HAN APOSTADO</p>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'rgba(255,255,255,0.6)'}}>{participantes.length}</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,color:'rgba(255,255,255,0.3)',letterSpacing:2}}>APOSTADO · PAGADO</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'rgba(255,255,255,0.6)'}}>
+                        {participantes.length} · <span style={{color:'#FFD700'}}>💶{participantes.filter(function(pn){ return jugadorPagoJornada(pn, jornada); }).length}</span>
+                    </p>
                 </div>
             </div>
 
