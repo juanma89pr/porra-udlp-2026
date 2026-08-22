@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.K · creacion de rifa con errores visibles';
+const APP_BUILD = 'v2026-08-22.L · doble confirmacion dinero + anular gestion premio';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -2532,6 +2532,11 @@ const RifasScreen = ({ currentUser, userProfiles }) => {
     // Compra transaccional: ningún número puede comprarse dos veces, y el
     // saldo nunca puede quedar en negativo. Todo o nada.
     var comprar = async function(metodo) {
+        // 💶 DOBLE CONFIRMACIÓN: compra con dinero y sin devolución.
+        if (seleccion.length) {
+            var okCompra = window.confirm('CONFIRMA TU COMPRA:\n\n🎟️ Números: ' + seleccion.join(', ') + '\n💶 Total: ' + costeSeleccion.toFixed(2) + '€ (' + (metodo === 'saldo' ? 'con tu saldo de premios' : 'por Bizum') + ')\n\n⚠️ Las papeletas compradas no se devuelven ni se cambian.\n\n¿Es esto lo que quieres hacer?');
+            if (!okCompra) return;
+        }
         if (!rifa || !seleccion.length || comprando) return;
         if (metodo === 'saldo' && saldo < costeSeleccion) { setMsg('❌ Saldo insuficiente para esa selección.'); return; }
         setComprando(true); setMsg('');
@@ -2856,6 +2861,14 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
 
     var registrarDestino=async function(aRifa,aAcumular,aCobro){
         if(guardandoDestino)return;
+        // 💶 DOBLE CONFIRMACIÓN: esta decisión mueve dinero y el usuario no
+        // puede modificarla después (solo el admin puede anularla).
+        var resumen=[];
+        if(aCobro>0)resumen.push('💰 Recibir por Bizum: '+aCobro.toFixed(2)+'€');
+        if(aAcumular>0)resumen.push('📦 Acumular para próximas jornadas: '+aAcumular.toFixed(2)+'€');
+        if(aRifa>0)resumen.push('🎟️ Destinar a la rifa: '+aRifa.toFixed(2)+'€');
+        var okConfirm=window.confirm('CONFIRMA LA GESTIÓN DE TU PREMIO ('+importe.toFixed(2)+'€):\n\n'+resumen.join('\n')+'\n\n⚠️ Esta decisión implica dinero y NO podrás cambiarla tú después — solo el admin puede anularla para que elijas de nuevo.\n\n¿Es esto lo que quieres hacer?');
+        if(!okConfirm)return;
         setGuardandoDestino(true);
         try{
             var partes=[];
@@ -10359,6 +10372,38 @@ const NormativaScreen = () => {
 const ConfirmacionesPremiosAdmin = ({ jornadas }) => {
     const [jornada, setJornada] = useState(null);
     const [confirmaciones, setConfirmaciones] = useState([]);
+    const [anulando, setAnulando] = useState('');
+
+    // ↩️ Anula la gestión elegida por un ganador: revierte lo acumulado y lo
+    // destinado a rifa (si el saldo sigue disponible) y borra su elección
+    // para que vuelva a decidir desde cero en Mi Jornada.
+    var anularGestion = async function(x) {
+        if (anulando) return;
+        var avisos = [];
+        if (!window.confirm('ANULAR LA GESTIÓN DEL PREMIO DE ' + x.id + ':\n\n· Se revertirá lo acumulado (' + Number(x.importeAcumular||0).toFixed(2) + '€) y lo destinado a rifa (' + Number(x.importeRifa||0).toFixed(2) + '€) de sus saldos, si siguen disponibles.\n· Su elección se borrará y volverá a elegir desde cero en Mi Jornada.\n\n¿Continuar?')) return;
+        setAnulando(x.id);
+        try {
+            var revertir = async function(coleccion, cantidad, etiqueta) {
+                if (!(cantidad > 0)) return;
+                await runTransaction(db, async function(tx) {
+                    var ref = doc(db, coleccion, x.id);
+                    var s = await tx.get(ref);
+                    var saldoAct = s.exists() ? Number(s.data().saldo || 0) : 0;
+                    var aQuitar = Math.min(saldoAct, cantidad);
+                    if (aQuitar < cantidad - 0.001) avisos.push('⚠️ ' + etiqueta + ': solo se pudieron revertir ' + aQuitar.toFixed(2) + '€ de ' + cantidad.toFixed(2) + '€ (el resto ya estaba gastado — cuadradlo a mano).');
+                    tx.set(ref, { saldo: Number((saldoAct - aQuitar).toFixed(2)), actualizadoEn: serverTimestamp() }, { merge: true });
+                });
+                await addDoc(collection(db, coleccion, x.id, 'movimientos'), {
+                    tipo: 'reversion_admin', importe: -cantidad, jornadaId: jornada.id, fecha: serverTimestamp(),
+                });
+            };
+            await revertir('saldos_jornadas', Number(x.importeAcumular || 0), 'Saldo de jornadas');
+            await revertir('saldos_rifa', Number(x.importeRifa || 0), 'Saldo de rifa');
+            await deleteDoc(doc(db, 'premios_jornada', jornada.id, 'usuarios', x.id));
+            alert('↩️ Gestión anulada. ' + x.id + ' volverá a elegir en Mi Jornada.' + (avisos.length ? '\n\n' + avisos.join('\n') : ''));
+        } catch(e) { alert('❌ No se pudo anular: ' + e.message); }
+        setAnulando('');
+    };
     useEffect(function(){
         var ultima = (jornadas || []).slice().sort(function(a,b){return (b.numeroJornada||0)-(a.numeroJornada||0);}).find(function(j){return j.estado==='Finalizada';});
         setJornada(ultima || null);
@@ -10397,7 +10442,11 @@ const ConfirmacionesPremiosAdmin = ({ jornadas }) => {
                         <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,color:'#001F6B'}}>{x.id}</span>
                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:x.recibido?'#0f8a61':(Number(x.importeCobro||0)>0?'#e63946':'#0f8a61')}}>{Number(x.importeCobro||0)>0?(x.recibido?'✅ COBRO RECIBIDO':'⏳ COBRO PENDIENTE'):'✅ SIN COBRO PENDIENTE'}</span>
                     </div>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,.6)',margin:0}}>{descGestion(x)}</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,.6)',marginBottom:6}}>{descGestion(x)}</p>
+                    <button onClick={function(){ anularGestion(x); }} disabled={anulando === x.id}
+                        style={{border:'1px solid rgba(230,57,70,.35)',borderRadius:8,padding:'5px 10px',background:'#fff',color:'#e63946',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,cursor:'pointer'}}>
+                        {anulando === x.id ? 'ANULANDO…' : '↩️ RECHAZAR GESTIÓN · QUE ELIJA DE NUEVO'}
+                    </button>
                 </div>;
             })}
         </div>
@@ -13098,6 +13147,8 @@ const RifaPublicaScreen = ({ rifaId }) => {
 
     var confirmarBizum = async function() {
         if (ocupado) return;
+        var okBz = window.confirm('CONFIRMA:\n\n¿Has enviado ya el Bizum de ' + (misNums.length * precio).toFixed(2) + '€ por los números ' + misNums.join(', ') + '?\n\n⚠️ Al confirmar, tus números quedan pendientes de validación del organizador. Si el pago no llega en 24 h, se liberan.');
+        if (!okBz) return;
         setOcupado(true);
         for (var i = 0; i < misNums.length; i++) {
             try {
