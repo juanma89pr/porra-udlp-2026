@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.U · diagnostico visible con sesion restaurada';
+const APP_BUILD = 'v2026-08-22.V · estrellas en vivo (solo tus elegidos)';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -13060,6 +13060,43 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                     )}
                 </div>
             )}
+
+            {/* 🔴 EN VIVO · tus estrellas provisionales de la jornada en curso */}
+            {jornadaActual && jornadaActual.estado === 'En vivo' && seleccion.length > 0 && (function() {
+                var live = jornadaActual.liveEstrellas && jornadaActual.liveEstrellas.puntosPorNombre ? jornadaActual.liveEstrellas.puntosPorNombre : null;
+                var totalLive = 0;
+                if (live) seleccion.forEach(function(j) { totalLive += Number(live[j.nombre] || 0); });
+                return (
+                    <div style={{background:'linear-gradient(135deg,#0d1b3e,#001F6B)',border:'1px solid rgba(255,215,0,0.4)',borderRadius:16,padding:'14px 16px',marginBottom:18,boxShadow:'0 6px 20px rgba(0,31,107,0.25)'}}>
+                        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#ff6b6b',margin:0,display:'flex',alignItems:'center',gap:6}}>
+                                <span style={{width:8,height:8,borderRadius:'50%',background:'#ff4444',display:'inline-block',animation:'estrellaPop 1.4s infinite'}} />
+                                EN VIVO · TUS ESTRELLAS
+                            </p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:30,fontWeight:700,color:'#FFD700',margin:0,lineHeight:1}}>⭐{totalLive}</p>
+                        </div>
+                        {live ? (
+                            <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                                {seleccion.map(function(j) {
+                                    var pj = Number(live[j.nombre] || 0);
+                                    return (
+                                        <div key={j.nombre} style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.05)',borderRadius:10,padding:'6px 10px'}}>
+                                            {getFotoJugador(j) ? <img src={getFotoJugador(j)} alt="" style={{width:24,height:24,borderRadius:'50%',objectFit:'cover',background:'#fff'}} onError={function(e){e.target.style.display='none';}} /> : <span>⭐</span>}
+                                            <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#fff'}}>{j.nombre}</span>
+                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,color: pj > 0 ? '#FFD700' : pj < 0 ? '#ff6b6b' : 'rgba(255,255,255,0.35)'}}>⭐{pj}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.6)',margin:0}}>Esperando las primeras estadísticas del partido… se actualiza solo cada pocos minutos.</p>
+                        )}
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.4)',margin:'8px 0 0'}}>
+                            Provisional y solo de TUS elegidos · {jornadaActual.liveEstrellas && jornadaActual.liveEstrellas.actualizadoEn ? 'actualizado ' + new Date(jornadaActual.liveEstrellas.actualizadoEn).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : 'pendiente de datos'} · el cómputo oficial se fija al terminar el partido.
+                        </p>
+                    </div>
+                );
+            })()}
 
             {/* ══════════ 1 · TABLERO DE LA JORNADA ══════════ */}
             {jf && (
