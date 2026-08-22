@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.Q · sincronizacion en vivo por fixtureId';
+const APP_BUILD = 'v2026-08-22.R · live con busqueda en cascada';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3355,11 +3355,37 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 // Si la jornada tiene fixtureId, se consulta el partido DIRECTO
                 // (a prueba de desfases de fecha/huso horario, que era lo que
                 // dejaba la búsqueda por fecha sin resultados y sin sincronizar).
-                var url = jornada.fixtureId
-                    ? 'https://v3.football.api-sports.io/fixtures?id=' + jornada.fixtureId
-                    : 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + encodeURIComponent(fechaAString(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
-                var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
-                var data = await res.json();
+                // BÚSQUEDA EN CASCADA — el partido se encuentra "como sea":
+                // 1) por fixtureId · 2) partidos EN VIVO de la UDLP · 3) próximo
+                // o último de la UDLP en ±36h · 4) por fecha (respaldo final).
+                var cab = { headers: { 'x-apisports-key': API_FOOTBALL_KEY } };
+                var pedir = async function(u) {
+                    try { var r = await fetch('https://v3.football.api-sports.io/fixtures?' + u, cab); var d = await r.json(); return (d && d.response) || []; }
+                    catch(e2) { return []; }
+                };
+                var encontrado = null;
+                if (jornada.fixtureId) {
+                    var porId = await pedir('id=' + jornada.fixtureId);
+                    if (porId.length) encontrado = porId[0];
+                }
+                if (!encontrado) {
+                    var envivo = await pedir('team=' + API_TEAM_ID_UDLP + '&live=all');
+                    if (envivo.length) encontrado = envivo[0];
+                }
+                if (!encontrado) {
+                    var cerca = (await pedir('team=' + API_TEAM_ID_UDLP + '&last=1')).concat(await pedir('team=' + API_TEAM_ID_UDLP + '&next=1'));
+                    encontrado = cerca.find(function(p) { return Math.abs(new Date(p.fixture.date).getTime() - Date.now()) < 36 * 3600 * 1000; }) || null;
+                }
+                if (!encontrado) {
+                    var porFecha = await pedir('league=141&season=2026&date=' + encodeURIComponent(fechaAString(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP);
+                    if (porFecha.length) encontrado = porFecha[0];
+                }
+                // Autocurar la jornada: si le faltaba el fixtureId, se guarda
+                // para que TODAS las pantallas (previa, estrellas, live) lo tengan.
+                if (encontrado && !jornada.fixtureId) {
+                    try { await setDoc(doc(db, 'jornadas', jornada.id), { fixtureId: encontrado.fixture.id }, { merge: true }); } catch(e3) {}
+                }
+                var data = { response: encontrado ? [encontrado] : [] };
                 if (data.response && data.response.length > 0) {
                     var f = data.response[0];
                     var isLive = ['LIVE','1H','2H','HT','ET'].includes(f.fixture.status.short);
