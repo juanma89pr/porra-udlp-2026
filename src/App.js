@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.Y · premio a rifa detecta rifas programadas';
+const APP_BUILD = 'v2026-08-22.Z · resultados y puntos de la jornada visibles';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3043,6 +3043,97 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
 // competición de cada uno (Liga, Copa, amistoso…), y el histórico directo
 // entre ambos. Se consulta a la API UNA vez por jornada y queda cacheado en
 // el documento de la jornada (jornadas/{id}.previa) para no gastar llamadas.
+// ============================================================================
+// 📊 RESULTADOS DE LA JORNADA — puntos de todos, leídos en directo
+// ============================================================================
+// Lee los pronósticos de la jornada finalizada y muestra qué sumó cada uno,
+// sin depender del historial local (que a veces aún no está cargado y dejaba
+// los puntos a 0). Sirve también para el propio usuario: su fila destacada.
+const ResultadosJornadaCard = ({ jornada, user, userProfiles }) => {
+    var [filas, setFilas] = useState(null);
+    useEffect(function() {
+        if (!jornada || !jornada.id) return;
+        var unsub = onSnapshot(collection(db, 'pronosticos', jornada.id, 'jugadores'), function(snap) {
+            var lista = [];
+            snap.forEach(function(d) {
+                var p = d.data() || {};
+                if (p.golesLocal === undefined || p.golesVisitante === undefined) return;
+                var pts = jornada.cierreDefinitivo
+                    ? Number(p.puntosObtenidos || 0)
+                    : Number(p.puntosProvisionales !== undefined ? p.puntosProvisionales : (p.puntosObtenidos || 0));
+                lista.push({
+                    id: d.id,
+                    marcador: p.golesLocal + '-' + p.golesVisitante,
+                    unoX2: p.resultado1x2 || '',
+                    exacto: Number(p.puntosResultadoExacto || 0) > 0,
+                    otro: !!p.elOtroActivado,
+                    otroPend: !!(p.elOtroActivado && !p.elOtroAplicado),
+                    puntos: pts,
+                    noCuenta: !!p.noContabilizado,
+                });
+            });
+            lista.sort(function(a, b) { return b.puntos - a.puntos; });
+            setFilas(lista);
+        }, function(){ setFilas([]); });
+        return function() { unsub(); };
+    }, [jornada]);
+
+    if (filas === null) return null;
+    if (!filas.length) return null;
+    var miFila = filas.find(function(f) { return f.id === user; });
+
+    return (
+        <div style={{marginBottom:16}}>
+            {/* Mis puntos, siempre visibles y leídos del dato real */}
+            {miFila && (
+                <div style={{background: jornada.cierreDefinitivo ? 'rgba(16,185,129,.08)' : 'rgba(255,215,0,.1)',
+                    border:'1px solid ' + (jornada.cierreDefinitivo ? 'rgba(16,185,129,.25)' : 'rgba(212,175,55,.35)'),
+                    borderRadius:14,padding:'13px 15px',marginBottom:12,textAlign:'center'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color: jornada.cierreDefinitivo ? '#0f8a61' : '#8a6a00',margin:0,textTransform:'uppercase'}}>
+                        {jornada.cierreDefinitivo ? '✅ TUS PUNTOS DEFINITIVOS' : '⏳ TUS PUNTOS PROVISIONALES'}
+                    </p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:38,fontWeight:700,color:'#001F6B',margin:'2px 0 0',lineHeight:1}}>
+                        {miFila.puntos > 0 ? '+' + miFila.puntos : miFila.puntos}
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,.6)',margin:'3px 0 0'}}>
+                        Tu apuesta: <strong>{miFila.marcador}</strong> · {miFila.unoX2}{miFila.exacto ? ' · 🎯 marcador clavado' : ''}{miFila.otroPend ? ' · 🛡️ El Otro pendiente de resolver' : ''}
+                    </p>
+                </div>
+            )}
+
+            {/* Resultados de todos */}
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:'rgba(0,31,107,.5)',textTransform:'uppercase',marginBottom:8}}>📊 CÓMO QUEDÓ TODO EL MUNDO</p>
+            <div style={{background:'#fff',border:'1px solid rgba(0,31,107,.1)',borderRadius:14,overflow:'hidden'}}>
+                {filas.map(function(f, i) {
+                    var perf = userProfiles ? (userProfiles[f.id] || {}) : {};
+                    var esMio = f.id === user;
+                    return (
+                        <div key={f.id} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',
+                            borderBottom:'1px solid rgba(0,31,107,.05)',
+                            background: esMio ? 'rgba(255,215,0,.08)' : (f.exacto ? 'rgba(16,185,129,.05)' : 'transparent'),
+                            opacity: f.noCuenta ? 0.45 : 1}}>
+                            <span style={{width:18,textAlign:'center',fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,
+                                color: i === 0 ? '#FFD700' : 'rgba(0,31,107,.3)'}}>{i + 1}</span>
+                            <IconoPerfil perfil={perf} size={26} />
+                            <span style={{flex:1,minWidth:0,fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight: esMio ? 700 : 500,color:'#001F6B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                {nombreVisible(f.id, perf)}{f.noCuenta ? ' (sin pagar)' : ''}
+                            </span>
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'rgba(0,31,107,.55)',background:'rgba(0,31,107,.05)',borderRadius:7,padding:'1px 7px'}}>{f.marcador}</span>
+                            {f.exacto && <span style={{fontSize:11}} title="Marcador exacto">🎯</span>}
+                            {f.otro && <span style={{fontSize:11,opacity: f.otroPend ? 0.5 : 1}} title={f.otroPend ? 'El Otro pendiente' : 'El Otro aplicado'}>🛡️</span>}
+                            <span style={{width:38,textAlign:'right',fontFamily:"'Teko',sans-serif",fontSize:19,fontWeight:700,
+                                color: f.puntos > 0 ? '#001F6B' : 'rgba(0,31,107,.25)'}}>{f.puntos > 0 ? '+' + f.puntos : f.puntos}{f.otroPend ? '*' : ''}</span>
+                        </div>
+                    );
+                })}
+            </div>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,.45)',margin:'6px 0 0'}}>
+                🎯 marcador exacto · 🛡️ activó El Otro Equipo{filas.some(function(f){return f.otroPend;}) ? ' · * pendiente de resolverse al cerrar la jornada de Primera' : ''}
+            </p>
+        </div>
+    );
+};
+
 const PreviaPartidoMJ = ({ jornada }) => {
     var [previa, setPrevia] = useState(null);
     var [cargandoPrevia, setCargandoPrevia] = useState(true);
@@ -3814,7 +3905,6 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         var pdActual = null;
         var histActual = historialMiJornada.find(function(h){ return h.id === jornada.id; });
         if (histActual) pdActual = histActual.pronostico || null;
-        var puntosActuales = pdActual ? Number(jornada.cierreDefinitivo ? (pdActual.puntosObtenidos||0) : (pdActual.puntosProvisionales||pdActual.puntosObtenidos||0)) : 0;
         return (
             <div style={{paddingBottom:40}}>
                 <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:'#001F6B',textTransform:'uppercase',marginBottom:10,fontWeight:700}}>MI JORNADA</h2>
@@ -3842,11 +3932,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 {showPorraAnual && <PorraAnualModal user={user} onClose={function() { setShowPorraAnual(false); }} />}
 
                 <PremioMiJornadaCard user={user} jornada={jornada} />
-                <div style={{background:jornada.cierreDefinitivo?'rgba(16,185,129,.08)':'rgba(255,215,0,.08)',border:'1px solid '+(jornada.cierreDefinitivo?'rgba(16,185,129,.22)':'rgba(212,175,55,.28)'),borderRadius:14,padding:14,marginBottom:16}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:jornada.cierreDefinitivo?'#0f8a61':'#8a6a00',margin:0,textTransform:'uppercase'}}>{jornada.cierreDefinitivo?'✅ PUNTOS DEFINITIVOS':'⏳ PUNTOS PROVISIONALES'}</p>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,fontWeight:700,color:G.deepBlue,margin:'8px 0 3px'}}>+{puntosActuales} PUNTOS</p>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,.62)',lineHeight:1.5,margin:0}}>{jornada.cierreDefinitivo?'La jornada ya está cerrada por completo.':'Tu resultado y el reparto económico ya están resueltos. Los puntos pueden cambiar cuando termine la jornada de Primera.'}</p>
-                </div>
+                <ResultadosJornadaCard jornada={jornada} user={user} userProfiles={userProfiles} />
                 <button onClick={function(){setJornadaCierre(jornada);}} style={{width:'100%',border:'none',background:'#001F6B',color:'#FFD700',borderRadius:24,padding:12,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,cursor:'pointer',marginBottom:8}}>VER RESUMEN DE JORNADA →</button>
                 {renderHistorialMiJornada()}
             </div>
