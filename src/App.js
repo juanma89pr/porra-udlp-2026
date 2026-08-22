@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.S · diagnostico live en admin';
+const APP_BUILD = 'v2026-08-22.U · diagnostico visible con sesion restaurada';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -5625,6 +5625,24 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     return (
         <div style={{paddingBottom:40}}>
             <h2 style={styles.title}>LA JORNADA</h2>
+
+            {/* 🔧 SOLO ADMIN · diagnóstico del EN VIVO */}
+            {window.__usuarioApp === 'Juanma' && (
+                <div style={{background:'rgba(255,215,0,0.1)',border:'1px dashed rgba(255,215,0,0.5)',borderRadius:8,padding:'6px 10px',marginBottom:10}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#b8860b',marginBottom:5}}>
+                        🔧 SOLO ADMIN · Última sync: {window.__liveDiag ? window.__liveDiag.hora + ' · ' + (window.__liveDiag.ok ? '✅ fixture ' + window.__liveDiag.fixtureId + ' · ' + window.__liveDiag.estado + ' · ' + window.__liveDiag.marcador : '❌ sin partido encontrado') : 'aún ninguna (salta cada 15 min con jornada Abierta, cada 2 min En vivo — abre Mi Jornada para forzar el ciclo)'}
+                    </p>
+                    <button onClick={async function(){
+                        try {
+                            var r = await fetch('https://v3.football.api-sports.io/fixtures?team=' + API_TEAM_ID_UDLP + '&live=all', { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+                            var restan = r.headers.get('x-ratelimit-requests-remaining');
+                            var d = await r.json();
+                            var p = d.response && d.response[0];
+                            alert(p ? '🔴 PARTIDO EN VIVO ENCONTRADO\n\n' + p.teams.home.name + ' ' + p.goals.home + '-' + p.goals.away + ' ' + p.teams.away.name + '\nMinuto: ' + (p.fixture.status.elapsed || '?') + '\'\nFixture: ' + p.fixture.id + '\n\n📊 Peticiones restantes: ' + (restan || '¿?') + '/100' : '⚠️ La API dice que la UDLP NO tiene partido en vivo AHORA MISMO.\n\n📊 Peticiones restantes: ' + (restan || '¿?') + '/100\nErrores: ' + JSON.stringify(d.errors || {}));
+                        } catch(e) { alert('❌ SIN CONEXIÓN: ' + e.message); }
+                    }} style={{width:'100%',border:'none',borderRadius:6,padding:'6px 8px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,cursor:'pointer'}}>🔴 ¿HAY PARTIDO EN VIVO AHORA? (1 petición)</button>
+                </div>
+            )}
 
             {/* 🎬 GALA · Cierre de la Jornada 1 */}
             {mostrarGala && <PresentacionGalaJ1 userProfiles={userProfiles} onClose={function(){ setMostrarGala(false); }} />}
@@ -14099,6 +14117,7 @@ function App() {
     const [drawerOpen, setDrawerOpen] = useState(true);
     const [drawerHintShown, setDrawerHintShown] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
+    useEffect(function() { window.__usuarioApp = currentUser; }, [currentUser]);
     const [isAdmin, setIsAdmin] = useState(false);
     const [teamLogos, setTeamLogos] = useState({});
     const [plantilla, setPlantilla] = useState(PLANTILLA_FALLBACK);
@@ -14192,6 +14211,7 @@ function App() {
     const handleLoginSuccess = async (user) => {
         try {
             setCurrentUser(user);
+            window.__usuarioApp = user;
             set(ref(rtdb, 'status/' + user), true);
             onDisconnect(ref(rtdb, 'status/' + user)).set(false);
 
