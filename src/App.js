@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.X · pestañas + ranking de futbolistas';
+const APP_BUILD = 'v2026-08-22.Y · premio a rifa detecta rifas programadas';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -2868,10 +2868,22 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
         })(); return function(){activo=false;};
     },[user,jornada?.id,jornada?.premioPorGanador,jornada?.ganadores,jornada?.resultadoLocal,jornada?.resultadoVisitante,jornada?.bote,jornada?.esVip]);
 
-    // Rifa abierta (si la hay) para poder ofrecer el destino 🎟️
+    // Rifa vendible (si la hay) para poder ofrecer el destino 🎟️.
+    // OJO: antes solo buscaba estado 'abierta' y las rifas creadas como
+    // 'programada' (apertura con hora) o 'activa' quedaban fuera, así que el
+    // botón de destinar premio a la rifa no aparecía nunca. Ahora se lee la
+    // colección y se acepta cualquier rifa que YA admita compras.
     useEffect(function(){
-        var unsub=onSnapshot(query(collection(db,'rifas'),where('estado','==','abierta'),limit(1)),function(snap){
-            setRifaActiva(snap.empty?null:{id:snap.docs[0].id,...snap.docs[0].data()});
+        var unsub=onSnapshot(collection(db,'rifas'),function(snap){
+            var ahora=Date.now();
+            var vendible=null;
+            snap.forEach(function(d){
+                var r={id:d.id,...d.data()};
+                var e=r.estado;
+                var abiertaYa=(e==='abierta'||e==='activa'||!e||(e==='programada'&&Number(r.aperturaEn||0)<=ahora));
+                if(abiertaYa&&!vendible)vendible=r;
+            });
+            setRifaActiva(vendible);
         },function(){});
         return function(){unsub();};
     },[]);
