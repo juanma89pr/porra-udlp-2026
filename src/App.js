@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.AA · puntos de porra ya suman en clasificacion';
+const APP_BUILD = 'v2026-08-22.AB · reconstruccion total de clasificacion';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -7905,7 +7905,9 @@ async function cerrarJornadaDefinitivamenteAdmin(jornadaId) {
         // porra. Los puntos de Estrellas se suman después, intactos —
         // antes se multiplicaba/dividía el total (base+estrellas) y las
         // Estrellas quedaban alteradas por el multiplicador.
-        var base=Number(p.puntosBaseSinOtro||0);
+        // Si el pronóstico no tiene guardada su base (jornadas calculadas antes
+        // de existir el campo), se RECALCULA en el momento en vez de sumar 0.
+        var base=Number(p.puntosBaseSinOtro!==undefined?p.puntosBaseSinOtro:calcularBasePronosticoJornada(p,jornada).base);
         var estrellasJug=estrellasCierre[userId]!==undefined?estrellasCierre[userId]:Number(p.puntosEstrellasJornada||0);
         delete estrellasCierre[userId];
         var baseTrasOtro=base, otroResultado=null, otroMult=null;
@@ -8814,6 +8816,153 @@ const PagosPendientesAdmin = () => {
                                     style={{border:'1px solid rgba(230,57,70,0.4)',borderRadius:9,padding:'8px 10px',background:'#fff',color:'#e63946',fontFamily:"'Teko',sans-serif",fontSize:13,cursor:'pointer',flexShrink:0}}>✕</button>
                             </div>
                         );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ============================================================================
+// 🔧 RECONSTRUCCIÓN TOTAL DE LA CLASIFICACIÓN GENERAL
+// ============================================================================
+// Recalcula desde CERO los puntos de todos, jornada a jornada, con la misma
+// fórmula que la app enseña en pantalla — y escribe el total de forma
+// ABSOLUTA (no incremental), así que es idempotente: se puede ejecutar las
+// veces que haga falta sin duplicar ni perder nada.
+//
+// Existe porque el cierre definitivo sumaba 'puntosBaseSinOtro' y ese campo
+// faltaba en los pronósticos de jornadas ya calculadas antes (la guarda
+// 'puntosCalculados' impedía reescribirlo): al cerrar, esos jugadores sumaban
+// 0 aunque sus columnas de porra y 1X2 mostraran puntos.
+function calcularBasePronosticoJornada(p, jornada) {
+    var esVip = !!jornada.esVip;
+    var resL = Number(jornada.resultadoLocal);
+    var resV = Number(jornada.resultadoVisitante);
+    if (isNaN(resL) || isNaN(resV)) return { base: 0, exacto: 0, goleador: 0 };
+    var ptos = 0, ptosExacto = 0, ptosGol = 0;
+
+    // 1 · Marcador exacto
+    if (parseInt(p.golesLocal) === resL && parseInt(p.golesVisitante) === resV) {
+        ptosExacto = esVip ? 6 : 3;
+    }
+    ptos += ptosExacto;
+
+    // 2 · 1X2 / pasa-no pasa (misma función que usa el cierre)
+    var rReal = '';
+    if (jornada.equipoLocal === 'UD Las Palmas') rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
+    else if (jornada.equipoVisitante === 'UD Las Palmas') rReal = resV > resL ? 'gana' : (resV < resL ? 'pierde' : 'empate');
+    else rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
+    if (check1x2(p.resultado1x2, rReal, jornada.tipoPartido, jornada.desenlace)) ptos += esVip ? 4 : 2;
+
+    // 3 · Goleador
+    var golReal = (jornada.primerGoleador || '').trim().toLowerCase();
+    var golAp = (p.goleador || '').trim().toLowerCase();
+    if (resL > 0 || resV > 0 || golReal === 'sg') {
+        if (p.sinGoleador && golReal === 'sg') ptosGol = 1;
+        else if (!p.sinGoleador && golAp !== '' && golAp === golReal && golReal !== 'sg') ptosGol = esVip ? 4 : 2;
+    }
+    ptos += ptosGol;
+    return { base: ptos, exacto: ptosExacto, goleador: ptosGol };
+}
+
+const ReconstruirClasificacionAdmin = () => {
+    var [ejecutando, setEjecutando] = useState(false);
+    var [logRec, setLogRec] = useState([]);
+
+    var ejecutar = async function() {
+        if (ejecutando) return;
+        if (!window.confirm('RECONSTRUIR LA CLASIFICACIÓN GENERAL\n\nSe recalculan desde cero los puntos de TODOS los jugadores, jornada a jornada:\n\n· Porra (exacto + 1X2 + goleador)\n· El Otro Equipo (× o ÷ ya resueltos)\n· 5 Estrellas\n\nEs seguro y repetible: escribe el total absoluto, no suma sobre lo que hay.\n\n¿Ejecutar?')) return;
+        setEjecutando(true);
+        var lineas = [];
+        var anotar = function(t, ok) { lineas = lineas.concat([{ t: t, ok: ok !== false }]); setLogRec(lineas.slice()); };
+        try {
+            var totales = {};
+            var exactos = {};
+            var sumar = function(uid, pts) { totales[uid] = Number(((totales[uid] || 0) + pts).toFixed(2)); };
+
+            var jSnap = await getDocs(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada'), orderBy('numeroJornada', 'asc')));
+            anotar('📋 Jornadas finalizadas encontradas: ' + jSnap.docs.length);
+
+            for (var i = 0; i < jSnap.docs.length; i++) {
+                var jd = { id: jSnap.docs[i].id, ...jSnap.docs[i].data() };
+                var pSnap = await getDocs(collection(db, 'pronosticos', jd.id, 'jugadores'));
+                var conPuntos = 0;
+                var arregladosBase = [];
+                var docsP = pSnap.docs;
+                for (var k = 0; k < docsP.length; k++) {
+                    var d = docsP[k];
+                    var p = d.data() || {};
+                    if (p.noContabilizado) continue;
+                    var calc = calcularBasePronosticoJornada(p, jd);
+                    var base = calc.base;
+                    // Si el pronóstico no tenía guardado su base (causa del 0),
+                    // se repara ahora con el valor recalculado.
+                    if (Number(p.puntosBaseSinOtro || 0) !== base) {
+                        await setDoc(doc(db, 'pronosticos', jd.id, 'jugadores', d.id), {
+                            puntosBaseSinOtro: base,
+                            puntosResultadoExacto: calc.exacto,
+                            puntosGoleador: calc.goleador,
+                        }, { merge: true });
+                        arregladosBase.push(d.id);
+                    }
+                    // El Otro: solo si YA está resuelto para esa jornada
+                    var tras = base;
+                    if (p.elOtroAplicado && p.elOtroResultado) {
+                        tras = aplicarMultiplicadorOtro(base, p.elOtroResultado, Number(p.elOtroMultiplicador || 2));
+                    }
+                    sumar(d.id, tras);
+                    if (calc.exacto > 0) exactos[d.id] = (exactos[d.id] || 0) + 1;
+                    if (tras > 0) conPuntos++;
+                }
+                // Estrellas de esa jornada
+                var eSnap = await getDocs(collection(db, 'estrellas_resultados', jd.id, 'jugadores'));
+                var sumarEstrellasDocs = function(docs) {
+                    var n = 0;
+                    docs.forEach(function(d2) {
+                        var pr = Number((d2.data() || {}).puntosRanking || 0);
+                        if (pr !== 0) { sumar(d2.id, pr); n++; }
+                    });
+                    return n;
+                };
+                var conEstrellas = sumarEstrellasDocs(eSnap.docs);
+                anotar('✅ J' + jd.numeroJornada + ': ' + conPuntos + ' con puntos de porra · ' + conEstrellas + ' con puntos de estrellas' + (arregladosBase.length ? ' · 🔧 base reparada a: ' + arregladosBase.join(', ') : ''));
+            }
+
+            // Escritura ABSOLUTA de la clasificación
+            var uids = Object.keys(totales);
+            var batchC = writeBatch(db);
+            uids.forEach(function(uid) {
+                batchC.set(doc(db, 'clasificacion', uid), {
+                    puntosTotales: totales[uid],
+                    puntosResultadoExacto: exactos[uid] || 0,
+                    reconstruidoEn: serverTimestamp(),
+                }, { merge: true });
+            });
+            await batchC.commit();
+            anotar('🏁 Clasificación reconstruida para ' + uids.length + ' jugadores.');
+            var resumen = uids.sort(function(a, b) { return totales[b] - totales[a]; })
+                .map(function(u) { return u + ': ' + totales[u]; }).join(' · ');
+            anotar('📊 ' + resumen);
+            alert('✅ CLASIFICACIÓN RECONSTRUIDA\n\n' + resumen);
+        } catch(e) { anotar('❌ ' + e.message, false); alert('❌ Error: ' + e.message); }
+        setEjecutando(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>🔧 Reconstruir clasificación general</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.55)',lineHeight:1.6,marginBottom:10}}>
+                Recalcula los puntos de todos desde cero (porra + El Otro resuelto + estrellas) y repara los pronósticos a los que les falte el desglose. Escribe el total absoluto: se puede repetir sin duplicar.
+            </p>
+            <button onClick={ejecutar} disabled={ejecutando}
+                style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:ejecutando?'default':'pointer'}}>
+                {ejecutando ? '⏳ RECONSTRUYENDO…' : '🔧 RECONSTRUIR AHORA'}
+            </button>
+            {logRec.length > 0 && (
+                <div style={{marginTop:10,maxHeight:240,overflowY:'auto',background:'rgba(0,31,107,0.03)',border:'1px solid rgba(0,31,107,0.07)',borderRadius:10,padding:10}}>
+                    {logRec.map(function(l, i) {
+                        return <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:11,lineHeight:1.5,color:l.ok?'rgba(0,31,107,0.75)':'#e63946',margin:'0 0 4px'}}>{l.t}</p>;
                     })}
                 </div>
             )}
@@ -11384,6 +11533,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'pagos' && (
                 <div>
+                    {/* 🔧 Reparación de la clasificación general */}
+                    <ReconstruirClasificacionAdmin />
+
                     {/* ⚡ Bandeja rápida: confirmar pagos en un toque */}
                     <PagosPendientesAdmin />
 
