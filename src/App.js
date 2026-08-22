@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.AC · auditoria de puntos + reset sin bloqueo';
+const APP_BUILD = 'v2026-08-22.AD · cierre definitivo reparte puntos de verdad';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -7941,6 +7941,71 @@ async function cerrarJornadaDefinitivamenteAdmin(jornadaId) {
     return {ok:true,yaCerrada:false,pendientes:[]};
 }
 
+// Igual que el cierre normal, pero SIN exigir que la jornada de Primera
+// haya terminado (para cuando nadie activó El Otro y no hay nada que esperar).
+async function forzarCierreDefinitivoJornada(jornadaId) {
+    var jSnap=await getDoc(doc(db,'jornadas',jornadaId));
+    if(!jSnap.exists()) throw new Error('No se encuentra la jornada.');
+    var jornada={id:jSnap.id,...jSnap.data()};
+    if(jornada.cierreDefinitivo) return {ok:true,yaCerrada:true};
+
+    var pSnap=await getDocs(collection(db,'pronosticos',jornadaId,'jugadores'));
+    var clasSnap=await getDocs(collection(db,'clasificacion')); var clas={}; clasSnap.forEach(function(d){clas[d.id]=d.data();});
+    var otroSnap=await getDocs(collection(db,'elOtro')); var otro={}; otroSnap.forEach(function(d){otro[d.id]=d.data();});
+    // Ranking de Estrellas de la jornada (5/4/3/2/1) leído de su fuente de
+    // verdad. Se suma a la clasificación general de TODOS los que puntuaron
+    // en Estrellas — también de quien no llegó a echar la porra esa jornada.
+    var estCierreSnap=await getDocs(collection(db,'estrellas_resultados',jornadaId,'jugadores'));
+    var estrellasCierre={}; estCierreSnap.forEach(function(d){ estrellasCierre[d.id]=Number((d.data()||{}).puntosRanking||0); });
+    var fixtureIds=[]; pSnap.forEach(function(d){var p=d.data()||{}; if(p.elOtroActivado&&p.elOtroFixtureId&&fixtureIds.indexOf(p.elOtroFixtureId)===-1)fixtureIds.push(p.elOtroFixtureId);});
+    var fxMap={};
+    for(var i=0;i<fixtureIds.length;i++){
+        try{var rr=await fetch('https://v3.football.api-sports.io/fixtures?id='+fixtureIds[i],{headers:{'x-apisports-key':API_FOOTBALL_KEY}});var dd=await rr.json();var fx=dd.response&&dd.response[0];if(fx){var st=fx.fixture.status.short;fxMap[fixtureIds[i]]={finalizado:['FT','AET','PEN','AWD','WO'].indexOf(st)!==-1,local:fx.teams.home.name,visitante:fx.teams.away.name,gl:fx.goals.home,gv:fx.goals.away};}}catch(e){}}
+
+    var batch=writeBatch(db);
+    pSnap.forEach(function(d){
+        var p=d.data()||{}, userId=d.id;
+        if(p.noContabilizado) return;
+        // REGLA: el multiplicador de El Otro afecta SOLO a la base de la
+        // porra. Los puntos de Estrellas se suman después, intactos —
+        // antes se multiplicaba/dividía el total (base+estrellas) y las
+        // Estrellas quedaban alteradas por el multiplicador.
+        // Si el pronóstico no tiene guardada su base (jornadas calculadas antes
+        // de existir el campo), se RECALCULA en el momento en vez de sumar 0.
+        var base=Number(p.puntosBaseSinOtro!==undefined?p.puntosBaseSinOtro:calcularBasePronosticoJornada(p,jornada).base);
+        var estrellasJug=estrellasCierre[userId]!==undefined?estrellasCierre[userId]:Number(p.puntosEstrellasJornada||0);
+        delete estrellasCierre[userId];
+        var baseTrasOtro=base, otroResultado=null, otroMult=null;
+        if(p.elOtroActivado&&p.elOtroFixtureId&&p.elOtroEquipoUsado){
+            var fx=fxMap[p.elOtroFixtureId];
+            if(fx&&fx.finalizado){
+                var local=nombresSonSimilares(fx.local,p.elOtroEquipoUsado);var gf=local?fx.gl:fx.gv;var gc=local?fx.gv:fx.gl;
+                otroResultado=gf>gc?'gana':gf<gc?'pierde':'empate';
+                var prev=(otro[userId]&&otro[userId].activaciones)||0; otroMult=getMultiplicadorOtro(prev);
+                baseTrasOtro=aplicarMultiplicadorOtro(base,otroResultado,otroMult);
+                batch.set(doc(db,'elOtro',userId),{activaciones:increment(1),historial:arrayUnion({jornada:jornada.numeroJornada,equipo:p.elOtroEquipoUsado,resultado:otroResultado,multiplicador:otroMult,ptosAntes:base,ptosDespues:baseTrasOtro})},{merge:true});
+            }
+        }
+        var definitivo=baseTrasOtro+estrellasJug;
+        var c=clas[userId]||{};
+        batch.set(doc(db,'clasificacion',userId),{puntosTotales:Number(c.puntosTotales||0)+definitivo,puntosResultadoExacto:Number(c.puntosResultadoExacto||0)+Number(p.puntosResultadoExacto||0)},{merge:true});
+        batch.set(d.ref,{puntosObtenidos:definitivo,puntosDefinitivos:definitivo,puntosEstrellasJornada:estrellasJug,puntosProvisionales:base+estrellasJug,elOtroResultado:otroResultado,elOtroMultiplicador:otroMult,elOtroAplicado:!!otroResultado,elOtroPendiente:false,definitivoEn:serverTimestamp()},{merge:true});
+    });
+    // Jugadores con puntos de Estrellas pero SIN pronóstico esta jornada
+    // (o no contabilizados en la porra): sus puntos de Estrellas entran
+    // igualmente en la clasificación general — la Liga de Estrellas es una
+    // competición aparte y sus puntos no dependen de haber echado la porra.
+    Object.keys(estrellasCierre).forEach(function(uid){
+        var ptsE=Number(estrellasCierre[uid]||0);
+        if(!ptsE) return;
+        var cE=clas[uid]||{};
+        batch.set(doc(db,'clasificacion',uid),{puntosTotales:Number(cE.puntosTotales||0)+ptsE},{merge:true});
+    });
+    batch.set(doc(db,'jornadas',jornadaId),{cierreDefinitivo:true,puntosCalculados:true,cierreDefinitivoEn:serverTimestamp(),estado:'Finalizada'},{merge:true});
+    await batch.commit();
+    return {ok:true,yaCerrada:false,pendientes:[]};
+}
+
 async function resolverElOtroPendienteJornada(jornada) {
     if (!jornada || !jornada.id) throw new Error('Jornada no válida.');
     if (!API_FOOTBALL_KEY) throw new Error('Falta REACT_APP_API_FOOTBALL_KEY.');
@@ -8391,9 +8456,17 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                                     alert('⏳ NO se puede cerrar todavía: quedan ' + pendientes.length + ' jugador(es) con El Otro sin resolver (' + pendientes.join(', ') + ').\n\nUsa antes "🛡️ RESOLVER EL OTRO".');
                                     return;
                                 }
-                                if (!window.confirm('✅ Nadie tiene El Otro pendiente en esta jornada.\n\n¿Marcar la jornada como CERRADA DEFINITIVAMENTE? Los puntos quedarán fijados en la clasificación.')) return;
-                                await setDoc(doc(db, 'jornadas', jornada.id), { cierreDefinitivo: true, cierreDefinitivoEn: serverTimestamp() }, { merge: true });
-                                alert('🏁 Jornada cerrada definitivamente.');
+                                if (!window.confirm('✅ Nadie tiene El Otro pendiente en esta jornada.\n\n¿Cerrar definitivamente? Se repartirán los puntos a la clasificación general y quedarán fijados.')) return;
+                                // Se llama a la rutina REAL de cierre (reparte
+                                // puntos y escribe la clasificación). Antes esto
+                                // solo ponía la marca y los puntos se perdían.
+                                var rc = await cerrarJornadaDefinitivamenteAdmin(jornada.id);
+                                if (rc && rc.ok === false) {
+                                    if (!window.confirm('⏳ La API dice que la jornada de Primera aún no ha terminado, pero NADIE tiene El Otro pendiente aquí.\n\n¿Cerrar igualmente y repartir los puntos?')) return;
+                                    await forzarCierreDefinitivoJornada(jornada.id);
+                                }
+                                alert('🏁 Jornada cerrada y puntos repartidos.');
+                                window.location.reload();
                             } catch(e) { alert('❌ ' + e.message); }
                         }} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: '#10b981', color: '#0f8a61'}}>🏁 CIERRE DEFINITIVO</button>
                     )}
