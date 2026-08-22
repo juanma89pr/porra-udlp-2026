@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.AD · cierre definitivo reparte puntos de verdad';
+const APP_BUILD = 'v2026-08-22.AF · columnas correctas + sin doble conteo';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -6575,21 +6575,26 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
                 var ex = {};
                 var asegurar = function(uid) { if (!ex[uid]) ex[uid] = { estrellas: 0, estrellasPend: 0, basePend: 0, ganadoOtro: 0, perdidoOtro: 0, porra: 0, unoX2: 0 }; return ex[uid]; };
                 var pendiente = false;
-                var acumularPronosticos = function(docs, cierreHecho) {
+                var acumularPronosticos = function(docs, cierreHecho, jd) {
                     docs.forEach(function(d) {
                         var p = d.data() || {};
                         if (p.elOtroActivado && !p.elOtroAplicado) pendiente = true;
                         if (p.noContabilizado) return;
-                        var base = Number(p.puntosBaseSinOtro || 0);
-                        var exacto = Number(p.puntosResultadoExacto || 0);
-                        var goleador = Number(p.puntosGoleador || 0);
+                        // Los campos guardados (puntosResultadoExacto,
+                        // puntosGoleador) faltan o están a 0 en muchos
+                        // pronósticos, y eso hacía que TODO el base cayera en
+                        // la columna 1X2. Se recalculan aquí con la fórmula
+                        // real, que es la única fuente fiable.
+                        var calc = calcularBasePronosticoJornada(p, jd);
+                        var base = Number(p.puntosBaseSinOtro !== undefined ? p.puntosBaseSinOtro : calc.base);
+                        var exacto = calc.exacto;
+                        var goleador = calc.goleador;
                         var reg = asegurar(d.id);
-                        reg.porra += exacto + goleador;                       // marcador exacto + goleador
-                        reg.unoX2 += Math.max(0, base - exacto - goleador);   // acierto 1X2 / pasa-no pasa
+                        reg.porra += exacto + goleador;                            // marcador exacto + goleador
+                        reg.unoX2 += Math.max(0, calc.base - exacto - goleador);   // 1X2 / pasa-no pasa
                         // Mientras la jornada no tenga cierre definitivo, sus
                         // puntos NO están en clasificacion.puntosTotales: se
-                        // suman aquí para que la tabla enseñe YA lo ganado
-                        // (misma información en todas las pantallas).
+                        // suman aquí para que la tabla enseñe YA lo ganado.
                         if (!cierreHecho) reg.basePend += base;
                     });
                 };
@@ -6608,11 +6613,11 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
                 var jSnap = await getDocs(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada')));
                 for (var i = 0; i < jSnap.docs.length; i++) {
                     var jid = jSnap.docs[i].id;
-                    var jd = jSnap.docs[i].data() || {};
+                    var jd = { id: jid, ...(jSnap.docs[i].data() || {}) };
                     var rSnap = await getDocs(collection(db, 'estrellas_resultados', jid, 'jugadores'));
                     acumularEstrellasJornada(rSnap.docs, !!jd.cierreDefinitivo);
                     var pSnap = await getDocs(collection(db, 'pronosticos', jid, 'jugadores'));
-                    acumularPronosticos(pSnap.docs, !!jd.cierreDefinitivo);
+                    acumularPronosticos(pSnap.docs, !!jd.cierreDefinitivo, jd);
                 }
                 var oSnap = await getDocs(collection(db, 'elOtro'));
                 oSnap.forEach(function(d) {
@@ -9098,7 +9103,10 @@ const ReconstruirClasificacionAdmin = () => {
                     var base = calc.base;
                     // Si el pronóstico no tenía guardado su base (causa del 0),
                     // se repara ahora con el valor recalculado.
-                    if (Number(p.puntosBaseSinOtro || 0) !== base) {
+                    var descuadraBase = Number(p.puntosBaseSinOtro || 0) !== base;
+                    var descuadraExacto = Number(p.puntosResultadoExacto || 0) !== calc.exacto;
+                    var descuadraGol = Number(p.puntosGoleador || 0) !== calc.goleador;
+                    if (descuadraBase || descuadraExacto || descuadraGol) {
                         await setDoc(doc(db, 'pronosticos', jd.id, 'jugadores', d.id), {
                             puntosBaseSinOtro: base,
                             puntosResultadoExacto: calc.exacto,
@@ -9111,7 +9119,11 @@ const ReconstruirClasificacionAdmin = () => {
                     if (p.elOtroAplicado && p.elOtroResultado) {
                         tras = aplicarMultiplicadorOtro(base, p.elOtroResultado, Number(p.elOtroMultiplicador || 2));
                     }
-                    sumar(d.id, tras);
+                    // En clasificacion SOLO entran las jornadas con cierre
+                    // definitivo. Las provisionales las suma la pantalla como
+                    // capa (con asterisco): si se metieran aquí, se contarían
+                    // dos veces y los totales salían inflados.
+                    if (jd.cierreDefinitivo) sumar(d.id, tras);
                     if (calc.exacto > 0) exactos[d.id] = (exactos[d.id] || 0) + 1;
                     if (tras > 0) conPuntos++;
                 }
@@ -9125,8 +9137,8 @@ const ReconstruirClasificacionAdmin = () => {
                     });
                     return n;
                 };
-                var conEstrellas = sumarEstrellasDocs(eSnap.docs);
-                anotar('✅ J' + jd.numeroJornada + ': ' + conPuntos + ' con puntos de porra · ' + conEstrellas + ' con puntos de estrellas' + (arregladosBase.length ? ' · 🔧 base reparada a: ' + arregladosBase.join(', ') : ''));
+                var conEstrellas = jd.cierreDefinitivo ? sumarEstrellasDocs(eSnap.docs) : eSnap.docs.length;
+                anotar('✅ J' + jd.numeroJornada + (jd.cierreDefinitivo ? ' [CERRADA → suma a clasificación]' : ' [provisional → la pantalla la muestra con *]') + ': ' + conPuntos + ' con puntos de porra · ' + conEstrellas + ' con puntos de estrellas' + (arregladosBase.length ? ' · 🔧 base reparada a: ' + arregladosBase.join(', ') : ''));
             }
 
             // Escritura ABSOLUTA de la clasificación
