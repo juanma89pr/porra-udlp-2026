@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.AF · columnas correctas + sin doble conteo';
+const APP_BUILD = 'v2026-08-22.AH · cierre de ciclo rifa externa';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3058,9 +3058,7 @@ const ResultadosJornadaCard = ({ jornada, user, userProfiles }) => {
             snap.forEach(function(d) {
                 var p = d.data() || {};
                 if (p.golesLocal === undefined || p.golesVisitante === undefined) return;
-                var pts = jornada.cierreDefinitivo
-                    ? Number(p.puntosObtenidos || 0)
-                    : Number(p.puntosProvisionales !== undefined ? p.puntosProvisionales : (p.puntosObtenidos || 0));
+                var pts = puntosMostrarPronostico(p, jornada, null);
                 lista.push({
                     id: d.id,
                     marcador: p.golesLocal + '-' + p.golesVisitante,
@@ -6042,11 +6040,14 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                     {/* Puntos: en vivo los PROVISIONALES que va
                                         consiguiendo según el marcador actual;
                                         finalizada, los definitivos. Nunca un 0 fijo. */}
-                                    {!p.sinApuesta && jornada.estado === 'Finalizada' && (
-                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color: ganador?G.golden:G.deepBlue}}>
-                                            {p.puntosObtenidos||0}
-                                        </span>
-                                    )}
+                                    {!p.sinApuesta && jornada.estado === 'Finalizada' && (function(){
+                                        var ptsMostrar = puntosMostrarPronostico(p, jornada, null);
+                                        return (
+                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color: ganador?G.golden:(ptsMostrar>0?G.deepBlue:'rgba(0,31,107,0.25)')}}>
+                                                {ptsMostrar > 0 ? '+' + ptsMostrar : ptsMostrar}
+                                            </span>
+                                        );
+                                    })()}
                                     {!p.sinApuesta && isLive && (function(){
                                         var ptsVivo = calculateProvisionalPoints(p, live, jornada);
                                         return (
@@ -6193,8 +6194,9 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
             {/* Resumen de jornada finalizada — puntos, ganadores, bote */}
             {jornada.estado === 'Finalizada' && participantes.length > 0 && (function() {
                 var resumenOrdenado = participantes.filter(function(p){return !p.sinApuesta;})
-                    .sort(function(a,b) { return (b.puntosObtenidos||0) - (a.puntosObtenidos||0); });
-                var maxPtos = resumenOrdenado.length > 0 ? (resumenOrdenado[0].puntosObtenidos || 0) : 0;
+                    .map(function(p){ return { ...p, ptsVista: puntosMostrarPronostico(p, jornada, null) }; })
+                    .sort(function(a,b) { return (b.ptsVista||0) - (a.ptsVista||0); });
+                var maxPtos = resumenOrdenado.length > 0 ? (resumenOrdenado[0].ptsVista || 0) : 0;
                 var acertaronExacto = participantes.filter(function(p) {
                     return !p.sinApuesta && parseInt(p.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(p.golesVisitante) === parseInt(jornada.resultadoVisitante);
                 });
@@ -6239,7 +6241,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                         {exacto && <span style={{fontSize:10}}>🎯</span>}
                                         {p.elOtroActivado && <span style={{fontSize:10}}>🛡️</span>}
                                         {(p.puntosEstrellas||0) > 0 && <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,215,0,0.7)',background:'rgba(255,215,0,0.15)',padding:'1px 5px',borderRadius:6}}>{p.puntosEstrellas}⭐</span>}
-                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: (p.puntosObtenidos||0) > 0 ? '#FFD700' : 'rgba(255,255,255,0.25)',minWidth:24,textAlign:'right'}}>{p.puntosObtenidos||0}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: (p.ptsVista||0) > 0 ? '#FFD700' : 'rgba(255,255,255,0.25)',minWidth:24,textAlign:'right'}}>{(p.ptsVista||0) > 0 ? '+' + p.ptsVista : 0}</span>
                                     </div>
                                 );
                             })}
@@ -8917,6 +8919,23 @@ const PagosPendientesAdmin = () => {
 // faltaba en los pronósticos de jornadas ya calculadas antes (la guarda
 // 'puntosCalculados' impedía reescribirlo): al cerrar, esos jugadores sumaban
 // 0 aunque sus columnas de porra y 1X2 mostraran puntos.
+// Puntos que se MUESTRAN de un pronóstico en cualquier pantalla.
+// Prioridad: definitivos guardados > obtenidos guardados > recálculo con la
+// fórmula real (+ El Otro si ya está resuelto) + estrellas de esa jornada.
+// Así ninguna pantalla enseña un 0 cuando el jugador sí sumó.
+function puntosMostrarPronostico(p, jornada, estrellasJornada) {
+    if (!p) return 0;
+    var est = Number(estrellasJornada || p.puntosEstrellasJornada || 0);
+    if (p.noContabilizado) return 0;
+    if (p.puntosDefinitivos !== undefined && Number(p.puntosDefinitivos) !== 0) return Number(p.puntosDefinitivos);
+    if (p.puntosObtenidos !== undefined && Number(p.puntosObtenidos) !== 0) return Number(p.puntosObtenidos);
+    var base = Number(p.puntosBaseSinOtro !== undefined ? p.puntosBaseSinOtro : calcularBasePronosticoJornada(p, jornada).base);
+    if (p.elOtroAplicado && p.elOtroResultado) {
+        base = aplicarMultiplicadorOtro(base, p.elOtroResultado, Number(p.elOtroMultiplicador || 2));
+    }
+    return base + est;
+}
+
 function calcularBasePronosticoJornada(p, jornada) {
     var esVip = !!jornada.esVip;
     var resL = Number(jornada.resultadoLocal);
@@ -12359,13 +12378,14 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                         {enGestion && (function(){
                                             var numeros = Object.keys(papeletasGestion);
                                             var totalR = Number(r.totalPapeletas || 100);
-                                            var dineroTotal = 0, dineroPremios = 0, dineroDirecto = 0, pendientesBizum = 0;
+                                            var dineroTotal = 0, dineroPremios = 0, dineroDirecto = 0, pendientesBizum = 0, externosDeclarados = 0;
                                             numeros.forEach(function(n){
                                                 var pp = papeletasGestion[n];
                                                 var precioP = Number(pp.precio || 0);
                                                 dineroTotal += precioP;
                                                 if (pp.metodo === 'saldo') dineroPremios += precioP; else dineroDirecto += precioP;
                                                 if (pp.metodo === 'bizum' && !pp.pagoVerificado) pendientesBizum++;
+                                                if (pp.esExterno && pp.estadoExt === 'pendiente' && !pp.pagoVerificado) externosDeclarados++;
                                             });
                                             return (
                                             <div style={{marginTop:12,borderTop:'1px solid rgba(0,31,107,0.08)',paddingTop:12}}>
@@ -12375,6 +12395,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                                     <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(255,215,0,0.15)',color:'#8a6a00',padding:'5px 10px',borderRadius:9}}>🏆 De premios: {dineroPremios.toFixed(2)}€</span>
                                                     <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(0,31,107,0.06)',color:'#001F6B',padding:'5px 10px',borderRadius:9}}>💳 Directo: {dineroDirecto.toFixed(2)}€</span>
                                                     {pendientesBizum>0 && <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(230,57,70,0.1)',color:'#e63946',padding:'5px 10px',borderRadius:9}}>⏳ {pendientesBizum} Bizum sin verificar</span>}
+                                                    {externosDeclarados>0 && <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(255,215,0,0.2)',color:'#8a6a00',padding:'5px 10px',borderRadius:9,border:'1px solid rgba(212,175,55,0.5)'}}>🌐 {externosDeclarados} externo(s) dicen haber pagado — VERIFICA ABAJO</span>}
                                                 </div>
 
                                                 {/* Tablero admin */}
@@ -12402,11 +12423,33 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                                             var pp = papeletasGestion[n];
                                                             return <div key={n} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderBottom:'1px solid rgba(0,31,107,0.04)'}}>
                                                                 <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color:'#001F6B',width:26}}>{n}</span>
-                                                                <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11,color:'#001F6B'}}>{pp.usuario}</span>
+                                                                <div style={{flex:1,minWidth:0}}>
+                                                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#001F6B',fontWeight:pp.esExterno?700:400}}>
+                                                                        {pp.esExterno ? '🌐 ' : ''}{pp.nombre || pp.usuario}
+                                                                    </span>
+                                                                    {pp.esExterno && pp.telefono && (
+                                                                        <a href={'tel:' + pp.telefono} style={{display:'block',fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.5)',textDecoration:'none'}}>📱 {pp.telefono}</a>
+                                                                    )}
+                                                                    {pp.esExterno && pp.estadoExt && !pp.pagoVerificado && (
+                                                                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:9,color: pp.estadoExt==='pendiente' ? '#8a6a00' : 'rgba(0,31,107,0.4)'}}>
+                                                                            {pp.estadoExt==='pendiente' ? '💸 dice haber hecho el Bizum' : '⏱️ reservada (10 min)'}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                                 <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:pp.metodo==='saldo'?'#8a6a00':(pp.pagoVerificado?'#0f8a61':'#e63946')}}>{pp.metodo==='saldo'?'🏆 premio':(pp.pagoVerificado?'✅ Bizum':'⏳ Bizum')}</span>
                                                                 {pp.metodo==='bizum' && !pp.pagoVerificado && (
-                                                                    <button onClick={async function(){await setDoc(doc(db,'rifas',r.id,'papeletas',n),{pagoVerificado:true},{merge:true});}}
+                                                                    <button onClick={async function(){
+                                                                        if(!window.confirm('¿Confirmas que has recibido el Bizum del número '+n+(pp.nombre?' de '+pp.nombre:'')+'?\n\nEl número quedará FIJO para esa persona hasta el sorteo.'))return;
+                                                                        await setDoc(doc(db,'rifas',r.id,'papeletas',n),{pagoVerificado:true,estadoExt:'confirmada',verificadoEn:serverTimestamp()},{merge:true});
+                                                                    }}
                                                                         style={{border:'none',background:'#10b981',color:'#fff',borderRadius:7,padding:'3px 8px',fontFamily:"'Teko',sans-serif",fontSize:10,cursor:'pointer'}}>Verificar</button>
+                                                                )}
+                                                                {pp.metodo==='bizum' && !pp.pagoVerificado && (
+                                                                    <button onClick={async function(){
+                                                                        if(!window.confirm('¿LIBERAR el número '+n+'?\n\nSe borrará la reserva'+(pp.nombre?' de '+pp.nombre:'')+' y el número volverá a estar disponible para todos.'))return;
+                                                                        await deleteDoc(doc(db,'rifas',r.id,'papeletas',n));
+                                                                    }}
+                                                                        style={{border:'1px solid rgba(230,57,70,0.4)',background:'#fff',color:'#e63946',borderRadius:7,padding:'3px 7px',fontFamily:"'Teko',sans-serif",fontSize:10,cursor:'pointer'}}>Liberar</button>
                                                                 )}
                                                             </div>;
                                                         })}
