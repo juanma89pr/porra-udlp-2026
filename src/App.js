@@ -3,7 +3,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signInWithCustomToken, signOut } from "firebase/auth";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction, serverTimestamp, addDoc, arrayUnion, arrayRemove } from "firebase/firestore";
-import { getMessaging, getToken } from "firebase/messaging";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -24,35 +23,6 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const API_TEAM_ID_UDLP = 534;
 const auth = getAuth(app);
-const messaging = getMessaging(app);
-
-// Notificaciones push — pide permiso y registra el token del dispositivo,
-// ligado al nombre del jugador (para poder dirigir avisos a una persona en
-// concreto, como el admin, y no solo mandar a todos siempre).
-//
-// ⚠️ IMPORTANTE — falta un dato tuyo que no puedo inventar: la clave VAPID
-// pública de tu proyecto Firebase. Se saca de Firebase Console → Configuración
-// del proyecto → Cloud Messaging → "Certificados push web" → genera un par
-// de claves si no tienes ninguna, y copia la clave pública aquí abajo, donde
-// pone VAPID_KEY_PENDIENTE.
-const VAPID_KEY = 'VAPID_KEY_PENDIENTE';
-
-async function registrarNotificacionesPush(nombreUsuario) {
-    try {
-        if (!('Notification' in window) || VAPID_KEY === 'VAPID_KEY_PENDIENTE') return;
-        var permiso = await Notification.requestPermission();
-        if (permiso !== 'granted') return;
-        var registro = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-        var token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registro });
-        if (token) {
-            await setDoc(doc(db, 'notification_tokens', token), {
-                usuario: nombreUsuario, actualizadoEn: serverTimestamp(),
-            }, { merge: true });
-        }
-    } catch (e) {
-        console.warn('No se pudo registrar notificaciones push:', e.message);
-    }
-}
 
 const rtdb = getDatabase(app);
 const storage = getStorage(app);
@@ -63,7 +33,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.AH · cierre de ciclo rifa externa';
+const APP_BUILD = 'v2026-08-22.AI · ciclos cerrados: rifa, archivo, captacion';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -2441,6 +2411,7 @@ var RIFA_ESTADOS_INFO = {
     casi_completa:    { label: 'CASI COMPLETA',        color: '#e07b28', emoji: '🟠' },
     completa:         { label: 'COMPLETA',             color: '#e63946', emoji: '🔴' },
     pendiente_sorteo: { label: 'PENDIENTE DE SORTEO',  color: '#2563eb', emoji: '🔵' },
+    entregada:        { label: 'ENTREGADA · CERRADA', color: '#0f8a61', emoji: '🏁' },
     sorteada:         { label: 'SORTEADA',             color: '#10b981', emoji: '🟢' },
     finalizada:       { label: 'FINALIZADA',           color: '#333333', emoji: '⚫' },
     activa:           { label: 'ABIERTA',              color: '#d4a017', emoji: '🟡' }, // compatibilidad con rifas antiguas
@@ -2880,7 +2851,7 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
             snap.forEach(function(d){
                 var r={id:d.id,...d.data()};
                 var e=r.estado;
-                var abiertaYa=(e==='abierta'||e==='activa'||!e||(e==='programada'&&Number(r.aperturaEn||0)<=ahora));
+                var abiertaYa=(e!=='entregada'&&e!=='cerrada')&&(e==='abierta'||e==='activa'||!e||(e==='programada'&&Number(r.aperturaEn||0)<=ahora));
                 if(abiertaYa&&!vendible)vendible=r;
             });
             setRifaActiva(vendible);
@@ -5330,6 +5301,52 @@ const CierreExtendidoJ1 = ({ userProfiles, currentUser }) => {
     );
 };
 
+// ============================================================================
+// 📣 BANNER DE CAPTACIÓN — plazas libres + equipos de Primera sin dueño
+// ============================================================================
+// Cierra el ciclo de las vacantes: no basta con registrar que hay huecos, hay
+// que enseñarlos y que la peña los comparta. Se calcula solo con datos reales
+// y desaparece cuando el grupo se completa.
+const BannerPlazasLibres = () => {
+    var [plazas, setPlazas] = useState(null);
+    var [equiposLibres, setEquiposLibres] = useState(null);
+
+    useEffect(function() {
+        var unsub1 = onSnapshot(doc(db, 'configuracion', 'plazasLibres'), function(s) {
+            setPlazas(s.exists() ? Number(s.data().cantidad || 0) : null);
+        }, function(){});
+        var unsub2 = onSnapshot(collection(db, 'elOtro'), function(snap) {
+            var cogidos = {};
+            snap.forEach(function(d) { var dd = d.data() || {}; if (dd.equipo) cogidos[dd.equipo] = true; });
+            setEquiposLibres(Math.max(0, 20 - Object.keys(cogidos).length));
+        }, function(){});
+        return function() { unsub1(); unsub2(); };
+    }, []);
+
+    if (plazas === null || plazas <= 0) return null;
+    var textoWa = '⚽ ¡Se buscan jugadores para la PORRA UDLP 26/27! Quedan ' + plazas + ' plaza' + (plazas === 1 ? '' : 's') +
+        (equiposLibres ? ' y ' + equiposLibres + ' equipos de Primera SIN DUEÑO para elegir' : '') +
+        '. Resultado + goleador de cada jornada, premios, rifas y liga de estrellas. Pide tu plaza aquí 👉 https://porra2026.netlify.app';
+
+    return (
+        <div style={{background:'linear-gradient(135deg,#001F6B,#0035b8)',border:'1px solid rgba(255,215,0,0.4)',borderRadius:16,padding:'14px 16px',marginBottom:14,boxShadow:'0 6px 20px rgba(0,31,107,0.25)'}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'rgba(255,215,0,0.6)',textTransform:'uppercase',margin:'0 0 2px'}}>📣 BUSCAMOS REFUERZOS</p>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:26,fontWeight:700,color:'#FFD700',letterSpacing:1,lineHeight:1,margin:'0 0 6px'}}>
+                {plazas} PLAZA{plazas === 1 ? '' : 'S'} LIBRE{plazas === 1 ? '' : 'S'}
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'rgba(255,255,255,0.72)',lineHeight:1.6,margin:'0 0 10px'}}>
+                {equiposLibres > 0
+                    ? <span>🛡️ Y quedan <strong style={{color:'#FFD700'}}>{equiposLibres} equipos de Primera sin dueño</strong>: quien entre ahora elige de lo que queda de la élite.</span>
+                    : <span>Trae a quien creas que puede aguantar el ritmo de la porra 😏</span>}
+            </p>
+            <a href={'https://wa.me/?text=' + encodeURIComponent(textoWa)} target="_blank" rel="noopener noreferrer"
+                style={{display:'block',textAlign:'center',textDecoration:'none',background:'#25D366',color:'#fff',borderRadius:12,padding:'10px',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1}}>
+                📲 INVITAR A ALGUIEN POR WHATSAPP
+            </a>
+        </div>
+    );
+};
+
 const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
     var [slide, setSlide] = useState(0);
     var [j1, setJ1] = useState(null);
@@ -5749,6 +5766,9 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     }} style={{width:'100%',border:'none',borderRadius:6,padding:'6px 8px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,cursor:'pointer'}}>🔴 ¿HAY PARTIDO EN VIVO AHORA? (1 petición)</button>
                 </div>
             )}
+
+            {/* 📣 CAPTACIÓN — plazas libres y equipos de Primera sin dueño */}
+            <BannerPlazasLibres />
 
             {/* 🎬 GALA · Cierre de la Jornada 1 */}
             {mostrarGala && <PresentacionGalaJ1 userProfiles={userProfiles} onClose={function(){ setMostrarGala(false); }} />}
@@ -6566,6 +6586,15 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
     const [loading, setLoading] = useState(true); 
     const [campeonInvierno, setCampeonInvierno] = useState(null);
     const [jugadoresInactivosCL, setJugadoresInactivosCL] = useState([]); // para no contar en el bote a quien pagó y luego se retiró
+    // Jugadores ARCHIVADOS: se fueron y ya no forman parte de la porra. No
+    // aparecen en ninguna lista ni clasificación; su dinero queda en el bote.
+    const [archivadosCL, setArchivadosCL] = useState([]);
+    useEffect(() => {
+        var unsubArch = onSnapshot(doc(db, 'configuracion', 'jugadoresArchivados'), function(snap) {
+            setArchivadosCL(snap.exists() ? (snap.data().nombres || []) : []);
+        }, function(){});
+        return function() { unsubArch(); };
+    }, []);
     // Desglose por jugador: ⭐ puntos de 5 Estrellas, 🛡️ ganado con ×, 🛡️ perdido con ÷
     const [extrasClasif, setExtrasClasif] = useState({});
     const [otroPendienteCL, setOtroPendienteCL] = useState(false);
@@ -6670,7 +6699,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
     const inscritos = Array.from(new Set(
         (pagos || []).filter(function(p) { return p.tipo === 'inscripcion' && p.estado !== 'pendiente_confirmacion' && p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido'; })
             .map(function(p) { return p.jugador; })
-    )).filter(function(nombre) { return jugadoresInactivosCL.indexOf(nombre) === -1; });
+    )).filter(function(nombre) { return jugadoresInactivosCL.indexOf(nombre) === -1 && archivadosCL.indexOf(nombre) === -1; });
     const boteActual = inscritos.length * 5;
     const premio1 = (boteActual * 0.65).toFixed(2);
     const premio2 = (boteActual * 0.25).toFixed(2);
@@ -9205,6 +9234,8 @@ const InscripcionesAdmin = () => {
     var [pagosIns, setPagosIns] = useState([]);
     var [inactivosIns, setInactivosIns] = useState([]);
     var [devoluciones, setDevoluciones] = useState({});
+    var [archivadosIns, setArchivadosIns] = useState([]);
+    var [plazasInput, setPlazasInput] = useState('');
     var [guardandoDev, setGuardandoDev] = useState('');
 
     useEffect(function() {
@@ -9218,7 +9249,10 @@ const InscripcionesAdmin = () => {
         var unsub3 = onSnapshot(doc(db, 'configuracion', 'devoluciones_inscripcion'), function(snap) {
             setDevoluciones(snap.exists() ? (snap.data().porJugador || {}) : {});
         }, function(){});
-        return function() { unsub1(); unsub2(); unsub3(); };
+        var unsub4 = onSnapshot(doc(db, 'configuracion', 'jugadoresArchivados'), function(snap) {
+            setArchivadosIns(snap.exists() ? (snap.data().nombres || []) : []);
+        }, function(){});
+        return function() { unsub1(); unsub2(); unsub3(); unsub4(); };
     }, []);
 
     // Estado de pago por jugador: 'pagada' | 'pendiente' | 'sin_pago'
@@ -9238,6 +9272,8 @@ const InscripcionesAdmin = () => {
     JUGADORES_FUNDADORES.forEach(function(n) { universo[n] = true; });
     pagosIns.forEach(function(p) { if (p.jugador) universo[p.jugador] = true; });
     inactivosIns.forEach(function(n) { universo[n] = true; });
+    // Los ARCHIVADOS desaparecen: fueron jugadores, ya no lo son.
+    archivadosIns.forEach(function(n) { delete universo[n]; });
     var nombresTodos = Object.keys(universo).sort(function(a, b) {
         var ia = inactivosIns.indexOf(a) !== -1 ? 1 : 0;
         var ib = inactivosIns.indexOf(b) !== -1 ? 1 : 0;
@@ -9294,6 +9330,19 @@ const InscripcionesAdmin = () => {
                             {estadoP === 'pendiente' && chip('⏳ POR CONFIRMAR', 'rgba(255,215,0,0.15)', '#8a6a00')}
                             {estadoP === 'sin_pago' && chip('❌ SIN PAGAR', 'rgba(230,57,70,0.08)', '#e63946')}
                             {esBaja && (
+                                <button onClick={async function(){
+                                    if (!window.confirm('ARCHIVAR A ' + nombre + ' DEFINITIVAMENTE\n\n· Desaparecerá de esta lista y del historial de la porra.\n· Su dinero queda como parte del bote interno.\n· Sus jornadas jugadas se conservan como histórico, pero ya no aparecerá como jugador.\n\n¿Continuar?')) return;
+                                    try {
+                                        var snapArch = await getDoc(doc(db, 'configuracion', 'jugadoresArchivados'));
+                                        var actuales = snapArch.exists() ? (snapArch.data().nombres || []) : [];
+                                        if (actuales.indexOf(nombre) === -1) actuales = actuales.concat([nombre]);
+                                        await setDoc(doc(db, 'configuracion', 'jugadoresArchivados'), { nombres: actuales, actualizadoEn: serverTimestamp() }, { merge: true });
+                                        alert('📦 ' + nombre + ' archivado. Ya no aparecerá en listas ni clasificaciones.');
+                                    } catch(e) { alert('❌ ' + e.message); }
+                                }}
+                                    style={{border:'1px solid rgba(0,31,107,0.2)',borderRadius:9,padding:'4px 9px',cursor:'pointer',background:'#fff',color:'rgba(0,31,107,0.6)',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,whiteSpace:'nowrap'}}>📦 ARCHIVAR</button>
+                            )}
+                            {esBaja && (
                                 <button onClick={function(){ alternarDevolucion(nombre); }} disabled={guardandoDev === nombre}
                                     style={{border: dev ? 'none' : '1px solid rgba(0,31,107,0.2)',borderRadius:9,padding:'4px 10px',cursor:'pointer',
                                         background: dev ? '#10b981' : '#fff',color: dev ? '#fff' : 'rgba(0,31,107,0.6)',
@@ -9305,6 +9354,22 @@ const InscripcionesAdmin = () => {
                     );
                 })}
             </div>
+            {/* 📣 Plazas libres publicadas a la peña */}
+            <div style={{background:'rgba(255,215,0,0.08)',border:'1px solid rgba(212,175,55,0.35)',borderRadius:10,padding:'9px 11px',marginTop:10}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,color:'#8a6a00',margin:'0 0 6px'}}>📣 PLAZAS LIBRES ANUNCIADAS EN LA APP</p>
+                <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                    <input type="number" min="0" value={plazasInput} onChange={function(e){ setPlazasInput(e.target.value); }} placeholder="0"
+                        style={{width:70,border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'7px 9px',fontSize:12}} />
+                    <button onClick={async function(){
+                        try {
+                            await setDoc(doc(db, 'configuracion', 'plazasLibres'), { cantidad: Number(plazasInput) || 0, actualizadoEn: serverTimestamp() }, { merge: true });
+                            alert(Number(plazasInput) > 0 ? '📣 Anunciadas ' + plazasInput + ' plazas libres — el banner de captación ya se ve en La Jornada.' : '✅ Banner de captación retirado (0 plazas).');
+                        } catch(e) { alert('❌ ' + e.message); }
+                    }} style={{flex:1,border:'none',borderRadius:8,padding:'8px 10px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>PUBLICAR PLAZAS</button>
+                </div>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.5)',margin:'6px 0 0'}}>Con 1 o más, todos ven el banner con botón de invitar por WhatsApp (y los equipos de Primera que quedan libres). Pon 0 para retirarlo.</p>
+            </div>
+
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',lineHeight:1.6,marginTop:8,marginBottom:0}}>
                 Los abandonos salen de la lista de jugadores inactivos (Herramientas → pausar/retirar jugador). El interruptor de devolución solo registra el estado — el Bizum de vuelta lo haces tú.
             </p>
@@ -12456,6 +12521,35 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                                     </div>
                                                 )}
 
+                                                {/* 🏁 CIERRE FINAL DE LA RIFA — entrega del premio */}
+                                                {r.numeroGanador !== undefined && r.numeroGanador !== null && r.estado !== 'entregada' && (function(){
+                                                    var pg = papeletasGestion[String(r.numeroGanador)] || {};
+                                                    return (
+                                                        <div style={{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.3)',borderRadius:12,padding:'10px 12px',marginBottom:10}}>
+                                                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,color:'#0f8a61',margin:'0 0 4px'}}>🏆 GANADOR: {r.numeroGanador} · {pg.nombre || pg.usuario || '—'}</p>
+                                                            {pg.telefono && (
+                                                                <a href={'https://wa.me/34' + String(pg.telefono).replace(/[^0-9]/g,'') + '?text=' + encodeURIComponent('🏆 ¡Enhorabuena ' + (pg.nombre||'') + '! Tu número ' + r.numeroGanador + ' ha ganado la rifa de la Porra UDLP. Dime tu talla y te hago llegar el premio 💛💙')}
+                                                                    target="_blank" rel="noopener noreferrer"
+                                                                    style={{display:'inline-block',marginBottom:6,textDecoration:'none',background:'#25D366',color:'#fff',borderRadius:8,padding:'5px 12px',fontFamily:"'Teko',sans-serif",fontSize:11}}>📲 AVISAR POR WHATSAPP</a>
+                                                            )}
+                                                            <button onClick={async function(){
+                                                                var talla = window.prompt('Talla entregada (opcional):', pg.tallaEntregada || '');
+                                                                if (talla === null) return;
+                                                                if (!window.confirm('¿Marcar la rifa como ENTREGADA y CERRADA?\n\nQuedará archivada en el historial y dejará de aparecer como activa.')) return;
+                                                                try {
+                                                                    await setDoc(doc(db,'rifas',r.id),{estado:'entregada',entregadoEn:serverTimestamp(),tallaEntregada:talla||null},{merge:true});
+                                                                    alert('🏁 Rifa cerrada y archivada. ¡Ciclo completo!');
+                                                                } catch(e){ alert('❌ '+e.message); }
+                                                            }} style={{width:'100%',border:'none',borderRadius:9,padding:'9px 10px',background:'#10b981',color:'#fff',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>🎁 PREMIO ENTREGADO · CERRAR RIFA</button>
+                                                        </div>
+                                                    );
+                                                })()}
+                                                {r.estado === 'entregada' && (
+                                                    <div style={{background:'rgba(0,31,107,0.04)',borderRadius:10,padding:'8px 12px',marginBottom:10}}>
+                                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)',margin:0}}>✅ Rifa completada y archivada · premio entregado{r.tallaEntregada ? ' (talla ' + r.tallaEntregada + ')' : ''}.</p>
+                                                    </div>
+                                                )}
+
                                                 {/* Estados y flujo de sorteo */}
                                                 <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
                                                     {(r.estado==='abierta'||r.estado==='activa') && <button onClick={function(){cambiarEstadoRifa(r,'completa');}} style={{...A.btnPrimary,padding:'7px 12px',fontSize:11,background:'#e63946'}}>Marcar COMPLETA</button>}
@@ -15005,7 +15099,6 @@ function App() {
             // Notificaciones push — se registra en segundo plano, sin
             // bloquear el login si el navegador no las soporta o el
             // jugador no da permiso.
-            registrarNotificacionesPush(user);
 
             // Detectar jornada finalizada no vista → pantalla de fin de jornada
             onSnapshot(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada'), orderBy('numeroJornada', 'desc'), limit(1)), function(snap) {
