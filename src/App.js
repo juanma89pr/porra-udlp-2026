@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.V · estrellas en vivo (solo tus elegidos)';
+const APP_BUILD = 'v2026-08-22.W · puntos provisionales en vivo';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -5931,12 +5931,23 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                         </div>
                                         )}
                                     </div>
-                                    {/* Puntos */}
-                                    {!p.sinApuesta && (jornada.estado==='Finalizada' || isLive) && (
+                                    {/* Puntos: en vivo los PROVISIONALES que va
+                                        consiguiendo según el marcador actual;
+                                        finalizada, los definitivos. Nunca un 0 fijo. */}
+                                    {!p.sinApuesta && jornada.estado === 'Finalizada' && (
                                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color: ganador?G.golden:G.deepBlue}}>
                                             {p.puntosObtenidos||0}
                                         </span>
                                     )}
+                                    {!p.sinApuesta && isLive && (function(){
+                                        var ptsVivo = calculateProvisionalPoints(p, live, jornada);
+                                        return (
+                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,textAlign:'right',
+                                                color: ptsVivo > 0 ? '#10b981' : 'rgba(0,31,107,0.2)'}}>
+                                                {ptsVivo > 0 ? '+' + ptsVivo : '—'}
+                                            </span>
+                                        );
+                                    })()}
                                 </div>
                             );
                         })}
@@ -5989,7 +6000,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                                         {r.aciertaMarcador && <span style={{fontSize:11}} title="Acierta marcador">🎯</span>}
                                         {!r.aciertaMarcador && r.acierta1x2 && <span style={{fontSize:11}} title="Acierta 1X2">✓</span>}
                                         {!r.aciertaMarcador && !r.acierta1x2 && <span style={{fontSize:11,opacity:0.3}} title="Falla">✗</span>}
-                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: idx === 0 ? G.golden : r.puntos > 0 ? G.deepBlue : 'rgba(0,31,107,0.25)',minWidth:24,textAlign:'right'}}>{r.puntos}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color: idx === 0 ? G.golden : r.puntos > 0 ? G.deepBlue : 'rgba(0,31,107,0.25)',minWidth:24,textAlign:'right'}}>{r.puntos > 0 ? '+' + r.puntos : '—'}</span>
                                     </div>
                                 );
                             })}
