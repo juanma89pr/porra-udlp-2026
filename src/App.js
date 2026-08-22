@@ -33,7 +33,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.AJ · rifas visibles en el gestor admin';
+const APP_BUILD = 'v2026-08-22.AK · papeletas externas suman al total';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -12455,12 +12455,16 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                         {enGestion && (function(){
                                             var numeros = Object.keys(papeletasGestion);
                                             var totalR = Number(r.totalPapeletas || 100);
-                                            var dineroTotal = 0, dineroPremios = 0, dineroDirecto = 0, pendientesBizum = 0, externosDeclarados = 0;
+                                            var dineroTotal = 0, dineroPremios = 0, dineroDirecto = 0, dineroSinVerificar = 0, pendientesBizum = 0, externosDeclarados = 0;
                                             numeros.forEach(function(n){
                                                 var pp = papeletasGestion[n];
-                                                var precioP = Number(pp.precio || 0);
+                                                // Si la papeleta no trae precio (externas antiguas), se
+                                                // usa el de la rifa: así ninguna venta queda sin contar.
+                                                var precioP = Number(pp.precio !== undefined && pp.precio !== null ? pp.precio : (r.precio || 0));
                                                 dineroTotal += precioP;
-                                                if (pp.metodo === 'saldo') dineroPremios += precioP; else dineroDirecto += precioP;
+                                                if (pp.metodo === 'saldo') dineroPremios += precioP;
+                                                else if (pp.pagoVerificado) dineroDirecto += precioP;
+                                                else dineroSinVerificar += precioP;
                                                 if (pp.metodo === 'bizum' && !pp.pagoVerificado) pendientesBizum++;
                                                 if (pp.esExterno && pp.estadoExt === 'pendiente' && !pp.pagoVerificado) externosDeclarados++;
                                             });
@@ -12470,7 +12474,8 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                                 <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
                                                     <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(16,185,129,0.1)',color:'#0f8a61',padding:'5px 10px',borderRadius:9}}>💶 Total: {dineroTotal.toFixed(2)}€</span>
                                                     <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(255,215,0,0.15)',color:'#8a6a00',padding:'5px 10px',borderRadius:9}}>🏆 De premios: {dineroPremios.toFixed(2)}€</span>
-                                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(0,31,107,0.06)',color:'#001F6B',padding:'5px 10px',borderRadius:9}}>💳 Directo: {dineroDirecto.toFixed(2)}€</span>
+                                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(0,31,107,0.06)',color:'#001F6B',padding:'5px 10px',borderRadius:9}}>💳 Bizum cobrado: {dineroDirecto.toFixed(2)}€</span>
+                                                    {dineroSinVerificar>0 && <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(230,57,70,0.08)',color:'#e63946',padding:'5px 10px',borderRadius:9}}>⏳ Sin verificar: {dineroSinVerificar.toFixed(2)}€</span>}
                                                     {pendientesBizum>0 && <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(230,57,70,0.1)',color:'#e63946',padding:'5px 10px',borderRadius:9}}>⏳ {pendientesBizum} Bizum sin verificar</span>}
                                                     {externosDeclarados>0 && <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,background:'rgba(255,215,0,0.2)',color:'#8a6a00',padding:'5px 10px',borderRadius:9,border:'1px solid rgba(212,175,55,0.5)'}}>🌐 {externosDeclarados} externo(s) dicen haber pagado — VERIFICA ABAJO</span>}
                                                 </div>
@@ -14262,6 +14267,10 @@ const RifaPublicaScreen = ({ rifaId }) => {
                     telefono: telLimpio,
                     esExterno: true,
                     uidExt: uid,
+                    // El precio DEBE guardarse aquí: el recuento de dinero del
+                    // gestor suma este campo, y sin él las papeletas externas
+                    // se validaban pero no sumaban al total recaudado.
+                    precio: precio,
                     estadoExt: 'reservada',
                     reservadoHasta: Date.now() + 10 * 60 * 1000,
                     metodo: 'bizum',
