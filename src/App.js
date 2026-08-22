@@ -33,7 +33,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.AI · ciclos cerrados: rifa, archivo, captacion';
+const APP_BUILD = 'v2026-08-22.AJ · rifas visibles en el gestor admin';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -11518,8 +11518,20 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
     useEffect(function() {
         if (seccion !== 'rifas') return;
         var unsub = onSnapshot(
-            query(collection(db, 'rifas'), orderBy('creadoEn', 'desc')),
-            function(snap) { setRifas(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })); }
+            collection(db, 'rifas'),
+            function(snap) {
+                // Sin orderBy: si se ordena por un campo que a algún documento
+                // le falta, Firestore lo deja FUERA del resultado y la rifa
+                // desaparece del panel. Se ordena aquí, tolerando ambos
+                // nombres de campo (creadaEn / creadoEn) y su ausencia.
+                var lista = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+                lista.sort(function(a, b) {
+                    var ta = (a.creadaEn && a.creadaEn.seconds) || (a.creadoEn && a.creadoEn.seconds) || 0;
+                    var tb = (b.creadaEn && b.creadaEn.seconds) || (b.creadoEn && b.creadoEn.seconds) || 0;
+                    return tb - ta;
+                });
+                setRifas(lista);
+            }
         );
         return function() { unsub(); };
     }, [seccion]);
