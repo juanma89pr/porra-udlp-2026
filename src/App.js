@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.Z · resultados y puntos de la jornada visibles';
+const APP_BUILD = 'v2026-08-22.AA · puntos de porra ya suman en clasificacion';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -5256,10 +5256,20 @@ const CierreExtendidoJ1 = ({ userProfiles, currentUser }) => {
                         pend[d.id] = (pend[d.id] || 0) + Number((d.data() || {}).puntosRanking || 0);
                     });
                 };
+                var sumarBase = function(docs) {
+                    docs.forEach(function(d) {
+                        var p = d.data() || {};
+                        if (p.noContabilizado) return;
+                        pend[d.id] = (pend[d.id] || 0) + Number(p.puntosBaseSinOtro || 0);
+                    });
+                };
                 for (var i = 0; i < jSnap.docs.length; i++) {
                     if ((jSnap.docs[i].data() || {}).cierreDefinitivo) continue;
-                    var rSnap = await getDocs(collection(db, 'estrellas_resultados', jSnap.docs[i].id, 'jugadores'));
+                    var jidPend = jSnap.docs[i].id;
+                    var rSnap = await getDocs(collection(db, 'estrellas_resultados', jidPend, 'jugadores'));
                     sumarPend(rSnap.docs);
+                    var pSnapCE = await getDocs(collection(db, 'pronosticos', jidPend, 'jugadores'));
+                    sumarBase(pSnapCE.docs);
                 }
                 setEstrellasPendCE(pend);
             } catch(e) {}
@@ -6563,9 +6573,9 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
         (async function() {
             try {
                 var ex = {};
-                var asegurar = function(uid) { if (!ex[uid]) ex[uid] = { estrellas: 0, estrellasPend: 0, ganadoOtro: 0, perdidoOtro: 0, porra: 0, unoX2: 0 }; return ex[uid]; };
+                var asegurar = function(uid) { if (!ex[uid]) ex[uid] = { estrellas: 0, estrellasPend: 0, basePend: 0, ganadoOtro: 0, perdidoOtro: 0, porra: 0, unoX2: 0 }; return ex[uid]; };
                 var pendiente = false;
-                var acumularPronosticos = function(docs) {
+                var acumularPronosticos = function(docs, cierreHecho) {
                     docs.forEach(function(d) {
                         var p = d.data() || {};
                         if (p.elOtroActivado && !p.elOtroAplicado) pendiente = true;
@@ -6576,6 +6586,11 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
                         var reg = asegurar(d.id);
                         reg.porra += exacto + goleador;                       // marcador exacto + goleador
                         reg.unoX2 += Math.max(0, base - exacto - goleador);   // acierto 1X2 / pasa-no pasa
+                        // Mientras la jornada no tenga cierre definitivo, sus
+                        // puntos NO están en clasificacion.puntosTotales: se
+                        // suman aquí para que la tabla enseñe YA lo ganado
+                        // (misma información en todas las pantallas).
+                        if (!cierreHecho) reg.basePend += base;
                     });
                 };
                 var acumularEstrellasJornada = function(docs, cierreHecho) {
@@ -6597,7 +6612,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
                     var rSnap = await getDocs(collection(db, 'estrellas_resultados', jid, 'jugadores'));
                     acumularEstrellasJornada(rSnap.docs, !!jd.cierreDefinitivo);
                     var pSnap = await getDocs(collection(db, 'pronosticos', jid, 'jugadores'));
-                    acumularPronosticos(pSnap.docs);
+                    acumularPronosticos(pSnap.docs, !!jd.cierreDefinitivo);
                 }
                 var oSnap = await getDocs(collection(db, 'elOtro'));
                 oSnap.forEach(function(d) {
@@ -6666,7 +6681,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
         var extra = extrasClasif[nombre] || {};
         // Los puntos de las 5 Estrellas de jornadas todavía sin cierre
         // definitivo se suman al total MOSTRADO desde ya.
-        var totalMostrado = (datos.puntosTotales || 0) + Number(extra.estrellasPend || 0);
+        var totalMostrado = (datos.puntosTotales || 0) + Number(extra.estrellasPend || 0) + Number(extra.basePend || 0);
         return {
             id: nombre,
             puntosTotales: totalMostrado,
@@ -8360,6 +8375,22 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                             alert('🛡️ El Otro actualizado.\n\nAplicados: ' + r.aplicados + '\nPendientes: ' + r.pendientes + (r.pendientes ? '\n\nTodavía quedan partidos por terminar.' : '\n\nYa no quedan multiplicadores pendientes.'));
                         } catch(e) { alert('❌ Error resolviendo El Otro: ' + e.message); }
                     }} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: '#0091FF', color: '#0074cc'}}>🛡️ RESOLVER EL OTRO</button>
+                    {!jornada.cierreDefinitivo && (
+                        <button onClick={async function(){
+                            try {
+                                var ps = await getDocs(collection(db, 'pronosticos', jornada.id, 'jugadores'));
+                                var pendientes = [];
+                                ps.forEach(function(d){ var p = d.data() || {}; if (p.elOtroActivado && !p.elOtroAplicado) pendientes.push(d.id); });
+                                if (pendientes.length) {
+                                    alert('⏳ NO se puede cerrar todavía: quedan ' + pendientes.length + ' jugador(es) con El Otro sin resolver (' + pendientes.join(', ') + ').\n\nUsa antes "🛡️ RESOLVER EL OTRO".');
+                                    return;
+                                }
+                                if (!window.confirm('✅ Nadie tiene El Otro pendiente en esta jornada.\n\n¿Marcar la jornada como CERRADA DEFINITIVAMENTE? Los puntos quedarán fijados en la clasificación.')) return;
+                                await setDoc(doc(db, 'jornadas', jornada.id), { cierreDefinitivo: true, cierreDefinitivoEn: serverTimestamp() }, { merge: true });
+                                alert('🏁 Jornada cerrada definitivamente.');
+                            } catch(e) { alert('❌ ' + e.message); }
+                        }} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: '#10b981', color: '#0f8a61'}}>🏁 CIERRE DEFINITIVO</button>
+                    )}
                     <button onClick={handleResetPuntos} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: styles.colors.danger, color: styles.colors.danger}}>RESETEAR PUNTOS</button>
                     <button onClick={() => setIsUnlocked(true)} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem'}}>Desbloquear</button>
                 </div>
