@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.M · bote en juego + insignias de pago';
+const APP_BUILD = 'v2026-08-22.N · bloqueo real 2h estrellas + cierre manual admin';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -127,6 +127,23 @@ const RifaHeroCamiseta = ({ precio, compacto }) => {
         </div>
     );
 };
+
+// Cierre REAL de la selección de 5 Estrellas para una jornada:
+// 1º manda el cierre MANUAL fijado por el admin (jornada.cierreEstrellasManual),
+// 2º si no lo hay, la fecha del partido que tenga la jornada MENOS 2 HORAS,
+// 3º si no hay fecha fiable, null (no se bloquea por tiempo, solo por estado).
+function getCierreEstrellasMs(j) {
+    if (!j) return null;
+    if (j.cierreEstrellasManual) {
+        var m = Date.parse(j.cierreEstrellasManual);
+        if (!isNaN(m)) return m;
+    }
+    var f = j.fechaPartido || j.fecha;
+    if (!f) return null;
+    var t = Date.parse(f);
+    if (isNaN(t)) return null;
+    return t - 2 * 3600 * 1000;
+}
 
 // Papeletas EXTERNAS caducadas: reserva de 10 min vencida, o Bizum sin
 // confirmar en 24 h. Se consideran LIBRES tanto en pantalla como en las
@@ -12444,6 +12461,11 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     const [posicionFiltro, setPosicionFiltro] = useState('Todos');
     const [mostrarSeleccion, setMostrarSeleccion] = useState(false);
     const seleccionAutoAbiertaRef = useRef(false);
+    const [tickCierre, setTickCierre] = useState(0);
+    useEffect(function() {
+        var iv = setInterval(function() { setTickCierre(function(t) { return t + 1; }); }, 30000);
+        return function() { clearInterval(iv); };
+    }, []);
     // ── Tablero por jornada ──
     const [jornadasFinalizadas, setJornadasFinalizadas] = useState([]);
     const [idxJornada, setIdxJornada] = useState(0);          // 0 = última finalizada
@@ -12499,8 +12521,15 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
 
 
 
+    // El bloqueo de las 2 horas NO dependía de nada hasta ahora (solo del
+    // estado de la jornada): aquí se aplica de verdad, con la hora del
+    // partido o con el cierre manual del admin si la API viniera con fecha rara.
+    var cierreEstrellasMs = getCierreEstrellasMs(jornadaActual);
+    var seleccionCerradaPorHora = !!(cierreEstrellasMs && Date.now() > cierreEstrellasMs);
+    var puedeElegir = !!(jornadaActual && jornadaActual.estado === 'Abierta' && !seleccionCerradaPorHora);
+
     const toggleJugador = (jugador) => {
-        if (jornadaActual.estado !== 'Abierta') return;
+        if (!puedeElegir) return;
         const maxEstrellas = miBeneficio === 'sexta_estrella' ? 6 : 5;
         if (seleccion.find(j => j.nombre === jugador.nombre)) {
             setSeleccion(seleccion.filter(j => j.nombre !== jugador.nombre));
@@ -12531,6 +12560,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
 
     const guardarSeleccion = async () => {
         if (!jornadaActual || seleccion.length === 0) return;
+        if (!puedeElegir) { alert('⭐ La selección de esta jornada está CERRADA (se bloquea 2 horas antes del partido de la UDLP).'); return; }
         setGuardando(true);
         try {
             await setDoc(doc(db, "estrellas_seleccion", jornadaActual.id, "jugadores", currentUser), {
@@ -12753,9 +12783,25 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                             background:'linear-gradient(135deg,#001F6B,#0035b8)',color:'#FFD700',
                             fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,display:'flex',justifyContent:'space-between',alignItems:'center',
                             boxShadow:'0 4px 14px rgba(0,31,107,0.25)'}}>
-                        <span>⭐ JORNADA {jornadaActual.numeroJornada} — {jornadaActual.estado === 'Abierta' ? (yaGuardado ? 'TUS 5 GUARDADOS · TOCA PARA CAMBIAR' : 'ELIGE TUS ' + maxEstrellas) : 'SELECCIÓN CERRADA'}</span>
+                        <span>⭐ JORNADA {jornadaActual.numeroJornada} — {puedeElegir ? (yaGuardado ? 'TUS 5 GUARDADOS · TOCA PARA CAMBIAR' : 'ELIGE TUS ' + maxEstrellas) : (seleccionCerradaPorHora ? 'SELECCIÓN CERRADA (2H ANTES DEL PARTIDO)' : 'SELECCIÓN CERRADA')}</span>
                         <span style={{fontSize:12}}>{mostrarSeleccion ? '▲' : '▼'}</span>
                     </button>
+                    {currentUser === 'Juanma' && (
+                        <div style={{background:'rgba(255,215,0,0.1)',border:'1px dashed rgba(255,215,0,0.5)',borderRadius:8,padding:'6px 10px',margin:'6px 0'}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#b8860b',marginBottom:5}}>
+                                🔧 SOLO ADMIN · cierre real ahora: {cierreEstrellasMs ? new Date(cierreEstrellasMs).toLocaleString('es-ES',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'}) + (jornadaActual.cierreEstrellasManual ? ' (MANUAL)' : ' (fecha API − 2h)') : 'SIN FECHA FIABLE — solo bloquea el estado de la jornada'}. Si la hora de la API está mal, fija el cierre a mano:
+                            </p>
+                            <input type="datetime-local" onChange={function(e){ window.cierreManualTemp = e.target.value; }}
+                                style={{width:'100%',boxSizing:'border-box',border:'1px solid rgba(0,31,107,0.2)',borderRadius:6,padding:'6px 8px',fontSize:11,marginBottom:5}} />
+                            <button onClick={async function(){
+                                if (!window.cierreManualTemp) { alert('Elige fecha y hora primero.'); return; }
+                                try {
+                                    await setDoc(doc(db,'jornadas',jornadaActual.id), { cierreEstrellasManual: new Date(window.cierreManualTemp).toISOString() }, { merge: true });
+                                    alert('✅ Cierre manual de Estrellas fijado. Manda sobre la fecha de la API.');
+                                } catch(err) { alert('Error: ' + err.message); }
+                            }} style={{width:'100%',border:'none',borderRadius:6,padding:'6px 8px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,cursor:'pointer'}}>🔒 FIJAR CIERRE MANUAL</button>
+                        </div>
+                    )}
                     {jornadaActual.estado === 'Abierta' && (function(){
                         var limite = '';
                         var fRef = jornadaActual.fechaPartido || jornadaActual.fecha;
@@ -12813,7 +12859,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                                     }}>{p}</button>
                                 ))}
                             </div>
-                            {jornadaActual.estado === 'Abierta' && (
+                            {puedeElegir && (
                                 <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(96px,1fr))',gap:12,marginBottom:16}}>
                                     {plantillaFiltrada.map((j,i) => {
                                         const seleccionado = seleccion.find(s => s.nombre === j.nombre);
@@ -12855,10 +12901,10 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                                     })}
                                 </div>
                             )}
-                            {jornadaActual.estado !== 'Abierta' ? (
+                            {!puedeElegir ? (
                                 <div style={{background:'rgba(0,31,107,0.05)',border:'1px solid rgba(0,31,107,0.12)',borderRadius:12,padding:16,textAlign:'center'}}>
-                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,fontWeight:600}}>🔒 Jornada cerrada</p>
-                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>Tu selección quedó fijada al cerrarse la jornada.</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:G.deepBlue,fontWeight:600}}>🔒 Selección cerrada</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.5,marginTop:4}}>{seleccionCerradaPorHora ? 'El plazo terminó 2 horas antes del partido de la UDLP. Tu selección quedó fijada.' : 'Tu selección quedó fijada al cerrarse la jornada.'}</p>
                                 </div>
                             ) : (
                                 <button onClick={guardarSeleccion} disabled={guardando || seleccion.length===0} style={{
