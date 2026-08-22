@@ -63,7 +63,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.P · boleto de apuesta con pasarela Bizum';
+const APP_BUILD = 'v2026-08-22.Q · sincronizacion en vivo por fixtureId';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3352,7 +3352,12 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             try {
                 // season=2026 confirmado directamente en el panel de API-Football
                 // para la Segunda División 26/27 — ya no hace falta probar dos.
-                var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + encodeURIComponent(fechaAString(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
+                // Si la jornada tiene fixtureId, se consulta el partido DIRECTO
+                // (a prueba de desfases de fecha/huso horario, que era lo que
+                // dejaba la búsqueda por fecha sin resultados y sin sincronizar).
+                var url = jornada.fixtureId
+                    ? 'https://v3.football.api-sports.io/fixtures?id=' + jornada.fixtureId
+                    : 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + encodeURIComponent(fechaAString(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
                 var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
                 var data = await res.json();
                 if (data.response && data.response.length > 0) {
