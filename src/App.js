@@ -33,7 +33,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-22.AK · papeletas externas suman al total';
+const APP_BUILD = 'v2026-08-23.AL · apertura/cierre automatico + cuenta atras';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3020,6 +3020,105 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
 // Lee los pronósticos de la jornada finalizada y muestra qué sumó cada uno,
 // sin depender del historial local (que a veces aún no está cargado y dejaba
 // los puntos a 0). Sirve también para el propio usuario: su fila destacada.
+// ============================================================================
+// ⏱️ AUTOMATISMO DE APERTURA Y CIERRE DE JORNADA + CUENTA ATRÁS
+// ============================================================================
+// Las fechas de apertura y cierre que fija el admin ya no son decorativas:
+// este componente las vigila y cambia el estado de la jornada solo.
+//   · Pre-apertura → Abierta   al llegar la fechaApertura
+//   · Abierta      → Cerrada   al llegar la fechaCierre
+// Además pinta la cuenta atrás para el jugador ("faltan 52 min para el cierre"
+// o "la porra abre en 3 h 20 min").
+function msDesdeFecha(f) {
+    if (!f) return null;
+    try {
+        var d = f && f.toDate ? f.toDate() : new Date(f);
+        var t = d.getTime();
+        return isNaN(t) ? null : t;
+    } catch(e) { return null; }
+}
+
+function formatearCuentaAtras(ms) {
+    if (ms <= 0) return '0s';
+    var seg = Math.floor(ms / 1000);
+    var d = Math.floor(seg / 86400);
+    var h = Math.floor((seg % 86400) / 3600);
+    var m = Math.floor((seg % 3600) / 60);
+    var s = seg % 60;
+    if (d > 0) return d + 'd ' + h + 'h ' + m + 'min';
+    if (h > 0) return h + 'h ' + m + 'min';
+    if (m > 0) return m + 'min ' + s + 's';
+    return s + 's';
+}
+
+const CuentaAtrasJornada = ({ jornada }) => {
+    var [ahora, setAhora] = useState(Date.now());
+    var aplicandoRef = useRef('');
+
+    useEffect(function() {
+        var iv = setInterval(function() { setAhora(Date.now()); }, 1000);
+        return function() { clearInterval(iv); };
+    }, []);
+
+    var aperturaMs = msDesdeFecha(jornada && jornada.fechaApertura);
+    var cierreMs = msDesdeFecha(jornada && jornada.fechaCierre);
+    var estado = jornada ? jornada.estado : null;
+
+    // ── AUTOMATISMO: cambia el estado de la jornada al llegar la hora ──
+    useEffect(function() {
+        if (!jornada || !jornada.id) return;
+        var claveApertura = jornada.id + '-abrir';
+        var claveCierre = jornada.id + '-cerrar';
+        (async function() {
+            try {
+                if (aperturaMs && Date.now() >= aperturaMs && (estado === 'Pre-apertura' || estado === 'Próximamente')) {
+                    if (aplicandoRef.current === claveApertura) return;
+                    aplicandoRef.current = claveApertura;
+                    await setDoc(doc(db, 'jornadas', jornada.id), { estado: 'Abierta', abiertaAutomaticamenteEn: serverTimestamp() }, { merge: true });
+                } else if (cierreMs && Date.now() >= cierreMs && estado === 'Abierta') {
+                    if (aplicandoRef.current === claveCierre) return;
+                    aplicandoRef.current = claveCierre;
+                    await setDoc(doc(db, 'jornadas', jornada.id), { estado: 'Cerrada', cerradaAutomaticamenteEn: serverTimestamp() }, { merge: true });
+                }
+            } catch(e) { /* si falla, el admin puede cambiarlo a mano */ }
+        })();
+    }, [ahora, jornada, aperturaMs, cierreMs, estado]);
+
+    if (!jornada) return null;
+
+    var Caja = function(props) {
+        return (
+            <div style={{background: props.urgente ? 'rgba(230,57,70,0.08)' : 'linear-gradient(135deg,rgba(0,31,107,0.05),rgba(0,31,107,0.02))',
+                border: '1px solid ' + (props.urgente ? 'rgba(230,57,70,0.35)' : 'rgba(0,31,107,0.12)'),
+                borderRadius:12,padding:'10px 14px',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+                <div>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color: props.urgente ? '#b02a35' : 'rgba(0,31,107,0.5)',textTransform:'uppercase',margin:0}}>{props.titulo}</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.45)',margin:0}}>{props.sub}</p>
+                </div>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color: props.urgente ? '#e63946' : '#001F6B',margin:0,lineHeight:1,whiteSpace:'nowrap'}}>{props.valor}</p>
+            </div>
+        );
+    };
+
+    var fmtFecha = function(ms) {
+        return new Date(ms).toLocaleString('es-ES', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary' });
+    };
+
+    // Antes de abrir: cuánto falta para la apertura
+    if (aperturaMs && ahora < aperturaMs && estado !== 'Abierta') {
+        return <Caja titulo="⏳ LA PORRA ABRE EN" sub={'Apertura: ' + fmtFecha(aperturaMs)} valor={formatearCuentaAtras(aperturaMs - ahora)} urgente={false} />;
+    }
+    // Abierta: cuánto queda para el cierre
+    if (cierreMs && estado === 'Abierta') {
+        var restante = cierreMs - ahora;
+        if (restante > 0) {
+            return <Caja titulo={restante < 3600000 ? '🚨 ÚLTIMA HORA PARA APOSTAR' : '⏱️ CIERRE DE APUESTAS EN'} sub={'Cierra: ' + fmtFecha(cierreMs)} valor={formatearCuentaAtras(restante)} urgente={restante < 3600000} />;
+        }
+        return <Caja titulo="🔒 APUESTAS CERRADAS" sub="El plazo ha terminado" valor="—" urgente={true} />;
+    }
+    return null;
+};
+
 const ResultadosJornadaCard = ({ jornada, user, userProfiles }) => {
     var [filas, setFilas] = useState(null);
     useEffect(function() {
@@ -3649,11 +3748,31 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     // partido de toda la jornada de Primera División (no solo el de tu equipo
     // concreto), porque la jornada afecta a todos los comodines a la vez.
     var [primerPartidoPrimera, setPrimerPartidoPrimera] = useState(null);
+    var [rondaPrimeraVigente, setRondaPrimeraVigente] = useState(null);
     useEffect(function() {
-        buscarJornadaCompletaPrimera(new Date().toISOString(), 5).then(function(partidos) {
-            if (partidos && partidos.length > 0) {
-                var primero = partidos.sort(function(a,b) { return new Date(a.fecha) - new Date(b.fecha); })[0];
-                setPrimerPartidoPrimera(primero);
+        buscarJornadaCompletaPrimera(new Date().toISOString(), 8).then(function(partidos) {
+            if (!partidos || !partidos.length) return;
+            var ahoraMs = Date.now();
+            // Agrupar por ronda y quedarnos con la PRÓXIMA ronda que todavía
+            // no ha arrancado. Antes se cogía el partido más antiguo de la
+            // ventana (de la jornada ya jugada) y el plazo salía vencido.
+            var porRonda = {};
+            partidos.forEach(function(p) {
+                var r = p.round || 'sin-ronda';
+                if (!porRonda[r]) porRonda[r] = [];
+                porRonda[r].push(p);
+            });
+            var candidatas = Object.keys(porRonda).map(function(r) {
+                var lista = porRonda[r].slice().sort(function(a, b) { return new Date(a.fecha) - new Date(b.fecha); });
+                return { ronda: r, primero: lista[0], inicioMs: new Date(lista[0].fecha).getTime() };
+            }).filter(function(c) { return !isNaN(c.inicioMs); })
+              .sort(function(a, b) { return a.inicioMs - b.inicioMs; });
+            // La vigente es la primera cuyo primer partido aún no ha empezado;
+            // si todas empezaron, la última (jornada en curso).
+            var vigente = candidatas.find(function(c) { return c.inicioMs > ahoraMs; }) || candidatas[candidatas.length - 1];
+            if (vigente) {
+                setPrimerPartidoPrimera(vigente.primero);
+                setRondaPrimeraVigente(vigente.ronda);
             }
         }).catch(function(){});
     }, []);
@@ -3661,7 +3780,9 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var ahora = new Date();
     var primerKickoff = primerPartidoPrimera ? new Date(primerPartidoPrimera.fecha) : null;
     var jornadaPrimeraEmpezada = !!(primerKickoff && ahora >= primerKickoff);
-    var plazoActivacionSuperado = jornadaPrimeraEmpezada;
+    // Normativa: el plazo cierra 1 HORA ANTES del primer partido de Primera.
+    var limiteOtroMs = primerKickoff ? primerKickoff.getTime() - 3600 * 1000 : null;
+    var plazoActivacionSuperado = !!(limiteOtroMs && Date.now() >= limiteOtroMs);
 
     // Countdown al cierre
     useEffect(function() {
@@ -3912,6 +4033,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         return (
             <div style={{paddingBottom:40}}>
                 <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:G.deepBlue,textTransform:'uppercase',marginBottom:12,fontWeight:700}}>MI JORNADA</h2>
+                <CuentaAtrasJornada jornada={jornada} />
                 <PlazosCard tipo="porra" />
 
                 {/* 🔧 SOLO ADMIN · diagnóstico del EN VIVO */}
@@ -5766,6 +5888,8 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     }} style={{width:'100%',border:'none',borderRadius:6,padding:'6px 8px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,cursor:'pointer'}}>🔴 ¿HAY PARTIDO EN VIVO AHORA? (1 petición)</button>
                 </div>
             )}
+
+            <CuentaAtrasJornada jornada={jornada} />
 
             {/* 📣 CAPTACIÓN — plazas libres y equipos de Primera sin dueño */}
             <BannerPlazasLibres />
@@ -11143,7 +11267,6 @@ const NormativaScreen = () => {
                     <p style={{marginBottom:8}}><strong>No se aplican todavía</strong> recuperaciones ni despejes porque API-Football no los entrega como campos individuales fiables en <code>/fixtures/players</code> para este cálculo.</p>
                     <p style={{marginBottom:0}}><strong>Recalcular:</strong> cada recálculo vuelve a leer la API y <strong>sustituye completamente el cálculo anterior de esa jornada</strong>. No duplica Estrellas ni puntos. Esto queda blindado para todas las jornadas.</p>
                     <p style={{marginBottom:8}}><strong>Puntos por jornada al ranking general:</strong> las estrellas de tus 5 elegidos se suman y forman el ranking de la jornada. Los 5 primeros puntúan: 🥇 <strong>+5</strong> · 🥈 <strong>+4</strong> · 🥉 <strong>+3</strong> · 4º <strong>+2</strong> · 5º <strong>+1</strong>. Esos puntos <strong>suman a la clasificación general desde el momento del cálculo</strong> — el botón ＋ de la pantalla es solo la celebración: pulsarlo o no pulsarlo <strong>no cambia los puntos</strong>, y a las 72 horas del cierre se marca automáticamente.</p>
-                    <p style={{marginBottom:8}}><strong>Beneficios del podio de la Liga de Estrellas:</strong> mientras vas 1º puedes <strong>ver las apuestas del resto antes del cierre</strong>; 2º puedes <strong>bloquear a un jugador</strong> en El Otro o en Estrellas; 3º puedes elegir una <strong>6ª estrella comodín</strong> esa jornada.</p>
                     <p style={{margin:0}}>Las estrellas acumuladas forman una <strong>clasificación paralela (Liga de Estrellas)</strong>: los <strong>3 primeros puestos tendrán premio</strong> al final de la temporada, aparte del bote de la porra (premio por desvelar).</p>
                 </div>
             </AcordeonAyuda>
@@ -13254,7 +13377,6 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     const G = styles.colors;
     const [jornadaActual, setJornadaActual] = useState(null);
     const [seleccion, setSeleccion] = useState([]);
-    const [miBeneficio, setMiBeneficio] = useState(null);
     const [clasificacionEstrellas, setClasificacionEstrellas] = useState([]);
     const [guardando, setGuardando] = useState(false);
     const [yaGuardado, setYaGuardado] = useState(false);
@@ -13292,11 +13414,9 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
         const unsubClasif = onSnapshot(collection(db, "clasificacion_estrellas"), (snap) => {
             const datos = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.puntosEstrellas||0)-(a.puntosEstrellas||0));
             setClasificacionEstrellas(datos);
-            const miPos = datos.findIndex(d => d.id === currentUser);
-            if (miPos === 0) setMiBeneficio('ver_apuestas');
-            else if (miPos === 1) setMiBeneficio('bloquear');
-            else if (miPos === 2) setMiBeneficio('sexta_estrella');
-            else setMiBeneficio(null);
+            // Los beneficios del podio (ver apuestas, bloquear, 6ª estrella)
+            // quedan SUPRIMIDOS por decisión del grupo: con menos jugadores
+            // generaban más agravio que juego. Todos eligen 5, sin excepción.
         });
         const unsubFinalizadas = onSnapshot(
             query(collection(db, "jornadas"), where("estado", "==", "Finalizada"), orderBy("numeroJornada", "desc")),
@@ -13336,7 +13456,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
 
     const toggleJugador = (jugador) => {
         if (!puedeElegir) return;
-        const maxEstrellas = miBeneficio === 'sexta_estrella' ? 6 : 5;
+        const maxEstrellas = 5;   // sin excepciones: se eliminaron los beneficios del podio
         if (seleccion.find(j => j.nombre === jugador.nombre)) {
             setSeleccion(seleccion.filter(j => j.nombre !== jugador.nombre));
         } else if (seleccion.length < maxEstrellas) {
@@ -13451,7 +13571,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
 
     const posiciones = ['Todos', 'Portero', 'Defensa', 'Centrocampista', 'Mediapunta', 'Delantero'];
     const plantillaFiltrada = posicionFiltro === 'Todos' ? plantilla : plantilla.filter(j => j.posicion === posicionFiltro);
-    const maxEstrellas = miBeneficio === 'sexta_estrella' ? 6 : 5;
+    const maxEstrellas = 5;   // sin excepciones: se eliminaron los beneficios del podio
 
     if (loading) return <div style={{padding:40,textAlign:'center',color:G.deepBlue}}>Cargando...</div>;
 
@@ -13715,15 +13835,6 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                     })()}
                     {mostrarSeleccion && (
                         <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.08)',borderRadius:'0 0 14px 14px',padding:'14px 10px'}}>
-                            {miBeneficio && (
-                                <div style={{background:'rgba(0,31,107,0.05)',borderRadius:10,padding:10,marginBottom:12,textAlign:'center'}}>
-                                    <p style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:'0.8rem',color:G.deepBlue,letterSpacing:2,margin:0}}>
-                                        {miBeneficio === 'ver_apuestas' && '👁 PUEDES VER LAS APUESTAS DEL RESTO ANTES DEL CIERRE'}
-                                        {miBeneficio === 'bloquear' && '🔒 PUEDES BLOQUEAR A UN JUGADOR EN EL OTRO O EN ESTRELLAS'}
-                                        {miBeneficio === 'sexta_estrella' && '⭐ PUEDES ELEGIR UNA 6ª ESTRELLA COMODÍN ESTA JORNADA'}
-                                    </p>
-                                </div>
-                            )}
                             <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:14,minHeight:36}}>
                                 {seleccion.map((j,i) => (
                                     <span key={i} onClick={() => toggleJugador(j)} style={{
