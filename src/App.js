@@ -33,7 +33,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-23.AL · apertura/cierre automatico + cuenta atras';
+const APP_BUILD = 'v2026-08-23.AM · guardado de apuesta desbloqueado';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3051,6 +3051,66 @@ function formatearCuentaAtras(ms) {
     return s + 's';
 }
 
+// ============================================================================
+// 🎫 BOLETO DE PAGO — recordatorio de Bizum tras guardar la apuesta
+// ============================================================================
+// Se muestra DESPUÉS de guardar (la apuesta ya está a salvo). Sirve para
+// declarar el Bizum y que le llegue al admin a su bandeja de confirmación.
+const BoletoPagoJornada = ({ jornada, user, pronostico, elOtroActivado, onCerrar }) => {
+    var [bizumCfg, setBizumCfg] = useState(null);
+    var [enviando, setEnviando] = useState(false);
+    useEffect(function() {
+        var u = onSnapshot(doc(db, 'configuracion', 'bizum'), function(s) { setBizumCfg(s.exists() ? s.data() : null); }, function(){});
+        return function() { u(); };
+    }, []);
+    if (!jornada) return null;
+    var importe = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+
+    var declararBizum = async function() {
+        if (enviando) return;
+        if (!window.confirm('¿Confirmas que has hecho el Bizum de ' + importe.toFixed(2) + '€?\n\nQuedará pendiente de que el admin lo verifique.')) return;
+        setEnviando(true);
+        try {
+            await addDoc(collection(db, 'pagos'), {
+                jugador: user, pagoBy: user,
+                tipo: jornada.esVip ? 'jornada_vip' : 'jornada_normal',
+                jornada: 'J' + jornada.numeroJornada,
+                importe: importe,
+                descripcion: 'Jornada ' + jornada.numeroJornada + ' · declarado desde el boleto',
+                metodo: 'bizum', estado: 'pendiente_confirmacion', creadoEn: serverTimestamp(),
+            });
+            alert('✅ Pago declarado. El admin lo verificará en breve.');
+            onCerrar();
+        } catch(e) { alert('❌ ' + e.message); }
+        setEnviando(false);
+    };
+
+    return (
+        <div onClick={onCerrar} style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10700,background:'rgba(4,10,38,0.85)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+            <div onClick={function(e){ e.stopPropagation(); }} style={{maxWidth:360,width:'100%',background:'#fff',borderRadius:18,overflow:'hidden',boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}}>
+                <div style={{background:'linear-gradient(135deg,#001F6B,#0035b8)',padding:'14px 16px'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:'#FFD700',margin:0}}>🎫 TU BOLETO · JORNADA {jornada.numeroJornada}</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.6)',margin:'2px 0 0'}}>Apuesta guardada ✅ — falta el pago</p>
+                </div>
+                <div style={{padding:'14px 16px'}}>
+                    <div style={{background:'rgba(0,31,107,0.04)',borderRadius:12,padding:'10px 12px',marginBottom:10}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#001F6B',margin:'0 0 2px'}}>{jornada.equipoLocal} {pronostico.golesLocal} – {pronostico.golesVisitante} {jornada.equipoVisitante}</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)',margin:0}}>1X2: <strong>{pronostico.resultado1x2}</strong>{pronostico.goleador ? ' · Goleador: ' + pronostico.goleador : ''}{elOtroActivado ? ' · 🛡️ El Otro activado' : ''}</p>
+                    </div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.7,marginBottom:10}}>
+                        Para que tu apuesta CUENTE, haz el <strong>Bizum de {importe.toFixed(2)}€</strong>{bizumCfg && bizumCfg.telefono ? <span> al <strong>{bizumCfg.telefono}</strong>{bizumCfg.titular ? ' (' + bizumCfg.titular + ')' : ''}</span> : ''} con concepto <strong>"J{jornada.numeroJornada} · {user}"</strong> antes del cierre.
+                    </p>
+                    <button onClick={declararBizum} disabled={enviando}
+                        style={{width:'100%',border:'none',borderRadius:12,padding:13,background:'#10b981',color:'#fff',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,fontWeight:700,cursor:'pointer',marginBottom:8}}>
+                        {enviando ? 'ENVIANDO…' : '✅ YA HE HECHO EL BIZUM'}
+                    </button>
+                    <button onClick={onCerrar} style={{width:'100%',border:'1px solid rgba(0,31,107,0.15)',borderRadius:12,padding:10,background:'#fff',color:'rgba(0,31,107,0.6)',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>LO PAGO LUEGO</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const CuentaAtrasJornada = ({ jornada }) => {
     var [ahora, setAhora] = useState(Date.now());
     var aplicandoRef = useRef('');
@@ -3811,13 +3871,6 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     });
 
     var [boletoAbierto, setBoletoAbierto] = useState(false);
-    var [bizumCfg, setBizumCfg] = useState(null);
-    var [confirmandoBoleto, setConfirmandoBoleto] = useState(false);
-    useEffect(function() {
-        var u = onSnapshot(doc(db, 'configuracion', 'bizum'), function(s) { setBizumCfg(s.exists() ? s.data() : null); }, function(){});
-        return function() { u(); };
-    }, []);
-
     // Escritura real del pronóstico (compartida por los dos caminos)
     var escribirPronostico = async function() {
         await setDoc(doc(db, "pronosticos", jornada.id, "jugadores", user), {
@@ -3833,27 +3886,6 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         }, { merge: true });
     };
 
-    // ✅ Confirmación del boleto: registra el Bizum (pendiente de que el admin
-    // lo valide) Y guarda la apuesta, todo en el mismo visto.
-    var confirmarBoletoYGuardar = async function() {
-        if (confirmandoBoleto) return;
-        setConfirmandoBoleto(true);
-        try {
-            await addDoc(collection(db, 'pagos'), {
-                jugador: user, pagoBy: user,
-                tipo: jornada.esVip ? 'jornada_vip' : 'jornada_normal',
-                jornada: 'J' + jornada.numeroJornada,
-                importe: jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL,
-                descripcion: 'Jornada ' + jornada.numeroJornada + ' · declarado desde el boleto de apuesta',
-                metodo: 'bizum', estado: 'pendiente_confirmacion', creadoEn: serverTimestamp(),
-            });
-            await escribirPronostico();
-            setGuardado(true); setBoletoAbierto(false);
-            setMensaje('✅ Apuesta guardada y Bizum registrado — queda PENDIENTE de que el admin confirme tu pago.');
-        } catch(e) { setMensaje('❌ Error: ' + e.message); }
-        setConfirmandoBoleto(false);
-    };
-
     var guardar = async function() {
         if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || !pronostico.resultado1x2) {
             setMensaje('Rellena el marcador y el 1X2 antes de guardar.'); return;
@@ -3862,13 +3894,18 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             setMensaje('❌ Ya no puedes activar El Otro Equipo — su partido de Primera ya ha empezado.');
             return;
         }
-        // 🎫 BOLETO: si la jornada no está pagada, el guardado pasa por la
-        // pasarela del Bizum — sin el visto, la apuesta no se marca guardada.
-        if (!jornadaPagada && !autoPagoInfo) { setBoletoAbierto(true); return; }
+        // La apuesta SIEMPRE se guarda primero: nunca se puede quedar un
+        // jugador sin apostar por un tema de pago (antes el guardado se
+        // bloqueaba esperando un modal que no existía en esta vista).
         try {
             await escribirPronostico();
             setGuardado(true);
-            setMensaje('✅ Apuesta guardada correctamente.');
+            if (!jornadaPagada && !autoPagoInfo) {
+                setMensaje('✅ Apuesta guardada. ⚠️ RECUERDA: para que cuente tienes que pagar la jornada por Bizum antes del cierre.');
+                setBoletoAbierto(true);
+            } else {
+                setMensaje('✅ Apuesta guardada correctamente.');
+            }
         } catch(e) { setMensaje('❌ Error al guardar: ' + e.message); }
     };
 
@@ -4075,32 +4112,6 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 {jornada && jornada.estado === 'Abierta' && pagoJornadaHecho(jornada) && !autoPagoInfo && (
                     <div style={{background:'rgba(16,185,129,.06)',border:'1px solid rgba(16,185,129,.2)',borderRadius:12,padding:'8px 14px',marginBottom:12}}>
                         <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#0f8a61',margin:0}}>✅ Jornada pagada — tu porra cuenta.</p>
-                    </div>
-                )}
-
-                {/* 🎫 BOLETO DE APUESTA — pasarela Bizum antes de fijar el guardado */}
-                {boletoAbierto && jornada && (
-                    <div onClick={function(){ setBoletoAbierto(false); }} style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10700,background:'rgba(4,10,38,0.85)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
-                        <div onClick={function(e){ e.stopPropagation(); }} style={{maxWidth:360,width:'100%',background:'#fff',borderRadius:18,overflow:'hidden',boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}}>
-                            <div style={{background:'linear-gradient(135deg,#001F6B,#0035b8)',padding:'14px 16px'}}>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:'#FFD700',margin:0}}>🎫 TU BOLETO · JORNADA {jornada.numeroJornada}</p>
-                            </div>
-                            <div style={{padding:'14px 16px'}}>
-                                <div style={{background:'rgba(0,31,107,0.04)',borderRadius:12,padding:'10px 12px',marginBottom:10}}>
-                                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#001F6B',margin:'0 0 2px'}}>{jornada.equipoLocal} {pronostico.golesLocal} – {pronostico.golesVisitante} {jornada.equipoVisitante}</p>
-                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)',margin:0}}>1X2: <strong>{pronostico.resultado1x2}</strong>{pronostico.goleador ? ' · Goleador: ' + pronostico.goleador : ''}{elOtroActivado ? ' · 🛡️ El Otro activado' : ''}</p>
-                                </div>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.7,marginBottom:10}}>
-                                    Para fijar tu apuesta, haz ahora el <strong>Bizum de {(jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL).toFixed(2)}€</strong>{bizumCfg && bizumCfg.telefono ? <span> al <strong>{bizumCfg.telefono}</strong>{bizumCfg.titular ? ' (' + bizumCfg.titular + ')' : ''}</span> : ''} con concepto <strong>"J{jornada.numeroJornada} · {user}"</strong>.
-                                </p>
-                                <button onClick={confirmarBoletoYGuardar} disabled={confirmandoBoleto}
-                                    style={{width:'100%',border:'none',borderRadius:12,padding:13,background:'#10b981',color:'#fff',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,fontWeight:700,cursor:'pointer',marginBottom:8}}>
-                                    {confirmandoBoleto ? 'GUARDANDO…' : '✅ HE HECHO EL BIZUM · GUARDAR MI APUESTA'}
-                                </button>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.5)',lineHeight:1.5,marginBottom:8}}>Tu pago quedará <strong>pendiente de confirmación del admin</strong>. Sin el visto de arriba, la apuesta NO se guarda.</p>
-                                <button onClick={function(){ setBoletoAbierto(false); }} style={{width:'100%',border:'1px solid rgba(0,31,107,0.15)',borderRadius:12,padding:10,background:'#fff',color:'rgba(0,31,107,0.6)',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>VOLVER SIN GUARDAR</button>
-                            </div>
-                        </div>
                     </div>
                 )}
 
@@ -4436,6 +4447,10 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
 
                     {/* Botón guardar */}
                     {mensaje && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: mensaje.startsWith('✅') ? '#10b981' : G.danger,marginBottom:12,textAlign:'center'}}>{mensaje}</p>}
+                    {boletoAbierto && (
+                        <BoletoPagoJornada jornada={jornada} user={user} pronostico={pronostico}
+                            elOtroActivado={elOtroActivado} onCerrar={function(){ setBoletoAbierto(false); }} />
+                    )}
                     <button onClick={guardar}
                         style={{width:'100%',fontFamily:"'Teko',sans-serif",fontSize:'1.1rem',letterSpacing:2,
                             background: guardado ? '#10b981' : G.deepBlue, color: guardado ? '#fff' : '#FFD700',
