@@ -33,7 +33,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-23.AM · guardado de apuesta desbloqueado';
+const APP_BUILD = 'v2026-08-23.AN · draft El Otro + escudos API + mi equipo visible';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -9142,6 +9142,267 @@ function calcularBasePronosticoJornada(p, jornada) {
 // cálculo, junto al valor que DEBERÍA tener según la fórmula. Sirve para ver
 // de un vistazo por qué alguien suma 0: si es por falta de pago (marca
 // noContabilizado), por falta del campo de puntos, o por El Otro sin resolver.
+// ============================================================================
+// 🛡️ SINCRONIZADOR DE ESCUDOS DESDE LA API
+// ============================================================================
+// Descarga los escudos OFICIALES de todos los equipos de Segunda (y de Primera,
+// para El Otro Equipo) y los guarda en configuracion/teamLogos. Así dejamos de
+// depender de enlaces de Wikipedia que se rompen (caso Girona) y todos los
+// escudos salen en la misma calidad, incluido el de la UDLP en color.
+// ============================================================================
+// 🔄 RE-DRAFT DE EL OTRO EQUIPO — auditoría + nuevo periodo de elección
+// ============================================================================
+// Cierra el hueco de los jugadores que entraron después y nunca eligieron
+// equipo. La auditoría dice QUIÉN tiene y quién no, SIN revelar qué equipo
+// tiene cada uno (eso sigue siendo secreto hasta que juegue).
+//
+// Orden de la cola:
+//   1º Los que PAGAN 1€ por cambiar de equipo, en orden de pago (se saltan la cola).
+//   2º Los que no tienen equipo, por orden de ingreso a la porra.
+const RedraftElOtroAdmin = () => {
+    const [conEquipo, setConEquipo] = useState([]);
+    const [sinEquipo, setSinEquipo] = useState([]);
+    const [redraft, setRedraft] = useState(null);
+    const [inactivosRD, setInactivosRD] = useState([]);
+    const [archivadosRD, setArchivadosRD] = useState([]);
+    const [trabajando, setTrabajando] = useState(false);
+
+    useEffect(function() {
+        var unsub1 = onSnapshot(collection(db, 'elOtro'), function(snap) {
+            var con = [], sin = [];
+            var mapa = {};
+            snap.forEach(function(d) { mapa[d.id] = d.data() || {}; });
+            JUGADORES_FUNDADORES.forEach(function(n) {
+                var e = mapa[n];
+                if (e && e.equipo) con.push(n); else sin.push(n);
+            });
+            // Jugadores que no están en la lista base (altas nuevas)
+            Object.keys(mapa).forEach(function(n) {
+                if (JUGADORES_FUNDADORES.indexOf(n) === -1) {
+                    if (mapa[n].equipo) { if (con.indexOf(n) === -1) con.push(n); }
+                    else if (sin.indexOf(n) === -1) sin.push(n);
+                }
+            });
+            setConEquipo(con); setSinEquipo(sin);
+        }, function(){});
+        var unsub2 = onSnapshot(doc(db, 'configuracion', 'redraftElOtro'), function(s) {
+            setRedraft(s.exists() ? s.data() : null);
+        }, function(){});
+        var unsub3 = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(s) {
+            setInactivosRD(s.exists() ? (s.data().nombres || []) : []);
+        }, function(){});
+        var unsub4 = onSnapshot(doc(db, 'configuracion', 'jugadoresArchivados'), function(s) {
+            setArchivadosRD(s.exists() ? (s.data().nombres || []) : []);
+        }, function(){});
+        return function() { unsub1(); unsub2(); unsub3(); unsub4(); };
+    }, []);
+
+    var fuera = function(n) { return inactivosRD.indexOf(n) !== -1 || archivadosRD.indexOf(n) !== -1; };
+    var sinEquipoActivos = sinEquipo.filter(function(n) { return !fuera(n); });
+    var conEquipoActivos = conEquipo.filter(function(n) { return !fuera(n); });
+
+    var abrirRedraft = async function() {
+        if (trabajando) return;
+        if (!sinEquipoActivos.length) { alert('✅ Todos los jugadores activos tienen equipo. No hace falta abrir un periodo.'); return; }
+        var iso = window.prompt('¿Cuándo se abre el periodo de elección? (formato: AAAA-MM-DDTHH:MM)', new Date(Date.now() + 86400000).toISOString().slice(0,10) + 'T08:00');
+        if (!iso) return;
+        var inicioMs = new Date(iso).getTime();
+        if (isNaN(inicioMs)) { alert('Fecha no válida.'); return; }
+        if (!window.confirm('ABRIR NUEVO PERIODO DE ELECCIÓN DE EL OTRO EQUIPO\n\n· Empieza: ' + new Date(inicioMs).toLocaleString('es-ES') + '\n· Sin equipo (eligen por orden de ingreso): ' + sinEquipoActivos.join(', ') + '\n· Los demás podrán pagar 1€ para cambiar y saltarse la cola.\n· NO afecta a la jornada en curso, se aplica desde la siguiente.\n\n¿Continuar?')) return;
+        setTrabajando(true);
+        try {
+            await setDoc(doc(db, 'configuracion', 'redraftElOtro'), {
+                activo: true,
+                inicioMs: inicioMs,
+                pendientes: sinEquipoActivos,     // orden de ingreso a la porra
+                pagados: [],                      // los que pagan 1€, en orden de pago
+                completados: [],
+                aplicaDesdeSiguienteJornada: true,
+                abiertoEn: serverTimestamp(),
+            }, { merge: true });
+
+            // Novedad automática explicando el porqué
+            var cuerpo = 'Se abre un NUEVO PERIODO DE ELECCIÓN DE "EL OTRO EQUIPO".\n\n' +
+                '¿POR QUÉ? Al incorporarse jugadores nuevos a la porra, hay compañeros que todavía NO tienen equipo de Primera asignado. Para que todos compitan en igualdad, abrimos turnos de elección.\n\n' +
+                '🕗 EMPIEZA: ' + new Date(inicioMs).toLocaleString('es-ES', { weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary' }) + '\n\n' +
+                '📋 CÓMO FUNCIONA:\n' +
+                '· Los que no tienen equipo eligen por turnos, en orden de entrada a la porra.\n' +
+                '· ¿Ya tienes equipo y no te convence? Puedes CAMBIARLO pagando 1€, y además te saltas la cola: quien paga elige antes, por orden de pago.\n' +
+                '· Los cambios NO afectan a la jornada en curso: se aplican a partir de la SIGUIENTE.\n\n' +
+                'Cada uno solo ve su propio equipo. El del resto sigue siendo secreto. 💛💙';
+            await setDoc(doc(db, 'configuracion', 'novedad_activa'), {
+                titulo: 'NUEVO DRAFT · EL OTRO EQUIPO',
+                cuerpo: cuerpo, icono: '🛡️', tipo: 'normal',
+                version: 'redraft_' + Date.now(), activa: true, actualizadoEn: serverTimestamp(),
+            }, { merge: true });
+            alert('✅ Periodo abierto y novedad publicada.');
+        } catch(e) { alert('❌ ' + e.message); }
+        setTrabajando(false);
+    };
+
+    var cerrarRedraft = async function() {
+        if (!window.confirm('¿Cerrar el periodo de elección?')) return;
+        try { await setDoc(doc(db, 'configuracion', 'redraftElOtro'), { activo: false, cerradoEn: serverTimestamp() }, { merge: true }); }
+        catch(e) { alert('❌ ' + e.message); }
+    };
+
+    var marcarPagado = async function() {
+        var quien = window.prompt('Nombre del jugador que ha pagado 1€ para cambiar de equipo:');
+        if (!quien) return;
+        try {
+            var actual = redraft || {};
+            var pagados = (actual.pagados || []).slice();
+            if (pagados.indexOf(quien) === -1) pagados.push(quien);   // orden de pago
+            await setDoc(doc(db, 'configuracion', 'redraftElOtro'), { pagados: pagados }, { merge: true });
+            alert('✅ ' + quien + ' añadido a la cola de pagados (puesto ' + pagados.length + ').');
+        } catch(e) { alert('❌ ' + e.message); }
+    };
+
+    var colaCompleta = redraft ? (redraft.pagados || []).concat((redraft.pendientes || []).filter(function(n) { return (redraft.pagados || []).indexOf(n) === -1; })) : [];
+    var completados = redraft ? (redraft.completados || []) : [];
+    var turnoActual = colaCompleta.find(function(n) { return completados.indexOf(n) === -1; });
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>🔄 Auditoría y draft de El Otro Equipo</p>
+
+            {/* Auditoría: quién tiene y quién no — sin revelar qué equipo */}
+            <div style={{display:'flex',gap:8,marginBottom:10}}>
+                <div style={{flex:1,background:'rgba(16,185,129,0.08)',borderRadius:10,padding:'8px 10px'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'#0f8a61',margin:'0 0 3px'}}>✅ CON EQUIPO ({conEquipoActivos.length})</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.6)',margin:0,lineHeight:1.5}}>{conEquipoActivos.join(', ') || '—'}</p>
+                </div>
+                <div style={{flex:1,background:'rgba(230,57,70,0.08)',borderRadius:10,padding:'8px 10px'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'#e63946',margin:'0 0 3px'}}>❌ SIN EQUIPO ({sinEquipoActivos.length})</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.6)',margin:0,lineHeight:1.5}}>{sinEquipoActivos.join(', ') || '—'}</p>
+                </div>
+            </div>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.45)',marginBottom:10}}>🔒 La auditoría solo dice SI tienen equipo, nunca cuál: el secreto se mantiene.</p>
+
+            {/* Estado del draft */}
+            {redraft && redraft.activo ? (
+                <div style={{background:'rgba(255,215,0,0.1)',border:'1px solid rgba(212,175,55,0.4)',borderRadius:10,padding:'9px 11px',marginBottom:10}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'#8a6a00',margin:'0 0 5px'}}>🔴 DRAFT ABIERTO · empieza {new Date(Number(redraft.inicioMs)).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.7)',margin:'0 0 4px'}}>
+                        <strong>Turno actual:</strong> {turnoActual || '— completado —'}
+                    </p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.55)',margin:0,lineHeight:1.6}}>
+                        Cola: {colaCompleta.map(function(n, i) {
+                            var hecho = completados.indexOf(n) !== -1;
+                            var pago = (redraft.pagados || []).indexOf(n) !== -1;
+                            return (hecho ? '✅ ' : (n === turnoActual ? '👉 ' : (i + 1) + '. ')) + n + (pago ? ' 💶' : '');
+                        }).join(' · ')}
+                    </p>
+                    <div style={{display:'flex',gap:6,marginTop:8}}>
+                        <button onClick={marcarPagado} style={{flex:1,border:'1px solid rgba(0,31,107,0.2)',background:'#fff',color:'#001F6B',borderRadius:8,padding:'7px 9px',fontFamily:"'Teko',sans-serif",fontSize:11,cursor:'pointer'}}>💶 AÑADIR QUIEN PAGÓ 1€</button>
+                        <button onClick={cerrarRedraft} style={{flex:1,border:'none',background:'#e63946',color:'#fff',borderRadius:8,padding:'7px 9px',fontFamily:"'Teko',sans-serif",fontSize:11,cursor:'pointer'}}>CERRAR DRAFT</button>
+                    </div>
+                </div>
+            ) : (
+                <button onClick={abrirRedraft} disabled={trabajando}
+                    style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:'pointer'}}>
+                    {trabajando ? '⏳…' : '🔄 ABRIR NUEVO PERIODO DE ELECCIÓN'}
+                </button>
+            )}
+        </div>
+    );
+};
+
+const SincronizarEscudosAdmin = () => {
+    const [sincronizando, setSincronizando] = useState(false);
+    const [logSync, setLogSync] = useState([]);
+    const [logosActuales, setLogosActuales] = useState({});
+
+    useEffect(function() {
+        var u = onSnapshot(doc(db, 'configuracion', 'teamLogos'), function(s) {
+            setLogosActuales(s.exists() ? s.data() : {});
+        }, function(){});
+        return function() { u(); };
+    }, []);
+
+    var sincronizar = async function() {
+        if (sincronizando) return;
+        if (!window.confirm('Se descargarán los escudos oficiales de TODOS los equipos de Segunda y Primera desde la API (2 peticiones) y se guardarán en la app.\n\n¿Continuar?')) return;
+        setSincronizando(true);
+        var lineas = [];
+        var anotar = function(t, ok) { lineas = lineas.concat([{ t: t, ok: ok !== false }]); setLogSync(lineas.slice()); };
+        try {
+            if (!API_FOOTBALL_KEY) { anotar('❌ Sin clave de API.', false); setSincronizando(false); return; }
+            var cab = { headers: { 'x-apisports-key': API_FOOTBALL_KEY } };
+            var mapa = {};
+            var pedirLiga = async function(ligaId, etiqueta) {
+                var res = await fetch('https://v3.football.api-sports.io/teams?league=' + ligaId + '&season=2026', cab);
+                var data = await res.json();
+                var equipos = data.response || [];
+                equipos.forEach(function(e) {
+                    if (e.team && e.team.name && e.team.logo) mapa[e.team.name] = e.team.logo;
+                });
+                anotar('✅ ' + etiqueta + ': ' + equipos.length + ' escudos descargados.');
+                return equipos.length;
+            };
+            await pedirLiga(LEAGUE_ID_SEGUNDA || 141, 'Segunda División');
+            await pedirLiga(LEAGUE_ID_PRIMERA || 140, 'Primera División');
+
+            if (!Object.keys(mapa).length) { anotar('❌ La API no devolvió equipos. Reintenta más tarde.', false); setSincronizando(false); return; }
+
+            // Alias frecuentes: la API usa nombres cortos y la app a veces
+            // guarda el nombre largo (o al revés). Se añaden las dos formas.
+            var alias = {
+                'Las Palmas': 'UD Las Palmas', 'Girona': 'Girona FC', 'Ceuta': 'AD Ceuta FC',
+                'Almeria': 'UD Almería', 'Almería': 'UD Almería', 'Cadiz': 'Cádiz CF', 'Cádiz': 'Cádiz CF',
+                'Malaga': 'Málaga CF', 'Málaga': 'Málaga CF', 'Racing Santander': 'Racing de Santander',
+                'Sporting Gijon': 'Sporting de Gijón', 'Deportivo La Coruna': 'RC Deportivo',
+                'Real Zaragoza': 'Real Zaragoza', 'Albacete': 'Albacete Balompié',
+                'Leganes': 'CD Leganés', 'Leganés': 'CD Leganés', 'Burgos': 'Burgos CF',
+                'Eibar': 'SD Eibar', 'Valladolid': 'Real Valladolid CF', 'Huesca': 'SD Huesca',
+                'Mirandes': 'CD Mirandés', 'Castellon': 'CD Castellón', 'Castellón': 'CD Castellón',
+                'Andorra': 'FC Andorra', 'Cordoba': 'Córdoba CF', 'Córdoba': 'Córdoba CF',
+                'Granada': 'Granada CF', 'Real Sociedad II': 'Real Sociedad B',
+            };
+            Object.keys(alias).forEach(function(k) {
+                if (mapa[k] && !mapa[alias[k]]) mapa[alias[k]] = mapa[k];
+                if (mapa[alias[k]] && !mapa[k]) mapa[k] = mapa[alias[k]];
+            });
+
+            await setDoc(doc(db, 'configuracion', 'teamLogos'), mapa, { merge: true });
+            anotar('🏁 Guardados ' + Object.keys(mapa).length + ' escudos (con alias). Ya se ven en toda la app.');
+            alert('✅ ESCUDOS ACTUALIZADOS\n\n' + Object.keys(mapa).length + ' equipos, incluidos Girona y la UD Las Palmas en color y alta calidad.');
+        } catch(e) { anotar('❌ ' + e.message, false); }
+        setSincronizando(false);
+    };
+
+    var equiposSegunda = ['UD Las Palmas','Girona FC','AD Ceuta FC','CD Leganés','Cádiz CF','Burgos CF','SD Eibar','Real Valladolid CF','Real Zaragoza','Albacete Balompié','SD Huesca','CD Mirandés','CD Castellón','FC Andorra','Córdoba CF','Granada CF','Málaga CF','Racing de Santander','Sporting de Gijón','RC Deportivo','UD Almería','Real Sociedad B'];
+    var faltan = equiposSegunda.filter(function(e) { return !logosActuales[e]; });
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>🛡️ Escudos de los equipos</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.55)',lineHeight:1.6,marginBottom:10}}>
+                Descarga los escudos oficiales desde la API (Segunda + Primera) y los deja guardados. Arregla los que no se ven y pone la UDLP en color.
+            </p>
+            {faltan.length > 0 && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946',background:'rgba(230,57,70,0.07)',borderRadius:8,padding:'7px 10px',marginBottom:8}}>
+                    ⚠️ Sin escudo guardado ({faltan.length}): {faltan.join(', ')}
+                </p>
+            )}
+            {faltan.length === 0 && Object.keys(logosActuales).length > 0 && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#0f8a61',marginBottom:8}}>✅ Todos los equipos de Segunda tienen escudo guardado ({Object.keys(logosActuales).length} en total).</p>
+            )}
+            <button onClick={sincronizar} disabled={sincronizando}
+                style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:sincronizando?'default':'pointer'}}>
+                {sincronizando ? '⏳ DESCARGANDO…' : '🛡️ SINCRONIZAR ESCUDOS DESDE LA API'}
+            </button>
+            {logSync.length > 0 && (
+                <div style={{marginTop:10,background:'rgba(0,31,107,0.03)',border:'1px solid rgba(0,31,107,0.07)',borderRadius:10,padding:10}}>
+                    {logSync.map(function(l, i) {
+                        return <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:11,lineHeight:1.5,color:l.ok?'rgba(0,31,107,0.75)':'#e63946',margin:'0 0 4px'}}>{l.t}</p>;
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const AuditoriaPuntosAdmin = ({ jornadas }) => {
     var [jSel, setJSel] = useState('');
     var [filas, setFilas] = useState(null);
@@ -12435,6 +12696,12 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                         </div>
                     </div>
 
+                    {/* 🔄 Auditoría y draft de El Otro */}
+                    <RedraftElOtroAdmin />
+
+                    {/* 🛡️ Escudos oficiales desde la API */}
+                    <SincronizarEscudosAdmin />
+
                     {/* ⚖️ Auditoría de plazos con aviso automático */}
                     <AuditoriaPlazosElOtro />
 
@@ -12872,6 +13139,47 @@ function elegirEquipoAleatorioDisponible(datosElOtro) {
     return disponibles[Math.floor(Math.random() * disponibles.length)];
 }
 
+// Aviso del nuevo periodo de elección de El Otro, con el turno de cada uno.
+const AvisoRedraftElOtro = ({ currentUser }) => {
+    var [rd, setRd] = useState(null);
+    useEffect(function() {
+        var u = onSnapshot(doc(db, 'configuracion', 'redraftElOtro'), function(s) { setRd(s.exists() ? s.data() : null); }, function(){});
+        return function() { u(); };
+    }, []);
+    if (!rd || !rd.activo) return null;
+    var cola = (rd.pagados || []).concat((rd.pendientes || []).filter(function(n) { return (rd.pagados || []).indexOf(n) === -1; }));
+    var completados = rd.completados || [];
+    var turno = cola.find(function(n) { return completados.indexOf(n) === -1; });
+    var miPuesto = cola.indexOf(currentUser);
+    var yaEmpezo = Date.now() >= Number(rd.inicioMs || 0);
+    var esMiTurno = turno === currentUser && yaEmpezo;
+
+    return (
+        <div style={{background: esMiTurno ? 'linear-gradient(135deg,#FFD700,#f0c000)' : 'rgba(255,215,0,0.1)',
+            border:'1px solid rgba(212,175,55,0.45)',borderRadius:14,padding:'12px 14px',marginBottom:14}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color: esMiTurno ? '#001F6B' : '#8a6a00',margin:'0 0 5px'}}>
+                🔄 NUEVO PERIODO DE ELECCIÓN DE EL OTRO EQUIPO
+            </p>
+            {!yaEmpezo ? (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'rgba(0,31,107,0.7)',lineHeight:1.6,margin:0}}>
+                    Abre el <strong>{new Date(Number(rd.inicioMs)).toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}</strong>. Los cambios se aplican <strong>a partir de la siguiente jornada</strong>, no a la actual.
+                </p>
+            ) : esMiTurno ? (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',lineHeight:1.6,margin:0,fontWeight:600}}>
+                    👉 ¡ES TU TURNO! Elige tu equipo ahora mismo abajo.
+                </p>
+            ) : (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'rgba(0,31,107,0.7)',lineHeight:1.6,margin:0}}>
+                    Turno de <strong>{turno || '—'}</strong>.{miPuesto >= 0 ? ' Tú eres el ' + (miPuesto + 1) + 'º de la cola.' : ' ¿Quieres cambiar de equipo? Paga 1€ y te saltas la cola.'}
+                </p>
+            )}
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.5)',margin:'6px 0 0',lineHeight:1.5}}>
+                Se abre porque hay compañeros nuevos sin equipo asignado. Si ya tienes uno y no te convence, puedes cambiarlo por <strong>1€</strong> y elegir antes que los pendientes (por orden de pago).
+            </p>
+        </div>
+    );
+};
+
 const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos }) => {
     var G = styles.colors;
     var [miElOtro, setMiElOtro] = useState(null);
@@ -13137,6 +13445,28 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
             <div style={{paddingBottom:40}}>
                 <h2 style={styles.title}>EL OTRO EQUIPO</h2>
                 <PlazosCard tipo="otro" />
+
+                {/* 🛡️ TU equipo, con escudo y nombre. Solo lo ves TÚ:
+                    el de los demás sigue oculto hasta que juegue. */}
+                {miElOtro && miElOtro.equipo && (
+                    <div style={{background:'linear-gradient(135deg,#001F6B,#0035b8)',borderRadius:16,padding:'14px 16px',marginBottom:14,display:'flex',alignItems:'center',gap:14,border:'1px solid rgba(255,215,0,0.35)',boxShadow:'0 6px 20px rgba(0,31,107,0.25)'}}>
+                        <div style={{width:62,height:62,borderRadius:14,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,padding:6}}>
+                            <img src={getLogoEquipo(miElOtro.equipo, teamLogos)} alt={miElOtro.equipo}
+                                style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}}
+                                onError={function(e){ e.target.style.display='none'; }} />
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:3,color:'rgba(255,215,0,0.6)',textTransform:'uppercase',margin:0}}>TU OTRO EQUIPO</p>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:23,fontWeight:700,color:'#FFD700',letterSpacing:1,lineHeight:1.05,margin:'1px 0 3px'}}>{miElOtro.equipo}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.55)',margin:0}}>
+                                🔒 Solo tú lo ves · multiplicador actual ×{Number(miElOtro.multiplicadorActual || 2)}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* 🔄 Draft abierto: aviso y turno */}
+                <AvisoRedraftElOtro currentUser={currentUser} />
                 <BannerPagoPendiente onIrAPagos={onIrAPagos} />
             </div>
         );
