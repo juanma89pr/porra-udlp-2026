@@ -33,7 +33,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-23.AN · draft El Otro + escudos API + mi equipo visible';
+const APP_BUILD = 'v2026-08-23.AO · mi equipo con stats + pago cambio 1€';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -9032,11 +9032,24 @@ const PagosPendientesAdmin = () => {
                 resueltoEn: serverTimestamp(),
                 resueltoPor: 'Juanma',
             }, { merge: true });
+            // Si es un pago para cambiar de equipo, entra en la cola del draft
+            // por delante de los pendientes, en orden de confirmación.
+            if (nuevoEstado === 'confirmado' && pago.tipo === 'cambio_otro_equipo') {
+                try {
+                    var rdSnap = await getDoc(doc(db, 'configuracion', 'redraftElOtro'));
+                    var rdData = rdSnap.exists() ? rdSnap.data() : {};
+                    var pagados = (rdData.pagados || []).slice();
+                    if (pagados.indexOf(pago.jugador) === -1) pagados.push(pago.jugador);
+                    await setDoc(doc(db, 'configuracion', 'redraftElOtro'), { pagados: pagados }, { merge: true });
+                    alert('✅ Pago confirmado. ' + pago.jugador + ' entra en la cola del draft en el puesto ' + pagados.length + ' de los que pagan.');
+                } catch(e2) { alert('Pago confirmado, pero no se pudo añadir a la cola: ' + e2.message); }
+            }
         } catch(e) { alert('No se pudo actualizar el pago: ' + e.message); }
         setProcesando('');
     };
 
     var etiquetaTipo = function(p) {
+        if (p.tipo === 'cambio_otro_equipo') return '🛡️ Cambio de equipo (draft)';
         if (p.tipo === 'inscripcion') return '🎫 Inscripción';
         if (p.tipo === 'jornada_vip') return '💎 ' + (p.jornada || 'Jornada VIP');
         return '⚽ ' + (p.jornada || 'Jornada');
@@ -13140,7 +13153,8 @@ function elegirEquipoAleatorioDisponible(datosElOtro) {
 }
 
 // Aviso del nuevo periodo de elección de El Otro, con el turno de cada uno.
-const AvisoRedraftElOtro = ({ currentUser }) => {
+const AvisoRedraftElOtro = ({ currentUser, miEquipo, pagos }) => {
+    var [pagando, setPagando] = useState(false);
     var [rd, setRd] = useState(null);
     useEffect(function() {
         var u = onSnapshot(doc(db, 'configuracion', 'redraftElOtro'), function(s) { setRd(s.exists() ? s.data() : null); }, function(){});
@@ -13176,6 +13190,38 @@ const AvisoRedraftElOtro = ({ currentUser }) => {
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.5)',margin:'6px 0 0',lineHeight:1.5}}>
                 Se abre porque hay compañeros nuevos sin equipo asignado. Si ya tienes uno y no te convence, puedes cambiarlo por <strong>1€</strong> y elegir antes que los pendientes (por orden de pago).
             </p>
+
+            {/* 💶 PAGAR 1€ PARA CAMBIAR DE EQUIPO Y SALTARSE LA COLA */}
+            {miEquipo && cola.indexOf(currentUser) === -1 && (function(){
+                var yaPago = (pagos || []).some(function(p) {
+                    return p.jugador === currentUser && p.tipo === 'cambio_otro_equipo' &&
+                        p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido';
+                });
+                if (yaPago) {
+                    return <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#0f8a61',background:'rgba(16,185,129,0.08)',borderRadius:8,padding:'7px 10px',margin:'8px 0 0'}}>✅ Pago declarado — en cuanto el admin lo confirme entrarás en la cola por delante de los pendientes.</p>;
+                }
+                return (
+                    <button onClick={async function(){
+                        if (pagando) return;
+                        if (!window.confirm('CAMBIAR DE OTRO EQUIPO POR 1€\n\n· Podrás elegir un equipo nuevo y dejar el actual.\n· Te saltas la cola: eliges antes que los pendientes, por orden de pago.\n· El cambio se aplica a partir de la SIGUIENTE jornada.\n\nSe registrará tu pago de 1€ por Bizum, pendiente de que el admin lo confirme.\n\n¿Continuar?')) return;
+                        setPagando(true);
+                        try {
+                            await addDoc(collection(db, 'pagos'), {
+                                jugador: currentUser, pagoBy: currentUser,
+                                tipo: 'cambio_otro_equipo', jornada: 'DRAFT',
+                                importe: 1,
+                                descripcion: 'Cambio de El Otro Equipo · se salta la cola del draft',
+                                metodo: 'bizum', estado: 'pendiente_confirmacion', creadoEn: serverTimestamp(),
+                            });
+                            alert('✅ Pago registrado. Haz el Bizum de 1€ y en cuanto lo confirme el admin entrarás en la cola con prioridad.');
+                        } catch(e) { alert('❌ ' + e.message); }
+                        setPagando(false);
+                    }} disabled={pagando}
+                        style={{width:'100%',marginTop:9,border:'none',borderRadius:10,padding:'10px 12px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1.5,cursor:'pointer'}}>
+                        {pagando ? 'REGISTRANDO…' : '💶 CAMBIAR DE EQUIPO POR 1€ (ME SALTO LA COLA)'}
+                    </button>
+                );
+            })()}
         </div>
     );
 };
@@ -13416,6 +13462,28 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
         setEnviandoPlaza(false);
     };
 
+    // Próximo partido del equipo propio (para la tarjeta de arriba)
+    var [partidoOtroMio, setPartidoOtroMio] = useState(null);
+    var equipoMio = miElOtro && miElOtro.equipo ? miElOtro.equipo : null;
+    useEffect(function() {
+        if (!equipoMio || !API_FOOTBALL_KEY) { setPartidoOtroMio(null); return; }
+        var vivo = true;
+        (async function() {
+            try {
+                var res = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA + '&season=2026&next=30', { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+                var data = await res.json();
+                var suyo = (data.response || []).find(function(p) {
+                    var l = (p.teams.home.name || '').toLowerCase();
+                    var v = (p.teams.away.name || '').toLowerCase();
+                    var e = equipoMio.toLowerCase();
+                    return l.indexOf(e) !== -1 || e.indexOf(l) !== -1 || v.indexOf(e) !== -1 || e.indexOf(v) !== -1;
+                });
+                if (vivo && suyo) setPartidoOtroMio({ local: suyo.teams.home.name, visitante: suyo.teams.away.name, fecha: suyo.fixture.date });
+            } catch(e) {}
+        })();
+        return function() { vivo = false; };
+    }, [equipoMio]);
+
     var revelarEquipo = function() {
         if (!miElOtro || !miElOtro.equipo) return;
         if (miElOtro.revelado) return;
@@ -13465,8 +13533,8 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                     </div>
                 )}
 
-                {/* 🔄 Draft abierto: aviso y turno */}
-                <AvisoRedraftElOtro currentUser={currentUser} />
+                {/* 🔄 Draft abierto: aviso, turno y pago para colarse */}
+                <AvisoRedraftElOtro currentUser={currentUser} miEquipo={miElOtro && miElOtro.equipo} pagos={pagos} />
                 <BannerPagoPendiente onIrAPagos={onIrAPagos} />
             </div>
         );
@@ -13519,17 +13587,57 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
             {/* Mi equipo elegido */}
             {yoElegí && (
                 <div style={{background:'#001F6B',borderRadius:18,padding:24,textAlign:'center',marginBottom:24}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginBottom:6}}>Tu equipo secreto</p>
-                    {miElOtro.revelado ? (
-                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:'#FFD700',letterSpacing:2}}>{miElOtro.equipo}</p>
-                    ) : (
-                        <div>
-                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:28,color:'rgba(255,255,255,0.2)',letterSpacing:4}}>??? ??? ???</p>
-                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:4}}>Solo tú sabes cuál es</p>
-                            <button onClick={revelarEquipo} style={{marginTop:12,background:'rgba(255,215,0,0.1)',border:'1px solid rgba(255,215,0,0.3)',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,padding:'8px 20px',borderRadius:20,cursor:'pointer',textTransform:'uppercase'}}>
-                                Revelar mi equipo
-                            </button>
+                    {/* TU equipo SIEMPRE visible para ti (para el resto sigue
+                        oculto hasta que lo reveles). Con escudo y datos útiles. */}
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginBottom:8}}>
+                        Tu otro equipo {miElOtro.revelado ? '· PÚBLICO' : '· 🔒 solo tú lo ves'}
+                    </p>
+                    <div style={{display:'flex',alignItems:'center',gap:14,textAlign:'left',marginBottom:6}}>
+                        <div style={{width:66,height:66,borderRadius:16,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,padding:7}}>
+                            <img src={getLogoEquipo(miElOtro.equipo, teamLogos)} alt={miElOtro.equipo}
+                                style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}}
+                                onError={function(e){ e.target.style.display='none'; }} />
                         </div>
+                        <div style={{flex:1,minWidth:0}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:26,fontWeight:700,color:'#FFD700',letterSpacing:1,lineHeight:1.05,margin:0}}>{miElOtro.equipo}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.55)',margin:'3px 0 0'}}>
+                                Multiplicador actual: <strong style={{color:'#FFD700'}}>×{getMultiplicadorOtro(miElOtro.activaciones || 0)}</strong>
+                            </p>
+                        </div>
+                    </div>
+                    {/* Racha y palmarés, calculados de su historial real */}
+                    {(function(){
+                        var hist = (miElOtro.historial || []).slice().sort(function(a,b){ return (a.jornada||0) - (b.jornada||0); });
+                        var ganadas = hist.filter(function(h){ return Number(h.multiplicador||1) > 1; }).length;
+                        var perdidas = hist.filter(function(h){ return Number(h.multiplicador||1) < 1; }).length;
+                        var racha = 0;
+                        for (var i = hist.length - 1; i >= 0; i--) {
+                            if (Number(hist[i].multiplicador||1) > 1) racha++; else break;
+                        }
+                        return (
+                            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:4}}>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,background:'rgba(16,185,129,0.15)',color:'#5ee2b0',borderRadius:16,padding:'4px 11px'}}>🏆 Ganadas: {ganadas}</span>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,background:'rgba(230,57,70,0.15)',color:'#ff9aa2',borderRadius:16,padding:'4px 11px'}}>💔 Perdidas: {perdidas}</span>
+                                {racha >= 2 && <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,background:'rgba(255,215,0,0.2)',color:'#FFD700',borderRadius:16,padding:'4px 11px'}}>🔥 RACHA DE {racha}</span>}
+                            </div>
+                        );
+                    })()}
+                    {/* Próximo partido de tu equipo */}
+                    {partidoOtroMio && (
+                        <div style={{background:'rgba(255,255,255,0.06)',borderRadius:10,padding:'8px 11px',textAlign:'left',marginTop:6}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:2,color:'rgba(255,255,255,0.4)',margin:'0 0 2px'}}>PRÓXIMO PARTIDO</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#fff',margin:0}}>
+                                {partidoOtroMio.local} vs {partidoOtroMio.visitante}
+                            </p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.45)',margin:0}}>
+                                {new Date(partidoOtroMio.fecha).toLocaleString('es-ES',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}
+                            </p>
+                        </div>
+                    )}
+                    {!miElOtro.revelado && (
+                        <button onClick={revelarEquipo} style={{marginTop:10,background:'rgba(255,215,0,0.1)',border:'1px solid rgba(255,215,0,0.3)',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,padding:'7px 18px',borderRadius:20,cursor:'pointer',textTransform:'uppercase'}}>
+                            Hacerlo público para todos
+                        </button>
                     )}
                     <div style={{display:'flex',justifyContent:'center',gap:32,marginTop:20}}>
                         <div style={{textAlign:'center'}}>
