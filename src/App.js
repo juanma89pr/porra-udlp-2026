@@ -33,7 +33,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-23.AO · mi equipo con stats + pago cambio 1€';
+const APP_BUILD = 'v2026-08-23.AP · escudos oficiales en TODA la app';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -947,17 +947,49 @@ var LOGOS_EQUIPOS = {
     'Osasuna':                 'https://upload.wikimedia.org/wikipedia/en/thumb/d/db/Osasuna_logo.svg/120px-Osasuna_logo.svg.png',
 };
 
+// Caché global de escudos oficiales (se rellena desde configuracion/teamLogos
+// al arrancar la app). Vive a nivel de módulo para que CUALQUIER componente
+// pinte el escudo correcto, reciba o no la prop teamLogos.
+var LOGOS_API_CACHE = {};
+function setLogosApiCache(mapa) { LOGOS_API_CACHE = mapa || {}; }
+
+// Normaliza nombres para emparejar "Girona" con "Girona FC", "UD Almería" con
+// "Almeria", etc.: sin acentos, sin prefijos/sufijos de club y en minúsculas.
+function normalizarNombreEquipo(n) {
+    return String(n || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\b(cf|fc|cd|ud|sd|ad|rc|rcd|club|deportivo|balompie|de|real)\b/g, '')
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+}
+
+function buscarLogoEnMapa(nombre, mapa) {
+    if (!mapa || !nombre) return null;
+    if (mapa[nombre]) return mapa[nombre];
+    var objetivo = normalizarNombreEquipo(nombre);
+    if (!objetivo) return null;
+    var claves = Object.keys(mapa);
+    // Coincidencia exacta normalizada
+    for (var i = 0; i < claves.length; i++) {
+        if (normalizarNombreEquipo(claves[i]) === objetivo) return mapa[claves[i]];
+    }
+    // Coincidencia por inclusión (Girona ↔ Girona FC)
+    for (var j = 0; j < claves.length; j++) {
+        var k = normalizarNombreEquipo(claves[j]);
+        if (k && objetivo && (k.indexOf(objetivo) !== -1 || objetivo.indexOf(k) !== -1)) return mapa[claves[j]];
+    }
+    return null;
+}
+
 var getLogoEquipo = function(nombre, teamLogos) {
     if (!nombre) return '';
-    if (teamLogos && teamLogos[nombre]) return teamLogos[nombre];
-    if (LOGOS_EQUIPOS[nombre]) return LOGOS_EQUIPOS[nombre];
-    var keys = Object.keys(LOGOS_EQUIPOS);
-    for (var i = 0; i < keys.length; i++) {
-        if (nombre.toLowerCase().includes(keys[i].toLowerCase()) ||
-            keys[i].toLowerCase().includes(nombre.toLowerCase())) {
-            return LOGOS_EQUIPOS[keys[i]];
-        }
-    }
+    // 1º los escudos oficiales de la API (props o caché global)
+    var oficial = buscarLogoEnMapa(nombre, teamLogos) || buscarLogoEnMapa(nombre, LOGOS_API_CACHE);
+    if (oficial) return oficial;
+    // 2º el listado interno de respaldo
+    var interno = buscarLogoEnMapa(nombre, LOGOS_EQUIPOS);
+    if (interno) return interno;
     var ini = nombre.split(' ').map(function(w) { return w[0] || ''; }).join('').substring(0, 3).toUpperCase();
     return 'https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent(ini);
 };
@@ -4217,13 +4249,13 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 </p>
                 {/* Escudos y marcador */}
                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-                    <img src={jornada.equipoLocal === 'UD Las Palmas' ? '/escudo.png' : getLogoEquipo(jornada.equipoLocal, teamLogos)}
+                    <img src={getLogoEquipo(jornada.equipoLocal, teamLogos)}
                         alt={jornada.equipoLocal} style={{width:32,height:32,objectFit:'contain',flexShrink:0}}
                         onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoLocal||'?').substring(0,3));}} />
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700',letterSpacing:1,flex:1}}>
                         {jornada.equipoLocal} vs {jornada.equipoVisitante}
                     </p>
-                    <img src={jornada.equipoVisitante === 'UD Las Palmas' ? '/escudo.png' : getLogoEquipo(jornada.equipoVisitante, teamLogos)}
+                    <img src={getLogoEquipo(jornada.equipoVisitante, teamLogos)}
                         alt={jornada.equipoVisitante} style={{width:32,height:32,objectFit:'contain',flexShrink:0}}
                         onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoVisitante||'?').substring(0,3));}} />
                 </div>
@@ -15710,7 +15742,7 @@ function App() {
                 setSolicitudesGlobal(snap.docs.map(function(d){return{id:d.id,...d.data()};}));
             });
             onSnapshot(doc(db, "configuracion", "escudos"), function(snap) {
-                if (snap.exists()) setTeamLogos(snap.data());
+                if (snap.exists()) { setTeamLogos(snap.data()); setLogosApiCache(snap.data()); }
             });
             onSnapshot(collection(db, "clasificacion"), function(snap) {
                 var clasif = [];
