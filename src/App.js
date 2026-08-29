@@ -860,6 +860,27 @@ function nombreVisible(nombreCrudo, perfil) {
     return partes[0];
 }
 
+// ¿Este pago cuenta como PAGADO? Fuente única de verdad para toda la app.
+// Acepta los dos estados históricos de confirmación ('confirmado' y
+// 'completado') y descarta los negativos. Antes cada pantalla lo decidía por
+// su cuenta y un mismo pago salía confirmado en un sitio y pendiente en otro.
+var ESTADOS_PAGO_KO = ['cancelado', 'rechazado', 'fallido', 'anulado'];
+var ESTADOS_PAGO_OK = ['confirmado', 'completado', 'pagado', 'verificado'];
+function pagoEstaConfirmado(p) {
+    if (!p) return false;
+    var e = String(p.estado || '').toLowerCase();
+    if (ESTADOS_PAGO_KO.indexOf(e) !== -1) return false;
+    return ESTADOS_PAGO_OK.indexOf(e) !== -1;
+}
+function pagoCuentaComoValido(p) {
+    // Vale para contar el bote/inscripción: confirmado o a la espera del
+    // visto bueno, pero nunca rechazado.
+    if (!p) return false;
+    var e = String(p.estado || '').toLowerCase();
+    if (ESTADOS_PAGO_KO.indexOf(e) !== -1) return false;
+    return e !== 'pendiente_confirmacion';
+}
+
 var hashPin = async function(nombre, pin) {
     var str = nombre.toLowerCase().trim() + ':' + pin;
     var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -3590,7 +3611,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         return (pagos || []).some(function(pg) {
             if (pg.jugador !== nombreJug) return false;
             if (pg.tipo !== 'jornada_normal' && pg.tipo !== 'jornada_vip') return false;
-            if (pg.estado === 'cancelado' || pg.estado === 'rechazado' || pg.estado === 'fallido') return false;
+            if (!pagoCuentaComoValido(pg) && !pagoEstaConfirmado(pg)) return false;
             var jp = (pg.jornada || '').toString().toUpperCase().replace(/[^0-9]/g, '');
             return jp === numJ;
         });
@@ -7014,7 +7035,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
     // pagado pero luego se haya retirado — antes se seguía contando su
     // inscripción para siempre, inflando el bote con gente que ya no juega.
     const inscritos = Array.from(new Set(
-        (pagos || []).filter(function(p) { return p.tipo === 'inscripcion' && p.estado !== 'pendiente_confirmacion' && p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido'; })
+        (pagos || []).filter(function(p) { return p.tipo === 'inscripcion' && pagoCuentaComoValido(p); })
             .map(function(p) { return p.jugador; })
     )).filter(function(nombre) { return jugadoresInactivosCL.indexOf(nombre) === -1 && archivadosCL.indexOf(nombre) === -1; });
     const boteActual = inscritos.length * 5;
@@ -7552,7 +7573,7 @@ const EstadisticasScreen = ({ userProfiles, onlineUsers, pagos }) => {
     // Lista real de inscritos activos — fusionada con los datos de
     // clasificación que existan, para que aparezcan TODOS los que han pagado.
     var inscritosEst = Array.from(new Set(
-        (pagos || []).filter(function(p) { return p.tipo === 'inscripcion' && p.estado !== 'pendiente_confirmacion' && p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido'; })
+        (pagos || []).filter(function(p) { return p.tipo === 'inscripcion' && pagoCuentaComoValido(p); })
             .map(function(p) { return p.jugador; })
     )).filter(function(nombre) { return jugadoresInactivosEst.indexOf(nombre) === -1; });
 
@@ -9190,7 +9211,7 @@ const PagosPendientesAdmin = () => {
     useEffect(function() {
         var unsub = onSnapshot(collection(db, 'pagos'), function(snap) {
             var lista = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
-                .filter(function(p) { return p.estado === 'pendiente_confirmacion'; })
+                .filter(function(p) { return p.estado === 'pendiente_confirmacion' && !pagoEstaConfirmado(p); })
                 .sort(function(a, b) {
                     var ta = a.creadoEn && a.creadoEn.seconds ? a.creadoEn.seconds : 0;
                     var tb = b.creadoEn && b.creadoEn.seconds ? b.creadoEn.seconds : 0;
@@ -9226,6 +9247,25 @@ const PagosPendientesAdmin = () => {
         setProcesando('');
     };
 
+    // 🔧 Normaliza pagos antiguos: los marcados como 'completado' pasan a
+    // 'confirmado' para que TODAS las pantallas los vean igual.
+    var normalizarEstados = async function() {
+        if (!window.confirm('Se revisarán todos los pagos y los marcados con estados antiguos ("completado", "pagado") pasarán a "confirmado", que es el que lee toda la app.\n\n¿Continuar?')) return;
+        try {
+            var snap = await getDocs(collection(db, 'pagos'));
+            var arreglados = [];
+            for (var i = 0; i < snap.docs.length; i++) {
+                var d = snap.docs[i];
+                var e = String((d.data() || {}).estado || '').toLowerCase();
+                if (e !== 'confirmado' && ESTADOS_PAGO_OK.indexOf(e) !== -1) {
+                    await setDoc(doc(db, 'pagos', d.id), { estado: 'confirmado', normalizadoEn: serverTimestamp() }, { merge: true });
+                    arreglados.push((d.data() || {}).jugador || d.id);
+                }
+            }
+            alert(arreglados.length ? '✅ Normalizados ' + arreglados.length + ' pago(s): ' + arreglados.join(', ') : '✅ Todos los pagos ya estaban con el estado correcto.');
+        } catch(e) { alert('❌ ' + e.message); }
+    };
+
     var etiquetaTipo = function(p) {
         if (p.tipo === 'cambio_otro_equipo') return '🛡️ Cambio de equipo (draft)';
         if (p.tipo === 'inscripcion') return '🎫 Inscripción';
@@ -9238,6 +9278,10 @@ const PagosPendientesAdmin = () => {
             <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>
                 ⚡ Pagos pendientes de confirmar {pendientes.length > 0 && <span style={{background:'#e63946',color:'#fff',borderRadius:10,padding:'1px 8px',fontSize:12,marginLeft:6}}>{pendientes.length}</span>}
             </p>
+            <button onClick={normalizarEstados}
+                style={{width:'100%',border:'1px dashed rgba(0,31,107,0.25)',borderRadius:8,padding:'7px 9px',background:'#fff',color:'rgba(0,31,107,0.6)',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,cursor:'pointer',marginBottom:9}}>
+                🔧 NORMALIZAR ESTADOS DE PAGOS ANTIGUOS
+            </button>
             {pendientes.length === 0 ? (
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',margin:0}}>✅ Todo al día — no hay pagos esperando confirmación.</p>
             ) : (
@@ -10043,7 +10087,7 @@ const InscripcionesAdmin = () => {
         var suyos = pagosIns.filter(function(p) { return p.jugador === nombre; });
         if (!suyos.length) return 'sin_pago';
         var valida = suyos.some(function(p) {
-            return p.estado !== 'pendiente_confirmacion' && p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido';
+            return pagoCuentaComoValido(p);
         });
         if (valida) return 'pagada';
         var pendiente = suyos.some(function(p) { return p.estado === 'pendiente_confirmacion'; });
@@ -12767,7 +12811,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                 {pendiente ? (
                                     <div style={{display:'flex',gap:6}}>
                                         <button onClick={async function() {
-                                            await updateDoc(doc(db,'pagos',p.id), { estado: 'completado', confirmadoEn: serverTimestamp() });
+                                            await updateDoc(doc(db,'pagos',p.id), { estado: 'confirmado', confirmadoEn: serverTimestamp() });
                                             // Si es una compra de plaza vacante en El Otro Equipo, se asigna al
                                             // hueco EXACTO que el jugador eligió al pedirlo (p.vacanteId) — cada
                                             // baja es su propio registro independiente y permanente, así que esto
@@ -16265,7 +16309,7 @@ function App() {
     // gestionar, para que se vea de un vistazo en el menú sin tener que
     // entrar a comprobarlo cada vez.
     var solicitudesPendientesCount = solicitudesGlobal.filter(function(s) { return !s.estado || s.estado === 'pendiente'; }).length;
-    var pagosPendientesCount = pagosGlobal.filter(function(p) { return p.estado === 'pendiente_confirmacion'; }).length;
+    var pagosPendientesCount = pagosGlobal.filter(function(p) { return p.estado === 'pendiente_confirmacion' && !pagoEstaConfirmado(p); }).length;
     var avisosAdminCount = solicitudesPendientesCount + pagosPendientesCount;
     if (isAdmin) TABS.push({ id: 'admin', label: 'Admin', icon: 'ti-settings', badge: avisosAdminCount > 0 ? avisosAdminCount : null });
 
