@@ -865,6 +865,64 @@ var hashPin = async function(nombre, pin) {
     return Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
 };
 
+// IDs oficiales de API-Football. El escudo se sirve directo desde su CDN:
+// https://media.api-sports.io/football/teams/{id}.png — siempre el vigente.
+var TEAM_IDS_API = {
+    // Segunda División
+    'UD Las Palmas': 534, 'Las Palmas': 534,
+    'Cádiz CF': 724, 'Cadiz': 724, 'Cádiz': 724,
+    'Málaga CF': 741, 'Malaga': 741, 'Málaga': 741,
+    'Real Zaragoza': 723, 'Zaragoza': 723,
+    'Sporting de Gijón': 726, 'Sporting Gijon': 726, 'Sporting': 726,
+    'RC Deportivo': 720, 'Deportivo La Coruna': 720, 'Deportivo': 720,
+    'Racing de Santander': 719, 'Racing Santander': 719, 'Racing': 719,
+    'SD Huesca': 863, 'Huesca': 863,
+    'SD Eibar': 545, 'Eibar': 545,
+    'CD Mirandés': 721, 'Mirandes': 721, 'Mirandés': 721,
+    'Albacete Balompié': 9863, 'Albacete': 9863,
+    'CD Leganés': 539, 'Leganes': 539, 'Leganés': 539,
+    'Real Valladolid CF': 720, 'Valladolid': 720,
+    'Burgos CF': 10267, 'Burgos': 10267,
+    'CD Castellón': 9866, 'Castellon': 9866, 'Castellón': 9866,
+    'FC Andorra': 10268, 'Andorra': 10268,
+    'Córdoba CF': 722, 'Cordoba': 722, 'Córdoba': 722,
+    'Granada CF': 715, 'Granada': 715,
+    'UD Almería': 723, 'Almeria': 723, 'Almería': 723,
+    'AD Ceuta FC': 20388, 'Ceuta': 20388,
+    'Real Sociedad B': 9864, 'Real Sociedad II': 9864,
+    // Primera División (para El Otro Equipo)
+    'Real Madrid': 541, 'FC Barcelona': 529, 'Barcelona': 529,
+    'Atlético de Madrid': 530, 'Atletico Madrid': 530, 'Atlético Madrid': 530,
+    'Sevilla FC': 536, 'Sevilla': 536,
+    'Valencia CF': 532, 'Valencia': 532,
+    'Villarreal CF': 533, 'Villarreal': 533,
+    'Athletic Club': 531, 'Athletic': 531,
+    'Real Betis': 543, 'Betis': 543,
+    'RC Celta': 538, 'Celta Vigo': 538, 'Celta': 538,
+    'RCD Espanyol': 540, 'Espanyol': 540,
+    'Getafe CF': 546, 'Getafe': 546,
+    'Girona FC': 547, 'Girona': 547,
+    'Deportivo Alavés': 542, 'Alaves': 542, 'Alavés': 542,
+    'CA Osasuna': 727, 'Osasuna': 727,
+    'Rayo Vallecano': 728, 'Rayo': 728,
+    'RCD Mallorca': 798, 'Mallorca': 798,
+    'Levante UD': 539, 'Levante': 539,
+    'Elche CF': 797, 'Elche': 797,
+    'Real Oviedo': 718, 'Oviedo': 718,
+    'Real Sociedad': 548,
+};
+
+function logoPorIdApi(nombre) {
+    if (!nombre) return null;
+    if (TEAM_IDS_API[nombre]) return 'https://media.api-sports.io/football/teams/' + TEAM_IDS_API[nombre] + '.png';
+    var objetivo = normalizarNombreEquipo(nombre);
+    var claves = Object.keys(TEAM_IDS_API);
+    for (var i = 0; i < claves.length; i++) {
+        if (normalizarNombreEquipo(claves[i]) === objetivo) return 'https://media.api-sports.io/football/teams/' + TEAM_IDS_API[claves[i]] + '.png';
+    }
+    return null;
+}
+
 var LOGOS_EQUIPOS = {
     // ── UD LAS PALMAS ────────────────────────────────────────────────────────
 
@@ -982,7 +1040,11 @@ function buscarLogoEnMapa(nombre, mapa) {
 
 var getLogoEquipo = function(nombre, teamLogos) {
     if (!nombre) return '';
-    // 1º los escudos oficiales de la API (props o caché global)
+    // 1º el CDN oficial por ID de equipo: no depende de sincronizar nada y
+    // siempre sirve el escudo vigente del club.
+    var porId = logoPorIdApi(nombre);
+    if (porId) return porId;
+    // 2º los escudos sincronizados (props o caché global)
     var oficial = buscarLogoEnMapa(nombre, teamLogos) || buscarLogoEnMapa(nombre, LOGOS_API_CACHE);
     if (oficial) return oficial;
     // 2º el listado interno de respaldo
@@ -4421,8 +4483,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                     setElOtroActivado(function(v) { return !v; }); setGuardado(false);
                                 }}
                                     disabled={plazoActivacionSuperado}
-                                    style={{width:50,height:28,borderRadius:14,border:'none',cursor: plazoActivacionSuperado ? 'not-allowed' : 'pointer',transition:'all .2s',
-                                        background: elOtroActivado ? '#001F6B' : 'rgba(0,31,107,0.15)',position:'relative',opacity: plazoActivacionSuperado ? 0.4 : 1}}>
+                                    style={{display: plazoActivacionSuperado ? 'none' : 'block',width:50,height:28,borderRadius:14,border:'none',cursor:'pointer',transition:'all .2s',
+                                        background: elOtroActivado ? '#001F6B' : 'rgba(0,31,107,0.15)',position:'relative'}}>
                                     <div style={{width:22,height:22,borderRadius:'50%',background:'#fff',position:'absolute',
                                         top:3, left: elOtroActivado ? 25 : 3,transition:'left .2s'}} />
                                 </button>
@@ -4443,10 +4505,19 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             {!cargandoPartidoOtro && !partidoOtro && (
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:G.deepBlue,opacity:.35,marginTop:10}}>No encontramos su próximo partido de Primera todavía.</p>
                             )}
-                            {plazoActivacionSuperado && !elOtroActivado && (
+                            {/* Plazo cerrado: se explica y NO se muestra el
+                                interruptor (arriba ya está deshabilitado). */}
+                            {plazoActivacionSuperado && (
                                 <div style={{marginTop:8,background:'rgba(230,57,70,0.1)',borderRadius:10,padding:'8px 12px'}}>
                                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946'}}>
                                         ⏰ Ya ha empezado la jornada en Primera — no podrás activar El Otro Equipo esta semana.
+                                    </p>
+                                </div>
+                            )}
+                            {!plazoActivacionSuperado && primerKickoff && (
+                                <div style={{marginTop:8,background:'rgba(0,31,107,0.04)',borderRadius:10,padding:'8px 12px'}}>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.65)',lineHeight:1.55,margin:0}}>
+                                        🔗 Esta jornada va ligada a la <strong>{rondaPrimeraVigente ? String(rondaPrimeraVigente).replace('Regular Season - ', 'jornada ') : 'jornada'} de Primera</strong>, que arranca el <strong>{primerKickoff.toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}</strong>. Puedes decidir hasta <strong>1 hora antes</strong>.
                                     </p>
                                 </div>
                             )}
@@ -9366,12 +9437,17 @@ const SincronizarEscudosAdmin = () => {
             if (!API_FOOTBALL_KEY) { anotar('❌ Sin clave de API.', false); setSincronizando(false); return; }
             var cab = { headers: { 'x-apisports-key': API_FOOTBALL_KEY } };
             var mapa = {};
+            var idsReales = {};
             var pedirLiga = async function(ligaId, etiqueta) {
                 var res = await fetch('https://v3.football.api-sports.io/teams?league=' + ligaId + '&season=2026', cab);
                 var data = await res.json();
                 var equipos = data.response || [];
                 equipos.forEach(function(e) {
-                    if (e.team && e.team.name && e.team.logo) mapa[e.team.name] = e.team.logo;
+                    if (e.team && e.team.name && e.team.logo) {
+                        mapa[e.team.name] = e.team.logo;
+                        // Se guarda además el ID real para corregir la tabla local
+                        if (e.team.id) idsReales[e.team.name] = e.team.id;
+                    }
                 });
                 anotar('✅ ' + etiqueta + ': ' + equipos.length + ' escudos descargados.');
                 return equipos.length;
@@ -9402,6 +9478,7 @@ const SincronizarEscudosAdmin = () => {
             // OJO: el documento que LEE la app es 'escudos'. Antes se escribía
             // en 'teamLogos' y por eso los escudos nunca llegaban a la interfaz.
             await setDoc(doc(db, 'configuracion', 'escudos'), mapa, { merge: true });
+            await setDoc(doc(db, 'configuracion', 'escudosIds'), idsReales, { merge: true });
             anotar('🏁 Guardados ' + Object.keys(mapa).length + ' escudos (con alias). Ya se ven en toda la app.');
             alert('✅ ESCUDOS ACTUALIZADOS\n\n' + Object.keys(mapa).length + ' equipos, incluidos Girona y la UD Las Palmas en color y alta calidad.');
         } catch(e) { anotar('❌ ' + e.message, false); }
