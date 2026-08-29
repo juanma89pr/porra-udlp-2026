@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signInWithCustomToken, signOut } from "firebase/auth";
 import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, deleteField, runTransaction, serverTimestamp, addDoc, arrayUnion, arrayRemove } from "firebase/firestore";
@@ -1006,6 +1007,19 @@ var LOGOS_EQUIPOS = {
 // Caché global de escudos oficiales (se rellena desde configuracion/teamLogos
 // al arrancar la app). Vive a nivel de módulo para que CUALQUIER componente
 // pinte el escudo correcto, reciba o no la prop teamLogos.
+// Envoltorio para ventanas emergentes: las saca del árbol de la app y las
+// monta directamente en <body>, de modo que se centren SIEMPRE en la parte
+// de pantalla que el usuario está viendo (antes salían a media página).
+const CapaEmergente = ({ children }) => {
+    useEffect(function() {
+        var previo = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';   // bloquea el scroll de fondo
+        return function() { document.body.style.overflow = previo; };
+    }, []);
+    if (typeof document === 'undefined' || !document.body) return children;
+    return createPortal(children, document.body);
+};
+
 var LOGOS_API_CACHE = {};
 function setLogosApiCache(mapa) { LOGOS_API_CACHE = mapa || {}; }
 // Escudos fijados a mano por el admin (máxima prioridad)
@@ -3184,6 +3198,7 @@ const BoletoPagoJornada = ({ jornada, user, pronostico, elOtroActivado, onCerrar
     };
 
     return (
+        <CapaEmergente>
         <div onClick={onCerrar} style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10700,background:'rgba(4,10,38,0.85)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
             <div onClick={function(e){ e.stopPropagation(); }} style={{maxWidth:360,width:'100%',background:'#fff',borderRadius:18,overflow:'hidden',boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}}>
                 <div style={{background:'linear-gradient(135deg,#001F6B,#0035b8)',padding:'14px 16px'}}>
@@ -3204,6 +3219,56 @@ const BoletoPagoJornada = ({ jornada, user, pronostico, elOtroActivado, onCerrar
                     </button>
                     <button onClick={onCerrar} style={{width:'100%',border:'1px solid rgba(0,31,107,0.15)',borderRadius:12,padding:10,background:'#fff',color:'rgba(0,31,107,0.6)',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>LO PAGO LUEGO</button>
                 </div>
+            </div>
+        </div>
+        </CapaEmergente>
+    );
+};
+
+// Recordatorio con cuenta atrás para elegir las 5 Estrellas: se apoya en el
+// mismo cierre real que usa la pantalla de Estrellas (2h antes del partido,
+// o el cierre manual que fije el admin).
+const CronometroEstrellasMJ = ({ jornada, user }) => {
+    var [ahora, setAhora] = useState(Date.now());
+    var [yaElegidas, setYaElegidas] = useState(null);
+    useEffect(function() {
+        var iv = setInterval(function() { setAhora(Date.now()); }, 1000);
+        return function() { clearInterval(iv); };
+    }, []);
+    useEffect(function() {
+        if (!jornada || !jornada.id || !user) return;
+        var u = onSnapshot(doc(db, 'estrellas_seleccion', jornada.id, 'jugadores', user), function(s) {
+            setYaElegidas(s.exists() ? ((s.data().jugadores || []).length) : 0);
+        }, function(){ setYaElegidas(0); });
+        return function() { u(); };
+    }, [jornada, user]);
+
+    if (!jornada || jornada.estado !== 'Abierta') return null;
+    var cierreMs = getCierreEstrellasMs(jornada);
+    if (!cierreMs) return null;
+    var restante = cierreMs - ahora;
+    if (restante <= 0) return null;
+    var completo = yaElegidas >= 5;
+    var urgente = restante < 3 * 3600 * 1000;
+
+    return (
+        <div style={{background: completo ? 'rgba(16,185,129,0.07)' : (urgente ? 'linear-gradient(135deg,rgba(230,57,70,0.1),rgba(230,57,70,0.04))' : 'linear-gradient(135deg,rgba(255,215,0,0.14),rgba(255,215,0,0.04))'),
+            border: '1px solid ' + (completo ? 'rgba(16,185,129,0.3)' : (urgente ? 'rgba(230,57,70,0.35)' : 'rgba(212,175,55,0.4)')),
+            borderRadius:14,padding:'11px 14px',marginBottom:12,display:'flex',alignItems:'center',gap:12}}>
+            <span style={{fontSize:26,flexShrink:0}}>{completo ? '✅' : '⭐'}</span>
+            <div style={{flex:1,minWidth:0}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1.5,color: completo ? '#0f8a61' : (urgente ? '#b02a35' : '#8a6a00'),margin:0,textTransform:'uppercase'}}>
+                    {completo ? 'TUS 5 ESTRELLAS ESTÁN ELEGIDAS' : (urgente ? '🚨 ÚLTIMAS HORAS PARA TUS 5 ESTRELLAS' : 'NO OLVIDES TUS 5 ESTRELLAS')}
+                </p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.6)',margin:'2px 0 0',lineHeight:1.5}}>
+                    {completo
+                        ? 'Puedes cambiarlas hasta el cierre. Suman puntos extra a la clasificación.'
+                        : 'Elige 5 jugadores de la UD y gana puntos EXTRA en esta jornada (5/4/3/2/1 al top 5).'}
+                </p>
+            </div>
+            <div style={{textAlign:'right',flexShrink:0}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:19,fontWeight:700,color: urgente && !completo ? '#e63946' : '#001F6B',margin:0,lineHeight:1}}>{formatearCuentaAtras(restante)}</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:8.5,color:'rgba(0,31,107,0.45)',margin:0}}>para elegir</p>
             </div>
         </div>
     );
@@ -4182,6 +4247,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             <div style={{paddingBottom:40}}>
                 <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:G.deepBlue,textTransform:'uppercase',marginBottom:12,fontWeight:700}}>MI JORNADA</h2>
                 <CuentaAtrasJornada jornada={jornada} />
+                <CronometroEstrellasMJ jornada={jornada} user={user} />
                 <PlazosCard tipo="porra" />
 
                 {/* 🔧 SOLO ADMIN · diagnóstico del EN VIVO */}
@@ -5791,6 +5857,7 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
     var esUltima = slide >= slides.length - 1;
 
     return (
+        <CapaEmergente>
         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10500,background:'linear-gradient(160deg,#060614,#0d1b3e 55%,#001F6B)',display:'flex',flexDirection:'column',padding:'14px 18px calc(12px + env(safe-area-inset-bottom))',height:'100dvh',maxHeight:'100dvh',boxSizing:'border-box',overflow:'hidden'}}>
             <style>{'@keyframes galaIn{0%{opacity:0;transform:translateY(16px);}100%{opacity:1;transform:translateY(0);}}'}</style>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
@@ -5821,6 +5888,7 @@ const PresentacionGalaJ1 = ({ onClose, userProfiles }) => {
                 </button>
             </div>
         </div>
+        </CapaEmergente>
     );
 };
 
@@ -11998,6 +12066,7 @@ const PopupNovedad = ({ currentUser, onClose, onIrARifas }) => {
         if (onClose) onClose();
     };
     return (
+        <CapaEmergente>
         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10000,background:'rgba(0,0,0,0.85)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
             <div style={{maxWidth:400,width:'100%',maxHeight:'85vh',background:'linear-gradient(135deg,#0a0a14,#0d1b3e)',border:'1px solid rgba(255,215,0,0.15)',borderRadius:24,overflow:'hidden',
                 transform: animado ? 'scale(1)' : 'scale(0.9)', opacity: animado ? 1 : 0, transition:'all 0.4s cubic-bezier(0.34,1.56,0.64,1)'}}>
@@ -12033,6 +12102,7 @@ const PopupNovedad = ({ currentUser, onClose, onIrARifas }) => {
                 </div>
             </div>
         </div>
+        </CapaEmergente>
     );
 };
 
@@ -13458,6 +13528,50 @@ function elegirEquipoAleatorioDisponible(datosElOtro) {
 }
 
 // Aviso del nuevo periodo de elección de El Otro, con el turno de cada uno.
+// Botón permanente para cambiar de Otro Equipo pagando 1€, con el mismo
+// circuito de pago que el resto (queda pendiente de confirmación del admin).
+const CambiarOtroEquipoCard = ({ currentUser, miEquipo, pagos }) => {
+    var [pagando, setPagando] = useState(false);
+    if (!miEquipo) return null;
+    var yaPago = (pagos || []).some(function(p) {
+        return p.jugador === currentUser && p.tipo === 'cambio_otro_equipo' &&
+            p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido';
+    });
+    return (
+        <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.12)',borderRadius:14,padding:'12px 14px',marginBottom:14}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'#001F6B',margin:'0 0 4px'}}>🔁 ¿NO TE CONVENCE TU EQUIPO?</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)',lineHeight:1.6,margin:'0 0 9px'}}>
+                Puedes cambiarlo por <strong>1€</strong>. Eliges entre los equipos libres y, si hay draft en marcha, te saltas la cola (orden de pago). El cambio se aplica <strong>a partir de la siguiente jornada</strong>.
+            </p>
+            {yaPago ? (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#0f8a61',background:'rgba(16,185,129,0.08)',borderRadius:8,padding:'8px 10px',margin:0}}>
+                    ✅ Ya has pedido el cambio — pendiente de que el admin confirme tu Bizum de 1€.
+                </p>
+            ) : (
+                <button onClick={async function(){
+                    if (pagando) return;
+                    if (!window.confirm('CAMBIAR DE OTRO EQUIPO POR 1€\n\n· Dejas tu equipo actual y eliges otro de los libres.\n· Si hay draft abierto, te saltas la cola por orden de pago.\n· Se aplica desde la SIGUIENTE jornada.\n\nSe registrará tu pago de 1€ por Bizum, pendiente de confirmación.\n\n¿Continuar?')) return;
+                    setPagando(true);
+                    try {
+                        await addDoc(collection(db, 'pagos'), {
+                            jugador: currentUser, pagoBy: currentUser,
+                            tipo: 'cambio_otro_equipo', jornada: 'CAMBIO',
+                            importe: 1,
+                            descripcion: 'Cambio de El Otro Equipo (deja ' + miEquipo + ')',
+                            metodo: 'bizum', estado: 'pendiente_confirmacion', creadoEn: serverTimestamp(),
+                        });
+                        alert('✅ Solicitud registrada.\n\nHaz el Bizum de 1€ con el concepto "CAMBIO OTRO · ' + currentUser + '". En cuanto se confirme podrás elegir equipo nuevo.');
+                    } catch(e) { alert('❌ ' + e.message); }
+                    setPagando(false);
+                }} disabled={pagando}
+                    style={{width:'100%',border:'none',borderRadius:11,padding:'11px 12px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1.5,cursor:'pointer'}}>
+                    {pagando ? 'REGISTRANDO…' : '💶 CAMBIAR DE EQUIPO POR 1€'}
+                </button>
+            )}
+        </div>
+    );
+};
+
 const AvisoRedraftElOtro = ({ currentUser, miEquipo, pagos }) => {
     var [pagando, setPagando] = useState(false);
     var [rd, setRd] = useState(null);
@@ -13840,6 +13954,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
 
                 {/* 🔄 Draft abierto: aviso, turno y pago para colarse */}
                 <AvisoRedraftElOtro currentUser={currentUser} miEquipo={miElOtro && miElOtro.equipo} pagos={pagos} />
+                <CambiarOtroEquipoCard currentUser={currentUser} miEquipo={miElOtro && miElOtro.equipo} pagos={pagos} />
                 <BannerPagoPendiente onIrAPagos={onIrAPagos} />
             </div>
         );
@@ -14479,6 +14594,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                 var topPop = abajo ? Math.min((fichaAbierta.y || 0) + 16, vh - 340) : undefined;
                 var bottomPop = abajo ? undefined : Math.max(12, vh - (fichaAbierta.y || 0) + 16);
                 return (
+                    <CapaEmergente>
                     <div onClick={function(){ setFichaAbierta(null); }}
                         style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10600,background:'rgba(0,0,0,0.35)'}}>
                         <div onClick={function(e){ e.stopPropagation(); }}
@@ -14515,6 +14631,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                             </div>
                         </div>
                     </div>
+                    </CapaEmergente>
                 );
             })()}
 
