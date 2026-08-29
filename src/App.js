@@ -103,17 +103,57 @@ const RifaHeroCamiseta = ({ precio, compacto }) => {
 // 1º manda el cierre MANUAL fijado por el admin (jornada.cierreEstrellasManual),
 // 2º si no lo hay, la fecha del partido que tenga la jornada MENOS 2 HORAS,
 // 3º si no hay fecha fiable, null (no se bloquea por tiempo, solo por estado).
+// Hora REAL del saque inicial, en milisegundos absolutos.
+// Orden de fiabilidad:
+//   1) kickoffUTC — la hora oficial que devuelve la API (ISO con zona). Es la
+//      única a prueba de líos entre hora canaria y peninsular.
+//   2) fechaPartido / fecha con zona horaria explícita (Z o +01:00).
+//   3) fechaPartido / fecha SIN zona: se interpreta como HORA CANARIA, que es
+//      lo que dice el formulario del panel ("Fecha Partido (H.Canaria)").
+//      Antes se interpretaba como hora del dispositivo y, si el móvil estaba
+//      en horario peninsular, el cierre se iba una hora tarde.
+function getKickoffMs(j) {
+    if (!j) return null;
+    if (j.kickoffUTC) {
+        var k = Date.parse(j.kickoffUTC);
+        if (!isNaN(k)) return k;
+    }
+    var f = j.fechaPartido || j.fecha;
+    if (!f) return null;
+    if (f && f.toDate) { try { return f.toDate().getTime(); } catch(e) {} }
+    var s = String(f);
+    var tieneZona = /Z$|[+-]\d{2}:?\d{2}$/.test(s);
+    if (tieneZona) {
+        var t1 = Date.parse(s);
+        return isNaN(t1) ? null : t1;
+    }
+    // Sin zona → hora canaria. Verano (marzo-octubre) = UTC+1, invierno = UTC+0.
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    if (!m) {
+        var t2 = Date.parse(s);
+        return isNaN(t2) ? null : t2;
+    }
+    var anio = Number(m[1]), mes = Number(m[2]), dia = Number(m[3]), hh = Number(m[4]), mm = Number(m[5]);
+    var enVerano = mes > 3 && mes < 10;
+    if (mes === 3 || mes === 10) {
+        // Aproximación al último domingo del mes (cambio de hora)
+        var ultimoDom = new Date(Date.UTC(anio, mes, 0));
+        ultimoDom.setUTCDate(ultimoDom.getUTCDate() - ultimoDom.getUTCDay());
+        enVerano = mes === 3 ? dia >= ultimoDom.getUTCDate() : dia < ultimoDom.getUTCDate();
+    }
+    var offsetH = enVerano ? 1 : 0;   // Canarias: WEST(+1) en verano, WET(0) en invierno
+    return Date.UTC(anio, mes - 1, dia, hh - offsetH, mm, 0);
+}
+
 function getCierreEstrellasMs(j) {
     if (!j) return null;
     if (j.cierreEstrellasManual) {
         var m = Date.parse(j.cierreEstrellasManual);
         if (!isNaN(m)) return m;
     }
-    var f = j.fechaPartido || j.fecha;
-    if (!f) return null;
-    var t = Date.parse(f);
-    if (isNaN(t)) return null;
-    return t - 2 * 3600 * 1000;
+    var ko = getKickoffMs(j);
+    if (!ko) return null;
+    return ko - 2 * 3600 * 1000;
 }
 
 // Papeletas EXTERNAS caducadas: reserva de 10 min vencida, o Bizum sin
@@ -3797,8 +3837,13 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 }
                 // Autocurar la jornada: si le faltaba el fixtureId, se guarda
                 // para que TODAS las pantallas (previa, estrellas, live) lo tengan.
-                if (encontrado && !jornada.fixtureId) {
-                    try { await setDoc(doc(db, 'jornadas', jornada.id), { fixtureId: encontrado.fixture.id }, { merge: true }); } catch(e3) {}
+                if (encontrado) {
+                    // Se guarda la hora OFICIAL del saque (UTC con zona), que es
+                    // la única fiable para calcular los plazos sin líos de
+                    // horario canario/peninsular.
+                    var parche = { kickoffUTC: encontrado.fixture.date };
+                    if (!jornada.fixtureId) parche.fixtureId = encontrado.fixture.id;
+                    try { await setDoc(doc(db, 'jornadas', jornada.id), parche, { merge: true }); } catch(e3) {}
                 }
                 var data = { response: encontrado ? [encontrado] : [] };
                 window.__liveDiag = { hora: new Date().toLocaleTimeString('es-ES'), ok: !!encontrado,
@@ -14740,7 +14785,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                     {currentUser === 'Juanma' && (
                         <div style={{background:'rgba(255,215,0,0.1)',border:'1px dashed rgba(255,215,0,0.5)',borderRadius:8,padding:'6px 10px',margin:'6px 0'}}>
                             <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#b8860b',marginBottom:5}}>
-                                🔧 SOLO ADMIN · cierre real ahora: {cierreEstrellasMs ? new Date(cierreEstrellasMs).toLocaleString('es-ES',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'}) + (jornadaActual.cierreEstrellasManual ? ' (MANUAL)' : ' (fecha API − 2h)') : 'SIN FECHA FIABLE — solo bloquea el estado de la jornada'}. Si la hora de la API está mal, fija el cierre a mano:
+                                🔧 SOLO ADMIN · saque: {getKickoffMs(jornadaActual) ? new Date(getKickoffMs(jornadaActual)).toLocaleString('es-ES',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'}) + ' (H. Canaria)' : '—'} · cierre estrellas: {cierreEstrellasMs ? new Date(cierreEstrellasMs).toLocaleString('es-ES',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'}) : 'SIN FECHA'} · origen: {jornadaActual.cierreEstrellasManual ? 'MANUAL' : (jornadaActual.kickoffUTC ? 'hora oficial API' : 'fecha del panel (H.Canaria)')}. Si no cuadra, fíjalo a mano:
                             </p>
                             <input type="datetime-local" onChange={function(e){ window.cierreManualTemp = e.target.value; }}
                                 style={{width:'100%',boxSizing:'border-box',border:'1px solid rgba(0,31,107,0.2)',borderRadius:6,padding:'6px 8px',fontSize:11,marginBottom:5}} />
