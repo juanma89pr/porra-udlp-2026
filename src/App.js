@@ -33,7 +33,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-23.AQ · escudos doc correcto + bloqueo El Otro';
+const APP_BUILD = 'v2026-08-23.AR · escudos oficiales sin excepciones';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -867,8 +867,6 @@ var hashPin = async function(nombre, pin) {
 
 var LOGOS_EQUIPOS = {
     // ── UD LAS PALMAS ────────────────────────────────────────────────────────
-    'UD Las Palmas':           'https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/UD_Las_Palmas_logo.svg/120px-UD_Las_Palmas_logo.svg.png',
-    'Las Palmas':              'https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/UD_Las_Palmas_logo.svg/120px-UD_Las_Palmas_logo.svg.png',
 
     // ── SEGUNDA DIVISIÓN 26/27 ───────────────────────────────────────────────
     'Albacete Balompié':       'https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Albacete_Balompie_logo.svg/120px-Albacete_Balompie_logo.svg.png',
@@ -5973,15 +5971,9 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                 {/* Marcador con escudos */}
                 <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12}}>
                     <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,flex:1}}>
-                        {udlpEsLocal ? (
-                            <img src={'/escudo.png'} alt="UDLP"
+                        <img src={getLogoEquipo(jornada.equipoLocal, teamLogos)} alt={jornada.equipoLocal}
                                 style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
-                                onError={function(e){e.target.style.display='none';}} />
-                        ) : (
-                            <img src={getLogoEquipo(jornada.equipoLocal, teamLogos)} alt={jornada.equipoLocal}
-                                style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
-                                onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoLocal||'?').substring(0,3));}} />
-                        )}
+                                onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=UDLP';}} />
                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(255,255,255,0.6)',letterSpacing:1,textTransform:'uppercase'}}>
                             {udlpEsLocal ? 'UD Las Palmas' : jornada.equipoLocal}
                         </span>
@@ -6007,15 +5999,9 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                         </div>
                     </div>
                     <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,flex:1}}>
-                        {udlpEsLocal ? (
-                            <img src={getLogoEquipo(jornada.equipoVisitante, teamLogos)} alt={jornada.equipoVisitante}
-                                style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
-                                onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoVisitante||'?').substring(0,3));}} />
-                        ) : (
-                            <img src={'/escudo.png'} alt="UDLP"
-                                style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
-                                onError={function(e){e.target.style.display='none';}} />
-                        )}
+                        <img src={getLogoEquipo(jornada.equipoVisitante, teamLogos)} alt={jornada.equipoVisitante}
+                            style={{width:52,height:52,objectFit:'contain',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'}}
+                            onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoVisitante||'?').substring(0,3));}} />
                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'rgba(255,255,255,0.6)',letterSpacing:1,textTransform:'uppercase'}}>
                             {udlpEsLocal ? jornada.equipoVisitante : 'UD Las Palmas'}
                         </span>
@@ -9397,8 +9383,7 @@ const SincronizarEscudosAdmin = () => {
 
             // Alias frecuentes: la API usa nombres cortos y la app a veces
             // guarda el nombre largo (o al revés). Se añaden las dos formas.
-            var alias = {
-                'Las Palmas': 'UD Las Palmas', 'Girona': 'Girona FC', 'Ceuta': 'AD Ceuta FC',
+            var alias = { 'Girona': 'Girona FC', 'Ceuta': 'AD Ceuta FC',
                 'Almeria': 'UD Almería', 'Almería': 'UD Almería', 'Cadiz': 'Cádiz CF', 'Cádiz': 'Cádiz CF',
                 'Malaga': 'Málaga CF', 'Málaga': 'Málaga CF', 'Racing Santander': 'Racing de Santander',
                 'Sporting Gijon': 'Sporting de Gijón', 'Deportivo La Coruna': 'RC Deportivo',
