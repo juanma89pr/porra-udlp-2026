@@ -14358,6 +14358,37 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     const [jornadaActual, setJornadaActual] = useState(null);
     const [seleccion, setSeleccion] = useState([]);
     const [clasificacionEstrellas, setClasificacionEstrellas] = useState([]);
+    const [estrellasCrudas, setEstrellasCrudas] = useState({});
+    const [inactivosEst, setInactivosEst] = useState([]);
+    const [archivadosEst, setArchivadosEst] = useState([]);
+    const [aprobadosEst, setAprobadosEst] = useState([]);
+
+    useEffect(() => {
+        var u1 = onSnapshot(doc(db, 'configuracion', 'jugadoresInactivos'), function(s) {
+            setInactivosEst(s.exists() ? (s.data().nombres || []) : []);
+        }, function(){});
+        var u2 = onSnapshot(doc(db, 'configuracion', 'jugadoresArchivados'), function(s) {
+            setArchivadosEst(s.exists() ? (s.data().nombres || []) : []);
+        }, function(){});
+        var u3 = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(s) {
+            setAprobadosEst(s.exists() ? (s.data().nombres || []) : []);
+        }, function(){});
+        return function() { u1(); u2(); u3(); };
+    }, []);
+
+    // La lista ACTUAL de jugadores manda sobre lo que haya en la colección.
+    useEffect(() => {
+        var universo = {};
+        JUGADORES_FUNDADORES.forEach(function(n) { universo[n] = true; });
+        aprobadosEst.forEach(function(n) { universo[n] = true; });
+        archivadosEst.forEach(function(n) { delete universo[n]; });
+        inactivosEst.forEach(function(n) { delete universo[n]; });
+        var lista = Object.keys(universo).map(function(n) {
+            var reg = estrellasCrudas[n] || {};
+            return { id: n, puntosEstrellas: Number(reg.puntosEstrellas || 0) };
+        }).sort(function(a, b) { return (b.puntosEstrellas || 0) - (a.puntosEstrellas || 0); });
+        setClasificacionEstrellas(lista);
+    }, [estrellasCrudas, aprobadosEst, archivadosEst, inactivosEst]);
     const [guardando, setGuardando] = useState(false);
     const [yaGuardado, setYaGuardado] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -14392,8 +14423,9 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
             }
         );
         const unsubClasif = onSnapshot(collection(db, "clasificacion_estrellas"), (snap) => {
-            const datos = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.puntosEstrellas||0)-(a.puntosEstrellas||0));
-            setClasificacionEstrellas(datos);
+            const crudos = {};
+            snap.docs.forEach(function(d) { crudos[d.id] = { id: d.id, ...d.data() }; });
+            setEstrellasCrudas(crudos);
             // Los beneficios del podio (ver apuestas, bloquear, 6ª estrella)
             // quedan SUPRIMIDOS por decisión del grupo: con menos jugadores
             // generaban más agravio que juego. Todos eligen 5, sin excepción.
@@ -14623,7 +14655,10 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     var esAdminVista = currentUser === 'Juanma';
 
     // Ranking de participantes de la jornada mostrada
-    var rankingJornada = Object.keys(datosJornada).map(function(uid) { return { uid: uid, ...datosJornada[uid] }; })
+    var fueraDeLaPorra = archivadosEst.concat(inactivosEst);
+    var rankingJornada = Object.keys(datosJornada)
+        .filter(function(uid) { return fueraDeLaPorra.indexOf(uid) === -1; })
+        .map(function(uid) { return { uid: uid, ...datosJornada[uid] }; })
         .sort(function(a, b) {
             var ea = Number(a.estrellasJornada !== undefined ? a.estrellasJornada : (a.puntosEstrellas || 0));
             var eb = Number(b.estrellasJornada !== undefined ? b.estrellasJornada : (b.puntosEstrellas || 0));
