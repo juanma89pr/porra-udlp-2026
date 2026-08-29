@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signInWithCustomToken, signOut } from "firebase/auth";
-import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, runTransaction, serverTimestamp, addDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { getFirestore, collection, doc, getDocs, onSnapshot, query, where, limit, writeBatch, updateDoc, orderBy, setDoc, getDoc, increment, deleteDoc, deleteField, runTransaction, serverTimestamp, addDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import { getDatabase, ref, onValue, onDisconnect, set } from "firebase/database";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -1008,6 +1008,9 @@ var LOGOS_EQUIPOS = {
 // pinte el escudo correcto, reciba o no la prop teamLogos.
 var LOGOS_API_CACHE = {};
 function setLogosApiCache(mapa) { LOGOS_API_CACHE = mapa || {}; }
+// Escudos fijados a mano por el admin (máxima prioridad)
+var LOGOS_MANUAL_CACHE = {};
+function setLogosManualCache(mapa) { LOGOS_MANUAL_CACHE = mapa || {}; }
 
 // Normaliza nombres para emparejar "Girona" con "Girona FC", "UD Almería" con
 // "Almeria", etc.: sin acentos, sin prefijos/sufijos de club y en minúsculas.
@@ -1040,13 +1043,16 @@ function buscarLogoEnMapa(nombre, mapa) {
 
 var getLogoEquipo = function(nombre, teamLogos) {
     if (!nombre) return '';
-    // 1º el CDN oficial por ID de equipo: no depende de sincronizar nada y
-    // siempre sirve el escudo vigente del club.
-    var porId = logoPorIdApi(nombre);
-    if (porId) return porId;
+    // 1º ESCUDO MANUAL: el que fija el admin desde Herramientas. Manda sobre
+    // todo lo demás, porque el CDN de la API a veces sirve escudos antiguos.
+    var manual = buscarLogoEnMapa(nombre, LOGOS_MANUAL_CACHE);
+    if (manual) return manual;
     // 2º los escudos sincronizados (props o caché global)
     var oficial = buscarLogoEnMapa(nombre, teamLogos) || buscarLogoEnMapa(nombre, LOGOS_API_CACHE);
     if (oficial) return oficial;
+    // 3º el CDN de la API por ID de equipo
+    var porId = logoPorIdApi(nombre);
+    if (porId) return porId;
     // 2º el listado interno de respaldo
     var interno = buscarLogoEnMapa(nombre, LOGOS_EQUIPOS);
     if (interno) return interno;
@@ -3902,7 +3908,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var [primerPartidoPrimera, setPrimerPartidoPrimera] = useState(null);
     var [rondaPrimeraVigente, setRondaPrimeraVigente] = useState(null);
     useEffect(function() {
-        buscarJornadaCompletaPrimera(new Date().toISOString(), 8).then(function(partidos) {
+        var refBusqueda = jornada && (jornada.fechaPartido || jornada.fecha) ? (jornada.fechaPartido || jornada.fecha) : new Date().toISOString();
+        buscarJornadaCompletaPrimera(refBusqueda, 6).then(function(partidos) {
             if (!partidos || !partidos.length) return;
             var ahoraMs = Date.now();
             // Agrupar por ronda y quedarnos con la PRÓXIMA ronda que todavía
@@ -3921,13 +3928,22 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
               .sort(function(a, b) { return a.inicioMs - b.inicioMs; });
             // La vigente es la primera cuyo primer partido aún no ha empezado;
             // si todas empezaron, la última (jornada en curso).
-            var vigente = candidatas.find(function(c) { return c.inicioMs > ahoraMs; }) || candidatas[candidatas.length - 1];
+            // La ronda correcta es la MÁS CERCANA en el tiempo al partido de la
+            // UDLP de esta jornada (no "la próxima desde hoy", que se iba
+            // varias jornadas por delante cuando había parón o desfase).
+            var refMs = jornada && (jornada.fechaPartido || jornada.fecha)
+                ? new Date(jornada.fechaPartido || jornada.fecha).getTime()
+                : ahoraMs;
+            if (isNaN(refMs)) refMs = ahoraMs;
+            var vigente = candidatas.slice().sort(function(a, b) {
+                return Math.abs(a.inicioMs - refMs) - Math.abs(b.inicioMs - refMs);
+            })[0];
             if (vigente) {
                 setPrimerPartidoPrimera(vigente.primero);
                 setRondaPrimeraVigente(vigente.ronda);
             }
         }).catch(function(){});
-    }, []);
+    }, [jornada]);
 
     var ahora = new Date();
     var primerKickoff = primerPartidoPrimera ? new Date(primerPartidoPrimera.fecha) : null;
@@ -9419,6 +9435,8 @@ const SincronizarEscudosAdmin = () => {
     const [sincronizando, setSincronizando] = useState(false);
     const [logSync, setLogSync] = useState([]);
     const [logosActuales, setLogosActuales] = useState({});
+    const [equipoManual, setEquipoManual] = useState('');
+    const [urlManual, setUrlManual] = useState('');
 
     useEffect(function() {
         var u = onSnapshot(doc(db, 'configuracion', 'escudos'), function(s) {
@@ -9502,6 +9520,42 @@ const SincronizarEscudosAdmin = () => {
             {faltan.length === 0 && Object.keys(logosActuales).length > 0 && (
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#0f8a61',marginBottom:8}}>✅ Todos los equipos de Segunda tienen escudo guardado ({Object.keys(logosActuales).length} en total).</p>
             )}
+            {/* ✍️ Fijar un escudo a mano (para los que la API tiene desactualizados) */}
+            <div style={{background:'rgba(0,31,107,0.04)',borderRadius:10,padding:'9px 11px',marginBottom:10}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,color:'#001F6B',margin:'0 0 6px'}}>✍️ FIJAR ESCUDO A MANO</p>
+                <input value={equipoManual} onChange={function(e){ setEquipoManual(e.target.value); }} placeholder="Equipo (ej: Girona FC)"
+                    style={{width:'100%',boxSizing:'border-box',border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'7px 9px',fontSize:12,marginBottom:6}} />
+                <input value={urlManual} onChange={function(e){ setUrlManual(e.target.value); }} placeholder="URL de la imagen del escudo (https://...)"
+                    style={{width:'100%',boxSizing:'border-box',border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'7px 9px',fontSize:11,marginBottom:6}} />
+                {urlManual && (
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                        <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.5)'}}>Vista previa:</span>
+                        <img src={urlManual} alt="preview" style={{width:38,height:38,objectFit:'contain'}}
+                            onError={function(e){ e.target.style.opacity=0.2; }} />
+                    </div>
+                )}
+                <div style={{display:'flex',gap:6}}>
+                    <button onClick={async function(){
+                        if (!equipoManual.trim() || !urlManual.trim()) { alert('Rellena equipo y URL.'); return; }
+                        try {
+                            var campo = {}; campo[equipoManual.trim()] = urlManual.trim();
+                            await setDoc(doc(db, 'configuracion', 'escudosManual'), campo, { merge: true });
+                            alert('✅ Escudo fijado para ' + equipoManual + '. Manda sobre el de la API en TODA la app.');
+                            setEquipoManual(''); setUrlManual('');
+                        } catch(e) { alert('❌ ' + e.message); }
+                    }} style={{flex:2,border:'none',borderRadius:8,padding:'8px 10px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>GUARDAR ESCUDO</button>
+                    <button onClick={async function(){
+                        if (!equipoManual.trim()) { alert('Escribe el equipo a limpiar.'); return; }
+                        try {
+                            var campoDel = {}; campoDel[equipoManual.trim()] = deleteField();
+                            await setDoc(doc(db, 'configuracion', 'escudosManual'), campoDel, { merge: true });
+                            alert('🧹 Escudo manual eliminado para ' + equipoManual + '.');
+                        } catch(e) { alert('❌ ' + e.message); }
+                    }} style={{flex:1,border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'8px 8px',background:'#fff',color:'rgba(0,31,107,0.6)',fontFamily:"'Teko',sans-serif",fontSize:11,cursor:'pointer'}}>QUITAR</button>
+                </div>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.45)',margin:'6px 0 0',lineHeight:1.5}}>Busca el escudo en Google Imágenes, copia la dirección de la imagen (clic largo → "Copiar dirección de imagen") y pégala aquí.</p>
+            </div>
+
             <button onClick={sincronizar} disabled={sincronizando}
                 style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:sincronizando?'default':'pointer'}}>
                 {sincronizando ? '⏳ DESCARGANDO…' : '🛡️ SINCRONIZAR ESCUDOS DESDE LA API'}
@@ -15812,6 +15866,9 @@ function App() {
             });
             onSnapshot(doc(db, "configuracion", "escudos"), function(snap) {
                 if (snap.exists()) { setTeamLogos(snap.data()); setLogosApiCache(snap.data()); }
+            });
+            onSnapshot(doc(db, "configuracion", "escudosManual"), function(snap) {
+                if (snap.exists()) setLogosManualCache(snap.data());
             });
             onSnapshot(collection(db, "clasificacion"), function(snap) {
                 var clasif = [];
