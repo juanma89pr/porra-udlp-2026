@@ -3289,6 +3289,122 @@ const BoletoPagoJornada = ({ jornada, user, pronostico, elOtroActivado, onCerrar
 // Recordatorio con cuenta atrás para elegir las 5 Estrellas: se apoya en el
 // mismo cierre real que usa la pantalla de Estrellas (2h antes del partido,
 // o el cierre manual que fije el admin).
+// ============================================================================
+// 🔴 RANKING EN VIVO DE LAS 5 ESTRELLAS
+// ============================================================================
+// Durante el partido: cada participante con las fotos de sus 5 elegidos, las
+// estrellas que lleva cada uno y el total, ordenado en tiempo real. Se
+// reordena solo cada vez que la sincronización trae datos nuevos.
+const RankingEstrellasEnVivo = ({ jornada, currentUser, userProfiles, plantilla, excluidos }) => {
+    var [selecciones, setSelecciones] = useState({});
+    useEffect(function() {
+        if (!jornada || !jornada.id) return;
+        var u = onSnapshot(collection(db, 'estrellas_seleccion', jornada.id, 'jugadores'), function(snap) {
+            var m = {};
+            snap.forEach(function(d) { m[d.id] = d.data() || {}; });
+            setSelecciones(m);
+        }, function(){});
+        return function() { u(); };
+    }, [jornada]);
+
+    if (!jornada) return null;
+    var live = jornada.liveEstrellas && jornada.liveEstrellas.puntosPorNombre ? jornada.liveEstrellas.puntosPorNombre : null;
+
+    var jugadorPorNombre = {};
+    (plantilla || []).forEach(function(j) { jugadorPorNombre[j.nombre] = j; });
+
+    var fuera = excluidos || [];
+    var filas = Object.keys(selecciones)
+        .filter(function(uid) { return fuera.indexOf(uid) === -1; })
+        .map(function(uid) {
+            var sel = selecciones[uid] || {};
+            var elegidos = (sel.jugadores || []).map(function(j) {
+                var pts = live ? Number(live[j.nombre] || 0) : null;
+                return { nombre: j.nombre, pts: pts, obj: jugadorPorNombre[j.nombre] || j };
+            });
+            var total = elegidos.reduce(function(acc, e) { return acc + Number(e.pts || 0); }, 0);
+            return { uid: uid, elegidos: elegidos, total: total };
+        })
+        .sort(function(a, b) { return b.total - a.total; });
+
+    if (!filas.length) {
+        return <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.45)',textAlign:'center',padding:'22px 10px'}}>Nadie ha elegido estrellas en esta jornada.</p>;
+    }
+
+    return (
+        <div style={{marginBottom:20}}>
+            <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:10}}>
+                <span style={{width:9,height:9,borderRadius:'50%',background:'#ff4444',display:'inline-block',animation:'latidoVivo 1.4s infinite'}} />
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',margin:0}}>RANKING EN VIVO · JORNADA {jornada.numeroJornada}</p>
+            </div>
+            <style>{'@keyframes latidoVivo{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.35;transform:scale(.8);}}'}</style>
+
+            <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                {filas.map(function(f, i) {
+                    var perf = (userProfiles || {})[f.uid] || {};
+                    var esMio = f.uid === currentUser;
+                    var medalla = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+                    return (
+                        <div key={f.uid} style={{background: esMio ? 'linear-gradient(135deg,rgba(255,215,0,0.14),rgba(255,215,0,0.04))' : '#fff',
+                            border: '1px solid ' + (esMio ? 'rgba(212,175,55,0.5)' : (i < 3 ? 'rgba(0,31,107,0.14)' : 'rgba(0,31,107,0.07)')),
+                            borderRadius:14,padding:'9px 11px',transition:'all 0.4s ease'}}>
+                            {/* Cabecera de la fila: puesto, jugador, total */}
+                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:7}}>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,width:22,textAlign:'center',
+                                    color: i === 0 ? '#d4a017' : 'rgba(0,31,107,0.35)'}}>{medalla}</span>
+                                <IconoPerfil perfil={perf} size={26} />
+                                <span style={{flex:1,minWidth:0,fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight: esMio ? 700 : 500,color:'#001F6B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                    {nombreVisible(f.uid, perf)}{esMio ? ' (tú)' : ''}
+                                </span>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color: f.total > 0 ? '#b8860b' : 'rgba(0,31,107,0.25)',lineHeight:1}}>
+                                    ⭐{live ? f.total : '–'}
+                                </span>
+                            </div>
+                            {/* Sus 5 estrellas: foto + puntos de cada una */}
+                            <div style={{display:'flex',gap:6,paddingLeft:30,flexWrap:'wrap'}}>
+                                {f.elegidos.map(function(e, k) {
+                                    var foto = e.obj ? getFotoJugador(e.obj) : null;
+                                    var suma = Number(e.pts || 0);
+                                    return (
+                                        <div key={k} style={{position:'relative',width:38,textAlign:'center'}} title={e.nombre + ' · ' + (live ? suma + '⭐' : 'sin datos')}>
+                                            {foto ? (
+                                                <img src={foto} alt={e.nombre}
+                                                    style={{width:34,height:34,borderRadius:'50%',objectFit:'cover',background:'#f0f0f0',
+                                                        border: suma > 0 ? '2px solid #FFD700' : (suma < 0 ? '2px solid #e63946' : '2px solid rgba(0,31,107,0.12)'),
+                                                        filter: live && suma === 0 ? 'grayscale(0.6)' : 'none',transition:'all 0.4s'}}
+                                                    onError={function(ev){ ev.target.style.display='none'; }} />
+                                            ) : (
+                                                <div style={{width:34,height:34,borderRadius:'50%',background:'rgba(0,31,107,0.06)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}}>⭐</div>
+                                            )}
+                                            {live && (
+                                                <span style={{position:'absolute',top:-3,right:-1,minWidth:16,height:16,borderRadius:8,padding:'0 3px',
+                                                    background: suma > 0 ? '#FFD700' : (suma < 0 ? '#e63946' : 'rgba(0,31,107,0.15)'),
+                                                    color: suma < 0 ? '#fff' : '#001F6B',
+                                                    fontFamily:"'Teko',sans-serif",fontSize:10,fontWeight:700,
+                                                    display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 3px rgba(0,0,0,0.25)'}}>
+                                                    {suma}
+                                                </span>
+                                            )}
+                                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:7.5,color:'rgba(0,31,107,0.5)',margin:'1px 0 0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                                {String(e.nombre || '').split(' ').pop()}
+                                            </p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.45)',textAlign:'center',margin:'8px 0 0'}}>
+                {live
+                    ? 'Provisional · se actualiza solo durante el partido' + (jornada.liveEstrellas && jornada.liveEstrellas.actualizadoEn ? ' (últimos datos: ' + new Date(jornada.liveEstrellas.actualizadoEn).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) + ')' : '')
+                    : 'Esperando las primeras estadísticas del partido…'}
+            </p>
+        </div>
+    );
+};
+
 const CronometroEstrellasMJ = ({ jornada, user }) => {
     var [ahora, setAhora] = useState(Date.now());
     var [yaElegidas, setYaElegidas] = useState(null);
@@ -14953,6 +15069,11 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.45)',textAlign:'center',padding:'26px 10px'}}>
                     No elegiste estrellas para esta jornada, así que no hay nada que seguir en directo. ¡A la próxima! ⭐
                 </p>
+            )}
+            {pestanaEst === 'actual' && jornadaActual && jornadaActual.estado === 'En vivo' && (
+                <RankingEstrellasEnVivo jornada={jornadaActual} currentUser={currentUser}
+                    userProfiles={userProfiles} plantilla={plantilla}
+                    excluidos={archivadosEst.concat(inactivosEst)} />
             )}
             {pestanaEst === 'actual' && jornadaActual && jornadaActual.estado === 'En vivo' && seleccion.length > 0 && (function() {
                 var live = jornadaActual.liveEstrellas && jornadaActual.liveEstrellas.puntosPorNombre ? jornadaActual.liveEstrellas.puntosPorNombre : null;
