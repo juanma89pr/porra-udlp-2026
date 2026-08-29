@@ -9431,6 +9431,153 @@ const RedraftElOtroAdmin = () => {
     );
 };
 
+// ============================================================================
+// 👥 SOLICITUDES DUPLICADAS — diagnóstico y reparación de acceso
+// ============================================================================
+// Cuando alguien no consigue entrar, suele reenviar la solicitud una y otra
+// vez. Esta herramienta agrupa esas solicitudes por persona, DIAGNOSTICA por
+// qué no puede acceder (sin PIN guardado, sin perfil, no está en la lista de
+// aprobados...) y repara el acceso en un clic, dejando una sola cuenta.
+function normalizarNombrePersona(n) {
+    return String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+}
+
+const SolicitudesDuplicadasAdmin = () => {
+    const [solis, setSolis] = useState([]);
+    const [pines, setPines] = useState({});
+    const [perfilesMap, setPerfilesMap] = useState({});
+    const [aprobados, setAprobados] = useState([]);
+    const [trabajando, setTrabajando] = useState('');
+
+    useEffect(function() {
+        var u1 = onSnapshot(collection(db, 'solicitudes_ingreso'), function(snap) {
+            setSolis(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
+        }, function(){});
+        var u2 = onSnapshot(collection(db, 'pines'), function(snap) {
+            var m = {}; snap.forEach(function(d) { m[d.id] = true; }); setPines(m);
+        }, function(){});
+        var u3 = onSnapshot(collection(db, 'perfiles'), function(snap) {
+            var m = {}; snap.forEach(function(d) { m[d.id] = d.data() || {}; }); setPerfilesMap(m);
+        }, function(){});
+        var u4 = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(s) {
+            setAprobados(s.exists() ? (s.data().nombres || []) : []);
+        }, function(){});
+        return function() { u1(); u2(); u3(); u4(); };
+    }, []);
+
+    // Agrupar por persona: mismo nombre normalizado o mismo teléfono
+    var grupos = {};
+    solis.forEach(function(s) {
+        var tel = String(s.telefono || '').replace(/[^0-9]/g, '');
+        var clave = tel.length >= 9 ? 'tel:' + tel.slice(-9) : 'nom:' + normalizarNombrePersona(s.nombre);
+        if (!grupos[clave]) grupos[clave] = [];
+        grupos[clave].push(s);
+    });
+    var duplicados = Object.keys(grupos).map(function(k) { return { clave: k, lista: grupos[k] }; })
+        .filter(function(g) { return g.lista.length > 1; });
+
+    var diagnosticar = function(nombre) {
+        var problemas = [];
+        if (!pines[nombre]) problemas.push('❌ Sin PIN guardado — no puede iniciar sesión');
+        if (!perfilesMap[nombre]) problemas.push('❌ Sin perfil creado');
+        if (aprobados.indexOf(nombre) === -1 && JUGADORES_FUNDADORES.indexOf(nombre) === -1) problemas.push('❌ No está en la lista de jugadores aprobados');
+        return problemas;
+    };
+
+    var repararAcceso = async function(sol, borrarOtras) {
+        if (trabajando) return;
+        var pinManual = '';
+        var pinHashUsar = sol.pinHash;
+        if (!pinHashUsar) {
+            pinManual = window.prompt('Esta solicitud no trae PIN guardado.\n\nEscribe un PIN de 4 cifras para ' + sol.nombre + ' (se lo pasas tú por WhatsApp y luego él lo cambia):', '');
+            if (!pinManual || !/^[0-9]{4}$/.test(pinManual)) { alert('PIN no válido (4 cifras).'); return; }
+        }
+        if (!window.confirm('REPARAR EL ACCESO DE ' + sol.nombre + '\n\n· Se creará/actualizará su PIN, su perfil y entrará en la lista de aprobados.\n' + (borrarOtras ? '· Se marcarán como DUPLICADAS y se borrarán sus otras solicitudes.\n' : '') + '\n¿Continuar?')) return;
+        setTrabajando(sol.id);
+        try {
+            if (!pinHashUsar) pinHashUsar = await hashPin(sol.nombre, pinManual);
+            await setDoc(doc(db, 'pines', sol.nombre), { hash: pinHashUsar, creadoEn: serverTimestamp() }, { merge: true });
+            await setDoc(doc(db, 'perfiles', sol.nombre), { nombre: sol.nombre, telefono: sol.telefono || '' }, { merge: true });
+            await setDoc(doc(db, 'configuracion', 'jugadoresAprobados'), { nombres: arrayUnion(sol.nombre) }, { merge: true });
+            await setDoc(doc(db, 'solicitudes_ingreso', sol.id), { estado: 'aprobada', reparadaEn: serverTimestamp() }, { merge: true });
+
+            if (borrarOtras) {
+                var tel = String(sol.telefono || '').replace(/[^0-9]/g, '');
+                var hermanas = solis.filter(function(s) {
+                    if (s.id === sol.id) return false;
+                    var t = String(s.telefono || '').replace(/[^0-9]/g, '');
+                    return (t.length >= 9 && tel.length >= 9 && t.slice(-9) === tel.slice(-9)) ||
+                           normalizarNombrePersona(s.nombre) === normalizarNombrePersona(sol.nombre);
+                });
+                for (var i = 0; i < hermanas.length; i++) {
+                    await deleteDoc(doc(db, 'solicitudes_ingreso', hermanas[i].id));
+                }
+                alert('✅ Acceso reparado y ' + hermanas.length + ' solicitud(es) duplicada(s) eliminada(s).\n\n' + sol.nombre + ' ya puede entrar con su nombre' + (pinManual ? ' y el PIN ' + pinManual : ' y su PIN') + '.');
+            } else {
+                alert('✅ Acceso reparado. ' + sol.nombre + ' ya puede entrar.');
+            }
+        } catch(e) { alert('❌ ' + e.message); }
+        setTrabajando('');
+    };
+
+    // Personas ya aprobadas pero SIN acceso real (el caso silencioso)
+    var aprobadosRotos = aprobados.filter(function(n) { return !pines[n]; });
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>👥 Solicitudes duplicadas y acceso</p>
+
+            {aprobadosRotos.length > 0 && (
+                <div style={{background:'rgba(230,57,70,0.08)',border:'1px solid rgba(230,57,70,0.3)',borderRadius:10,padding:'9px 11px',marginBottom:10}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#b02a35',lineHeight:1.6,margin:0}}>
+                        ⚠️ <strong>Aprobados pero SIN PIN</strong> (por eso no pueden entrar): {aprobadosRotos.join(', ')}. Repara su acceso desde su solicitud de abajo.
+                    </p>
+                </div>
+            )}
+
+            {duplicados.length === 0 ? (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'rgba(0,31,107,0.5)',margin:0}}>✅ No hay solicitudes duplicadas ahora mismo.</p>
+            ) : duplicados.map(function(g) {
+                // La mejor candidata: la que tenga PIN guardado; si no, la más reciente
+                var conPin = g.lista.filter(function(s) { return !!s.pinHash; });
+                var mejor = conPin.length ? conPin[conPin.length - 1] : g.lista[g.lista.length - 1];
+                var problemas = diagnosticar(mejor.nombre);
+                return (
+                    <div key={g.clave} style={{border:'1px solid rgba(212,175,55,0.5)',background:'rgba(255,215,0,0.06)',borderRadius:12,padding:'10px 12px',marginBottom:10}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,color:'#001F6B',letterSpacing:1,margin:'0 0 2px'}}>
+                            {mejor.nombre} <span style={{fontSize:12,color:'#8a6a00'}}>· {g.lista.length} solicitudes</span>
+                        </p>
+                        {mejor.telefono && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.5)',margin:'0 0 6px'}}>📱 {mejor.telefono}</p>}
+
+                        {/* Diagnóstico */}
+                        <div style={{background:'#fff',borderRadius:8,padding:'7px 9px',marginBottom:8}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,color:'rgba(0,31,107,0.5)',margin:'0 0 4px'}}>DIAGNÓSTICO</p>
+                            {problemas.length === 0 ? (
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'#0f8a61',margin:0}}>✅ Tiene todo listo: debería poder entrar con su nombre y PIN.</p>
+                            ) : problemas.map(function(p, i) {
+                                return <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'#e63946',margin:'0 0 2px'}}>{p}</p>;
+                            })}
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.45)',margin:'4px 0 0'}}>
+                                Solicitudes: {g.lista.map(function(s) { return (s.estado || 'pendiente') + (s.pinHash ? ' 🔑' : ' (sin PIN)'); }).join(' · ')}
+                            </p>
+                        </div>
+
+                        <button onClick={function(){ repararAcceso(mejor, true); }} disabled={trabajando === mejor.id}
+                            style={{width:'100%',border:'none',borderRadius:9,padding:'9px 10px',background:'#10b981',color:'#fff',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer',marginBottom:5}}>
+                            {trabajando === mejor.id ? 'REPARANDO…' : '🔧 REPARAR ACCESO Y ELIMINAR DUPLICADAS'}
+                        </button>
+                        <button onClick={function(){ repararAcceso(mejor, false); }} disabled={trabajando === mejor.id}
+                            style={{width:'100%',border:'1px solid rgba(0,31,107,0.2)',borderRadius:9,padding:'8px 10px',background:'#fff',color:'rgba(0,31,107,0.6)',fontFamily:"'Teko',sans-serif",fontSize:11,cursor:'pointer'}}>
+                            Solo reparar acceso (conservar solicitudes)
+                        </button>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
 const SincronizarEscudosAdmin = () => {
     const [sincronizando, setSincronizando] = useState(false);
     const [logSync, setLogSync] = useState([]);
@@ -12613,6 +12760,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'solicitudes' && (
                 <div>
+                    {/* 👥 Duplicadas y reparación de acceso */}
+                    <SolicitudesDuplicadasAdmin />
+
                     {errorSolicitudes && (
                         <div style={{...A.card,background:'rgba(230,57,70,0.08)',border:'1px solid rgba(230,57,70,0.25)',color:'#e63946',fontFamily:"'Inter',sans-serif",fontSize:12,padding:16,marginBottom:12}}>
                             ⚠️ {errorSolicitudes}
