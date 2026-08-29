@@ -33,7 +33,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-23.AP · escudos oficiales en TODA la app';
+const APP_BUILD = 'v2026-08-23.AQ · escudos doc correcto + bloqueo El Otro';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3905,26 +3905,29 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var [boletoAbierto, setBoletoAbierto] = useState(false);
     // Escritura real del pronóstico (compartida por los dos caminos)
     var escribirPronostico = async function() {
-        await setDoc(doc(db, "pronosticos", jornada.id, "jugadores", user), {
+        var datosPron = {
             golesLocal: Number(pronostico.golesLocal),
             golesVisitante: Number(pronostico.golesVisitante),
             resultado1x2: pronostico.resultado1x2,
-            elOtroActivado: elOtroActivado,
+            // Pasado el plazo, El Otro queda congelado tal y como estaba.
+            elOtroActivado: plazoActivacionSuperado ? undefined : elOtroActivado,
             elOtroFixtureId: elOtroActivado && partidoOtro ? partidoOtro.fixtureId : null,
             elOtroEquipoUsado: elOtroActivado ? (miElOtro && miElOtro.equipo) : null,
             guardadoEn: serverTimestamp(),
             usuario: user,
             puntosObtenidos: 0,
-        }, { merge: true });
+        };
+        // Quitar claves undefined (Firestore las rechaza)
+        Object.keys(datosPron).forEach(function(k) { if (datosPron[k] === undefined) delete datosPron[k]; });
+        await setDoc(doc(db, "pronosticos", jornada.id, "jugadores", user), datosPron, { merge: true });
     };
 
     var guardar = async function() {
         if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || !pronostico.resultado1x2) {
             setMensaje('Rellena el marcador y el 1X2 antes de guardar.'); return;
         }
-        if (elOtroActivado && plazoActivacionSuperado) {
-            setMensaje('❌ Ya no puedes activar El Otro Equipo — su partido de Primera ya ha empezado.');
-            return;
+        if (plazoActivacionSuperado && elOtroActivado) {
+            setMensaje('⚠️ El plazo de El Otro Equipo está CERRADO (1h antes del primer partido de Primera). Tu apuesta se guarda, pero El Otro no se puede cambiar ya.');
         }
         // La apuesta SIEMPRE se guarda primero: nunca se puede quedar un
         // jugador sin apostar por un tema de pago (antes el guardado se
@@ -4414,12 +4417,14 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                     </p>
                                 </div>
                                 <button onClick={function() {
-                                    if (!elOtroActivado && plazoActivacionSuperado) return; // no se puede activar si ya empezó su partido
+                                    // Pasado el plazo (1h antes del primer partido de
+                                    // Primera) NO se puede ni activar ni desactivar.
+                                    if (plazoActivacionSuperado) return;
                                     setElOtroActivado(function(v) { return !v; }); setGuardado(false);
                                 }}
-                                    disabled={!elOtroActivado && plazoActivacionSuperado}
-                                    style={{width:50,height:28,borderRadius:14,border:'none',cursor: (!elOtroActivado && plazoActivacionSuperado) ? 'not-allowed' : 'pointer',transition:'all .2s',
-                                        background: elOtroActivado ? '#001F6B' : 'rgba(0,31,107,0.15)',position:'relative',opacity:(!elOtroActivado && plazoActivacionSuperado)?0.4:1}}>
+                                    disabled={plazoActivacionSuperado}
+                                    style={{width:50,height:28,borderRadius:14,border:'none',cursor: plazoActivacionSuperado ? 'not-allowed' : 'pointer',transition:'all .2s',
+                                        background: elOtroActivado ? '#001F6B' : 'rgba(0,31,107,0.15)',position:'relative',opacity: plazoActivacionSuperado ? 0.4 : 1}}>
                                     <div style={{width:22,height:22,borderRadius:'50%',background:'#fff',position:'absolute',
                                         top:3, left: elOtroActivado ? 25 : 3,transition:'left .2s'}} />
                                 </button>
@@ -9359,7 +9364,7 @@ const SincronizarEscudosAdmin = () => {
     const [logosActuales, setLogosActuales] = useState({});
 
     useEffect(function() {
-        var u = onSnapshot(doc(db, 'configuracion', 'teamLogos'), function(s) {
+        var u = onSnapshot(doc(db, 'configuracion', 'escudos'), function(s) {
             setLogosActuales(s.exists() ? s.data() : {});
         }, function(){});
         return function() { u(); };
@@ -9409,7 +9414,9 @@ const SincronizarEscudosAdmin = () => {
                 if (mapa[alias[k]] && !mapa[k]) mapa[k] = mapa[alias[k]];
             });
 
-            await setDoc(doc(db, 'configuracion', 'teamLogos'), mapa, { merge: true });
+            // OJO: el documento que LEE la app es 'escudos'. Antes se escribía
+            // en 'teamLogos' y por eso los escudos nunca llegaban a la interfaz.
+            await setDoc(doc(db, 'configuracion', 'escudos'), mapa, { merge: true });
             anotar('🏁 Guardados ' + Object.keys(mapa).length + ' escudos (con alias). Ya se ven en toda la app.');
             alert('✅ ESCUDOS ACTUALIZADOS\n\n' + Object.keys(mapa).length + ' equipos, incluidos Girona y la UD Las Palmas en color y alta calidad.');
         } catch(e) { anotar('❌ ' + e.message, false); }
