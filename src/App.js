@@ -8255,10 +8255,22 @@ async function cerrarJornadaDefinitivamenteAdmin(jornadaId) {
     if(!jSnap.exists()) throw new Error('No se encuentra la jornada.');
     var jornada={id:jSnap.id,...jSnap.data()};
     if(jornada.cierreDefinitivo) return {ok:true,yaCerrada:true};
-    var estadoPrimera=await comprobarCierrePrimeraJornada(fechaAString(jornada.fecha));
-    if(!estadoPrimera.ok) return {ok:false,pendientes:estadoPrimera.pendientes};
 
-    var pSnap=await getDocs(collection(db,'pronosticos',jornadaId,'jugadores'));
+    // ¿Hay alguien con El Otro activado y SIN resolver? Solo en ese caso hay
+    // que esperar a que termine la jornada de Primera. Si nadie lo activó (o
+    // ya está todo aplicado), no hay nada que esperar y se cierra igual.
+    var pSnapPrev=await getDocs(collection(db,'pronosticos',jornadaId,'jugadores'));
+    var hayOtroPendiente=false;
+    pSnapPrev.forEach(function(d){
+        var p=d.data()||{};
+        if(p.elOtroActivado && !p.elOtroAplicado) hayOtroPendiente=true;
+    });
+    if(hayOtroPendiente){
+        var estadoPrimera=await comprobarCierrePrimeraJornada(fechaAString(jornada.fecha));
+        if(!estadoPrimera.ok) return {ok:false,pendientes:estadoPrimera.pendientes,motivo:'primera_sin_terminar'};
+    }
+
+    var pSnap=pSnapPrev;
     var clasSnap=await getDocs(collection(db,'clasificacion')); var clas={}; clasSnap.forEach(function(d){clas[d.id]=d.data();});
     var otroSnap=await getDocs(collection(db,'elOtro')); var otro={}; otroSnap.forEach(function(d){otro[d.id]=d.data();});
     // Ranking de Estrellas de la jornada (5/4/3/2/1) leído de su fuente de
@@ -8836,11 +8848,17 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                                 // solo ponía la marca y los puntos se perdían.
                                 var rc = await cerrarJornadaDefinitivamenteAdmin(jornada.id);
                                 if (rc && rc.ok === false) {
-                                    if (!window.confirm('⏳ La API dice que la jornada de Primera aún no ha terminado, pero NADIE tiene El Otro pendiente aquí.\n\n¿Cerrar igualmente y repartir los puntos?')) return;
-                                    await forzarCierreDefinitivoJornada(jornada.id);
+                                    if (!window.confirm('⏳ La API dice que la jornada de Primera aún no ha terminado.\n\nPero aquí NADIE tiene El Otro pendiente, así que no hay nada que esperar.\n\n¿Cerrar igualmente y repartir los puntos?')) return;
+                                    rc = await forzarCierreDefinitivoJornada(jornada.id);
                                 }
-                                alert('🏁 Jornada cerrada y puntos repartidos.');
-                                window.location.reload();
+                                // Verificar que la jornada ha quedado marcada de verdad
+                                var comp = await getDoc(doc(db, 'jornadas', jornada.id));
+                                if (comp.exists() && (comp.data() || {}).cierreDefinitivo) {
+                                    alert('🏁 Jornada CERRADA definitivamente y puntos repartidos a la clasificación.');
+                                    window.location.reload();
+                                } else {
+                                    alert('⚠️ El cierre no llegó a aplicarse.\n\nDetalle: ' + JSON.stringify(rc || {}) + '\n\nSi persiste, usa 🔧 RECONSTRUIR CLASIFICACIÓN en Admin → Pagos.');
+                                }
                             } catch(e) { alert('❌ ' + e.message); }
                         }} style={{...styles.secondaryButton, padding: '6px 12px', fontSize: '0.75rem', borderColor: '#10b981', color: '#0f8a61'}}>🏁 CIERRE DEFINITIVO</button>
                     )}
