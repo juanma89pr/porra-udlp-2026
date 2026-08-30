@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-30.BD · El Otro por ronda completa (incluye aplazados)';
+const APP_BUILD = 'v2026-08-30.BE · ceremonia final con puntos reales';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -16362,7 +16362,9 @@ const PantallaFinJornada = ({ jornada, currentUser, userProfiles, participantes,
     var premio = ganadores.length > 0 ? (bote / ganadores.length).toFixed(2) : '0.00';
     var soyGanador = ganadores.some(function(g) { return g.id === currentUser; });
     var jugadoresConOtro = participantes.filter(function(p) { return !p.sinApuesta && p.elOtroActivado; });
-    var ranking = participantes.filter(function(p) { return !p.sinApuesta; }).sort(function(a, b) { return (b.puntosObtenidos || 0) - (a.puntosObtenidos || 0); });
+    var ranking = participantes.filter(function(p) { return !p.sinApuesta; })
+        .map(function(p) { return { ...p, ptsVista: puntosMostrarPronostico(p, jornada, null) }; })
+        .sort(function(a, b) { return (b.ptsVista || 0) - (a.ptsVista || 0); });
 
     return (
         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10000,background:'#0a0a14',overflowY:'auto'}}>
@@ -16435,7 +16437,10 @@ const PantallaFinJornada = ({ jornada, currentUser, userProfiles, participantes,
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:4,color:'rgba(255,215,0,0.4)',textTransform:'uppercase',textAlign:'center',marginBottom:12}}>⭐ Tus 5 Estrellas</p>
                         <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
                             {misEstrellas.jugadores.map(function(j) {
-                                var pts = (misEstrellas.desglosePorJugador && misEstrellas.desglosePorJugador[j.nombre]) || 0;
+                                var liveMeta = jornada && jornada.liveEstrellas && jornada.liveEstrellas.puntosPorNombre ? jornada.liveEstrellas.puntosPorNombre : null;
+                                var pts = (misEstrellas.desglosePorJugador && misEstrellas.desglosePorJugador[j.nombre] !== undefined)
+                                    ? misEstrellas.desglosePorJugador[j.nombre]
+                                    : (liveMeta && liveMeta[j.nombre] !== undefined ? liveMeta[j.nombre] : 0);
                                 return (
                                     <div key={j.nombre} style={{textAlign:'center',minWidth:56}}>
                                         <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.06)',border: pts > 0 ? '2px solid #FFD700' : '2px solid rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 4px',fontSize:16}}>⭐</div>
@@ -16461,7 +16466,7 @@ const PantallaFinJornada = ({ jornada, currentUser, userProfiles, participantes,
                                         <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color: idx < 3 ? '#FFD700' : 'rgba(255,255,255,0.3)',width:18,fontWeight:700}}>{idx+1}</span>
                                         <IconoPerfil perfil={perf} size={22} />
                                         <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11,color:'#fff',fontWeight: esMio ? 700 : 400}}>{nombreVisible(p.id, perf)}</span>
-                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:'#FFD700'}}>{p.puntosObtenidos||0}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: (p.ptsVista||0) > 0 ? '#FFD700' : 'rgba(255,255,255,0.3)'}}>{(p.ptsVista||0) > 0 ? '+' + p.ptsVista : 0}</span>
                                     </div>
                                 );
                             })}
