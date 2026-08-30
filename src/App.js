@@ -9573,6 +9573,187 @@ function calcularBasePronosticoJornada(p, jornada) {
 // Orden de la cola:
 //   1º Los que PAGAN 1€ por cambiar de equipo, en orden de pago (se saltan la cola).
 //   2º Los que no tienen equipo, por orden de ingreso a la porra.
+// ============================================================================
+// 🛡️ RESOLUCIÓN MANUAL DE EL OTRO EQUIPO — diagnóstico y aplicación
+// ============================================================================
+// La resolución automática exigía 4 marcas a la vez (activado + pendiente +
+// fixtureId + no aplicado). Si a un pronóstico le falta cualquiera de ellas
+// (por ejemplo el fixtureId, que solo se guarda desde cierta versión), esa
+// activación era invisible y el resultado siempre era "0 aplicados".
+// Esta herramienta trabaja con lo que HAY: cruza la elección de equipo con el
+// resultado real de la jornada de Primera y aplica los multiplicadores.
+const ResolverElOtroManualAdmin = ({ jornadas }) => {
+    const [jSel, setJSel] = useState('');
+    const [filas, setFilas] = useState(null);
+    const [cargando, setCargando] = useState(false);
+    const [aplicando, setAplicando] = useState(false);
+    const [infoRonda, setInfoRonda] = useState('');
+
+    var finalizadas = (jornadas || []).filter(function(j) { return j.estado === 'Finalizada'; })
+        .sort(function(a, b) { return (b.numeroJornada || 0) - (a.numeroJornada || 0); });
+
+    var analizar = async function(jid) {
+        if (!jid) return;
+        setCargando(true); setFilas(null); setInfoRonda('');
+        try {
+            var jd = finalizadas.find(function(j) { return j.id === jid; });
+            var pSnap = await getDocs(collection(db, 'pronosticos', jid, 'jugadores'));
+            var oSnap = await getDocs(collection(db, 'elOtro'));
+            var equipos = {};
+            oSnap.forEach(function(d) { equipos[d.id] = d.data() || {}; });
+
+            // Partidos de Primera de esa jornada (por cercanía a la fecha)
+            var refIso = jd.kickoffUTC || jd.fechaPartido || jd.fecha;
+            var partidos = await buscarJornadaCompletaPrimera(fechaAString(refIso), 6);
+            var porRonda = {};
+            (partidos || []).forEach(function(p) {
+                var r = p.round || '-';
+                if (!porRonda[r]) porRonda[r] = [];
+                porRonda[r].push(p);
+            });
+            var refMs = Date.parse(refIso);
+            var mejorRonda = null, mejorDist = Infinity;
+            Object.keys(porRonda).forEach(function(r) {
+                var prim = porRonda[r].slice().sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); })[0];
+                var d = Math.abs(new Date(prim.fecha).getTime() - refMs);
+                if (d < mejorDist) { mejorDist = d; mejorRonda = r; }
+            });
+            var deLaRonda = mejorRonda ? porRonda[mejorRonda] : [];
+            setInfoRonda(mejorRonda ? String(mejorRonda).replace('Regular Season - ', 'Jornada ') + ' de Primera · ' + deLaRonda.length + ' partidos' : 'No se encontró la jornada de Primera');
+
+            var lista = [];
+            pSnap.forEach(function(d) {
+                var p = d.data() || {};
+                var eq = equipos[d.id] || {};
+                var equipo = p.elOtroEquipoUsado || eq.equipo || null;
+                if (!equipo) return;
+                // Buscar su partido en esa ronda
+                var suPartido = deLaRonda.find(function(x) {
+                    var l = normalizarNombreEquipo(x.local || ''), v = normalizarNombreEquipo(x.visitante || ''), e = normalizarNombreEquipo(equipo);
+                    return l === e || v === e || l.indexOf(e) !== -1 || e.indexOf(l) !== -1 || v.indexOf(e) !== -1 || e.indexOf(v) !== -1;
+                });
+                var resultado = null, marcador = '';
+                if (suPartido && suPartido.golesLocal !== null && suPartido.golesLocal !== undefined) {
+                    var esLocal = normalizarNombreEquipo(suPartido.local).indexOf(normalizarNombreEquipo(equipo)) !== -1 ||
+                                  normalizarNombreEquipo(equipo).indexOf(normalizarNombreEquipo(suPartido.local)) !== -1;
+                    var gf = esLocal ? suPartido.golesLocal : suPartido.golesVisitante;
+                    var gc = esLocal ? suPartido.golesVisitante : suPartido.golesLocal;
+                    resultado = gf > gc ? 'gana' : (gf < gc ? 'pierde' : 'empate');
+                    marcador = suPartido.local + ' ' + suPartido.golesLocal + '-' + suPartido.golesVisitante + ' ' + suPartido.visitante;
+                }
+                lista.push({
+                    id: d.id, equipo: equipo,
+                    activado: !!p.elOtroActivado,
+                    aplicado: !!p.elOtroAplicado,
+                    base: Number(p.puntosBaseSinOtro !== undefined ? p.puntosBaseSinOtro : calcularBasePronosticoJornada(p, jd).base),
+                    multiplicador: Number(eq.multiplicadorActual || getMultiplicadorOtro(eq.activaciones || 0)),
+                    resultado: resultado, marcador: marcador,
+                });
+            });
+            lista.sort(function(a, b) { return (b.activado ? 1 : 0) - (a.activado ? 1 : 0); });
+            setFilas(lista);
+        } catch(e) { alert('❌ ' + e.message); }
+        setCargando(false);
+    };
+
+    var aplicar = async function() {
+        if (!filas || aplicando) return;
+        var aplicables = filas.filter(function(f) { return f.activado && !f.aplicado && f.resultado; });
+        if (!aplicables.length) { alert('No hay nada que aplicar: o nadie tiene El Otro activado en esta jornada, o sus partidos aún no tienen resultado.'); return; }
+        var resumen = aplicables.map(function(f) {
+            var nuevo = aplicarMultiplicadorOtro(f.base, f.resultado, f.multiplicador);
+            return '· ' + f.id + ' (' + f.equipo + ' ' + f.resultado.toUpperCase() + '): ' + f.base + ' → ' + nuevo + ' pts';
+        }).join('\n');
+        if (!window.confirm('APLICAR MULTIPLICADORES DE EL OTRO\n\n' + resumen + '\n\n¿Confirmar?')) return;
+        setAplicando(true);
+        try {
+            for (var i = 0; i < aplicables.length; i++) {
+                var f = aplicables[i];
+                await setDoc(doc(db, 'pronosticos', jSel, 'jugadores', f.id), {
+                    elOtroAplicado: true, elOtroPendiente: false,
+                    elOtroResultado: f.resultado,
+                    elOtroMultiplicador: f.multiplicador,
+                    elOtroMarcador: f.marcador,
+                    elOtroAplicadoEn: serverTimestamp(),
+                }, { merge: true });
+                // Historial del jugador para su racha y su palmarés
+                var jdSel = finalizadas.find(function(j) { return j.id === jSel; });
+                await setDoc(doc(db, 'elOtro', f.id), {
+                    historial: arrayUnion({
+                        jornada: jdSel ? jdSel.numeroJornada : 0,
+                        equipo: f.equipo,
+                        resultado: f.resultado,
+                        multiplicador: f.resultado === 'gana' ? f.multiplicador : (f.resultado === 'pierde' ? 0.5 : 1),
+                        ptosAntes: f.base,
+                        ptosDespues: aplicarMultiplicadorOtro(f.base, f.resultado, f.multiplicador),
+                    }),
+                    activaciones: increment(1),
+                }, { merge: true });
+            }
+            alert('✅ Multiplicadores aplicados a ' + aplicables.length + ' jugador(es).\n\nAhora pulsa 🏁 CIERRE DEFINITIVO en esa jornada y después 🔧 RECONSTRUIR CLASIFICACIÓN.');
+            analizar(jSel);
+        } catch(e) { alert('❌ ' + e.message); }
+        setAplicando(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>🛡️ Resolver El Otro (manual)</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'rgba(0,0,0,0.55)',lineHeight:1.6,marginBottom:9}}>
+                Cruza la elección de equipo de cada jugador con el resultado real de la jornada de Primera, aunque al pronóstico le falten marcas internas. Úsalo cuando el resolutor automático diga "0 aplicados".
+            </p>
+            <select value={jSel} onChange={function(e){ setJSel(e.target.value); analizar(e.target.value); }}
+                style={{width:'100%',border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'8px 10px',fontSize:12,marginBottom:9}}>
+                <option value="">— Elige jornada finalizada —</option>
+                {finalizadas.map(function(j) {
+                    return <option key={j.id} value={j.id}>J{j.numeroJornada} · {j.equipoLocal} vs {j.equipoVisitante}</option>;
+                })}
+            </select>
+
+            {cargando && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>Consultando resultados de Primera…</p>}
+            {infoRonda && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.55)',marginBottom:8}}>🔗 {infoRonda}</p>}
+
+            {filas && filas.length === 0 && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#e63946'}}>Nadie tiene equipo de El Otro registrado para esta jornada.</p>
+            )}
+
+            {filas && filas.length > 0 && (
+                <>
+                <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:9}}>
+                    {filas.map(function(f) {
+                        var nuevo = f.resultado ? aplicarMultiplicadorOtro(f.base, f.resultado, f.multiplicador) : null;
+                        return (
+                            <div key={f.id} style={{background: f.activado ? (f.aplicado ? 'rgba(16,185,129,0.07)' : 'rgba(255,215,0,0.1)') : 'rgba(0,31,107,0.03)',
+                                border:'1px solid ' + (f.activado && !f.aplicado ? 'rgba(212,175,55,0.45)' : 'rgba(0,31,107,0.07)'),
+                                borderRadius:10,padding:'8px 10px'}}>
+                                <div style={{display:'flex',alignItems:'center',gap:7}}>
+                                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,color:'#001F6B',flex:1}}>{f.id}</span>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(0,31,107,0.6)'}}>{f.equipo}</span>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:11,color: f.activado ? (f.aplicado ? '#0f8a61' : '#8a6a00') : 'rgba(0,31,107,0.3)'}}>
+                                        {f.activado ? (f.aplicado ? '✅ aplicado' : '⏳ activado') : '— sin activar'}
+                                    </span>
+                                </div>
+                                {f.marcador && (
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.55)',margin:'3px 0 0'}}>
+                                        {f.marcador} → <strong>{String(f.resultado || '').toUpperCase()}</strong>
+                                        {f.activado && !f.aplicado && nuevo !== null ? ' · ' + f.base + ' pts → ' + nuevo + ' pts (×' + f.multiplicador + ')' : ''}
+                                    </p>
+                                )}
+                                {!f.marcador && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#e63946',margin:'3px 0 0'}}>⚠️ No se encontró su partido en esa jornada de Primera</p>}
+                            </div>
+                        );
+                    })}
+                </div>
+                <button onClick={aplicar} disabled={aplicando}
+                    style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,cursor:'pointer'}}>
+                    {aplicando ? '⏳ APLICANDO…' : '🛡️ APLICAR MULTIPLICADORES AHORA'}
+                </button>
+                </>
+            )}
+        </div>
+    );
+};
+
 const RedraftElOtroAdmin = () => {
     const [conEquipo, setConEquipo] = useState([]);
     const [sinEquipo, setSinEquipo] = useState([]);
@@ -13306,6 +13487,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                             }} style={A.btnDanger}>Cerrar plazo</button>
                         </div>
                     </div>
+
+                    {/* 🛡️ Resolución manual de El Otro */}
+                    <ResolverElOtroManualAdmin jornadas={jornadas} />
 
                     {/* 🔄 Auditoría y draft de El Otro */}
                     <RedraftElOtroAdmin />
