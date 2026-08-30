@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-30.BC · resolver El Otro manual + resumen real';
+const APP_BUILD = 'v2026-08-30.BD · El Otro por ronda completa (incluye aplazados)';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -9601,6 +9601,7 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
     const [cargando, setCargando] = useState(false);
     const [aplicando, setAplicando] = useState(false);
     const [infoRonda, setInfoRonda] = useState('');
+    const [rondaSel, setRondaSel] = useState('');
 
     var finalizadas = (jornadas || []).filter(function(j) { return j.estado === 'Finalizada'; })
         .sort(function(a, b) { return (b.numeroJornada || 0) - (a.numeroJornada || 0); });
@@ -9615,24 +9616,25 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
             var equipos = {};
             oSnap.forEach(function(d) { equipos[d.id] = d.data() || {}; });
 
-            // Partidos de Primera de esa jornada (por cercanía a la fecha)
-            var refIso = jd.kickoffUTC || jd.fechaPartido || jd.fecha;
-            var partidos = await buscarJornadaCompletaPrimera(fechaAString(refIso), 6);
-            var porRonda = {};
-            (partidos || []).forEach(function(p) {
-                var r = p.round || '-';
-                if (!porRonda[r]) porRonda[r] = [];
-                porRonda[r].push(p);
+            // Se pide la RONDA COMPLETA de Primera (no una ventana de fechas):
+            // así entran también los partidos aplazados, que era justo el caso
+            // que impedía resolver El Otro.
+            var numRonda = rondaSel || jd.numeroJornada || 1;
+            var resR = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+                '&season=2026&round=' + encodeURIComponent('Regular Season - ' + numRonda),
+                { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var dataR = await resR.json();
+            var deLaRonda = (dataR.response || []).map(function(p) {
+                return {
+                    fixtureId: p.fixture.id, fecha: p.fixture.date,
+                    local: p.teams.home.name, visitante: p.teams.away.name,
+                    estadoCorto: p.fixture.status.short,
+                    golesLocal: p.goals.home, golesVisitante: p.goals.away,
+                };
             });
-            var refMs = Date.parse(refIso);
-            var mejorRonda = null, mejorDist = Infinity;
-            Object.keys(porRonda).forEach(function(r) {
-                var prim = porRonda[r].slice().sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); })[0];
-                var d = Math.abs(new Date(prim.fecha).getTime() - refMs);
-                if (d < mejorDist) { mejorDist = d; mejorRonda = r; }
-            });
-            var deLaRonda = mejorRonda ? porRonda[mejorRonda] : [];
-            setInfoRonda(mejorRonda ? String(mejorRonda).replace('Regular Season - ', 'Jornada ') + ' de Primera · ' + deLaRonda.length + ' partidos' : 'No se encontró la jornada de Primera');
+            var sinJugar = deLaRonda.filter(function(p) { return ['FT','AET','PEN'].indexOf(p.estadoCorto) === -1; });
+            setInfoRonda('Jornada ' + numRonda + ' de Primera · ' + deLaRonda.length + ' partidos' +
+                (sinJugar.length ? ' · ⚠️ ' + sinJugar.length + ' sin terminar' : ' · todos finalizados ✅'));
 
             var lista = [];
             pSnap.forEach(function(d) {
@@ -9669,10 +9671,16 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
         setCargando(false);
     };
 
-    var aplicar = async function() {
+    var aplicar = async function(incluirNoMarcados) {
         if (!filas || aplicando) return;
-        var aplicables = filas.filter(function(f) { return f.activado && !f.aplicado && f.resultado; });
-        if (!aplicables.length) { alert('No hay nada que aplicar: o nadie tiene El Otro activado en esta jornada, o sus partidos aún no tienen resultado.'); return; }
+        var aplicables = filas.filter(function(f) {
+            if (f.aplicado || !f.resultado) return false;
+            return incluirNoMarcados ? true : f.activado;
+        });
+        if (!aplicables.length) {
+            alert('No hay nada que aplicar.\n\n· Si nadie figura como "activado" pero sabes que lo activaron, usa el botón de FORZAR.\n· Si sus partidos aún no tienen resultado, espera a que terminen.');
+            return;
+        }
         var resumen = aplicables.map(function(f) {
             var nuevo = aplicarMultiplicadorOtro(f.base, f.resultado, f.multiplicador);
             return '· ' + f.id + ' (' + f.equipo + ' ' + f.resultado.toUpperCase() + '): ' + f.base + ' → ' + nuevo + ' pts';
@@ -9683,7 +9691,8 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
             for (var i = 0; i < aplicables.length; i++) {
                 var f = aplicables[i];
                 await setDoc(doc(db, 'pronosticos', jSel, 'jugadores', f.id), {
-                    elOtroAplicado: true, elOtroPendiente: false,
+                    elOtroActivado: true, elOtroAplicado: true, elOtroPendiente: false,
+                    elOtroEquipoUsado: f.equipo,
                     elOtroResultado: f.resultado,
                     elOtroMultiplicador: f.multiplicador,
                     elOtroMarcador: f.marcador,
@@ -9723,6 +9732,17 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
                 })}
             </select>
 
+            {/* Ronda de Primera asociada (editable: por si no coincide el número) */}
+            {jSel && (
+                <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:9}}>
+                    <span style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.6)'}}>Jornada de Primera:</span>
+                    <input type="number" min="1" max="38" value={rondaSel} onChange={function(e){ setRondaSel(e.target.value); }}
+                        placeholder="auto"
+                        style={{width:64,border:'1px solid rgba(0,31,107,0.2)',borderRadius:7,padding:'6px 8px',fontSize:12}} />
+                    <button onClick={function(){ analizar(jSel); }}
+                        style={{border:'none',borderRadius:7,padding:'7px 11px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,cursor:'pointer'}}>RECARGAR</button>
+                </div>
+            )}
             {cargando && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>Consultando resultados de Primera…</p>}
             {infoRonda && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.55)',marginBottom:8}}>🔗 {infoRonda}</p>}
 
@@ -9757,9 +9777,16 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
                         );
                     })}
                 </div>
-                <button onClick={aplicar} disabled={aplicando}
-                    style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,cursor:'pointer'}}>
+                <button onClick={function(){ aplicar(false); }} disabled={aplicando}
+                    style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,cursor:'pointer',marginBottom:6}}>
                     {aplicando ? '⏳ APLICANDO…' : '🛡️ APLICAR MULTIPLICADORES AHORA'}
+                </button>
+                <button onClick={function(){
+                    if (!window.confirm('FORZAR: se aplicará el multiplicador a TODOS los que tengan equipo y resultado, aunque en su pronóstico no figure la marca de "activado".\n\nÚsalo solo si sabes que lo activaron (por ejemplo, activaciones antiguas sin marca).\n\n¿Continuar?')) return;
+                    aplicar(true);
+                }} disabled={aplicando}
+                    style={{width:'100%',border:'1px solid rgba(230,57,70,0.35)',borderRadius:10,padding:'9px 12px',background:'#fff',color:'#e63946',fontFamily:"'Teko',sans-serif",fontSize:11.5,letterSpacing:1,cursor:'pointer'}}>
+                    ⚠️ FORZAR APLICACIÓN (incluye los que no tienen marca)
                 </button>
                 </>
             )}
