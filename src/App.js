@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-23.AR · escudos oficiales sin excepciones';
+const APP_BUILD = 'v2026-08-30.BC · resolver El Otro manual + resumen real';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -6716,11 +6716,24 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                     .map(function(p){ return { ...p, ptsVista: puntosMostrarPronostico(p, jornada, null) }; })
                     .sort(function(a,b) { return (b.ptsVista||0) - (a.ptsVista||0); });
                 var maxPtos = resumenOrdenado.length > 0 ? (resumenOrdenado[0].ptsVista || 0) : 0;
-                var acertaronExacto = participantes.filter(function(p) {
-                    return !p.sinApuesta && parseInt(p.golesLocal) === parseInt(jornada.resultadoLocal) && parseInt(p.golesVisitante) === parseInt(jornada.resultadoVisitante);
-                });
-                var boteJornada = parseFloat(jornada.bote || 0) + participantes.filter(function(p){return !p.sinApuesta;}).length * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL);
-                var premioPorGanador = acertaronExacto.length > 0 ? (boteJornada / acertaronExacto.length).toFixed(2) : '0.00';
+                // 1º el reparto OFICIAL guardado al finalizar (fuente de verdad).
+                // 2º si no existe, se calcula contando SOLO a los contabilizados
+                //    (los que pagaron), no a todo el que apostó.
+                var ganadoresOficiales = Array.isArray(jornada.ganadores) ? jornada.ganadores : null;
+                var acertaronExacto = ganadoresOficiales
+                    ? participantes.filter(function(p) { return ganadoresOficiales.indexOf(p.id) !== -1; })
+                    : participantes.filter(function(p) {
+                        return !p.sinApuesta && !p.noContabilizado &&
+                            parseInt(p.golesLocal) === parseInt(jornada.resultadoLocal) &&
+                            parseInt(p.golesVisitante) === parseInt(jornada.resultadoVisitante);
+                    });
+                var contabilizados = participantes.filter(function(p){ return !p.sinApuesta && !p.noContabilizado; });
+                var boteJornada = jornada.boteTotal !== undefined
+                    ? Number(jornada.boteTotal)
+                    : parseFloat(jornada.bote || 0) + contabilizados.length * (jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL);
+                var premioPorGanador = jornada.premioPorGanador !== undefined
+                    ? Number(jornada.premioPorGanador).toFixed(2)
+                    : (acertaronExacto.length > 0 ? (boteJornada / acertaronExacto.length).toFixed(2) : '0.00');
 
                 return (
                     <div style={{marginTop:20,background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:20}}>
@@ -6729,8 +6742,8 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                         </p>
                         <div style={{display:'flex',gap:16,justifyContent:'center',marginBottom:16}}>
                             <div style={{textAlign:'center'}}>
-                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700'}}>{boteJornada}€</p>
-                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.4)',letterSpacing:1}}>RECAUDADO</p>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700'}}>{Number(boteJornada).toFixed(2)}€</p>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(255,255,255,0.4)',letterSpacing:1}}>RECAUDADO{jornada.jugadoresContabilizados !== undefined ? ' · ' + jornada.jugadoresContabilizados + ' PAGADAS' : ''}</p>
                             </div>
                             {acertaronExacto.length > 0 && (
                                 <div style={{textAlign:'center'}}>
