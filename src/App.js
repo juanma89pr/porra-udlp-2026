@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-01.BN · control manual de El Otro + reset por motor';
+const APP_BUILD = 'v2026-09-01.BO · modo VIP premium + marquesina + bote automatico';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3492,6 +3492,284 @@ const CronometroEstrellasMJ = ({ jornada, user }) => {
 };
 
 // ============================================================================
+// ============================================================================
+// 🏆 MODO VIP — azul metalizado y oro premium
+// ============================================================================
+// Se enciende cuando la jornada marcada como VIP entra en Pre-apertura y se
+// apaga cuando arranca la siguiente. Cambia el tema de TODA la app.
+var PALETA_VIP = {
+    fondoApp: 'linear-gradient(160deg,#0E1B3D 0%,#152449 45%,#0B1530 100%)',
+    fondoTop: 'rgba(14,27,61,0.88)',
+    textoTop: '#E8C34A',
+    hairline: 'rgba(201,162,39,0.28)',
+    iconoMenu: '#C9A227',
+    oro: '#C9A227',
+    oroClaro: '#E8C34A',
+    tarjeta: 'linear-gradient(150deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))',
+    bordeTarjeta: '1px solid rgba(201,162,39,0.3)',
+    textoSuave: '#93A2C8',
+};
+
+// Hook global: ¿estamos en modo VIP ahora mismo? y ¿por qué jornada?
+function useModoVip() {
+    var [vip, setVip] = useState(null);
+    useEffect(function() {
+        var u = onSnapshot(
+            query(collection(db, 'jornadas'), where('esVip', '==', true), orderBy('numeroJornada', 'asc'), limit(20)),
+            function(snap) {
+                var ahora = Date.now();
+                var activa = null;
+                snap.docs.forEach(function(d) {
+                    var j = { id: d.id, ...d.data() };
+                    // VIP visible desde Pre-apertura hasta que la jornada acaba
+                    var estadosVip = ['Pre-apertura', 'Abierta', 'Cerrada', 'En vivo'];
+                    if (estadosVip.indexOf(j.estado) !== -1) { activa = j; return; }
+                    // También si ya está finalizada pero es la última jugada
+                    if (j.estado === 'Finalizada' && getKickoffMs(j) && (ahora - getKickoffMs(j)) < 24 * 3600 * 1000) activa = j;
+                });
+                setVip(activa);
+            }, function(){});
+        return function() { u(); };
+    }, []);
+    return vip;
+}
+
+// ============================================================================
+// 💰 MOTOR DE BOTE ACUMULADO
+// ============================================================================
+// Cuando una jornada se cierra SIN acertantes del marcador exacto, su bote
+// pasa automáticamente a la siguiente jornada pendiente. Antes había que
+// arrastrarlo a mano y se perdía.
+const MotorBoteAcumulado = () => {
+    var hechoRef = useRef({});
+    useEffect(function() {
+        var vivo = true;
+        (async function() {
+            try {
+                var snap = await getDocs(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada'),
+                    orderBy('numeroJornada', 'desc'), limit(6)));
+                for (var i = 0; i < snap.docs.length && vivo; i++) {
+                    var j = { id: snap.docs[i].id, ...snap.docs[i].data() };
+                    if (!j.cierreDefinitivo) continue;           // solo jornadas ya cerradas
+                    if (j.boteTrasladado) continue;              // ya se hizo
+                    var ganadores = Array.isArray(j.ganadores) ? j.ganadores : [];
+                    if (ganadores.length > 0) {                  // hubo acertante: no se acumula
+                        await setDoc(doc(db, 'jornadas', j.id), { boteTrasladado: true }, { merge: true });
+                        continue;
+                    }
+                    var importe = Number(j.boteTotal !== undefined ? j.boteTotal : (j.bote || 0));
+                    if (!(importe > 0)) { await setDoc(doc(db, 'jornadas', j.id), { boteTrasladado: true }, { merge: true }); continue; }
+                    if (hechoRef.current[j.id]) continue;
+                    hechoRef.current[j.id] = true;
+
+                    // Siguiente jornada aún no finalizada
+                    var sig = await getDocs(query(collection(db, 'jornadas'),
+                        where('numeroJornada', '==', Number(j.numeroJornada) + 1), limit(1)));
+                    if (sig.empty) continue;
+                    var jSig = { id: sig.docs[0].id, ...sig.docs[0].data() };
+                    if (jSig.estado === 'Finalizada') continue;
+
+                    await setDoc(doc(db, 'jornadas', jSig.id), {
+                        bote: Number((Number(jSig.bote || 0) + importe).toFixed(2)),
+                        boteHeredadoDe: j.numeroJornada,
+                        boteHeredadoImporte: importe,
+                    }, { merge: true });
+                    await setDoc(doc(db, 'jornadas', j.id), { boteTrasladado: true, boteTrasladadoEn: serverTimestamp() }, { merge: true });
+                    console.log('%c💰 Bote de ' + importe.toFixed(2) + '€ trasladado de J' + j.numeroJornada + ' a J' + jSig.numeroJornada,
+                        'background:#001F6B;color:#FFD700;padding:2px 6px;border-radius:4px');
+                }
+            } catch(e) { /* se reintenta en la siguiente carga */ }
+        })();
+        return function() { vivo = false; };
+    }, []);
+    return null;
+};
+
+// ── Aviso al admin de los botes trasladados solos, para verificarlos ──
+const BotesHeredadosAdmin = ({ jornadas }) => {
+    var conHerencia = (jornadas || []).filter(function(j) { return j.boteHeredadoDe; })
+        .sort(function(a, b) { return (b.numeroJornada || 0) - (a.numeroJornada || 0); });
+    var vipsProgramadas = (jornadas || []).filter(function(j) { return j.esVip && j.estado !== 'Finalizada'; });
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>💰 Botes y jornadas VIP</p>
+            {conHerencia.length === 0 ? (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'rgba(0,31,107,0.5)',margin:'0 0 8px'}}>Sin botes arrastrados por ahora. Cuando una jornada cierre sin acertantes, su bote pasará solo a la siguiente.</p>
+            ) : conHerencia.map(function(j) {
+                return (
+                    <p key={j.id} style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#0f8a61',background:'rgba(16,185,129,0.08)',borderRadius:8,padding:'8px 10px',margin:'0 0 6px',lineHeight:1.5}}>
+                        ✅ <strong>J{j.numeroJornada}</strong> arrastra <strong>{Number(j.boteHeredadoImporte || 0).toFixed(2)} €</strong> de la J{j.boteHeredadoDe}. Bote actual: {Number(j.bote || 0).toFixed(2)} €.
+                    </p>
+                );
+            })}
+            <div style={{background:'rgba(201,162,39,0.1)',border:'1px solid rgba(201,162,39,0.35)',borderRadius:9,padding:'8px 10px',marginTop:4}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,color:'#8a6a00',margin:'0 0 3px'}}>🏆 JORNADAS VIP PROGRAMADAS</p>
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.65)',margin:0,lineHeight:1.5}}>
+                    {vipsProgramadas.length
+                        ? vipsProgramadas.map(function(j){ return 'J' + j.numeroJornada; }).join(' · ') + ' — el tema dorado se enciende solo al llegar a Pre-apertura.'
+                        : 'Ninguna marcada. Activa la casilla VIP en la jornada que quieras y el tema premium se aplicará solo.'}
+                </p>
+            </div>
+        </div>
+    );
+};
+
+// ── Rótulo de avisos con acceso, solo en Mi Jornada ──
+const RotuloAvisosMJ = ({ jornada, user, misEstrellas, pagada, onIr }) => {
+    var avisos = [];
+    if (jornada) {
+        var bote = Number(jornada.bote || 0);
+        if (bote > 0) avisos.push({ ic:'💰', t:'Bote acumulado de ' + bote.toFixed(2) + ' €' + (jornada.boteHeredadoDe ? ' (viene de la J' + jornada.boteHeredadoDe + ')' : ''), d:null });
+        if (!pagada && jornada.estado === 'Abierta') avisos.push({ ic:'💳', t:'Te falta pagar esta jornada', d:'pagos' });
+        if (misEstrellas !== null && misEstrellas < 5) avisos.push({ ic:'⭐', t:'Aún no has elegido tus 5 Estrellas', d:'estrellas' });
+    }
+    if (!avisos.length) return null;
+    return (
+        <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:14,overflow:'hidden',marginBottom:12}}>
+            {avisos.map(function(a, i) {
+                return (
+                    <div key={i} onClick={function(){ if (a.d && onIr) onIr(a.d); }}
+                        style={{display:'flex',alignItems:'center',gap:10,padding:'10px 13px',
+                            borderBottom: i < avisos.length - 1 ? '1px solid rgba(0,31,107,0.05)' : 'none',
+                            cursor: a.d ? 'pointer' : 'default'}}>
+                        <span style={{fontSize:15,flexShrink:0}}>{a.ic}</span>
+                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B'}}>{a.t}</span>
+                        {a.d && <span style={{fontSize:13,color:'rgba(0,31,107,0.3)'}}>›</span>}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+// ── Cabecera VIP: insignia con el baremo doble y el precio ──
+const CabeceraVip = ({ jornada }) => {
+    if (!jornada) return null;
+    return (
+        <div style={{background:'linear-gradient(160deg,#0E1B3D,#152449 45%,#0B1530)',
+            border:'1px solid ' + PALETA_VIP.oro, borderRadius:16, padding:'16px 14px', marginBottom:14,
+            textAlign:'center', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 22px rgba(0,0,0,0.25)'}}>
+            <div style={{display:'inline-block', border:'1px solid ' + PALETA_VIP.oro, borderRadius:20,
+                padding:'3px 15px', marginBottom:9, background:'rgba(201,162,39,0.1)'}}>
+                <span style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:4,color:PALETA_VIP.oroClaro}}>JORNADA VIP</span>
+            </div>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:27,fontWeight:700,color:PALETA_VIP.oroClaro,
+                letterSpacing:2,margin:'0 0 3px',textShadow:'0 1px 2px rgba(0,0,0,0.4)'}}>TODO VALE DOBLE</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:PALETA_VIP.textoSuave,margin:0}}>
+                Marcador exacto <strong style={{color:PALETA_VIP.oroClaro}}>6 pts</strong> · 1X2 <strong style={{color:PALETA_VIP.oroClaro}}>4 pts</strong> · apuesta <strong style={{color:PALETA_VIP.oroClaro}}>{APUESTA_VIP.toFixed(2)} €</strong>
+            </p>
+        </div>
+    );
+};
+
+// ============================================================================
+// 📢 MARQUESINA — avisos rotatorios discretos
+// ============================================================================
+// Franja fina que aparece unos segundos, desliza el mensaje, se desvanece y
+// vuelve más tarde con el siguiente. Solo muestra lo que aplica a esa persona.
+const MarquesinaAvisos = ({ user, onIr }) => {
+    var [avisos, setAvisos] = useState([]);
+    var [idx, setIdx] = useState(0);
+    var [visible, setVisible] = useState(false);
+    var [jornadaAct, setJornadaAct] = useState(null);
+    var [misEstrellas, setMisEstrellas] = useState(null);
+    var [rifa, setRifa] = useState(null);
+    var [pagosU, setPagosU] = useState([]);
+
+    useEffect(function() {
+        var u1 = onSnapshot(query(collection(db, 'jornadas'), where('estado', 'in', ['Abierta','En vivo']), limit(1)),
+            function(s) { setJornadaAct(s.empty ? null : { id: s.docs[0].id, ...s.docs[0].data() }); }, function(){});
+        var u2 = onSnapshot(collection(db, 'rifas'), function(s) {
+            var vend = null; var ahora = Date.now();
+            s.forEach(function(d) {
+                var r = { id: d.id, ...d.data() }; var e = r.estado;
+                var abierta = (e !== 'entregada' && e !== 'cerrada') && (e === 'abierta' || e === 'activa' || !e || (e === 'programada' && Number(r.aperturaEn||0) <= ahora));
+                if (abierta && !vend) vend = r;
+            });
+            setRifa(vend);
+        }, function(){});
+        var u3 = onSnapshot(collection(db, 'pagos'), function(s) {
+            setPagosU(s.docs.map(function(d){ return d.data() || {}; }).filter(function(p){ return p.jugador === user; }));
+        }, function(){});
+        return function() { u1(); u2(); u3(); };
+    }, [user]);
+
+    useEffect(function() {
+        if (!jornadaAct || !user) { setMisEstrellas(null); return; }
+        var u = onSnapshot(doc(db, 'estrellas_seleccion', jornadaAct.id, 'jugadores', user),
+            function(s) { setMisEstrellas(s.exists() ? ((s.data().jugadores || []).length) : 0); }, function(){ setMisEstrellas(0); });
+        return function() { u(); };
+    }, [jornadaAct, user]);
+
+    // Construir la lista de avisos relevantes
+    useEffect(function() {
+        var lista = [];
+        if (jornadaAct) {
+            var bote = Number(jornadaAct.bote || 0);
+            if (bote > 0) lista.push({ icono: '💰', texto: 'Bote acumulado de ' + bote.toFixed(2) + ' € en juego esta jornada', ir: 'miJornada' });
+            if (jornadaAct.esVip) lista.push({ icono: '🏆', texto: 'JORNADA VIP: todo vale doble y la apuesta son ' + APUESTA_VIP.toFixed(2) + ' €', ir: 'miJornada' });
+
+            var cierre = getHorariosJornada(jornadaAct);
+            if (cierre && jornadaAct.estado === 'Abierta') {
+                var quedan = cierre.cierre - Date.now();
+                if (quedan > 0 && quedan < 24 * 3600 * 1000) {
+                    lista.push({ icono: '⏱️', texto: 'Las apuestas cierran en ' + formatearCuentaAtras(quedan), ir: 'miJornada' });
+                }
+            }
+            var cierreEst = getCierreEstrellasMs(jornadaAct);
+            if (misEstrellas !== null && misEstrellas < 5 && cierreEst && Date.now() < cierreEst) {
+                lista.push({ icono: '⭐', texto: 'Te faltan tus 5 Estrellas · quedan ' + formatearCuentaAtras(cierreEst - Date.now()), ir: 'estrellas' });
+            }
+            // Pago de la jornada
+            var numJ = String(jornadaAct.numeroJornada || '');
+            var pagada = pagosU.some(function(p) {
+                if (p.tipo !== 'jornada_normal' && p.tipo !== 'jornada_vip') return false;
+                if (!pagoCuentaComoValido(p) && !pagoEstaConfirmado(p)) return false;
+                return (p.jornada || '').toString().toUpperCase().replace(/[^0-9]/g, '') === numJ;
+            });
+            if (!pagada && jornadaAct.estado === 'Abierta') {
+                lista.push({ icono: '💳', texto: 'Aún no has pagado esta jornada — sin pago tu porra no cuenta', ir: 'pagos' });
+            }
+        }
+        if (rifa && rifa.numeroGanador === undefined) {
+            var vendidas = Number(rifa.papeletasVendidas || 0);
+            var total = Number(rifa.totalPapeletas || 100);
+            if (vendidas < total) lista.push({ icono: '🎟️', texto: 'Rifa activa: quedan ' + (total - vendidas) + ' números libres', ir: 'rifas' });
+        }
+        setAvisos(lista);
+        setIdx(0);
+    }, [jornadaAct, misEstrellas, rifa, pagosU]);
+
+    // Ciclo: aparece 7 s, descansa 6 s, siguiente aviso
+    useEffect(function() {
+        if (!avisos.length) { setVisible(false); return; }
+        var t1 = setTimeout(function() { setVisible(true); }, 1200);
+        var t2 = setTimeout(function() { setVisible(false); }, 8200);
+        var t3 = setTimeout(function() { setIdx(function(i) { return (i + 1) % avisos.length; }); }, 14000);
+        return function() { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    }, [avisos, idx]);
+
+    if (!avisos.length) return null;
+    var a = avisos[idx] || avisos[0];
+
+    return (
+        <div style={{height: visible ? 32 : 0, overflow:'hidden', transition:'height .45s ease', flexShrink:0}}>
+            <div onClick={function(){ if (onIr && a.ir) onIr(a.ir); }}
+                style={{height:32, display:'flex', alignItems:'center', gap:8, padding:'0 14px', cursor:'pointer',
+                    background:'rgba(0,31,107,0.06)', borderTop:'1px solid rgba(0,31,107,0.1)', borderBottom:'1px solid rgba(0,31,107,0.1)',
+                    opacity: visible ? 1 : 0, transition:'opacity .4s ease', overflow:'hidden'}}>
+                <span style={{fontSize:13, flexShrink:0}}>{a.icono}</span>
+                <div style={{flex:1, overflow:'hidden'}}>
+                    <p style={{fontFamily:"'Inter',sans-serif", fontSize:11.5, color:'rgba(0,31,107,0.7)', margin:0,
+                        whiteSpace:'nowrap', animation:'deslizarAviso 9s linear'}}>{a.texto}</p>
+                </div>
+                <span style={{fontSize:11, color:'rgba(0,31,107,0.35)', flexShrink:0}}>›</span>
+            </div>
+            <style>{'@keyframes deslizarAviso{0%{transform:translateX(14px);opacity:0;}8%{transform:translateX(0);opacity:1;}88%{transform:translateX(0);opacity:1;}100%{transform:translateX(-10px);opacity:0;}}'}</style>
+        </div>
+    );
+};
+
 // ⚙️ MOTOR DE ESTADOS DE JORNADA — automático, con la hora oficial de la API
 // ============================================================================
 // Todas las horas salen de UNA sola: el saque oficial (getKickoffMs, que
@@ -4605,7 +4883,11 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         return (
             <div style={{paddingBottom:40}}>
                 <h2 style={{fontFamily:"'Teko',sans-serif",fontSize:22,letterSpacing:3,color:G.deepBlue,textTransform:'uppercase',marginBottom:12,fontWeight:700}}>MI JORNADA</h2>
+                {jornada && jornada.esVip && <CabeceraVip jornada={jornada} />}
                 <CuentaAtrasJornada jornada={jornada} />
+                <RotuloAvisosMJ jornada={jornada} user={user}
+                    misEstrellas={null} pagada={pagoJornadaHecho(jornada) || !!autoPagoInfo}
+                    onIr={function(d){ if (d === 'pagos' && onIrAPagos) onIrAPagos(); }} />
                 <CronometroEstrellasMJ jornada={jornada} user={user} />
                 <PlazosCard tipo="porra" />
 
@@ -13322,6 +13604,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'jornadas' && (
                 <div>
+                    {/* 💰 Botes trasladados automáticamente */}
+                    <BotesHeredadosAdmin jornadas={jornadas} />
+
                     {/* ⚙️ Horarios y estados automáticos */}
                     <HorariosJornadaAdmin jornadas={jornadas} />
 
@@ -17091,11 +17376,15 @@ function App() {
             return nuevo;
         });
     };
-    const TEMA = tema === 'oscuro'
+    // El modo VIP manda sobre claro/oscuro mientras esté activo.
+    const jornadaVipActiva = useModoVip();
+    const TEMA = jornadaVipActiva
+        ? PALETA_VIP
+        : (tema === 'oscuro'
         ? { fondoApp: 'linear-gradient(160deg,#080e24 0%,#0a1228 100%)', fondoTop: 'rgba(10,15,35,0.75)',
             textoTop: '#f0f0f0', hairline: 'rgba(255,255,255,0.08)', iconoMenu: '#FFD700' }
         : { fondoApp: 'linear-gradient(160deg,#f8f9ff 0%,#eef1fa 100%)', fondoTop: 'rgba(255,255,255,0.7)',
-            textoTop: '#001F6B', hairline: 'rgba(0,31,107,0.08)', iconoMenu: '#001F6B' };
+            textoTop: '#001F6B', hairline: 'rgba(0,31,107,0.08)', iconoMenu: '#001F6B' });
 
     // ── Estilos globales y estado RTDB público al arrancar ──────────────
     useEffect(() => {
@@ -17315,6 +17604,9 @@ function App() {
                 jornadas solo, según la hora oficial del partido. */}
             <MotorEstadosJornada esAdmin={currentUser === 'Juanma'} />
 
+            {/* 💰 Traslado automático del bote cuando nadie acierta */}
+            <MotorBoteAcumulado />
+
             {/* Tutorial épico — primera vez en la temporada */}
             {showTutorial && <TutorialEpico user={currentUser} plantilla={plantillaConFotos} onClose={function() { setShowTutorial(false); setActiveTab('perfil'); }} />}
 
@@ -17347,6 +17639,9 @@ function App() {
                     </div>
                 </div>
             </div>
+
+            {/* 📢 Marquesina de avisos: discreta y rotatoria */}
+            <MarquesinaAvisos user={currentUser} onIr={function(destino){ setActiveTab(destino); }} />
 
             {/* ── CONTENIDO PRINCIPAL ── */}
             <div style={{ position: 'absolute', top: 62, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px' }}>
