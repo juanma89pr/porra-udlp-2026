@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-01.BH · motor unico de puntos';
+const APP_BUILD = 'v2026-09-01.BK · emparejado y local/visitante correctos';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -143,6 +143,14 @@ function getKickoffMs(j) {
     }
     var offsetH = enVerano ? 1 : 0;   // Canarias: WEST(+1) en verano, WET(0) en invierno
     return Date.UTC(anio, mes - 1, dia, hh - offsetH, mm, 0);
+}
+
+// Fecha del partido en formato ISO, SIEMPRE desde la fuente única (getKickoffMs).
+// Cualquier búsqueda o cálculo que necesite "la fecha del partido" debe usar
+// esta función, nunca jornada.fecha en crudo.
+function getFechaPartidoISO(j) {
+    var ms = getKickoffMs(j);
+    return ms ? new Date(ms).toISOString() : null;
 }
 
 function getCierreEstrellasMs(j) {
@@ -626,12 +634,7 @@ const calculateProvisionalPoints = (pronostico, liveData, jornada) => {
         ptos += esVip ? 4 : 2;
     }
 
-    const golReal = (liveData.primerGoleador || '').trim().toLowerCase();
-    const golAp = (pronostico.goleador || '').trim().toLowerCase();
-    if (gL > 0 || gV > 0 || golReal === "sg") {
-        if (pronostico.sinGoleador && golReal === "sg") ptos += 1;
-        else if (!pronostico.sinGoleador && golAp !== "" && golAp === golReal && golReal !== "sg") ptos += esVip ? 4 : 2;
-    }
+    // Goleador suprimido: ya no suma en vivo.
     return ptos;
 };
 
@@ -1089,13 +1092,50 @@ function setLogosManualCache(mapa) { LOGOS_MANUAL_CACHE = mapa || {}; }
 
 // Normaliza nombres para emparejar "Girona" con "Girona FC", "UD Almería" con
 // "Almeria", etc.: sin acentos, sin prefijos/sufijos de club y en minúsculas.
+// OJO con lo que se quita aquí: "real" y "deportivo" NO se eliminan porque
+// distinguen clubes (Real Madrid vs Atlético Madrid, RC Deportivo vs Deportivo
+// Alavés). Quitarlos provocaba que "Real Madrid" quedara en "madrid" y se
+// emparejara con "atleticomadrid" — el fallo que daba a Pedrito el partido
+// del Atlético en vez del suyo.
 function normalizarNombreEquipo(n) {
     return String(n || '')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
-        .replace(/\b(cf|fc|cd|ud|sd|ad|rc|rcd|club|deportivo|balompie|de|real)\b/g, '')
+        .replace(/\b(cf|fc|cd|ud|sd|ad|rcd|rc|club)\b/g, '')
+        // "de" y "del" son conectores: "Atlético de Madrid" = "Atletico Madrid",
+        // "Celta de Vigo" = "Celta Vigo". Se quitan SIEMPRE para que la forma
+        // larga y la corta del mismo club coincidan.
+        .replace(/\b(de|del)\b/g, '')
         .replace(/[^a-z0-9]/g, '')
         .trim();
+}
+
+// ¿Jugaba en casa? Comparación simétrica y sin ambigüedad.
+function equipoEsLocal(equipo, nombreLocal) {
+    var e = normalizarNombreEquipo(equipo), l = normalizarNombreEquipo(nombreLocal);
+    if (!e || !l) return false;
+    return e === l || l.indexOf(e) !== -1 || e.indexOf(l) !== -1;
+}
+
+// Empareja el nombre de un equipo con una lista de partidos SIN falsos
+// positivos: primero busca coincidencia exacta y solo si no la hay acepta una
+// parcial, y únicamente cuando es la ÚNICA candidata posible.
+function emparejarEquipoEnPartidos(equipo, partidos, campoLocal, campoVisitante) {
+    var e = normalizarNombreEquipo(equipo);
+    if (!e || !partidos || !partidos.length) return null;
+    var cl = campoLocal || 'local', cv = campoVisitante || 'visitante';
+    // 1) Exacto
+    var exacto = partidos.find(function(x) {
+        return normalizarNombreEquipo(x[cl]) === e || normalizarNombreEquipo(x[cv]) === e;
+    });
+    if (exacto) return exacto;
+    // 2) Parcial, pero solo si hay UNA sola candidata (evita Madrid ↔ Atlético)
+    var candidatas = partidos.filter(function(x) {
+        var l = normalizarNombreEquipo(x[cl]), v = normalizarNombreEquipo(x[cv]);
+        return (l && (l.indexOf(e) !== -1 || e.indexOf(l) !== -1)) ||
+               (v && (v.indexOf(e) !== -1 || e.indexOf(v) !== -1));
+    });
+    return candidatas.length === 1 ? candidatas[0] : null;
 }
 
 function buscarLogoEnMapa(nombre, mapa) {
@@ -2437,7 +2477,7 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
                     }).slice(0,5);
                 if (activo) setTopEstrellas(est);
 
-                var partidos = await buscarJornadaCompletaPrimera(fechaAString(jornada.fecha) || new Date().toISOString(), 7);
+                var partidos = await buscarJornadaCompletaPrimera(fechaAString(getFechaPartidoISO(jornada) || new Date().toISOString()), 7);
                 if (activo) setPartidosPrimera(partidos || []);
 
                 if (p && p.elOtroActivado && p.elOtroFixtureId && p.elOtroEquipoUsado && API_FOOTBALL_KEY) {
@@ -3269,7 +3309,7 @@ const BoletoPagoJornada = ({ jornada, user, pronostico, elOtroActivado, onCerrar
                 <div style={{padding:'14px 16px'}}>
                     <div style={{background:'rgba(0,31,107,0.04)',borderRadius:12,padding:'10px 12px',marginBottom:10}}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#001F6B',margin:'0 0 2px'}}>{jornada.equipoLocal} {pronostico.golesLocal} – {pronostico.golesVisitante} {jornada.equipoVisitante}</p>
-                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)',margin:0}}>1X2: <strong>{pronostico.resultado1x2}</strong>{pronostico.goleador ? ' · Goleador: ' + pronostico.goleador : ''}{elOtroActivado ? ' · 🛡️ El Otro activado' : ''}</p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.6)',margin:0}}>1X2: <strong>{pronostico.resultado1x2}</strong>{elOtroActivado ? ' · 🛡️ El Otro activado' : ''}</p>
                     </div>
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.7,marginBottom:10}}>
                         Para que tu apuesta CUENTE, haz el <strong>Bizum de {importe.toFixed(2)}€</strong>{bizumCfg && bizumCfg.telefono ? <span> al <strong>{bizumCfg.telefono}</strong>{bizumCfg.titular ? ' (' + bizumCfg.titular + ')' : ''}</span> : ''} con concepto <strong>"J{jornada.numeroJornada} · {user}"</strong> antes del cierre.
@@ -3948,7 +3988,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     encontrado = cerca.find(function(p) { return Math.abs(new Date(p.fixture.date).getTime() - Date.now()) < 36 * 3600 * 1000; }) || null;
                 }
                 if (!encontrado) {
-                    var porFecha = await pedir('league=141&season=2026&date=' + encodeURIComponent(fechaAString(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP);
+                    var porFecha = await pedir('league=141&season=2026&date=' + encodeURIComponent(fechaAString(getFechaPartidoISO(jornada))) + '&team=' + API_TEAM_ID_UDLP);
                     if (porFecha.length) encontrado = porFecha[0];
                 }
                 // Autocurar la jornada: si le faltaba el fixtureId, se guarda
@@ -4143,7 +4183,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     useEffect(function() {
         if (!miElOtro || !miElOtro.equipo || !jornada) { setPartidoOtro(null); return; }
         setCargandoPartidoOtro(true);
-        buscarPartidoPrimera(miElOtro.equipo, fechaAString(jornada.fecha)).then(function(p) {
+        buscarPartidoPrimera(miElOtro.equipo, fechaAString(getFechaPartidoISO(jornada))).then(function(p) {
             setPartidoOtro(p);
             setCargandoPartidoOtro(false);
         }).catch(function() { setCargandoPartidoOtro(false); });
@@ -4155,7 +4195,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var [primerPartidoPrimera, setPrimerPartidoPrimera] = useState(null);
     var [rondaPrimeraVigente, setRondaPrimeraVigente] = useState(null);
     useEffect(function() {
-        var refBusqueda = jornada && (jornada.fechaPartido || jornada.fecha) ? (jornada.fechaPartido || jornada.fecha) : new Date().toISOString();
+        var refBusqueda = getFechaPartidoISO(jornada) || new Date().toISOString();
         buscarJornadaCompletaPrimera(refBusqueda, 6).then(function(partidos) {
             if (!partidos || !partidos.length) return;
             var ahoraMs = Date.now();
@@ -4178,9 +4218,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             // La ronda correcta es la MÁS CERCANA en el tiempo al partido de la
             // UDLP de esta jornada (no "la próxima desde hoy", que se iba
             // varias jornadas por delante cuando había parón o desfase).
-            var refMs = jornada && (jornada.fechaPartido || jornada.fecha)
-                ? new Date(jornada.fechaPartido || jornada.fecha).getTime()
-                : ahoraMs;
+            var refMs = getKickoffMs(jornada) || ahoraMs;
             if (isNaN(refMs)) refMs = ahoraMs;
             var vigente = candidatas.slice().sort(function(a, b) {
                 return Math.abs(a.inicioMs - refMs) - Math.abs(b.inicioMs - refMs);
@@ -4522,7 +4560,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 {/* ⭐ Recordatorio: Estrellas = premio de final de temporada */}
                 {jornada && jornada.estado === 'Abierta' && (function(){
                     var limite = '';
-                    var fRef = jornada.fechaPartido || jornada.fecha;
+                    var fRef = getFechaPartidoISO(jornada);
                     if (fRef) {
                         try {
                             var f = new Date(fRef);
@@ -4587,7 +4625,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                         onError={function(e){e.target.src='https://placehold.co/60x60/001F6B/FFD700?text=' + encodeURIComponent((jornada.equipoVisitante||'?').substring(0,3));}} />
                 </div>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.35)'}}>
-                    {jornada.estadio} · {formatearFechaJornada(jornada.fecha)}
+                    {jornada.estadio} · {formatearFechaJornada(getFechaPartidoISO(jornada) || jornada.fecha)}
                 </p>
                 {timeLeft && timeLeft !== 'CERRADO' && (
                     <div style={{marginTop:12,display:'flex',alignItems:'center',gap:8}}>
@@ -5833,7 +5871,7 @@ const BannerPlazasLibres = () => {
     if (plazas === null || plazas <= 0) return null;
     var textoWa = '⚽ ¡Se buscan jugadores para la PORRA UDLP 26/27! Quedan ' + plazas + ' plaza' + (plazas === 1 ? '' : 's') +
         (equiposLibres ? ' y ' + equiposLibres + ' equipos de Primera SIN DUEÑO para elegir' : '') +
-        '. Resultado + goleador de cada jornada, premios, rifas y liga de estrellas. Pide tu plaza aquí 👉 https://porra2026.netlify.app';
+        '. Acierta el resultado de cada jornada, premios, rifas y liga de estrellas. Pide tu plaza aquí 👉 https://porra2026.netlify.app';
 
     return (
         <div style={{background:'linear-gradient(135deg,#001F6B,#0035b8)',border:'1px solid rgba(255,215,0,0.4)',borderRadius:16,padding:'14px 16px',marginBottom:14,boxShadow:'0 6px 20px rgba(0,31,107,0.25)'}}>
@@ -6088,7 +6126,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     // defecto — cambia en cada render, el useEffect que depende de esta
     // variable se re-dispara en bucle y la pantalla refetchea y "salta"
     // constantemente. El valor por defecto se resuelve DENTRO del efecto.
-    var fechaJornadaLJ = jornada && jornada.fecha ? fechaAString(jornada.fecha) : '';
+    var fechaJornadaLJ = jornada ? fechaAString(getFechaPartidoISO(jornada) || jornada.fecha) : '';
     var fixtureIdLJ = jornada && jornada.fixtureId ? jornada.fixtureId : null;
 
     useEffect(function() {
@@ -6302,7 +6340,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,0.42)',marginBottom:16}}>
                     {(detalleFixtureActual && detalleFixtureActual.fixture && detalleFixtureActual.fixture.date)
                         ? new Date(detalleFixtureActual.fixture.date).toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})
-                        : formatearFechaJornada(jornada.fechaPartido || jornada.fecha)}
+                        : formatearFechaJornada(getFechaPartidoISO(jornada) || jornada.fecha)}
                     {jornada.estadio ? ' · '+jornada.estadio : ''}
                 </p>
                 {/* Marcador con escudos */}
@@ -8464,7 +8502,7 @@ async function cerrarJornadaDefinitivamenteAdmin(jornadaId) {
         if(p.elOtroActivado && !p.elOtroAplicado) hayOtroPendiente=true;
     });
     if(hayOtroPendiente){
-        var estadoPrimera=await comprobarCierrePrimeraJornada(fechaAString(jornada.fecha));
+        var estadoPrimera=await comprobarCierrePrimeraJornada(fechaAString(getFechaPartidoISO(jornada) || jornada.fecha));
         if(!estadoPrimera.ok) return {ok:false,pendientes:estadoPrimera.pendientes,motivo:'primera_sin_terminar'};
     }
 
@@ -8629,11 +8667,7 @@ async function resolverElOtroPendienteJornada(jornada) {
     if (!partidosRonda.length) throw new Error('La API no devolvió partidos de la jornada ' + numRonda + ' de Primera.');
 
     var buscarPartidoDe = function(equipo) {
-        var e = normalizarNombreEquipo(equipo);
-        return partidosRonda.find(function(x){
-            var l = normalizarNombreEquipo(x.nombreLocal), v = normalizarNombreEquipo(x.nombreVisitante);
-            return l === e || v === e || l.indexOf(e) !== -1 || e.indexOf(l) !== -1 || v.indexOf(e) !== -1 || e.indexOf(v) !== -1;
-        }) || null;
+        return emparejarEquipoEnPartidos(equipo, partidosRonda, 'nombreLocal', 'nombreVisitante');
     };
     var cache = {};
     var todosFinalizados = true;
@@ -8651,8 +8685,7 @@ async function resolverElOtroPendienteJornada(jornada) {
         var equipoUsado = p.elOtroEquipoUsado || (usuariosOtro[d.id] && usuariosOtro[d.id].equipo);
         var fx=cache[d.id];
         if (!fx || !fx.finalizado) { siguenPendientes++; return; }
-        var local=nombresSonSimilares(fx.nombreLocal,equipoUsado) ||
-            normalizarNombreEquipo(fx.nombreLocal) === normalizarNombreEquipo(equipoUsado);
+        var local=equipoEsLocal(equipoUsado, fx.nombreLocal);
         var gf=local?fx.golesLocal:fx.golesVisitante;
         var gc=local?fx.golesVisitante:fx.golesLocal;
         var resultado=gf>gc?'gana':gf<gc?'pierde':'empate';
@@ -8940,13 +8973,7 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
                     ptosJornada += esVip ? 4 : 2;
                 }
 
-                // 3. GOLEADOR
-                const golAp = (p.goleador || '').trim().toLowerCase();
-                if (resL > 0 || resV > 0 || golReal === "sg") {
-                    if (p.sinGoleador && golReal === "sg") { ptosGol += 1; } 
-                    else if (!p.sinGoleador && golAp !== "" && golAp === golReal && golReal !== "sg") { ptosGol += esVip ? 4 : 2; }
-                }
-                ptosJornada += ptosGol;
+                // 3. GOLEADOR: SUPRIMIDO — ya no otorga puntos.
 
                 // 4. El Otro queda pendiente hasta el cierre total de Primera.
                 var puntosBaseSinOtro = ptosJornada;
@@ -9580,7 +9607,7 @@ function calcularBasePronosticoJornada(p, jornada) {
     var resL = Number(jornada.resultadoLocal);
     var resV = Number(jornada.resultadoVisitante);
     if (isNaN(resL) || isNaN(resV)) return { base: 0, exacto: 0, goleador: 0 };
-    var ptos = 0, ptosExacto = 0, ptosGol = 0;
+    var ptos = 0, ptosExacto = 0;
 
     // 1 · Marcador exacto
     if (parseInt(p.golesLocal) === resL && parseInt(p.golesVisitante) === resV) {
@@ -9595,15 +9622,9 @@ function calcularBasePronosticoJornada(p, jornada) {
     else rReal = resL > resV ? 'gana' : (resL < resV ? 'pierde' : 'empate');
     if (check1x2(p.resultado1x2, rReal, jornada.tipoPartido, jornada.desenlace)) ptos += esVip ? 4 : 2;
 
-    // 3 · Goleador
-    var golReal = (jornada.primerGoleador || '').trim().toLowerCase();
-    var golAp = (p.goleador || '').trim().toLowerCase();
-    if (resL > 0 || resV > 0 || golReal === 'sg') {
-        if (p.sinGoleador && golReal === 'sg') ptosGol = 1;
-        else if (!p.sinGoleador && golAp !== '' && golAp === golReal && golReal !== 'sg') ptosGol = esVip ? 4 : 2;
-    }
-    ptos += ptosGol;
-    return { base: ptos, exacto: ptosExacto, goleador: ptosGol };
+    // 3 · Goleador: SUPRIMIDO de la porra. Se mantiene el campo a 0 para no
+    //     romper datos antiguos, pero ya no otorga ni resta puntos.
+    return { base: ptos, exacto: ptosExacto, goleador: 0 };
 }
 
 // ============================================================================
@@ -9686,11 +9707,7 @@ async function recalcularPuntosOficial(onLog) {
         return cacheRondas[num];
     };
     var partidoDe = function(lista, equipo) {
-        var e = normalizarNombreEquipo(equipo);
-        return (lista || []).find(function(x) {
-            var l = normalizarNombreEquipo(x.local), v = normalizarNombreEquipo(x.visitante);
-            return l === e || v === e || l.indexOf(e) !== -1 || e.indexOf(l) !== -1 || v.indexOf(e) !== -1 || e.indexOf(v) !== -1;
-        }) || null;
+        return emparejarEquipoEnPartidos(equipo, lista, 'local', 'visitante');
     };
 
     var leerEstrellasDocs = function(docs) {
@@ -9733,8 +9750,7 @@ async function recalcularPuntosOficial(onLog) {
                 var equipo = p.elOtroEquipoUsado || (fichasOtro[uid] && fichasOtro[uid].equipo);
                 var fx = equipo ? partidoDe(ronda, equipo) : null;
                 if (fx && fx.fin && fx.gl !== null && fx.gl !== undefined) {
-                    var esLocal = normalizarNombreEquipo(fx.local) === normalizarNombreEquipo(equipo) ||
-                        normalizarNombreEquipo(fx.local).indexOf(normalizarNombreEquipo(equipo)) !== -1;
+                    var esLocal = equipoEsLocal(equipo, fx.local);
                     var gf = esLocal ? fx.gl : fx.gv, gc = esLocal ? fx.gv : fx.gl;
                     resultadoOtro = gf > gc ? 'gana' : (gf < gc ? 'pierde' : 'empate');
                     multOtro = Number(p.elOtroMultiplicador || (fichasOtro[uid] && fichasOtro[uid].multiplicadorActual) || 2);
@@ -9918,15 +9934,11 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
                 var equipo = p.elOtroEquipoUsado || eq.equipo || null;
                 if (!equipo) return;
                 // Buscar su partido en esa ronda
-                var suPartido = deLaRonda.find(function(x) {
-                    var l = normalizarNombreEquipo(x.local || ''), v = normalizarNombreEquipo(x.visitante || ''), e = normalizarNombreEquipo(equipo);
-                    return l === e || v === e || l.indexOf(e) !== -1 || e.indexOf(l) !== -1 || v.indexOf(e) !== -1 || e.indexOf(v) !== -1;
-                });
+                var suPartido = emparejarEquipoEnPartidos(equipo, deLaRonda, 'local', 'visitante');
                 var resultado = null, marcador = '';
                 var terminado = suPartido && ['FT','AET','PEN'].indexOf(suPartido.estadoCorto) !== -1;
                 if (suPartido && terminado && suPartido.golesLocal !== null && suPartido.golesLocal !== undefined) {
-                    var esLocal = normalizarNombreEquipo(suPartido.local).indexOf(normalizarNombreEquipo(equipo)) !== -1 ||
-                                  normalizarNombreEquipo(equipo).indexOf(normalizarNombreEquipo(suPartido.local)) !== -1;
+                    var esLocal = equipoEsLocal(equipo, suPartido.local);
                     var gf = esLocal ? suPartido.golesLocal : suPartido.golesVisitante;
                     var gc = esLocal ? suPartido.golesVisitante : suPartido.golesLocal;
                     resultado = gf > gc ? 'gana' : (gf < gc ? 'pierde' : 'empate');
@@ -12818,7 +12830,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
         setSincronizando(true); setMsgSync('Consultando API-Football...');
         try {
             // season=2026 confirmado directamente en el panel de API-Football.
-            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + encodeURIComponent(fechaAString(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
+            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + encodeURIComponent(fechaAString(getFechaPartidoISO(jornada))) + '&team=' + API_TEAM_ID_UDLP;
             var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
             var data = await res.json();
             if (data.response && data.response.length > 0) {
@@ -15163,7 +15175,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                 );
             })()}
 
-            <PlazosCard tipo="estrellas" fechaPartidoUDLP={jornadaActual ? (jornadaActual.fechaPartido || jornadaActual.fecha) : null} />
+            <PlazosCard tipo="estrellas" fechaPartidoUDLP={getFechaPartidoISO(jornadaActual)} />
 
             {/* ── Pestañas de navegación ── */}
             <div style={{display:'flex',gap:5,marginBottom:16,overflowX:'auto',paddingBottom:2}}>
@@ -15221,7 +15233,7 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
                     )}
                     {jornadaActual.estado === 'Abierta' && (function(){
                         var limite = '';
-                        var fRef = jornadaActual.fechaPartido || jornadaActual.fecha;
+                        var fRef = getFechaPartidoISO(jornadaActual);
                         if (fRef) {
                             try {
                                 var f = new Date(fRef);
