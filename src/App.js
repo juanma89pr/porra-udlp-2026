@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-01.BL · anular El Otro + pantalla reestructurada';
+const APP_BUILD = 'v2026-09-01.BN · control manual de El Otro + reset por motor';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3491,6 +3491,162 @@ const CronometroEstrellasMJ = ({ jornada, user }) => {
     );
 };
 
+// ============================================================================
+// ⚙️ MOTOR DE ESTADOS DE JORNADA — automático, con la hora oficial de la API
+// ============================================================================
+// Todas las horas salen de UNA sola: el saque oficial (getKickoffMs, que
+// prioriza el kickoffUTC de la API). A partir de ahí:
+//
+//   Apertura   = saque − 72 h   (patrón fijo; el admin puede fijar otra a mano)
+//   Cierre     = saque − 5 min
+//   En vivo    = hora del saque
+//   Finalizada = la marca el admin o la sincronización cuando la API da FT
+//
+// Reglas de seguridad:
+//   · Nunca retrocede de estado (de "En vivo" no vuelve a "Abierta").
+//   · Si el admin fija un estado a mano, se respeta hasta la siguiente
+//     transición natural hacia adelante.
+//   · Si la jornada no tiene hora fiable, no se toca nada.
+var MINUTOS_CIERRE_ANTES = 5;
+var HORAS_APERTURA_ANTES = 72;
+
+var ORDEN_ESTADOS = ['Próximamente', 'Pre-apertura', 'Abierta', 'Cerrada', 'En vivo', 'Finalizada'];
+
+function getHorariosJornada(j) {
+    var saque = getKickoffMs(j);
+    if (!saque) return null;
+    var apertura = j && j.aperturaManualMs ? Number(j.aperturaManualMs)
+        : (j && j.fechaApertura ? msDesdeFecha(j.fechaApertura) : null);
+    if (!apertura) apertura = saque - HORAS_APERTURA_ANTES * 3600 * 1000;
+    var cierre = j && j.cierreManualMs ? Number(j.cierreManualMs)
+        : (j && j.fechaCierre ? msDesdeFecha(j.fechaCierre) : null);
+    if (!cierre) cierre = saque - MINUTOS_CIERRE_ANTES * 60 * 1000;
+    return { apertura: apertura, cierre: cierre, saque: saque };
+}
+
+// Estado que DEBERÍA tener la jornada según el reloj
+function estadoQueTocaAhora(j, ahoraMs) {
+    var h = getHorariosJornada(j);
+    if (!h) return null;
+    var ahora = ahoraMs || Date.now();
+    if (ahora >= h.saque) return 'En vivo';
+    if (ahora >= h.cierre) return 'Cerrada';
+    if (ahora >= h.apertura) return 'Abierta';
+    return 'Pre-apertura';
+}
+
+// Vigilante silencioso: vive en la app y aplica los cambios que tocan.
+const MotorEstadosJornada = ({ esAdmin }) => {
+    var [tick, setTick] = useState(0);
+    var aplicandoRef = useRef({});
+
+    useEffect(function() {
+        var iv = setInterval(function() { setTick(function(t) { return t + 1; }); }, 30000);
+        return function() { clearInterval(iv); };
+    }, []);
+
+    useEffect(function() {
+        var vivo = true;
+        (async function() {
+            try {
+                // Solo las jornadas que pueden cambiar de estado
+                var snap = await getDocs(query(collection(db, 'jornadas'),
+                    where('estado', 'in', ['Próximamente', 'Pre-apertura', 'Abierta', 'Cerrada']),
+                    orderBy('numeroJornada', 'asc'), limit(10)));
+                for (var i = 0; i < snap.docs.length && vivo; i++) {
+                    var j = { id: snap.docs[i].id, ...snap.docs[i].data() };
+                    var toca = estadoQueTocaAhora(j);
+                    if (!toca || toca === j.estado) continue;
+                    // Nunca hacia atrás
+                    if (ORDEN_ESTADOS.indexOf(toca) <= ORDEN_ESTADOS.indexOf(j.estado)) continue;
+                    // Un intento por jornada y transición
+                    var clave = j.id + '→' + toca;
+                    if (aplicandoRef.current[clave]) continue;
+                    aplicandoRef.current[clave] = true;
+                    var parche = { estado: toca, cambioAutomaticoEn: serverTimestamp(), cambioAutomaticoA: toca };
+                    await setDoc(doc(db, 'jornadas', j.id), parche, { merge: true });
+                    console.log('%c⚙️ Jornada ' + j.numeroJornada + ' → ' + toca + ' (automático)', 'color:#FFD700;background:#001F6B;padding:2px 6px;border-radius:4px');
+                }
+            } catch(e) { /* sin permisos o sin red: se reintenta al siguiente ciclo */ }
+        })();
+        return function() { vivo = false; };
+    }, [tick]);
+
+    return null;
+};
+
+// ── Panel de admin: ver y ajustar los horarios calculados ──
+const HorariosJornadaAdmin = ({ jornadas }) => {
+    const [jSel, setJSel] = useState('');
+    const [guardando, setGuardando] = useState(false);
+
+    var candidatas = (jornadas || []).filter(function(j) { return j.estado !== 'Finalizada'; })
+        .sort(function(a, b) { return (a.numeroJornada || 0) - (b.numeroJornada || 0); });
+    var j = candidatas.find(function(x) { return x.id === jSel; });
+    var h = j ? getHorariosJornada(j) : null;
+    var fmt = function(ms) {
+        return ms ? new Date(ms).toLocaleString('es-ES', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Atlantic/Canary' }) : '—';
+    };
+
+    var fijar = async function(campo, etiqueta) {
+        if (!j) return;
+        var val = window.prompt('Fija la hora de ' + etiqueta + ' (formato AAAA-MM-DDTHH:MM, hora canaria).\n\nDéjalo vacío y acepta para volver al cálculo automático.', '');
+        if (val === null) return;
+        setGuardando(true);
+        try {
+            var parche = {};
+            if (!val.trim()) { parche[campo] = deleteField(); }
+            else {
+                var ms = getKickoffMs({ fechaPartido: val.trim() });   // interpreta como hora canaria
+                if (!ms) { alert('Formato no válido.'); setGuardando(false); return; }
+                parche[campo] = ms;
+            }
+            await setDoc(doc(db, 'jornadas', j.id), parche, { merge: true });
+            alert('✅ Guardado.');
+        } catch(e) { alert('❌ ' + e.message); }
+        setGuardando(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:600}}>⚙️ Horarios y estados automáticos</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'rgba(0,0,0,0.55)',lineHeight:1.6,marginBottom:9}}>
+                La app abre, cierra y pone en vivo las jornadas sola, calculando desde la hora oficial del partido: apertura <strong>72 h antes</strong>, cierre <strong>5 min antes</strong>, en vivo <strong>al saque</strong>. Aquí compruebas las horas y puedes forzar excepciones.
+            </p>
+            <select value={jSel} onChange={function(e){ setJSel(e.target.value); }}
+                style={{width:'100%',border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'8px 10px',fontSize:12,marginBottom:9}}>
+                <option value="">— Elige jornada —</option>
+                {candidatas.map(function(x) {
+                    return <option key={x.id} value={x.id}>J{x.numeroJornada} · {x.equipoLocal} vs {x.equipoVisitante} · {x.estado}</option>;
+                })}
+            </select>
+
+            {j && (
+                <div style={{background:'rgba(0,31,107,0.04)',borderRadius:10,padding:'10px 12px'}}>
+                    {!h && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#e63946',margin:0}}>⚠️ Esta jornada no tiene hora de partido fiable: el automatismo no la tocará. Fija la fecha del partido en el panel de jornadas.</p>}
+                    {h && (
+                        <>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.6)',lineHeight:1.9,margin:'0 0 8px'}}>
+                            🕐 <strong>Saque:</strong> {fmt(h.saque)} <span style={{opacity:.6}}>({j.kickoffUTC ? 'hora oficial API' : 'fecha del panel'})</span><br/>
+                            🔓 <strong>Abre:</strong> {fmt(h.apertura)} {j.aperturaManualMs ? '(MANUAL)' : '(72 h antes)'}<br/>
+                            🔒 <strong>Cierra:</strong> {fmt(h.cierre)} {j.cierreManualMs ? '(MANUAL)' : '(5 min antes)'}<br/>
+                            ⚙️ <strong>Estado que toca ahora:</strong> {estadoQueTocaAhora(j)} · actual: {j.estado}
+                        </p>
+                        <div style={{display:'flex',gap:6}}>
+                            <button onClick={function(){ fijar('aperturaManualMs', 'APERTURA'); }} disabled={guardando}
+                                style={{flex:1,border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'7px 8px',background:'#fff',color:'#001F6B',fontFamily:"'Teko',sans-serif",fontSize:11,cursor:'pointer'}}>FIJAR APERTURA</button>
+                            <button onClick={function(){ fijar('cierreManualMs', 'CIERRE'); }} disabled={guardando}
+                                style={{flex:1,border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'7px 8px',background:'#fff',color:'#001F6B',fontFamily:"'Teko',sans-serif",fontSize:11,cursor:'pointer'}}>FIJAR CIERRE</button>
+                        </div>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.45)',margin:'6px 0 0'}}>Para volver al automático, deja el campo vacío al fijarlo.</p>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const CuentaAtrasJornada = ({ jornada }) => {
     var [ahora, setAhora] = useState(Date.now());
     var aplicandoRef = useRef('');
@@ -3500,29 +3656,12 @@ const CuentaAtrasJornada = ({ jornada }) => {
         return function() { clearInterval(iv); };
     }, []);
 
-    var aperturaMs = msDesdeFecha(jornada && jornada.fechaApertura);
-    var cierreMs = msDesdeFecha(jornada && jornada.fechaCierre);
+    var horariosJ = getHorariosJornada(jornada);
+    var aperturaMs = horariosJ ? horariosJ.apertura : null;
+    var cierreMs = horariosJ ? horariosJ.cierre : null;
     var estado = jornada ? jornada.estado : null;
 
-    // ── AUTOMATISMO: cambia el estado de la jornada al llegar la hora ──
-    useEffect(function() {
-        if (!jornada || !jornada.id) return;
-        var claveApertura = jornada.id + '-abrir';
-        var claveCierre = jornada.id + '-cerrar';
-        (async function() {
-            try {
-                if (aperturaMs && Date.now() >= aperturaMs && (estado === 'Pre-apertura' || estado === 'Próximamente')) {
-                    if (aplicandoRef.current === claveApertura) return;
-                    aplicandoRef.current = claveApertura;
-                    await setDoc(doc(db, 'jornadas', jornada.id), { estado: 'Abierta', abiertaAutomaticamenteEn: serverTimestamp() }, { merge: true });
-                } else if (cierreMs && Date.now() >= cierreMs && estado === 'Abierta') {
-                    if (aplicandoRef.current === claveCierre) return;
-                    aplicandoRef.current = claveCierre;
-                    await setDoc(doc(db, 'jornadas', jornada.id), { estado: 'Cerrada', cerradaAutomaticamenteEn: serverTimestamp() }, { merge: true });
-                }
-            } catch(e) { /* si falla, el admin puede cambiarlo a mano */ }
-        })();
-    }, [ahora, jornada, aperturaMs, cierreMs, estado]);
+    // El cambio de estado lo gestiona MotorEstadosJornada (uno solo para toda la app).
 
     if (!jornada) return null;
 
@@ -8739,45 +8878,31 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
     // --- NUEVO: FUNCIÓN PARA DESHACER EL CÁLCULO DE PUNTOS DE LA JORNADA ---
     const handleResetPuntos = async () => {
-        // La guarda antigua bloqueaba el reseteo cuando el flag no estaba puesto,
-        // aunque los puntos SÍ se hubieran repartido. Ahora solo avisa.
-        if (!puntosYaCalculados) {
-            if (!window.confirm("Esta jornada no tiene la marca de 'puntos calculados', pero puede que sí se hayan repartido.\n\n¿Resetear igualmente? (recomendado si los totales no cuadran)")) return;
-        }
-        if (!window.confirm("⚠️ PELIGRO: Esto RESTARÁ a la Clasificación General los puntos exactos que se dieron en esta jornada y la abrirá de nuevo. ¿Continuar?")) return;
-        
+        // El reseteo antiguo RESTABA puntos de la clasificación, y eso
+        // descuadraba en cuanto algo se había recalculado. Ahora limpia las
+        // marcas de la jornada y deja que el MOTOR ÚNICO rehaga los totales
+        // desde cero (absoluto e idempotente).
+        if (!window.confirm('RESETEAR LA JORNADA ' + jornada.numeroJornada + '\n\n· Se borran sus puntos y las marcas de El Otro.\n· A continuación se recalcula TODA la clasificación desde cero.\n\n¿Continuar?')) return;
         try {
-            const batch = writeBatch(db);
-            const pSnap = await getDocs(collection(db, "pronosticos", jornada.id, "jugadores"));
-            const clasifSnap = await getDocs(collection(db, "clasificacion"));
-            let clasifActual = {};
-            clasifSnap.forEach(d => clasifActual[d.id] = d.data());
-
-            pSnap.forEach(docSnap => {
-                const p = docSnap.data();
-                const userId = docSnap.id;
-                
-                const ptsASustraer = p.puntosObtenidos || 0;
-                const exactosASustraer = p.puntosResultadoExacto || 0;
-
-                if (ptsASustraer > 0 || exactosASustraer > 0) {
-                    const cTotal = clasifActual[userId]?.puntosTotales || 0;
-                    const cExactos = clasifActual[userId]?.puntosResultadoExacto || 0;
-                    batch.set(doc(db, "clasificacion", userId), { 
-                        puntosTotales: Math.max(0, cTotal - ptsASustraer), 
-                        puntosResultadoExacto: Math.max(0, cExactos - exactosASustraer) 
-                    }, { merge: true });
-                }
-                
-                batch.set(doc(db, "pronosticos", jornada.id, "jugadores", userId), { puntosObtenidos: 0, puntosResultadoExacto: 0, puntosGoleador: 0 }, { merge: true });
+            var pSnapR = await getDocs(collection(db, 'pronosticos', jornada.id, 'jugadores'));
+            var batchR = writeBatch(db);
+            pSnapR.forEach(function(d) {
+                batchR.set(doc(db, 'pronosticos', jornada.id, 'jugadores', d.id), {
+                    puntosObtenidos: 0, puntosDefinitivos: 0,
+                    puntosBaseSinOtro: 0, puntosResultadoExacto: 0, puntosGoleador: 0,
+                    elOtroAplicado: false, elOtroPendiente: false,
+                    elOtroResultado: null, elOtroMultiplicador: null, elOtroMarcador: null,
+                }, { merge: true });
             });
-
-            batch.set(doc(db, "jornadas", jornada.id), { puntosCalculados: false }, { merge: true });
-            await batch.commit();
-            setPuntosYaCalculados(false); // FIX: actualizar estado local para que handleSaveChanges funcione bien
-            alert("✅ PUNTOS BORRADOS DE LA GENERAL. La jornada ya no está calculada. Modifica lo que necesites y vuelve a 'Guardar Todos Los Cambios'.");
-            setIsUnlocked(true);
-        } catch(error) { console.error(error); alert("Error al resetear."); }
+            batchR.set(doc(db, 'jornadas', jornada.id), {
+                puntosCalculados: false, cierreDefinitivo: false, otroPendientes: 0,
+            }, { merge: true });
+            await batchR.commit();
+            var resumenR = [];
+            await recalcularPuntosOficial(function(t) { resumenR.push(t); });
+            alert('✅ Jornada reseteada y clasificación recalculada.\n\n' + resumenR.slice(-4).join('\n'));
+            window.location.reload();
+        } catch(e) { alert('❌ ' + e.message); }
     };
 
     const handleSaveChanges = async () => {
@@ -9959,6 +10084,44 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
         setCargando(false);
     };
 
+    // ✍️ Fija a mano quién activó El Otro. Es la salida cuando una aplicación
+    // forzada dejó marcas que no correspondían.
+    var marcarActivacion = async function(uid, activado) {
+        if (aplicando || !jSel) return;
+        setAplicando(true);
+        try {
+            var parche = { elOtroActivado: activado };
+            if (!activado) {
+                parche.elOtroAplicado = false; parche.elOtroPendiente = false;
+                parche.elOtroResultado = null; parche.elOtroMultiplicador = null; parche.elOtroMarcador = null;
+            } else { parche.elOtroPendiente = true; }
+            await setDoc(doc(db, 'pronosticos', jSel, 'jugadores', uid), parche, { merge: true });
+            analizar(jSel);
+        } catch(e) { alert('❌ ' + e.message); }
+        setAplicando(false);
+    };
+
+    // 🧹 Deja la jornada en blanco: quita la marca de activado a todos.
+    var limpiarTodasLasActivaciones = async function() {
+        if (aplicando || !jSel || !filas) return;
+        var conMarca = filas.filter(function(f) { return f.activado; });
+        if (!conMarca.length) { alert('Nadie tiene marca de activación en esta jornada.'); return; }
+        if (!window.confirm('QUITAR LA MARCA DE ACTIVADO A TODOS (' + conMarca.length + ')\n\nLa jornada queda en blanco. Después marcas SÍ ACTIVÓ solo a quienes corresponda y aplicas.\n\n¿Continuar?')) return;
+        setAplicando(true);
+        try {
+            for (var i = 0; i < conMarca.length; i++) {
+                await setDoc(doc(db, 'pronosticos', jSel, 'jugadores', conMarca[i].id), {
+                    elOtroActivado: false, elOtroAplicado: false, elOtroPendiente: false,
+                    elOtroResultado: null, elOtroMultiplicador: null, elOtroMarcador: null,
+                }, { merge: true });
+            }
+            await setDoc(doc(db, 'jornadas', jSel), { otroPendientes: 0 }, { merge: true });
+            alert('🧹 Jornada limpia. Marca ahora SÍ ACTIVÓ solo a quienes lo hicieron.');
+            analizar(jSel);
+        } catch(e) { alert('❌ ' + e.message); }
+        setAplicando(false);
+    };
+
     // ↩️ Deshace la aplicación de El Otro en esta jornada: borra el resultado
     // y el multiplicador de cada pronóstico y limpia el historial del jugador.
     // Los puntos vuelven a su base; después basta con ♻️ RECALCULAR.
@@ -10103,6 +10266,18 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
                                         {f.activado ? (f.aplicado ? '✅ aplicado' : '⏳ activado') : '— sin activar'}
                                     </span>
                                 </div>
+                                <div style={{display:'flex',gap:5,marginTop:5}}>
+                                    <button onClick={function(){ marcarActivacion(f.id, true); }} disabled={aplicando}
+                                        style={{flex:1,border:'none',borderRadius:7,padding:'5px 8px',cursor:'pointer',
+                                            background: f.activado ? '#10b981' : 'rgba(0,31,107,0.07)',
+                                            color: f.activado ? '#fff' : 'rgba(0,31,107,0.5)',
+                                            fontFamily:"'Teko',sans-serif",fontSize:10.5,letterSpacing:1}}>SÍ ACTIVÓ</button>
+                                    <button onClick={function(){ marcarActivacion(f.id, false); }} disabled={aplicando}
+                                        style={{flex:1,border:'none',borderRadius:7,padding:'5px 8px',cursor:'pointer',
+                                            background: !f.activado ? '#e63946' : 'rgba(0,31,107,0.07)',
+                                            color: !f.activado ? '#fff' : 'rgba(0,31,107,0.5)',
+                                            fontFamily:"'Teko',sans-serif",fontSize:10.5,letterSpacing:1}}>NO ACTIVÓ</button>
+                                </div>
                                 {f.marcador && (
                                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.55)',margin:'3px 0 0'}}>
                                         {f.marcador} → <strong>{String(f.resultado || '').toUpperCase()}</strong>
@@ -10124,6 +10299,10 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
                 }} disabled={aplicando}
                     style={{width:'100%',border:'1px solid rgba(230,57,70,0.35)',borderRadius:10,padding:'9px 12px',background:'#fff',color:'#e63946',fontFamily:"'Teko',sans-serif",fontSize:11.5,letterSpacing:1,cursor:'pointer',marginBottom:6}}>
                     ⚠️ FORZAR APLICACIÓN (incluye los que no tienen marca)
+                </button>
+                <button onClick={limpiarTodasLasActivaciones} disabled={aplicando}
+                    style={{width:'100%',border:'1px solid rgba(230,57,70,0.4)',borderRadius:10,padding:'9px 12px',background:'#fff',color:'#e63946',fontFamily:"'Teko',sans-serif",fontSize:11.5,letterSpacing:1,cursor:'pointer',marginBottom:6}}>
+                    🧹 EMPEZAR DE CERO: QUITAR LA MARCA DE ACTIVADO A TODOS
                 </button>
                 <button onClick={anularAplicacion} disabled={aplicando}
                     style={{width:'100%',border:'1px solid rgba(0,31,107,0.25)',borderRadius:10,padding:'9px 12px',background:'#fff',color:'rgba(0,31,107,0.75)',fontFamily:"'Teko',sans-serif",fontSize:11.5,letterSpacing:1,cursor:'pointer'}}>
@@ -13143,6 +13322,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'jornadas' && (
                 <div>
+                    {/* ⚙️ Horarios y estados automáticos */}
+                    <HorariosJornadaAdmin jornadas={jornadas} />
+
                     {/* Sync API */}
                     {jornadaActiva && (
                         <div style={A.card}>
@@ -17128,6 +17310,10 @@ function App() {
 
     return (
         <div style={{ position: 'fixed', inset: 0, background: TEMA.fondoApp, overflow: 'hidden', fontFamily: "'Teko', sans-serif" }}>
+
+            {/* ⚙️ Vigilante de estados: abre, cierra y pone en vivo las
+                jornadas solo, según la hora oficial del partido. */}
+            <MotorEstadosJornada esAdmin={currentUser === 'Juanma'} />
 
             {/* Tutorial épico — primera vez en la temporada */}
             {showTutorial && <TutorialEpico user={currentUser} plantilla={plantillaConFotos} onClose={function() { setShowTutorial(false); setActiveTab('perfil'); }} />}
