@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-01.BF · resolutor de El Otro robusto';
+const APP_BUILD = 'v2026-09-01.BG · el efecto de El Otro ya resta en el total';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -7138,9 +7138,18 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
                         // Mientras la jornada no tenga cierre definitivo, sus
                         // puntos NO están en clasificacion.puntosTotales: se
                         // suman aquí para que la tabla enseñe YA lo ganado.
-                        if (!cierreHecho) reg.basePend += base;
+                        // Si El Otro ya está resuelto, se suma el valor DESPUÉS
+                        // del multiplicador o divisor, no la base.
+                        if (!cierreHecho) {
+                            var trasOtro = base;
+                            if (p.elOtroAplicado && p.elOtroResultado) {
+                                trasOtro = aplicarMultiplicadorOtro(base, p.elOtroResultado, Number(p.elOtroMultiplicador || 2));
+                            }
+                            reg.basePend += trasOtro;
+                        }
                     });
                 };
+                var docsParaEfectoOtro = [];
                 var acumularEstrellasJornada = function(docs, cierreHecho) {
                     docs.forEach(function(d) {
                         var ptsRk = Number((d.data() || {}).puntosRanking || 0);
@@ -7161,15 +7170,24 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
                     acumularEstrellasJornada(rSnap.docs, !!jd.cierreDefinitivo);
                     var pSnap = await getDocs(collection(db, 'pronosticos', jid, 'jugadores'));
                     acumularPronosticos(pSnap.docs, !!jd.cierreDefinitivo, jd);
+                    docsParaEfectoOtro.push(pSnap.docs);
                 }
-                var oSnap = await getDocs(collection(db, 'elOtro'));
-                oSnap.forEach(function(d) {
-                    (d.data().historial || []).forEach(function(h) {
-                        var delta = Number(h.ptosDespues || 0) - Number(h.ptosAntes || 0);
-                        if (Number(h.multiplicador || 1) > 1) asegurar(d.id).ganadoOtro += Math.max(0, delta);
-                        else if (Number(h.multiplicador || 1) < 1) asegurar(d.id).perdidoOtro += Math.max(0, -delta);
+                // Efecto de El Otro: se calcula de los propios pronósticos ya
+                // resueltos (fuente fiable), no del historial, que puede estar
+                // incompleto si la resolución se hizo a mano.
+                var acumularEfectoOtro = function(docs) {
+                    docs.forEach(function(d) {
+                        var p = d.data() || {};
+                        if (!p.elOtroAplicado || !p.elOtroResultado || p.noContabilizado) return;
+                        var b = Number(p.puntosBaseSinOtro || 0);
+                        var tras = aplicarMultiplicadorOtro(b, p.elOtroResultado, Number(p.elOtroMultiplicador || 2));
+                        var delta = tras - b;
+                        var reg = asegurar(d.id);
+                        if (delta > 0) reg.ganadoOtro += delta;
+                        else if (delta < 0) reg.perdidoOtro += -delta;
                     });
-                });
+                };
+                docsParaEfectoOtro.forEach(function(ds) { acumularEfectoOtro(ds); });
                 if (activo) { setExtrasClasif(ex); setOtroPendienteCL(pendiente); }
             } catch(e) { console.warn('Extras clasificación:', e.message); }
         })();
