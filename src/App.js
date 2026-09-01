@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-01.BK · emparejado y local/visitante correctos';
+const APP_BUILD = 'v2026-09-01.BL · anular El Otro + pantalla reestructurada';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -9959,6 +9959,55 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
         setCargando(false);
     };
 
+    // ↩️ Deshace la aplicación de El Otro en esta jornada: borra el resultado
+    // y el multiplicador de cada pronóstico y limpia el historial del jugador.
+    // Los puntos vuelven a su base; después basta con ♻️ RECALCULAR.
+    var anularAplicacion = async function() {
+        if (aplicando || !jSel) return;
+        var jdSel = finalizadas.find(function(j) { return j.id === jSel; });
+        var aplicados = (filas || []).filter(function(f) { return f.aplicado; });
+        if (!aplicados.length) { alert('En esta jornada no hay ningún El Otro aplicado que anular.'); return; }
+        if (!window.confirm('ANULAR EL OTRO DE LA J' + (jdSel ? jdSel.numeroJornada : '') + '\n\nSe deshará la aplicación a: ' + aplicados.map(function(f){return f.id;}).join(', ') + '\n\n· Sus puntos vuelven a la base (sin ×/÷).\n· Se limpia su historial de esa jornada.\n· La jornada volverá a quedar como pendiente de resolver.\n\nDespués pulsa ♻️ RECALCULAR para dejar los totales al día.\n\n¿Continuar?')) return;
+        setAplicando(true);
+        var numJornadaAnular = jdSel ? jdSel.numeroJornada : null;
+        var filtrarHistorialSinJornada = function(hist, num) {
+            return (hist || []).filter(function(h) { return Number(h.jornada) !== Number(num); });
+        };
+        try {
+            for (var i = 0; i < aplicados.length; i++) {
+                var f = aplicados[i];
+                await setDoc(doc(db, 'pronosticos', jSel, 'jugadores', f.id), {
+                    elOtroAplicado: false,
+                    elOtroPendiente: true,
+                    elOtroResultado: null,
+                    elOtroMultiplicador: null,
+                    elOtroMarcador: null,
+                    elOtroAnuladoEn: serverTimestamp(),
+                }, { merge: true });
+
+                // Quitar del historial la entrada de esta jornada y devolver
+                // el contador de activaciones a su sitio.
+                try {
+                    var refO = doc(db, 'elOtro', f.id);
+                    var snapO = await getDoc(refO);
+                    if (snapO.exists()) {
+                        var datosO = snapO.data() || {};
+                        var histLimpio = filtrarHistorialSinJornada(datosO.historial, numJornadaAnular);
+                        var quitadas = (datosO.historial || []).length - histLimpio.length;
+                        await setDoc(refO, {
+                            historial: histLimpio,
+                            activaciones: Math.max(0, Number(datosO.activaciones || 0) - quitadas),
+                        }, { merge: true });
+                    }
+                } catch(e2) {}
+            }
+            await setDoc(doc(db, 'jornadas', jSel), { cierreDefinitivo: false, otroPendientes: aplicados.length }, { merge: true });
+            alert('↩️ Anulado en ' + aplicados.length + ' jugador(es).\n\nAhora pulsa ♻️ RECALCULAR TODOS LOS PUNTOS para dejar la clasificación al día.');
+            analizar(jSel);
+        } catch(e) { alert('❌ ' + e.message); }
+        setAplicando(false);
+    };
+
     var aplicar = async function(incluirNoMarcados) {
         if (!filas || aplicando) return;
         var aplicables = filas.filter(function(f) {
@@ -10073,8 +10122,12 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
                     if (!window.confirm('FORZAR: se aplicará el multiplicador a TODOS los que tengan equipo y resultado, aunque en su pronóstico no figure la marca de "activado".\n\nÚsalo solo si sabes que lo activaron (por ejemplo, activaciones antiguas sin marca).\n\n¿Continuar?')) return;
                     aplicar(true);
                 }} disabled={aplicando}
-                    style={{width:'100%',border:'1px solid rgba(230,57,70,0.35)',borderRadius:10,padding:'9px 12px',background:'#fff',color:'#e63946',fontFamily:"'Teko',sans-serif",fontSize:11.5,letterSpacing:1,cursor:'pointer'}}>
+                    style={{width:'100%',border:'1px solid rgba(230,57,70,0.35)',borderRadius:10,padding:'9px 12px',background:'#fff',color:'#e63946',fontFamily:"'Teko',sans-serif",fontSize:11.5,letterSpacing:1,cursor:'pointer',marginBottom:6}}>
                     ⚠️ FORZAR APLICACIÓN (incluye los que no tienen marca)
+                </button>
+                <button onClick={anularAplicacion} disabled={aplicando}
+                    style={{width:'100%',border:'1px solid rgba(0,31,107,0.25)',borderRadius:10,padding:'9px 12px',background:'#fff',color:'rgba(0,31,107,0.75)',fontFamily:"'Teko',sans-serif",fontSize:11.5,letterSpacing:1,cursor:'pointer'}}>
+                    ↩️ ANULAR / RETROCEDER EL OTRO DE ESTA JORNADA
                 </button>
                 </>
             )}
@@ -14077,6 +14130,256 @@ const CambiarOtroEquipoCard = ({ currentUser, miEquipo, pagos }) => {
     );
 };
 
+// ============================================================================
+// 🛡️ PANEL DE EL OTRO EQUIPO — información y estadísticas de uso
+// ============================================================================
+// Sustituye al cajón de turnos de elección (ya no hace falta: todos tienen
+// equipo). Muestra a todos los jugadores con su equipo — oculto si no lo han
+// revelado —, sus estadísticas de uso, y para el equipo propio el histórico
+// de partidos y el próximo rival con su plazo.
+const PanelInfoElOtro = ({ currentUser, userProfiles, teamLogos, jornada, excluidos }) => {
+    var [todos, setTodos] = useState({});
+    var [pestana, setPestana] = useState('jugadores');
+    var [historial, setHistorial] = useState(null);
+    var [cargandoHist, setCargandoHist] = useState(false);
+    var pedidoRef = useRef('');
+
+    useEffect(function() {
+        var u = onSnapshot(collection(db, 'elOtro'), function(snap) {
+            var m = {};
+            snap.forEach(function(d) { m[d.id] = d.data() || {}; });
+            setTodos(m);
+        }, function(){});
+        return function() { u(); };
+    }, []);
+
+    var fuera = excluidos || [];
+    var filas = Object.keys(todos)
+        .filter(function(uid) { return fuera.indexOf(uid) === -1 && todos[uid].equipo; })
+        .map(function(uid) {
+            var d = todos[uid];
+            var hist = d.historial || [];
+            var ganadas = hist.filter(function(h) { return Number(h.multiplicador || 1) > 1; }).length;
+            var perdidas = hist.filter(function(h) { return Number(h.multiplicador || 1) < 1; }).length;
+            var empates = hist.length - ganadas - perdidas;
+            var ganados = hist.reduce(function(a, h) { var dd = Number(h.ptosDespues||0) - Number(h.ptosAntes||0); return a + (dd > 0 ? dd : 0); }, 0);
+            var perdidos = hist.reduce(function(a, h) { var dd = Number(h.ptosDespues||0) - Number(h.ptosAntes||0); return a + (dd < 0 ? -dd : 0); }, 0);
+            // Racha actual de victorias
+            var racha = 0;
+            for (var i = hist.length - 1; i >= 0; i--) { if (Number(hist[i].multiplicador||1) > 1) racha++; else break; }
+            return {
+                uid: uid, equipo: d.equipo, revelado: !!d.revelado, esMio: uid === currentUser,
+                usos: hist.length, ganadas: ganadas, perdidas: perdidas, empates: empates,
+                ganados: ganados, perdidos: perdidos, neto: ganados - perdidos, racha: racha,
+                mult: getMultiplicadorOtro(d.activaciones || 0),
+            };
+        });
+
+    var miFila = filas.find(function(f) { return f.esMio; });
+    var miEquipo = miFila ? miFila.equipo : null;
+
+    // Histórico de partidos del equipo propio (una consulta, cacheada)
+    useEffect(function() {
+        if (pestana !== 'equipo' || !miEquipo || !API_FOOTBALL_KEY) return;
+        if (pedidoRef.current === miEquipo) return;
+        pedidoRef.current = miEquipo;
+        setCargandoHist(true);
+        (async function() {
+            try {
+                var idEq = TEAM_IDS_API[miEquipo] || null;
+                if (!idEq) {
+                    var claves = Object.keys(TEAM_IDS_API);
+                    for (var i = 0; i < claves.length; i++) {
+                        if (normalizarNombreEquipo(claves[i]) === normalizarNombreEquipo(miEquipo)) { idEq = TEAM_IDS_API[claves[i]]; break; }
+                    }
+                }
+                if (!idEq) { setHistorial({ error: 'No se pudo identificar el equipo en la API.' }); setCargandoHist(false); return; }
+                var cab = { headers: { 'x-apisports-key': API_FOOTBALL_KEY } };
+                var rU = await fetch('https://v3.football.api-sports.io/fixtures?team=' + idEq + '&last=6', cab);
+                var dU = await rU.json();
+                var rN = await fetch('https://v3.football.api-sports.io/fixtures?team=' + idEq + '&next=1', cab);
+                var dN = await rN.json();
+                var mapear = function(p) {
+                    var esLocal = p.teams.home.id === idEq;
+                    var gf = esLocal ? p.goals.home : p.goals.away, gc = esLocal ? p.goals.away : p.goals.home;
+                    return {
+                        rival: esLocal ? p.teams.away.name : p.teams.home.name,
+                        casa: esLocal, gf: gf, gc: gc, fecha: p.fixture.date,
+                        res: gf > gc ? 'V' : (gf < gc ? 'D' : 'E'),
+                        comp: (p.league && p.league.name) || '',
+                    };
+                };
+                var prox = (dN.response || [])[0];
+                setHistorial({
+                    ultimos: (dU.response || []).filter(function(p){ return ['FT','AET','PEN'].indexOf(p.fixture.status.short) !== -1; }).map(mapear).reverse(),
+                    proximo: prox ? {
+                        rival: prox.teams.home.id === idEq ? prox.teams.away.name : prox.teams.home.name,
+                        casa: prox.teams.home.id === idEq,
+                        fecha: prox.fixture.date,
+                        comp: (prox.league && prox.league.name) || '',
+                    } : null,
+                });
+            } catch(e) { setHistorial({ error: e.message }); }
+            setCargandoHist(false);
+        })();
+    }, [pestana, miEquipo]);
+
+    var Chip = function(props) {
+        return <span style={{fontFamily:"'Teko',sans-serif",fontSize:11.5,background:props.bg,color:props.color,borderRadius:14,padding:'3px 9px',whiteSpace:'nowrap'}}>{props.children}</span>;
+    };
+
+    return (
+        <div style={{marginBottom:16}}>
+            {/* Pestañas */}
+            <div style={{display:'flex',gap:6,marginBottom:12}}>
+                {[['jugadores','👥 QUIÉN TIENE QUÉ'],['stats','📊 USO Y RENDIMIENTO'],['equipo','🛡️ MI EQUIPO']].map(function(t) {
+                    var act = pestana === t[0];
+                    return (
+                        <button key={t[0]} onClick={function(){ setPestana(t[0]); }}
+                            style={{flex:1,border:'none',borderRadius:10,padding:'9px 6px',cursor:'pointer',
+                                background: act ? 'linear-gradient(135deg,#001F6B,#0035b8)' : 'rgba(0,31,107,0.05)',
+                                color: act ? '#FFD700' : 'rgba(0,31,107,0.5)',
+                                fontFamily:"'Teko',sans-serif",fontSize:11.5,letterSpacing:1}}>{t[1]}</button>
+                    );
+                })}
+            </div>
+
+            {/* 👥 QUIÉN TIENE QUÉ */}
+            {pestana === 'jugadores' && (
+                <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:14,overflow:'hidden'}}>
+                    {filas.length === 0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.45)',textAlign:'center',padding:20,margin:0}}>Todavía no hay equipos asignados.</p>}
+                    {filas.map(function(f) {
+                        var visible = f.revelado || f.esMio;
+                        var perf = (userProfiles || {})[f.uid] || {};
+                        return (
+                            <div key={f.uid} style={{display:'flex',alignItems:'center',gap:9,padding:'9px 12px',borderBottom:'1px solid rgba(0,31,107,0.05)',
+                                background: f.esMio ? 'rgba(255,215,0,0.08)' : 'transparent'}}>
+                                <IconoPerfil perfil={perf} size={28} />
+                                <span style={{flex:1,minWidth:0,fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight: f.esMio ? 700 : 500,color:'#001F6B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                    {nombreVisible(f.uid, perf)}{f.esMio ? ' (tú)' : ''}
+                                </span>
+                                {visible ? (
+                                    <>
+                                    <img src={getLogoEquipo(f.equipo, teamLogos)} alt="" style={{width:24,height:24,objectFit:'contain'}}
+                                        onError={function(e){ e.target.style.display='none'; }} />
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,color:'#001F6B',maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.equipo}</span>
+                                    </>
+                                ) : (
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(0,31,107,0.3)',letterSpacing:2}}>🔒 SECRETO</span>
+                                )}
+                            </div>
+                        );
+                    })}
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.45)',padding:'8px 12px',margin:0}}>
+                        🔒 Cada equipo permanece en secreto hasta que su dueño decida hacerlo público desde su ficha.
+                    </p>
+                </div>
+            )}
+
+            {/* 📊 USO Y RENDIMIENTO */}
+            {pestana === 'stats' && (
+                <div>
+                    <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:14,overflow:'hidden'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 12px',background:'rgba(0,31,107,0.05)'}}>
+                            <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:10,letterSpacing:1.5,color:'rgba(0,31,107,0.45)'}}>JUGADOR</span>
+                            <span style={{width:34,fontFamily:"'Teko',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',textAlign:'center'}}>USOS</span>
+                            <span style={{width:52,fontFamily:"'Teko',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',textAlign:'center'}}>V-E-D</span>
+                            <span style={{width:44,fontFamily:"'Teko',sans-serif",fontSize:10,color:'rgba(0,31,107,0.45)',textAlign:'right'}}>NETO</span>
+                        </div>
+                        {filas.slice().sort(function(a,b){ return b.neto - a.neto || b.usos - a.usos; }).map(function(f) {
+                            var perf = (userProfiles || {})[f.uid] || {};
+                            return (
+                                <div key={f.uid} style={{display:'flex',alignItems:'center',gap:6,padding:'8px 12px',borderBottom:'1px solid rgba(0,31,107,0.05)',
+                                    background: f.esMio ? 'rgba(255,215,0,0.08)' : 'transparent'}}>
+                                    <IconoPerfil perfil={perf} size={24} />
+                                    <span style={{flex:1,minWidth:0,fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight: f.esMio ? 700 : 500,color:'#001F6B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                        {nombreVisible(f.uid, perf)}
+                                        {f.racha >= 2 && <span style={{marginLeft:5,fontSize:9,color:'#b8860b'}}>🔥{f.racha}</span>}
+                                    </span>
+                                    <span style={{width:34,textAlign:'center',fontFamily:"'Teko',sans-serif",fontSize:14,color: f.usos > 0 ? '#001F6B' : 'rgba(0,31,107,0.25)'}}>{f.usos}</span>
+                                    <span style={{width:52,textAlign:'center',fontFamily:"'Teko',sans-serif",fontSize:12,color:'rgba(0,31,107,0.6)'}}>
+                                        <span style={{color:'#0f8a61'}}>{f.ganadas}</span>-{f.empates}-<span style={{color:'#e63946'}}>{f.perdidas}</span>
+                                    </span>
+                                    <span style={{width:44,textAlign:'right',fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,
+                                        color: f.neto > 0 ? '#0f8a61' : (f.neto < 0 ? '#e63946' : 'rgba(0,31,107,0.25)')}}>
+                                        {f.neto > 0 ? '+' + f.neto : f.neto}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.5)',margin:'8px 0 0',lineHeight:1.6}}>
+                        <strong>USOS</strong>: veces que ha activado El Otro · <strong>V-E-D</strong>: cómo le fue a su equipo · <strong>NETO</strong>: puntos ganados menos perdidos por el multiplicador · 🔥 racha de victorias en curso.
+                    </p>
+                </div>
+            )}
+
+            {/* 🛡️ MI EQUIPO */}
+            {pestana === 'equipo' && (
+                <div>
+                    {!miEquipo && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.45)',textAlign:'center',padding:20}}>Todavía no tienes equipo asignado.</p>}
+                    {miEquipo && (
+                        <>
+                        <div style={{background:'linear-gradient(135deg,#001F6B,#0035b8)',borderRadius:14,padding:'13px 15px',marginBottom:10,display:'flex',alignItems:'center',gap:12}}>
+                            <div style={{width:56,height:56,borderRadius:12,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:6,flexShrink:0}}>
+                                <img src={getLogoEquipo(miEquipo, teamLogos)} alt="" style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}}
+                                    onError={function(e){ e.target.style.display='none'; }} />
+                            </div>
+                            <div style={{flex:1,minWidth:0}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:22,fontWeight:700,color:'#FFD700',letterSpacing:1,margin:0,lineHeight:1.05}}>{miEquipo}</p>
+                                <div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:5}}>
+                                    <Chip bg="rgba(255,215,0,0.15)" color="#FFD700">×{miFila.mult} actual</Chip>
+                                    <Chip bg="rgba(16,185,129,0.15)" color="#5ee2b0">🏆 {miFila.ganadas}</Chip>
+                                    <Chip bg="rgba(230,57,70,0.15)" color="#ff9aa2">💔 {miFila.perdidas}</Chip>
+                                    {miFila.racha >= 2 && <Chip bg="rgba(255,215,0,0.2)" color="#FFD700">🔥 racha {miFila.racha}</Chip>}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Plazo de la jornada en curso */}
+                        <PlazosCard tipo="otro" />
+
+                        {cargandoHist && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)',textAlign:'center'}}>Cargando partidos…</p>}
+
+                        {historial && historial.proximo && (
+                            <div style={{background:'rgba(255,215,0,0.1)',border:'1px solid rgba(212,175,55,0.4)',borderRadius:12,padding:'10px 13px',marginBottom:10}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'#8a6a00',margin:'0 0 3px'}}>PRÓXIMO PARTIDO</p>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:12.5,color:'#001F6B',fontWeight:600,margin:0}}>
+                                    {historial.proximo.casa ? 'vs' : '@'} {historial.proximo.rival}
+                                </p>
+                                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.6)',margin:'2px 0 0'}}>
+                                    {new Date(historial.proximo.fecha).toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'})}
+                                </p>
+                            </div>
+                        )}
+
+                        {historial && historial.ultimos && historial.ultimos.length > 0 && (
+                            <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:12,overflow:'hidden'}}>
+                                <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(0,31,107,0.5)',padding:'8px 12px',margin:0,background:'rgba(0,31,107,0.04)'}}>ÚLTIMOS PARTIDOS</p>
+                                {historial.ultimos.map(function(p, i) {
+                                    var col = p.res === 'V' ? '#10b981' : (p.res === 'D' ? '#e63946' : '#d4a017');
+                                    return (
+                                        <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 12px',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                                            <span style={{width:19,height:19,borderRadius:5,background:col,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Teko',sans-serif",fontSize:11,fontWeight:700}}>{p.res}</span>
+                                            <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11,color:'#001F6B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.casa ? 'vs' : '@'} {p.rival}</span>
+                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:13,fontWeight:700,color:'#001F6B'}}>{p.gf}-{p.gc}</span>
+                                            <span style={{fontFamily:"'Inter',sans-serif",fontSize:8,color:'rgba(0,31,107,0.4)',maxWidth:64,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.comp}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {historial && historial.error && (
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#e63946'}}>No se pudo cargar el histórico: {historial.error}</p>
+                        )}
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const AvisoRedraftElOtro = ({ currentUser, miEquipo, pagos }) => {
     var [pagando, setPagando] = useState(false);
     var [rd, setRd] = useState(null);
@@ -14457,8 +14760,12 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                     </div>
                 )}
 
-                {/* 🔄 Draft abierto: aviso, turno y pago para colarse */}
-                <AvisoRedraftElOtro currentUser={currentUser} miEquipo={miElOtro && miElOtro.equipo} pagos={pagos} />
+                {/* 📊 Información y estadísticas de El Otro Equipo.
+                    El cajón de turnos de elección se retira: ya todos tienen
+                    equipo, y el cambio se hace desde la tarjeta de abajo. */}
+                <PanelInfoElOtro currentUser={currentUser} userProfiles={userProfiles}
+                    teamLogos={teamLogos} jornada={null}
+                    excluidos={[]} />
                 <CambiarOtroEquipoCard currentUser={currentUser} miEquipo={miElOtro && miElOtro.equipo} pagos={pagos} />
                 <BannerPagoPendiente onIrAPagos={onIrAPagos} />
             </div>
