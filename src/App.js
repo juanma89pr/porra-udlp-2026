@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-01.BQ · tablon de dedicatorias';
+const APP_BUILD = 'v2026-09-01.BR · marquesina fija sin tapar contenido';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3911,7 +3911,7 @@ const CabeceraVip = ({ jornada }) => {
 // ============================================================================
 // Franja fina que aparece unos segundos, desliza el mensaje, se desvanece y
 // vuelve más tarde con el siguiente. Solo muestra lo que aplica a esa persona.
-const MarquesinaAvisos = ({ user, onIr }) => {
+const MarquesinaAvisos = ({ user, onIr, onAltura }) => {
     var [avisos, setAvisos] = useState([]);
     var [idx, setIdx] = useState(0);
     var [visible, setVisible] = useState(false);
@@ -4024,6 +4024,12 @@ const MarquesinaAvisos = ({ user, onIr }) => {
         var t3 = setTimeout(function() { setIdx(function(i) { return (i + 1) % avisos.length; }); }, 14000);
         return function() { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
     }, [avisos, idx]);
+
+    // Avisar al contenedor de cuánto espacio ocupa, para que el contenido
+    // se desplace en vez de quedar tapado.
+    useEffect(function() {
+        if (onAltura) onAltura(avisos.length && visible ? 34 : 0);
+    }, [avisos, visible, onAltura]);
 
     if (!avisos.length) return null;
     var a = avisos[idx] || avisos[0];
@@ -17664,6 +17670,8 @@ function App() {
     };
     // El modo VIP manda sobre claro/oscuro mientras esté activo.
     const jornadaVipActiva = useModoVip();
+    // Altura que ocupa la marquesina: el contenido baja lo justo para no quedar tapado.
+    const [alturaMarquesina, setAlturaMarquesina] = useState(0);
     const TEMA = jornadaVipActiva
         ? PALETA_VIP
         : (tema === 'oscuro'
@@ -17926,11 +17934,14 @@ function App() {
                 </div>
             </div>
 
-            {/* 📢 Marquesina de avisos: discreta y rotatoria */}
-            <MarquesinaAvisos user={currentUser} onIr={function(destino){ setActiveTab(destino); }} />
+            {/* 📢 Marquesina de avisos: fija bajo la cabecera, nunca tapa nada */}
+            <div style={{ position: 'absolute', top: 62, left: 0, right: 0, zIndex: 9 }}>
+                <MarquesinaAvisos user={currentUser} onIr={function(destino){ setActiveTab(destino); }}
+                    onAltura={function(h){ setAlturaMarquesina(h); }} />
+            </div>
 
             {/* ── CONTENIDO PRINCIPAL ── */}
-            <div style={{ position: 'absolute', top: 62, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px' }}>
+            <div style={{ position: 'absolute', top: 62 + alturaMarquesina, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px', transition: 'top .45s ease' }}>
                 <div key={activeTab} style={{ animation: 'slideIn .22s ease both' }}>
                     {renderContent()}
                     {novedadOverlay}
