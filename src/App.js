@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-08-30.BE · ceremonia final con puntos reales';
+const APP_BUILD = 'v2026-09-01.BF · resolutor de El Otro robusto';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -8571,44 +8571,64 @@ async function resolverElOtroPendienteJornada(jornada) {
     if (!API_FOOTBALL_KEY) throw new Error('Falta REACT_APP_API_FOOTBALL_KEY.');
 
     var pSnap = await getDocs(collection(db, 'pronosticos', jornada.id, 'jugadores'));
-    var pendientes = pSnap.docs.filter(function(d){ var p=d.data()||{}; return p.elOtroActivado && p.elOtroPendiente && p.elOtroFixtureId && !p.elOtroAplicado; });
-    if (!pendientes.length) return { aplicados:0, pendientes:0, mensaje:'No quedan El Otro pendientes.' };
 
+    // Fichas de El Otro: de aquí sale el equipo cuando el pronóstico no lo trae
+    var usuariosOtro = {};
+    var oSnapAll = await getDocs(collection(db, 'elOtro'));
+    oSnapAll.forEach(function(d){ usuariosOtro[d.id] = d.data() || {}; });
+
+    // Condición MÍNIMA: activado, sin aplicar y con equipo conocido.
+    var pendientes = pSnap.docs.filter(function(d){
+        var p = d.data() || {};
+        if (!p.elOtroActivado || p.elOtroAplicado) return false;
+        var eq = p.elOtroEquipoUsado || (usuariosOtro[d.id] && usuariosOtro[d.id].equipo);
+        return !!eq;
+    });
+    if (!pendientes.length) return { aplicados:0, pendientes:0, mensaje:'No hay activaciones de El Otro sin resolver en esta jornada.' };
+
+    // Ronda COMPLETA de Primera (incluye partidos aplazados)
+    var numRonda = jornada.numeroJornada || 1;
+    var partidosRonda = [];
+    try {
+        var rr = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+            '&season=2026&round=' + encodeURIComponent('Regular Season - ' + numRonda),
+            { headers:{'x-apisports-key':API_FOOTBALL_KEY} });
+        var dr = await rr.json();
+        partidosRonda = (dr.response || []).map(function(p){
+            return {
+                nombreLocal: p.teams.home.name, nombreVisitante: p.teams.away.name,
+                golesLocal: p.goals.home, golesVisitante: p.goals.away,
+                finalizado: ['FT','AET','PEN'].indexOf(p.fixture.status.short) !== -1,
+            };
+        });
+    } catch(e) { throw new Error('No se pudo consultar la jornada ' + numRonda + ' de Primera: ' + e.message); }
+    if (!partidosRonda.length) throw new Error('La API no devolvió partidos de la jornada ' + numRonda + ' de Primera.');
+
+    var buscarPartidoDe = function(equipo) {
+        var e = normalizarNombreEquipo(equipo);
+        return partidosRonda.find(function(x){
+            var l = normalizarNombreEquipo(x.nombreLocal), v = normalizarNombreEquipo(x.nombreVisitante);
+            return l === e || v === e || l.indexOf(e) !== -1 || e.indexOf(l) !== -1 || v.indexOf(e) !== -1 || e.indexOf(v) !== -1;
+        }) || null;
+    };
     var cache = {};
     var todosFinalizados = true;
-    for (var i=0;i<pendientes.length;i++) {
-        var fixtureId = pendientes[i].data().elOtroFixtureId;
-        if (cache[fixtureId]) continue;
-        try {
-            var rf = await fetch('https://v3.football.api-sports.io/fixtures?id=' + fixtureId, { headers:{'x-apisports-key':API_FOOTBALL_KEY} });
-            var df = await rf.json();
-            var fx = df.response && df.response[0];
-            if (!fx) { cache[fixtureId] = { finalizado:false }; todosFinalizados=false; continue; }
-            var est = fx.fixture.status.short;
-            var final = ['FT','AET','PEN'].indexOf(est)!==-1;
-            cache[fixtureId] = {
-                finalizado: final,
-                nombreLocal: fx.teams.home.name,
-                nombreVisitante: fx.teams.away.name,
-                golesLocal: fx.goals.home,
-                golesVisitante: fx.goals.away,
-            };
-            if (!final) todosFinalizados=false;
-        } catch(e) { cache[fixtureId] = {finalizado:false}; todosFinalizados=false; }
-    }
-
-    var usuariosOtro = {};
-    for (var j=0;j<pendientes.length;j++) {
-        var uid=pendientes[j].id;
-        try { var eu=await getDoc(doc(db,'elOtro',uid)); usuariosOtro[uid]=eu.exists()?eu.data():{}; } catch(e) { usuariosOtro[uid]={}; }
-    }
+    pendientes.forEach(function(d){
+        var p = d.data() || {};
+        var eq = p.elOtroEquipoUsado || (usuariosOtro[d.id] && usuariosOtro[d.id].equipo);
+        var fx = buscarPartidoDe(eq);
+        cache[d.id] = fx || { finalizado:false };
+        if (!fx || !fx.finalizado) todosFinalizados = false;
+    });
 
     var batch=writeBatch(db), aplicados=0, siguenPendientes=0;
     pendientes.forEach(function(d){
         var p=d.data()||{};
-        var fx=cache[p.elOtroFixtureId];
+        var equipoUsado = p.elOtroEquipoUsado || (usuariosOtro[d.id] && usuariosOtro[d.id].equipo);
+        var fx=cache[d.id];
         if (!fx || !fx.finalizado) { siguenPendientes++; return; }
-        var local=nombresSonSimilares(fx.nombreLocal,p.elOtroEquipoUsado);
+        var local=nombresSonSimilares(fx.nombreLocal,equipoUsado) ||
+            normalizarNombreEquipo(fx.nombreLocal) === normalizarNombreEquipo(equipoUsado);
         var gf=local?fx.golesLocal:fx.golesVisitante;
         var gc=local?fx.golesVisitante:fx.golesLocal;
         var resultado=gf>gc?'gana':gf<gc?'pierde':'empate';
@@ -9648,7 +9668,8 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
                     return l === e || v === e || l.indexOf(e) !== -1 || e.indexOf(l) !== -1 || v.indexOf(e) !== -1 || e.indexOf(v) !== -1;
                 });
                 var resultado = null, marcador = '';
-                if (suPartido && suPartido.golesLocal !== null && suPartido.golesLocal !== undefined) {
+                var terminado = suPartido && ['FT','AET','PEN'].indexOf(suPartido.estadoCorto) !== -1;
+                if (suPartido && terminado && suPartido.golesLocal !== null && suPartido.golesLocal !== undefined) {
                     var esLocal = normalizarNombreEquipo(suPartido.local).indexOf(normalizarNombreEquipo(equipo)) !== -1 ||
                                   normalizarNombreEquipo(equipo).indexOf(normalizarNombreEquipo(suPartido.local)) !== -1;
                     var gf = esLocal ? suPartido.golesLocal : suPartido.golesVisitante;
@@ -9772,7 +9793,7 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
                                         {f.activado && !f.aplicado && nuevo !== null ? ' · ' + f.base + ' pts → ' + nuevo + ' pts (×' + f.multiplicador + ')' : ''}
                                     </p>
                                 )}
-                                {!f.marcador && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#e63946',margin:'3px 0 0'}}>⚠️ No se encontró su partido en esa jornada de Primera</p>}
+                                {!f.marcador && <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'#e63946',margin:'3px 0 0'}}>⚠️ Sin resultado: o su partido de esa jornada aún no ha terminado, o no se encontró (prueba a cambiar el número de jornada de Primera arriba).</p>}
                             </div>
                         );
                     })}
