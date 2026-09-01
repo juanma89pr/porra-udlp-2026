@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-01.BG · el efecto de El Otro ya resta en el total';
+const APP_BUILD = 'v2026-09-01.BH · motor unico de puntos';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -7110,6 +7110,13 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
     // Desglose por jugador: ⭐ puntos de 5 Estrellas, 🛡️ ganado con ×, 🛡️ perdido con ÷
     const [extrasClasif, setExtrasClasif] = useState({});
     const [otroPendienteCL, setOtroPendienteCL] = useState(false);
+    // El asterisco sale SOLO si el motor oficial dejó algo sin resolver.
+    useEffect(() => {
+        var u = onSnapshot(doc(db, 'configuracion', 'estadoPuntos'), function(s) {
+            setOtroPendienteCL(s.exists() ? !!s.data().hayPendientes : false);
+        }, function(){});
+        return function() { u(); };
+    }, []);
 
     useEffect(() => {
         var activo = true;
@@ -7117,11 +7124,9 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
             try {
                 var ex = {};
                 var asegurar = function(uid) { if (!ex[uid]) ex[uid] = { estrellas: 0, estrellasPend: 0, basePend: 0, ganadoOtro: 0, perdidoOtro: 0, porra: 0, unoX2: 0 }; return ex[uid]; };
-                var pendiente = false;
                 var acumularPronosticos = function(docs, cierreHecho, jd) {
                     docs.forEach(function(d) {
                         var p = d.data() || {};
-                        if (p.elOtroActivado && !p.elOtroAplicado) pendiente = true;
                         if (p.noContabilizado) return;
                         // Los campos guardados (puntosResultadoExacto,
                         // puntosGoleador) faltan o están a 0 en muchos
@@ -7188,7 +7193,7 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
                     });
                 };
                 docsParaEfectoOtro.forEach(function(ds) { acumularEfectoOtro(ds); });
-                if (activo) { setExtrasClasif(ex); setOtroPendienteCL(pendiente); }
+                if (activo) setExtrasClasif(ex);
             } catch(e) { console.warn('Extras clasificación:', e.message); }
         })();
         return function() { activo = false; };
@@ -7247,7 +7252,8 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
         var extra = extrasClasif[nombre] || {};
         // Los puntos de las 5 Estrellas de jornadas todavía sin cierre
         // definitivo se suman al total MOSTRADO desde ya.
-        var totalMostrado = (datos.puntosTotales || 0) + Number(extra.estrellasPend || 0) + Number(extra.basePend || 0);
+        // El motor oficial ya escribe el total absoluto: no se suman capas.
+        var totalMostrado = Number(datos.puntosTotales || 0);
         return {
             id: nombre,
             puntosTotales: totalMostrado,
@@ -9633,6 +9639,237 @@ function calcularBasePronosticoJornada(p, jornada) {
 // activación era invisible y el resultado siempre era "0 aplicados".
 // Esta herramienta trabaja con lo que HAY: cruza la elección de equipo con el
 // resultado real de la jornada de Primera y aplica los multiplicadores.
+// ============================================================================
+// ♻️ MOTOR ÚNICO DE PUNTOS — la única fuente de verdad
+// ============================================================================
+// Recalcula TODO desde cero, jornada a jornada, y escribe resultados
+// ABSOLUTOS. Es idempotente: da igual cuántas veces se ejecute, el resultado
+// es siempre el mismo. Sustituye a los cinco sistemas anteriores, que se
+// pisaban entre ellos y provocaban los descuadres.
+//
+// Por cada jornada finalizada:
+//   1. Porra   → marcador exacto + 1X2 + goleador (con VIP doblado)
+//   2. El Otro → si está activado, busca el resultado en la RONDA COMPLETA de
+//                Primera (incluye aplazados). Si ya terminó, aplica ×/÷ y lo
+//                marca resuelto. Si no, la jornada queda PENDIENTE.
+//   3. ⭐      → suma los puntos de ranking de las 5 Estrellas
+//   4. Escribe puntosDefinitivos en el pronóstico y el total en clasificacion.
+async function recalcularPuntosOficial(onLog) {
+    var log = function(t, ok) { if (onLog) onLog(t, ok !== false); };
+    if (!API_FOOTBALL_KEY) log('⚠️ Sin clave de API: no se podrá resolver El Otro.', false);
+
+    var totales = {}, exactos = {}, pendientesGlobal = [], detalle = [];
+    var sumar = function(uid, pts) { totales[uid] = Number(((totales[uid] || 0) + pts).toFixed(2)); };
+
+    // Fichas de El Otro (equipo elegido por cada jugador)
+    var fichasOtro = {};
+    var oSnap = await getDocs(collection(db, 'elOtro'));
+    oSnap.forEach(function(d) { fichasOtro[d.id] = d.data() || {}; });
+
+    // Rondas de Primera cacheadas: una petición por ronda, reutilizable
+    var cacheRondas = {};
+    var traerRonda = async function(num) {
+        if (cacheRondas[num]) return cacheRondas[num];
+        try {
+            var r = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+                '&season=2026&round=' + encodeURIComponent('Regular Season - ' + num),
+                { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var d = await r.json();
+            cacheRondas[num] = (d.response || []).map(function(p) {
+                return {
+                    local: p.teams.home.name, visitante: p.teams.away.name,
+                    gl: p.goals.home, gv: p.goals.away,
+                    fin: ['FT','AET','PEN'].indexOf(p.fixture.status.short) !== -1,
+                };
+            });
+        } catch(e) { cacheRondas[num] = []; }
+        return cacheRondas[num];
+    };
+    var partidoDe = function(lista, equipo) {
+        var e = normalizarNombreEquipo(equipo);
+        return (lista || []).find(function(x) {
+            var l = normalizarNombreEquipo(x.local), v = normalizarNombreEquipo(x.visitante);
+            return l === e || v === e || l.indexOf(e) !== -1 || e.indexOf(l) !== -1 || v.indexOf(e) !== -1 || e.indexOf(v) !== -1;
+        }) || null;
+    };
+
+    var leerEstrellasDocs = function(docs) {
+        var m = {};
+        docs.forEach(function(d) { m[d.id] = Number((d.data() || {}).puntosRanking || 0); });
+        return m;
+    };
+
+    var jSnap = await getDocs(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada'), orderBy('numeroJornada', 'asc')));
+    log('📋 Jornadas finalizadas: ' + jSnap.docs.length);
+
+    for (var i = 0; i < jSnap.docs.length; i++) {
+        var jd = { id: jSnap.docs[i].id, ...jSnap.docs[i].data() };
+        var pSnap = await getDocs(collection(db, 'pronosticos', jd.id, 'jugadores'));
+
+        // Estrellas de esa jornada
+        var eSnap = await getDocs(collection(db, 'estrellas_resultados', jd.id, 'jugadores'));
+        var estrellasJ = leerEstrellasDocs(eSnap.docs);
+
+        // ¿Alguien tiene El Otro activado? Solo entonces se consulta Primera.
+        var necesitaOtro = pSnap.docs.some(function(d) { return (d.data() || {}).elOtroActivado; });
+        var ronda = necesitaOtro ? await traerRonda(jd.numeroJornada || (i + 1)) : [];
+
+        var pendientesJ = [], resueltosJ = 0;
+        var batch = writeBatch(db);
+
+        for (var k = 0; k < pSnap.docs.length; k++) {
+            var d = pSnap.docs[k];
+            var p = d.data() || {};
+            var uid = d.id;
+            if (p.noContabilizado) continue;
+
+            // 1 · Porra
+            var calc = calcularBasePronosticoJornada(p, jd);
+            var base = calc.base;
+
+            // 2 · El Otro
+            var resultadoOtro = null, multOtro = null, otroPendiente = false;
+            if (p.elOtroActivado) {
+                var equipo = p.elOtroEquipoUsado || (fichasOtro[uid] && fichasOtro[uid].equipo);
+                var fx = equipo ? partidoDe(ronda, equipo) : null;
+                if (fx && fx.fin && fx.gl !== null && fx.gl !== undefined) {
+                    var esLocal = normalizarNombreEquipo(fx.local) === normalizarNombreEquipo(equipo) ||
+                        normalizarNombreEquipo(fx.local).indexOf(normalizarNombreEquipo(equipo)) !== -1;
+                    var gf = esLocal ? fx.gl : fx.gv, gc = esLocal ? fx.gv : fx.gl;
+                    resultadoOtro = gf > gc ? 'gana' : (gf < gc ? 'pierde' : 'empate');
+                    multOtro = Number(p.elOtroMultiplicador || (fichasOtro[uid] && fichasOtro[uid].multiplicadorActual) || 2);
+                    resueltosJ++;
+                } else {
+                    otroPendiente = true;
+                    pendientesJ.push(uid);
+                }
+            }
+
+            var trasOtro = resultadoOtro ? aplicarMultiplicadorOtro(base, resultadoOtro, multOtro) : base;
+            var definitivos = trasOtro + Number(estrellasJ[uid] || 0);
+
+            batch.set(doc(db, 'pronosticos', jd.id, 'jugadores', uid), {
+                puntosBaseSinOtro: base,
+                puntosResultadoExacto: calc.exacto,
+                puntosGoleador: calc.goleador,
+                elOtroAplicado: !!resultadoOtro,
+                elOtroPendiente: otroPendiente,
+                elOtroResultado: resultadoOtro,
+                elOtroMultiplicador: multOtro,
+                puntosEstrellasJornada: Number(estrellasJ[uid] || 0),
+                puntosObtenidos: definitivos,
+                puntosDefinitivos: definitivos,
+                recalculadoEn: serverTimestamp(),
+            }, { merge: true });
+
+            sumar(uid, definitivos);
+            if (calc.exacto > 0) exactos[uid] = (exactos[uid] || 0) + 1;
+        }
+
+        // La jornada queda cerrada solo si NO le queda nada pendiente
+        batch.set(doc(db, 'jornadas', jd.id), {
+            otroPendientes: pendientesJ.length,
+            cierreDefinitivo: pendientesJ.length === 0,
+            recalculadaEn: serverTimestamp(),
+        }, { merge: true });
+        await batch.commit();
+
+        if (pendientesJ.length) pendientesGlobal = pendientesGlobal.concat(pendientesJ);
+        detalle.push({ jornada: jd.numeroJornada, resueltos: resueltosJ, pendientes: pendientesJ.length });
+        log('✅ J' + jd.numeroJornada + ': El Otro resuelto ' + resueltosJ +
+            (pendientesJ.length ? ' · ⏳ PENDIENTES ' + pendientesJ.length + ' (' + pendientesJ.join(', ') + ')' : ' · sin pendientes') +
+            (pendientesJ.length === 0 ? ' → CERRADA 🏁' : ''));
+    }
+
+    // Escritura ABSOLUTA de la clasificación
+    var uids = Object.keys(totales);
+    var batchC = writeBatch(db);
+    uids.forEach(function(uid) {
+        batchC.set(doc(db, 'clasificacion', uid), {
+            puntosTotales: totales[uid],
+            puntosResultadoExacto: exactos[uid] || 0,
+            recalculadoEn: serverTimestamp(),
+        }, { merge: true });
+    });
+    // Estado global: sirve para el asterisco de la clasificación
+    batchC.set(doc(db, 'configuracion', 'estadoPuntos'), {
+        hayPendientes: pendientesGlobal.length > 0,
+        pendientes: pendientesGlobal,
+        ultimoRecalculo: serverTimestamp(),
+    }, { merge: true });
+    await batchC.commit();
+
+    log('🏁 Clasificación actualizada para ' + uids.length + ' jugadores.');
+    if (pendientesGlobal.length) log('⏳ Quedan ' + pendientesGlobal.length + ' El Otro sin resolver (sus partidos de Primera no han terminado).', false);
+    else log('✅ NADA PENDIENTE: todas las jornadas cerradas y los puntos son definitivos.');
+
+    return { totales: totales, pendientes: pendientesGlobal, detalle: detalle };
+}
+
+// ── Panel: el ÚNICO botón oficial de recálculo ──
+const RecalculoOficialAdmin = () => {
+    const [enMarcha, setEnMarcha] = useState(false);
+    const [lineas, setLineas] = useState([]);
+    const [estado, setEstado] = useState(null);
+
+    useEffect(function() {
+        var u = onSnapshot(doc(db, 'configuracion', 'estadoPuntos'), function(s) {
+            setEstado(s.exists() ? s.data() : null);
+        }, function(){});
+        return function() { u(); };
+    }, []);
+
+    var ejecutar = async function() {
+        if (enMarcha) return;
+        if (!window.confirm('RECALCULAR TODOS LOS PUNTOS\n\nSe recalcula desde cero cada jornada finalizada:\n· Porra (exacto + 1X2 + goleador)\n· El Otro (busca el resultado real y aplica ×/÷)\n· 5 Estrellas\n\nY se reescribe la clasificación completa.\n\nEs seguro y repetible. ¿Ejecutar?')) return;
+        setEnMarcha(true);
+        var acum = [];
+        try {
+            var r = await recalcularPuntosOficial(function(t, ok) {
+                acum = acum.concat([{ t: t, ok: ok }]);
+                setLineas(acum.slice());
+            });
+            var resumen = Object.keys(r.totales).sort(function(a,b){ return r.totales[b]-r.totales[a]; })
+                .map(function(u){ return u + ': ' + r.totales[u]; }).join(' · ');
+            alert('✅ RECÁLCULO COMPLETO\n\n' + resumen + (r.pendientes.length ? '\n\n⏳ Pendientes de El Otro: ' + r.pendientes.join(', ') : '\n\n✅ Sin nada pendiente.'));
+        } catch(e) {
+            acum = acum.concat([{ t: '❌ ' + e.message, ok: false }]);
+            setLineas(acum.slice());
+            alert('❌ ' + e.message);
+        }
+        setEnMarcha(false);
+    };
+
+    return (
+        <div style={{...ADMIN_STYLES.card, border: estado && estado.hayPendientes ? '2px solid rgba(212,175,55,0.6)' : ADMIN_STYLES.card.border}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:600}}>♻️ Recálculo oficial de puntos</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'rgba(0,0,0,0.55)',lineHeight:1.6,marginBottom:9}}>
+                El único botón que hace falta. Recalcula porra + El Otro + Estrellas de todas las jornadas y reescribe la clasificación. Cierra solas las jornadas que ya no tienen nada pendiente.
+            </p>
+            {estado && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color: estado.hayPendientes ? '#8a6a00' : '#0f8a61',
+                    background: estado.hayPendientes ? 'rgba(255,215,0,0.12)' : 'rgba(16,185,129,0.08)',
+                    borderRadius:8,padding:'7px 10px',marginBottom:9}}>
+                    {estado.hayPendientes
+                        ? '⏳ Hay El Otro sin resolver: ' + (estado.pendientes || []).join(', ') + '. La clasificación muestra asterisco.'
+                        : '✅ Todo resuelto. Sin asteriscos en la clasificación.'}
+                </p>
+            )}
+            <button onClick={ejecutar} disabled={enMarcha}
+                style={{width:'100%',border:'none',borderRadius:10,padding:'12px 12px',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:enMarcha?'default':'pointer'}}>
+                {enMarcha ? '⏳ RECALCULANDO…' : '♻️ RECALCULAR TODOS LOS PUNTOS'}
+            </button>
+            {lineas.length > 0 && (
+                <div style={{marginTop:10,maxHeight:260,overflowY:'auto',background:'rgba(0,31,107,0.03)',border:'1px solid rgba(0,31,107,0.07)',borderRadius:10,padding:10}}>
+                    {lineas.map(function(l, i) {
+                        return <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:11,lineHeight:1.5,color:l.ok?'rgba(0,31,107,0.75)':'#b02a35',margin:'0 0 4px'}}>{l.t}</p>;
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ResolverElOtroManualAdmin = ({ jornadas }) => {
     const [jSel, setJSel] = useState('');
     const [filas, setFilas] = useState(null);
@@ -10261,233 +10498,6 @@ const SincronizarEscudosAdmin = () => {
             {logSync.length > 0 && (
                 <div style={{marginTop:10,background:'rgba(0,31,107,0.03)',border:'1px solid rgba(0,31,107,0.07)',borderRadius:10,padding:10}}>
                     {logSync.map(function(l, i) {
-                        return <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:11,lineHeight:1.5,color:l.ok?'rgba(0,31,107,0.75)':'#e63946',margin:'0 0 4px'}}>{l.t}</p>;
-                    })}
-                </div>
-            )}
-        </div>
-    );
-};
-
-const AuditoriaPuntosAdmin = ({ jornadas }) => {
-    var [jSel, setJSel] = useState('');
-    var [filas, setFilas] = useState(null);
-    var [clasif, setClasif] = useState({});
-    var [cargando, setCargando] = useState(false);
-
-    var finalizadas = (jornadas || []).filter(function(j) { return j.estado === 'Finalizada'; })
-        .sort(function(a, b) { return (b.numeroJornada || 0) - (a.numeroJornada || 0); });
-
-    var auditar = async function(jid) {
-        if (!jid) return;
-        setCargando(true); setFilas(null);
-        try {
-            var jd = finalizadas.find(function(j) { return j.id === jid; });
-            var pSnap = await getDocs(collection(db, 'pronosticos', jid, 'jugadores'));
-            var eSnap = await getDocs(collection(db, 'estrellas_resultados', jid, 'jugadores'));
-            var estrellasMap = {};
-            eSnap.forEach(function(d) { estrellasMap[d.id] = Number((d.data() || {}).puntosRanking || 0); });
-            var pagosSnap = await getDocs(collection(db, 'pagos'));
-            var pagoMap = {};
-            var numJ = String(jd.numeroJornada || '');
-            pagosSnap.forEach(function(d) {
-                var pg = d.data() || {};
-                if (pg.tipo !== 'jornada_normal' && pg.tipo !== 'jornada_vip') return;
-                if (pg.estado === 'cancelado' || pg.estado === 'rechazado' || pg.estado === 'fallido') return;
-                if ((pg.jornada || '').toString().toUpperCase().replace(/[^0-9]/g, '') === numJ) pagoMap[pg.jugador] = pg.estado || 'ok';
-            });
-            var cSnap = await getDocs(collection(db, 'clasificacion'));
-            var cMap = {};
-            cSnap.forEach(function(d) { cMap[d.id] = Number((d.data() || {}).puntosTotales || 0); });
-            setClasif(cMap);
-
-            var lista = [];
-            pSnap.forEach(function(d) {
-                var p = d.data() || {};
-                var calc = calcularBasePronosticoJornada(p, jd);
-                lista.push({
-                    id: d.id,
-                    pago: pagoMap[d.id] || null,
-                    noCuenta: !!p.noContabilizado,
-                    marcador: p.golesLocal + '-' + p.golesVisitante,
-                    baseGuardada: p.puntosBaseSinOtro,
-                    baseCalculada: calc.base,
-                    obtenidos: p.puntosObtenidos,
-                    definitivos: p.puntosDefinitivos,
-                    otroAct: !!p.elOtroActivado,
-                    otroApl: !!p.elOtroAplicado,
-                    otroRes: p.elOtroResultado || null,
-                    estrellas: estrellasMap[d.id] || 0,
-                });
-            });
-            lista.sort(function(a, b) { return (b.baseCalculada || 0) - (a.baseCalculada || 0); });
-            setFilas(lista);
-        } catch(e) { alert('Error auditando: ' + e.message); }
-        setCargando(false);
-    };
-
-    var jdSel = finalizadas.find(function(j) { return j.id === jSel; });
-
-    return (
-        <div style={ADMIN_STYLES.card}>
-            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>🔍 Auditoría de puntos por jornada</p>
-            <select value={jSel} onChange={function(e){ setJSel(e.target.value); auditar(e.target.value); }}
-                style={{width:'100%',border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'8px 10px',fontSize:12,marginBottom:10}}>
-                <option value="">— Elige jornada finalizada —</option>
-                {finalizadas.map(function(j) {
-                    return <option key={j.id} value={j.id}>J{j.numeroJornada} · {j.equipoLocal} {j.resultadoLocal}-{j.resultadoVisitante} {j.equipoVisitante}{j.cierreDefinitivo ? ' · CERRADA' : ''}</option>;
-                })}
-            </select>
-
-            {cargando && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)'}}>Auditando…</p>}
-
-            {filas && jdSel && (
-                <>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.6)',lineHeight:1.6,marginBottom:8}}>
-                    Estado: <strong>{jdSel.cierreDefinitivo ? 'cierre definitivo hecho' : 'sin cierre definitivo'}</strong> · puntosCalculados: <strong>{String(!!jdSel.puntosCalculados)}</strong> · VIP: <strong>{String(!!jdSel.esVip)}</strong>
-                </p>
-                <div style={{overflowX:'auto'}}>
-                    <table style={{width:'100%',borderCollapse:'collapse',fontFamily:"'Inter',sans-serif",fontSize:10}}>
-                        <thead>
-                            <tr style={{background:'rgba(0,31,107,0.06)'}}>
-                                {['JUGADOR','PAGO','APU','BASE guard.','BASE calc.','OBTEN.','DEFIN.','OTRO','⭐','GLOBAL'].map(function(h,i){
-                                    return <th key={i} style={{padding:'5px 4px',textAlign:'left',color:'rgba(0,31,107,0.6)',fontWeight:700,whiteSpace:'nowrap'}}>{h}</th>;
-                                })}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filas.map(function(f) {
-                                var descuadre = f.baseGuardada === undefined || Number(f.baseGuardada) !== Number(f.baseCalculada);
-                                return (
-                                    <tr key={f.id} style={{borderBottom:'1px solid rgba(0,31,107,0.05)',background: f.noCuenta ? 'rgba(230,57,70,0.06)' : (descuadre ? 'rgba(255,215,0,0.12)' : 'transparent')}}>
-                                        <td style={{padding:'5px 4px',fontWeight:700,color:'#001F6B',whiteSpace:'nowrap'}}>{f.id}</td>
-                                        <td style={{padding:'5px 4px',color: f.pago ? '#0f8a61' : '#e63946'}}>{f.pago ? (f.pago === 'pendiente_confirmacion' ? '⏳' : '✅') : '❌'}</td>
-                                        <td style={{padding:'5px 4px',color:'rgba(0,31,107,0.6)'}}>{f.marcador}</td>
-                                        <td style={{padding:'5px 4px',color: f.baseGuardada === undefined ? '#e63946' : '#001F6B',fontWeight:700}}>{f.baseGuardada === undefined ? 'FALTA' : f.baseGuardada}</td>
-                                        <td style={{padding:'5px 4px',color:'#0f8a61',fontWeight:700}}>{f.baseCalculada}</td>
-                                        <td style={{padding:'5px 4px'}}>{f.obtenidos === undefined ? '—' : f.obtenidos}</td>
-                                        <td style={{padding:'5px 4px'}}>{f.definitivos === undefined ? '—' : f.definitivos}</td>
-                                        <td style={{padding:'5px 4px',whiteSpace:'nowrap'}}>{f.otroAct ? (f.otroApl ? '✅' + (f.otroRes || '') : '⏳pend') : '—'}</td>
-                                        <td style={{padding:'5px 4px'}}>{f.estrellas || '—'}</td>
-                                        <td style={{padding:'5px 4px',fontWeight:700,color:'#001F6B'}}>{clasif[f.id] !== undefined ? clasif[f.id] : '—'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-                <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.55)',lineHeight:1.6,marginTop:8}}>
-                    🟡 fila ámbar = la base guardada NO coincide con la calculada (ese es el fallo que deja puntos a 0) · 🔴 fila roja = marcado como NO contabilizado (sin pago detectado de esa jornada) · PAGO: ✅ confirmado · ⏳ pendiente · ❌ sin pago registrado.
-                </p>
-                </>
-            )}
-        </div>
-    );
-};
-
-const ReconstruirClasificacionAdmin = () => {
-    var [ejecutando, setEjecutando] = useState(false);
-    var [logRec, setLogRec] = useState([]);
-
-    var ejecutar = async function() {
-        if (ejecutando) return;
-        if (!window.confirm('RECONSTRUIR LA CLASIFICACIÓN GENERAL\n\nSe recalculan desde cero los puntos de TODOS los jugadores, jornada a jornada:\n\n· Porra (exacto + 1X2 + goleador)\n· El Otro Equipo (× o ÷ ya resueltos)\n· 5 Estrellas\n\nEs seguro y repetible: escribe el total absoluto, no suma sobre lo que hay.\n\n¿Ejecutar?')) return;
-        setEjecutando(true);
-        var lineas = [];
-        var anotar = function(t, ok) { lineas = lineas.concat([{ t: t, ok: ok !== false }]); setLogRec(lineas.slice()); };
-        try {
-            var totales = {};
-            var exactos = {};
-            var sumar = function(uid, pts) { totales[uid] = Number(((totales[uid] || 0) + pts).toFixed(2)); };
-
-            var jSnap = await getDocs(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada'), orderBy('numeroJornada', 'asc')));
-            anotar('📋 Jornadas finalizadas encontradas: ' + jSnap.docs.length);
-
-            for (var i = 0; i < jSnap.docs.length; i++) {
-                var jd = { id: jSnap.docs[i].id, ...jSnap.docs[i].data() };
-                var pSnap = await getDocs(collection(db, 'pronosticos', jd.id, 'jugadores'));
-                var conPuntos = 0;
-                var arregladosBase = [];
-                var docsP = pSnap.docs;
-                for (var k = 0; k < docsP.length; k++) {
-                    var d = docsP[k];
-                    var p = d.data() || {};
-                    if (p.noContabilizado) continue;
-                    var calc = calcularBasePronosticoJornada(p, jd);
-                    var base = calc.base;
-                    // Si el pronóstico no tenía guardado su base (causa del 0),
-                    // se repara ahora con el valor recalculado.
-                    var descuadraBase = Number(p.puntosBaseSinOtro || 0) !== base;
-                    var descuadraExacto = Number(p.puntosResultadoExacto || 0) !== calc.exacto;
-                    var descuadraGol = Number(p.puntosGoleador || 0) !== calc.goleador;
-                    if (descuadraBase || descuadraExacto || descuadraGol) {
-                        await setDoc(doc(db, 'pronosticos', jd.id, 'jugadores', d.id), {
-                            puntosBaseSinOtro: base,
-                            puntosResultadoExacto: calc.exacto,
-                            puntosGoleador: calc.goleador,
-                        }, { merge: true });
-                        arregladosBase.push(d.id);
-                    }
-                    // El Otro: solo si YA está resuelto para esa jornada
-                    var tras = base;
-                    if (p.elOtroAplicado && p.elOtroResultado) {
-                        tras = aplicarMultiplicadorOtro(base, p.elOtroResultado, Number(p.elOtroMultiplicador || 2));
-                    }
-                    // En clasificacion SOLO entran las jornadas con cierre
-                    // definitivo. Las provisionales las suma la pantalla como
-                    // capa (con asterisco): si se metieran aquí, se contarían
-                    // dos veces y los totales salían inflados.
-                    if (jd.cierreDefinitivo) sumar(d.id, tras);
-                    if (calc.exacto > 0) exactos[d.id] = (exactos[d.id] || 0) + 1;
-                    if (tras > 0) conPuntos++;
-                }
-                // Estrellas de esa jornada
-                var eSnap = await getDocs(collection(db, 'estrellas_resultados', jd.id, 'jugadores'));
-                var sumarEstrellasDocs = function(docs) {
-                    var n = 0;
-                    docs.forEach(function(d2) {
-                        var pr = Number((d2.data() || {}).puntosRanking || 0);
-                        if (pr !== 0) { sumar(d2.id, pr); n++; }
-                    });
-                    return n;
-                };
-                var conEstrellas = jd.cierreDefinitivo ? sumarEstrellasDocs(eSnap.docs) : eSnap.docs.length;
-                anotar('✅ J' + jd.numeroJornada + (jd.cierreDefinitivo ? ' [CERRADA → suma a clasificación]' : ' [provisional → la pantalla la muestra con *]') + ': ' + conPuntos + ' con puntos de porra · ' + conEstrellas + ' con puntos de estrellas' + (arregladosBase.length ? ' · 🔧 base reparada a: ' + arregladosBase.join(', ') : ''));
-            }
-
-            // Escritura ABSOLUTA de la clasificación
-            var uids = Object.keys(totales);
-            var batchC = writeBatch(db);
-            uids.forEach(function(uid) {
-                batchC.set(doc(db, 'clasificacion', uid), {
-                    puntosTotales: totales[uid],
-                    puntosResultadoExacto: exactos[uid] || 0,
-                    reconstruidoEn: serverTimestamp(),
-                }, { merge: true });
-            });
-            await batchC.commit();
-            anotar('🏁 Clasificación reconstruida para ' + uids.length + ' jugadores.');
-            var resumen = uids.sort(function(a, b) { return totales[b] - totales[a]; })
-                .map(function(u) { return u + ': ' + totales[u]; }).join(' · ');
-            anotar('📊 ' + resumen);
-            alert('✅ CLASIFICACIÓN RECONSTRUIDA\n\n' + resumen);
-        } catch(e) { anotar('❌ ' + e.message, false); alert('❌ Error: ' + e.message); }
-        setEjecutando(false);
-    };
-
-    return (
-        <div style={ADMIN_STYLES.card}>
-            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>🔧 Reconstruir clasificación general</p>
-            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,0,0,0.55)',lineHeight:1.6,marginBottom:10}}>
-                Recalcula los puntos de todos desde cero (porra + El Otro resuelto + estrellas) y repara los pronósticos a los que les falte el desglose. Escribe el total absoluto: se puede repetir sin duplicar.
-            </p>
-            <button onClick={ejecutar} disabled={ejecutando}
-                style={{width:'100%',border:'none',borderRadius:10,padding:'11px 12px',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,background:'#001F6B',color:'#FFD700',cursor:ejecutando?'default':'pointer'}}>
-                {ejecutando ? '⏳ RECONSTRUYENDO…' : '🔧 RECONSTRUIR AHORA'}
-            </button>
-            {logRec.length > 0 && (
-                <div style={{marginTop:10,maxHeight:240,overflowY:'auto',background:'rgba(0,31,107,0.03)',border:'1px solid rgba(0,31,107,0.07)',borderRadius:10,padding:10}}>
-                    {logRec.map(function(l, i) {
                         return <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:11,lineHeight:1.5,color:l.ok?'rgba(0,31,107,0.75)':'#e63946',margin:'0 0 4px'}}>{l.t}</p>;
                     })}
                 </div>
@@ -13108,11 +13118,8 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'pagos' && (
                 <div>
-                    {/* 🔍 Auditoría: qué dato tiene cada jugador */}
-                    <AuditoriaPuntosAdmin jornadas={jornadas} />
-
-                    {/* 🔧 Reparación de la clasificación general */}
-                    <ReconstruirClasificacionAdmin />
+                    {/* ♻️ Motor único de puntos */}
+                    <RecalculoOficialAdmin />
 
                     {/* ⚡ Bandeja rápida: confirmar pagos en un toque */}
                     <PagosPendientesAdmin />
