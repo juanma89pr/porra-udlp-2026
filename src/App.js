@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-01.BR · marquesina fija sin tapar contenido';
+const APP_BUILD = 'v2026-09-01.BS · tablon en ventana + avisos coherentes';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3675,7 +3675,7 @@ function revisarTextoTablon(texto) {
 }
 
 // Formulario para dejar la dedicatoria (vive en Mi Jornada)
-const TablonDedicatorias = ({ user, userProfiles }) => {
+const TablonDedicatorias = ({ user, userProfiles, comoVentana, onCerrar }) => {
     var [texto, setTexto] = useState('');
     var [mios, setMios] = useState([]);
     var [ultimos, setUltimos] = useState([]);
@@ -3736,9 +3736,13 @@ const TablonDedicatorias = ({ user, userProfiles }) => {
         } catch(e) { alert('No se pudo reportar: ' + e.message); }
     };
 
-    return (
-        <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:14,padding:'13px 14px',marginBottom:12}}>
-            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',margin:'0 0 3px'}}>💬 DEJA TU DEDICATORIA</p>
+    var contenido = (
+        <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:14,padding:'13px 14px',marginBottom: comoVentana ? 0 : 12,
+            maxHeight: comoVentana ? '80vh' : 'none', overflowY: comoVentana ? 'auto' : 'visible'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+                <p style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',margin:0}}>💬 DEJA TU DEDICATORIA</p>
+                {comoVentana && <button onClick={onCerrar} style={{border:'none',background:'rgba(0,31,107,0.07)',color:'rgba(0,31,107,0.6)',borderRadius:16,padding:'4px 12px',fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,cursor:'pointer'}}>CERRAR ✕</button>}
+            </div>
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.55)',lineHeight:1.5,margin:'0 0 9px'}}>
                 Como la cámara del estadio: dedica la victoria a alguien, felicita al ganador o suelta tu pique sano. Tu mensaje irá rotando por la app.
             </p>
@@ -3793,6 +3797,18 @@ const TablonDedicatorias = ({ user, userProfiles }) => {
                 </div>
             )}
         </div>
+    );
+
+    if (!comoVentana) return contenido;
+    return (
+        <CapaEmergente>
+            <div onClick={onCerrar} style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:10800,
+                background:'rgba(4,10,38,0.8)',display:'flex',alignItems:'center',justifyContent:'center',padding:18}}>
+                <div onClick={function(e){ e.stopPropagation(); }} style={{maxWidth:400,width:'100%'}}>
+                    {contenido}
+                </div>
+            </div>
+        </CapaEmergente>
     );
 };
 
@@ -3911,7 +3927,7 @@ const CabeceraVip = ({ jornada }) => {
 // ============================================================================
 // Franja fina que aparece unos segundos, desliza el mensaje, se desvanece y
 // vuelve más tarde con el siguiente. Solo muestra lo que aplica a esa persona.
-const MarquesinaAvisos = ({ user, onIr, onAltura }) => {
+const MarquesinaAvisos = ({ user, onIr, onAltura, onAbrirTablon }) => {
     var [avisos, setAvisos] = useState([]);
     var [idx, setIdx] = useState(0);
     var [visible, setVisible] = useState(false);
@@ -3920,6 +3936,11 @@ const MarquesinaAvisos = ({ user, onIr, onAltura }) => {
     var [rifa, setRifa] = useState(null);
     var [pagosU, setPagosU] = useState([]);
     var [dedicatorias, setDedicatorias] = useState([]);
+    var [minuto, setMinuto] = useState(0);
+    useEffect(function() {
+        var iv = setInterval(function() { setMinuto(function(m) { return m + 1; }); }, 60000);
+        return function() { clearInterval(iv); };
+    }, []);
 
     useEffect(function() {
         var u1 = onSnapshot(query(collection(db, 'jornadas'), where('estado', 'in', ['Abierta','En vivo']), limit(1)),
@@ -3965,22 +3986,41 @@ const MarquesinaAvisos = ({ user, onIr, onAltura }) => {
             if (bote > 0) lista.push({ icono: '💰', texto: 'Bote acumulado de ' + bote.toFixed(2) + ' € en juego esta jornada', ir: 'miJornada' });
             if (jornadaAct.esVip) lista.push({ icono: '🏆', texto: 'JORNADA VIP: todo vale doble y la apuesta son ' + APUESTA_VIP.toFixed(2) + ' €', ir: 'miJornada' });
 
+            // Los avisos con cuenta atrás solo aparecen cuando quedan menos de
+            // 3 horas: así la marquesina avisa cuando de verdad urge.
+            var TRES_HORAS = 3 * 3600 * 1000;
             var cierre = getHorariosJornada(jornadaAct);
             if (cierre && jornadaAct.estado === 'Abierta') {
                 var quedan = cierre.cierre - Date.now();
-                if (quedan > 0 && quedan < 24 * 3600 * 1000) {
-                    lista.push({ icono: '⏱️', texto: 'Las apuestas cierran en ' + formatearCuentaAtras(quedan), ir: 'miJornada' });
+                if (quedan > 0 && quedan < TRES_HORAS) {
+                    lista.push({ icono: '🚨', texto: '¡Últimas horas! Las apuestas cierran en ' + formatearCuentaAtras(quedan), ir: 'miJornada', urgente: true });
                 }
             }
             var cierreEst = getCierreEstrellasMs(jornadaAct);
-            if (misEstrellas !== null && misEstrellas < 5 && cierreEst && Date.now() < cierreEst) {
-                lista.push({ icono: '⭐', texto: 'Te faltan tus 5 Estrellas · quedan ' + formatearCuentaAtras(cierreEst - Date.now()), ir: 'estrellas' });
+            if (misEstrellas !== null && misEstrellas < 5 && cierreEst) {
+                var quedanEst = cierreEst - Date.now();
+                if (quedanEst > 0 && quedanEst < TRES_HORAS) {
+                    lista.push({ icono: '🚨', texto: '¡Últimas horas para tus 5 Estrellas! Quedan ' + formatearCuentaAtras(quedanEst), ir: 'estrellas', urgente: true });
+                } else if (quedanEst > 0) {
+                    lista.push({ icono: '⭐', texto: 'Te faltan tus 5 Estrellas · quedan ' + formatearCuentaAtras(quedanEst), ir: 'estrellas' });
+                }
+            }
+            // El Otro, también con su aviso de últimas horas
+            if (cierre && jornadaAct.estado === 'Abierta') {
+                var limOtro = cierre.saque - 3 * 3600 * 1000;
+                var quedanOtro = limOtro - Date.now();
+                if (quedanOtro > 0 && quedanOtro < TRES_HORAS) {
+                    lista.push({ icono: '🛡️', texto: 'Últimas horas para activar El Otro Equipo', ir: 'elOtro', urgente: true });
+                }
             }
             // Pago de la jornada
             var numJ = String(jornadaAct.numeroJornada || '');
+            // Cuenta como pagada también si está declarada y esperando visto
+            // bueno: el jugador ya hizo su parte y no debe seguir viendo el aviso.
             var pagada = pagosU.some(function(p) {
                 if (p.tipo !== 'jornada_normal' && p.tipo !== 'jornada_vip') return false;
-                if (!pagoCuentaComoValido(p) && !pagoEstaConfirmado(p)) return false;
+                var e = String(p.estado || '').toLowerCase();
+                if (ESTADOS_PAGO_KO.indexOf(e) !== -1) return false;
                 return (p.jornada || '').toString().toUpperCase().replace(/[^0-9]/g, '') === numJ;
             });
             if (!pagada && jornadaAct.estado === 'Abierta') {
@@ -4000,21 +4040,23 @@ const MarquesinaAvisos = ({ user, onIr, onAltura }) => {
             conDedicatorias.push(a);
             if (dedicatorias[d]) {
                 var ded = dedicatorias[d];
-                conDedicatorias.push({ icono: '💬', texto: ded.texto + ' — ' + ded.autor, ir: 'miJornada', esDedicatoria: true });
+                conDedicatorias.push({ icono: '💬', texto: ded.texto + ' — ' + ded.autor, tablon: true, esDedicatoria: true });
                 d++;
             }
         });
-        // Si no hay avisos pero sí dedicatorias, van solas
-        if (!lista.length) {
-            dedicatorias.forEach(function(ded) {
-                conDedicatorias.push({ icono: '💬', texto: ded.texto + ' — ' + ded.autor, ir: 'miJornada', esDedicatoria: true });
-            });
-            // Y una invitación a estrenar el tablón
-            if (!dedicatorias.length) conDedicatorias.push({ icono: '💬', texto: 'Deja tu dedicatoria en Mi Jornada — como la cámara del estadio', ir: 'miJornada', esDedicatoria: true });
+        // Las dedicatorias que aún no se colocaron van al final
+        for (var k = d; k < dedicatorias.length; k++) {
+            conDedicatorias.push({ icono: '💬', texto: dedicatorias[k].texto + ' — ' + dedicatorias[k].autor, tablon: true, esDedicatoria: true });
         }
+        // Mensaje semilla SIEMPRE presente: es la puerta de entrada al tablón
+        conDedicatorias.push({
+            icono: '💬',
+            texto: 'Deja tu dedicatoria — toca aquí para escribir en el tablón',
+            tablon: true, esDedicatoria: true, esSemilla: true,
+        });
         setAvisos(conDedicatorias);
         setIdx(0);
-    }, [jornadaAct, misEstrellas, rifa, pagosU, dedicatorias]);
+    }, [jornadaAct, misEstrellas, rifa, pagosU, dedicatorias, minuto]);
 
     // Ciclo: aparece 7 s, descansa 6 s, siguiente aviso
     useEffect(function() {
@@ -4036,15 +4078,17 @@ const MarquesinaAvisos = ({ user, onIr, onAltura }) => {
 
     return (
         <div style={{height: visible ? 34 : 0, overflow:'hidden', transition:'height .45s ease', flexShrink:0, position:'relative', zIndex:9}}>
-            <div onClick={function(){ if (onIr && a.ir) onIr(a.ir); }}
+            <div onClick={function(){ if (a.tablon && onAbrirTablon) onAbrirTablon(); else if (onIr && a.ir) onIr(a.ir); }}
                 style={{height:34, display:'flex', alignItems:'center', gap:8, padding:'0 14px', cursor:'pointer',
-                    background: a.esDedicatoria ? 'rgba(201,162,39,0.1)' : 'rgba(0,31,107,0.06)',
-                    borderTop:'1px solid ' + (a.esDedicatoria ? 'rgba(201,162,39,0.28)' : 'rgba(0,31,107,0.1)'),
-                    borderBottom:'1px solid ' + (a.esDedicatoria ? 'rgba(201,162,39,0.28)' : 'rgba(0,31,107,0.1)'),
+                    background: a.esDedicatoria ? 'rgba(201,162,39,0.13)' : (a.urgente ? 'rgba(230,57,70,0.09)' : 'rgba(0,31,107,0.06)'),
+                    borderTop:'1px solid ' + (a.esDedicatoria ? 'rgba(201,162,39,0.35)' : (a.urgente ? 'rgba(230,57,70,0.3)' : 'rgba(0,31,107,0.1)')),
+                    borderBottom:'1px solid ' + (a.esDedicatoria ? 'rgba(201,162,39,0.35)' : (a.urgente ? 'rgba(230,57,70,0.3)' : 'rgba(0,31,107,0.1)')),
                     opacity: visible ? 1 : 0, transition:'opacity .4s ease', overflow:'hidden'}}>
                 <span style={{fontSize:13, flexShrink:0}}>{a.icono}</span>
                 <div style={{flex:1, overflow:'hidden'}}>
-                    <p style={{fontFamily:"'Inter',sans-serif", fontSize:11.5, color:'rgba(0,31,107,0.7)', margin:0,
+                    <p style={{fontFamily:"'Inter',sans-serif", fontSize:11.5, margin:0,
+                        color: a.esDedicatoria ? '#8a6a00' : (a.urgente ? '#b02a35' : 'rgba(0,31,107,0.7)'),
+                        fontWeight: a.urgente ? 600 : 400,
                         whiteSpace:'nowrap', animation:'deslizarAviso 9s linear'}}>{a.texto}</p>
                 </div>
                 <span style={{fontSize:11, color:'rgba(0,31,107,0.35)', flexShrink:0}}>›</span>
@@ -5173,7 +5217,6 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     misEstrellas={null} pagada={pagoJornadaHecho(jornada) || !!autoPagoInfo}
                     onIr={function(d){ if (d === 'pagos' && onIrAPagos) onIrAPagos(); }} />
                 <CronometroEstrellasMJ jornada={jornada} user={user} />
-                <TablonDedicatorias user={user} userProfiles={userProfiles} />
                 <PlazosCard tipo="porra" />
 
                 {/* 🔧 SOLO ADMIN · diagnóstico del EN VIVO */}
@@ -17672,6 +17715,7 @@ function App() {
     const jornadaVipActiva = useModoVip();
     // Altura que ocupa la marquesina: el contenido baja lo justo para no quedar tapado.
     const [alturaMarquesina, setAlturaMarquesina] = useState(0);
+    const [tablonAbierto, setTablonAbierto] = useState(false);
     const TEMA = jornadaVipActiva
         ? PALETA_VIP
         : (tema === 'oscuro'
@@ -17937,8 +17981,15 @@ function App() {
             {/* 📢 Marquesina de avisos: fija bajo la cabecera, nunca tapa nada */}
             <div style={{ position: 'absolute', top: 62, left: 0, right: 0, zIndex: 9 }}>
                 <MarquesinaAvisos user={currentUser} onIr={function(destino){ setActiveTab(destino); }}
-                    onAltura={function(h){ setAlturaMarquesina(h); }} />
+                    onAltura={function(h){ setAlturaMarquesina(h); }}
+                    onAbrirTablon={function(){ setTablonAbierto(true); }} />
             </div>
+
+            {/* 💬 Tablón como ventana, se abre desde la marquesina */}
+            {tablonAbierto && (
+                <TablonDedicatorias user={currentUser} userProfiles={userProfiles}
+                    comoVentana={true} onCerrar={function(){ setTablonAbierto(false); }} />
+            )}
 
             {/* ── CONTENIDO PRINCIPAL ── */}
             <div style={{ position: 'absolute', top: 62 + alturaMarquesina, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px', transition: 'top .45s ease' }}>
