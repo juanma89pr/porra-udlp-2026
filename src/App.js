@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-01.BO · modo VIP premium + marquesina + bote automatico';
+const APP_BUILD = 'v2026-09-01.BQ · tablon de dedicatorias';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -3515,14 +3515,16 @@ function useModoVip() {
     var [vip, setVip] = useState(null);
     useEffect(function() {
         var u = onSnapshot(
-            query(collection(db, 'jornadas'), where('esVip', '==', true), orderBy('numeroJornada', 'asc'), limit(20)),
+            collection(db, 'jornadas'),
             function(snap) {
                 var ahora = Date.now();
                 var activa = null;
-                snap.docs.forEach(function(d) {
+                snap.docs.filter(function(d){ return (d.data()||{}).esVip; })
+                    .sort(function(a,b){ return ((a.data()||{}).numeroJornada||0) - ((b.data()||{}).numeroJornada||0); })
+                    .forEach(function(d) {
                     var j = { id: d.id, ...d.data() };
                     // VIP visible desde Pre-apertura hasta que la jornada acaba
-                    var estadosVip = ['Pre-apertura', 'Abierta', 'Cerrada', 'En vivo'];
+                    var estadosVip = ['Próximamente', 'Pre-apertura', 'Abierta', 'Cerrada', 'En vivo'];
                     if (estadosVip.indexOf(j.estado) !== -1) { activa = j; return; }
                     // También si ya está finalizada pero es la última jugada
                     if (j.estado === 'Finalizada' && getKickoffMs(j) && (ahora - getKickoffMs(j)) < 24 * 3600 * 1000) activa = j;
@@ -3642,6 +3644,248 @@ const RotuloAvisosMJ = ({ jornada, user, misEstrellas, pagada, onIr }) => {
     );
 };
 
+// ============================================================================
+// 💬 TABLÓN DE DEDICATORIAS — la "cámara del estadio" de la porra
+// ============================================================================
+// Mensajes cortos de la peña que se intercalan con los avisos de la app en la
+// marquesina. Publicación directa (sin espera), pero con registro completo,
+// filtro de contenido, botón de reporte y control total del admin.
+var TABLON_MAX_CARACTERES = 90;
+var TABLON_ESPERA_HORAS = 12;
+
+// Filtro básico: bloquea insultos y contenido ofensivo evidente. No pretende
+// ser infalible — la red de seguridad real es el reporte + el panel de admin.
+var PALABRAS_VETADAS = [
+    'gilipollas','imbecil','imbécil','subnormal','retrasado','maricon','maricón','puta','puto',
+    'cabron','cabrón','hijoputa','hijo de puta','mierda','coño','joder','follar','polla','zorra',
+    'negrata','moro','sudaca','maracas','malparido','pendejo','verga','mogolico','mongolico','mongólico',
+];
+function revisarTextoTablon(texto) {
+    var limpio = String(texto || '').trim();
+    if (limpio.length < 3) return { ok: false, motivo: 'El mensaje es demasiado corto.' };
+    if (limpio.length > TABLON_MAX_CARACTERES) return { ok: false, motivo: 'Máximo ' + TABLON_MAX_CARACTERES + ' caracteres.' };
+    var normal = limpio.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    for (var i = 0; i < PALABRAS_VETADAS.length; i++) {
+        var p = PALABRAS_VETADAS[i].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        if (normal.indexOf(p) !== -1) return { ok: false, motivo: 'Ese mensaje contiene lenguaje que no se admite. Aquí se viene a dedicar, no a faltar. 💛' };
+    }
+    if (/(https?:\/\/|www\.)/i.test(limpio)) return { ok: false, motivo: 'No se pueden poner enlaces.' };
+    if (/(\d[\s-]?){9,}/.test(limpio)) return { ok: false, motivo: 'No pongas números de teléfono ni cuentas.' };
+    return { ok: true, texto: limpio };
+}
+
+// Formulario para dejar la dedicatoria (vive en Mi Jornada)
+const TablonDedicatorias = ({ user, userProfiles }) => {
+    var [texto, setTexto] = useState('');
+    var [mios, setMios] = useState([]);
+    var [ultimos, setUltimos] = useState([]);
+    var [enviando, setEnviando] = useState(false);
+    var [aviso, setAviso] = useState('');
+    var [bloqueado, setBloqueado] = useState(false);
+
+    useEffect(function() {
+        var u1 = onSnapshot(collection(db, 'tablon'), function(snap) {
+            var todos = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+                .filter(function(m) { return !m.oculto; })
+                .sort(function(a, b) {
+                    var ta = a.creadoEn && a.creadoEn.seconds ? a.creadoEn.seconds : 0;
+                    var tb = b.creadoEn && b.creadoEn.seconds ? b.creadoEn.seconds : 0;
+                    return tb - ta;
+                });
+            setUltimos(todos.slice(0, 6));
+            setMios(todos.filter(function(m) { return m.autor === user; }));
+        }, function(){});
+        var u2 = onSnapshot(doc(db, 'configuracion', 'tablonBloqueados'), function(s) {
+            var lista = s.exists() ? (s.data().nombres || []) : [];
+            setBloqueado(lista.indexOf(user) !== -1);
+        }, function(){});
+        return function() { u1(); u2(); };
+    }, [user]);
+
+    var ultimoMio = mios.length ? mios[0] : null;
+    var msRestantes = 0;
+    if (ultimoMio && ultimoMio.creadoEn && ultimoMio.creadoEn.seconds) {
+        msRestantes = (ultimoMio.creadoEn.seconds * 1000 + TABLON_ESPERA_HORAS * 3600 * 1000) - Date.now();
+    }
+    var puedeEscribir = !bloqueado && msRestantes <= 0;
+
+    var publicar = async function() {
+        if (enviando) return;
+        var rev = revisarTextoTablon(texto);
+        if (!rev.ok) { setAviso(rev.motivo); return; }
+        setEnviando(true); setAviso('');
+        try {
+            await addDoc(collection(db, 'tablon'), {
+                autor: user, texto: rev.texto, creadoEn: serverTimestamp(),
+                reportes: 0, oculto: false,
+            });
+            setTexto('');
+            setAviso('💛 ¡Publicado! Tu mensaje ya rota por la app.');
+        } catch(e) { setAviso('No se pudo publicar: ' + e.message); }
+        setEnviando(false);
+    };
+
+    var reportar = async function(m) {
+        if (!window.confirm('¿Reportar este mensaje al admin?\n\n"' + m.texto + '"')) return;
+        try {
+            await setDoc(doc(db, 'tablon', m.id), {
+                reportes: increment(1),
+                reportadoPor: arrayUnion(user),
+            }, { merge: true });
+            alert('Gracias. El admin lo revisará.');
+        } catch(e) { alert('No se pudo reportar: ' + e.message); }
+    };
+
+    return (
+        <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:14,padding:'13px 14px',marginBottom:12}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',margin:'0 0 3px'}}>💬 DEJA TU DEDICATORIA</p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.55)',lineHeight:1.5,margin:'0 0 9px'}}>
+                Como la cámara del estadio: dedica la victoria a alguien, felicita al ganador o suelta tu pique sano. Tu mensaje irá rotando por la app.
+            </p>
+
+            {bloqueado ? (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#e63946',background:'rgba(230,57,70,0.07)',borderRadius:8,padding:'8px 10px',margin:0}}>
+                    Tienes el tablón bloqueado. Habla con el admin si crees que es un error.
+                </p>
+            ) : !puedeEscribir ? (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'rgba(0,31,107,0.55)',background:'rgba(0,31,107,0.04)',borderRadius:8,padding:'8px 10px',margin:0}}>
+                    ⏳ Ya has publicado. Podrás dejar otra dedicatoria en <strong>{formatearCuentaAtras(msRestantes)}</strong>.
+                </p>
+            ) : (
+                <>
+                <textarea value={texto} onChange={function(e){ setTexto(e.target.value.slice(0, TABLON_MAX_CARACTERES)); setAviso(''); }}
+                    placeholder="Ej.: Esta victoria va por mi padre 💛💙"
+                    style={{width:'100%',boxSizing:'border-box',border:'1px solid rgba(0,31,107,0.15)',borderRadius:10,padding:'9px 11px',
+                        fontSize:13,fontFamily:"'Inter',sans-serif",resize:'none',height:60,marginBottom:6}} />
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:10,color: texto.length > TABLON_MAX_CARACTERES - 15 ? '#e63946' : 'rgba(0,31,107,0.4)'}}>
+                        {texto.length}/{TABLON_MAX_CARACTERES} · una cada {TABLON_ESPERA_HORAS} h
+                    </span>
+                    <button onClick={publicar} disabled={enviando || !texto.trim()}
+                        style={{border:'none',borderRadius:10,padding:'8px 16px',background: texto.trim() ? '#001F6B' : 'rgba(0,31,107,0.1)',
+                            color: texto.trim() ? '#FFD700' : 'rgba(0,31,107,0.3)',fontFamily:"'Teko',sans-serif",fontSize:12.5,letterSpacing:1.5,cursor:'pointer'}}>
+                        {enviando ? 'ENVIANDO…' : 'PUBLICAR'}
+                    </button>
+                </div>
+                </>
+            )}
+            {aviso && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color: aviso.indexOf('💛') !== -1 ? '#0f8a61' : '#e63946',margin:'7px 0 0'}}>{aviso}</p>}
+
+            {ultimos.length > 0 && (
+                <div style={{marginTop:11,borderTop:'1px solid rgba(0,31,107,0.07)',paddingTop:9}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(0,31,107,0.4)',margin:'0 0 6px'}}>ÚLTIMAS DEDICATORIAS</p>
+                    {ultimos.map(function(m) {
+                        var perf = (userProfiles || {})[m.autor] || {};
+                        return (
+                            <div key={m.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderBottom:'1px solid rgba(0,31,107,0.04)'}}>
+                                <IconoPerfil perfil={perf} size={22} />
+                                <div style={{flex:1,minWidth:0}}>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#001F6B',margin:0,lineHeight:1.4}}>💬 {m.texto}</p>
+                                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:'rgba(0,31,107,0.4)',margin:0}}>{nombreVisible(m.autor, perf)}</p>
+                                </div>
+                                {m.autor !== user && (
+                                    <button onClick={function(){ reportar(m); }} title="Reportar"
+                                        style={{border:'none',background:'transparent',color:'rgba(0,31,107,0.25)',fontSize:13,cursor:'pointer',padding:4}}>⚑</button>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ── Panel de admin: registro, reportes y bloqueos del tablón ──
+const TablonAdmin = () => {
+    var [mensajes, setMensajes] = useState([]);
+    var [bloqueados, setBloqueados] = useState([]);
+    var [userProfiles, setUserProfiles] = useState({});
+    var [soloReportados, setSoloReportados] = useState(false);
+
+    useEffect(function() {
+        var u1 = onSnapshot(collection(db, 'tablon'), function(snap) {
+            setMensajes(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+                .sort(function(a, b) {
+                    var ta = a.creadoEn && a.creadoEn.seconds ? a.creadoEn.seconds : 0;
+                    var tb = b.creadoEn && b.creadoEn.seconds ? b.creadoEn.seconds : 0;
+                    return tb - ta;
+                }));
+        }, function(){});
+        var u2 = onSnapshot(doc(db, 'configuracion', 'tablonBloqueados'), function(s) {
+            setBloqueados(s.exists() ? (s.data().nombres || []) : []);
+        }, function(){});
+        var u3 = onSnapshot(collection(db, 'perfiles'), function(s) {
+            var m = {}; s.forEach(function(d) { m[d.id] = d.data() || {}; }); setUserProfiles(m);
+        }, function(){});
+        return function() { u1(); u2(); u3(); };
+    }, []);
+
+    var ocultar = async function(m, valor) {
+        try { await setDoc(doc(db, 'tablon', m.id), { oculto: valor }, { merge: true }); }
+        catch(e) { alert('❌ ' + e.message); }
+    };
+    var alternarBloqueo = async function(nombre) {
+        var esta = bloqueados.indexOf(nombre) !== -1;
+        if (!window.confirm((esta ? 'DESBLOQUEAR' : 'BLOQUEAR') + ' el tablón para ' + nombre + '?')) return;
+        try {
+            await setDoc(doc(db, 'configuracion', 'tablonBloqueados'),
+                { nombres: esta ? arrayRemove(nombre) : arrayUnion(nombre) }, { merge: true });
+        } catch(e) { alert('❌ ' + e.message); }
+    };
+
+    var lista = soloReportados ? mensajes.filter(function(m) { return Number(m.reportes || 0) > 0; }) : mensajes;
+    var conReportes = mensajes.filter(function(m) { return Number(m.reportes || 0) > 0; }).length;
+
+    return (
+        <div style={{...ADMIN_STYLES.card, border: conReportes ? '2px solid rgba(230,57,70,0.5)' : ADMIN_STYLES.card.border}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:600}}>
+                💬 Tablón de dedicatorias {conReportes > 0 && <span style={{background:'#e63946',color:'#fff',borderRadius:10,padding:'1px 8px',fontSize:12,marginLeft:5}}>{conReportes} reportado(s)</span>}
+            </p>
+            <div style={{display:'flex',gap:6,marginBottom:9}}>
+                <button onClick={function(){ setSoloReportados(false); }}
+                    style={{flex:1,border:'none',borderRadius:8,padding:'7px 8px',cursor:'pointer',background: !soloReportados ? '#001F6B' : 'rgba(0,31,107,0.06)',color: !soloReportados ? '#FFD700' : 'rgba(0,31,107,0.5)',fontFamily:"'Teko',sans-serif",fontSize:11}}>TODOS ({mensajes.length})</button>
+                <button onClick={function(){ setSoloReportados(true); }}
+                    style={{flex:1,border:'none',borderRadius:8,padding:'7px 8px',cursor:'pointer',background: soloReportados ? '#e63946' : 'rgba(0,31,107,0.06)',color: soloReportados ? '#fff' : 'rgba(0,31,107,0.5)',fontFamily:"'Teko',sans-serif",fontSize:11}}>REPORTADOS ({conReportes})</button>
+            </div>
+            {bloqueados.length > 0 && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'#b02a35',background:'rgba(230,57,70,0.07)',borderRadius:8,padding:'7px 9px',margin:'0 0 9px'}}>
+                    🚫 Bloqueados: {bloqueados.join(', ')}
+                </p>
+            )}
+            <div style={{maxHeight:300,overflowY:'auto'}}>
+                {lista.length === 0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',margin:0}}>Sin mensajes.</p>}
+                {lista.map(function(m) {
+                    var perf = (userProfiles || {})[m.autor] || {};
+                    var rep = Number(m.reportes || 0);
+                    return (
+                        <div key={m.id} style={{background: rep > 0 ? 'rgba(230,57,70,0.06)' : (m.oculto ? 'rgba(0,31,107,0.04)' : '#fff'),
+                            border:'1px solid ' + (rep > 0 ? 'rgba(230,57,70,0.3)' : 'rgba(0,31,107,0.08)'),
+                            borderRadius:10,padding:'8px 10px',marginBottom:6}}>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#001F6B',margin:'0 0 3px',lineHeight:1.4,
+                                textDecoration: m.oculto ? 'line-through' : 'none', opacity: m.oculto ? 0.5 : 1}}>💬 {m.texto}</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.45)',margin:'0 0 6px'}}>
+                                {nombreVisible(m.autor, perf)} · {m.creadoEn && m.creadoEn.seconds ? new Date(m.creadoEn.seconds*1000).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'}) : ''}
+                                {rep > 0 ? ' · ⚑ ' + rep + ' reporte(s)' : ''}
+                            </p>
+                            <div style={{display:'flex',gap:5}}>
+                                <button onClick={function(){ ocultar(m, !m.oculto); }}
+                                    style={{flex:1,border:'1px solid rgba(0,31,107,0.15)',borderRadius:7,padding:'5px 7px',background:'#fff',color:'rgba(0,31,107,0.7)',fontFamily:"'Teko',sans-serif",fontSize:10.5,cursor:'pointer'}}>
+                                    {m.oculto ? 'MOSTRAR' : 'OCULTAR'}
+                                </button>
+                                <button onClick={function(){ alternarBloqueo(m.autor); }}
+                                    style={{flex:1,border:'1px solid rgba(230,57,70,0.3)',borderRadius:7,padding:'5px 7px',background:'#fff',color:'#e63946',fontFamily:"'Teko',sans-serif",fontSize:10.5,cursor:'pointer'}}>
+                                    {bloqueados.indexOf(m.autor) !== -1 ? 'DESBLOQUEAR' : 'BLOQUEAR AUTOR'}
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
 // ── Cabecera VIP: insignia con el baremo doble y el precio ──
 const CabeceraVip = ({ jornada }) => {
     if (!jornada) return null;
@@ -3675,6 +3919,7 @@ const MarquesinaAvisos = ({ user, onIr }) => {
     var [misEstrellas, setMisEstrellas] = useState(null);
     var [rifa, setRifa] = useState(null);
     var [pagosU, setPagosU] = useState([]);
+    var [dedicatorias, setDedicatorias] = useState([]);
 
     useEffect(function() {
         var u1 = onSnapshot(query(collection(db, 'jornadas'), where('estado', 'in', ['Abierta','En vivo']), limit(1)),
@@ -3691,7 +3936,18 @@ const MarquesinaAvisos = ({ user, onIr }) => {
         var u3 = onSnapshot(collection(db, 'pagos'), function(s) {
             setPagosU(s.docs.map(function(d){ return d.data() || {}; }).filter(function(p){ return p.jugador === user; }));
         }, function(){});
-        return function() { u1(); u2(); u3(); };
+        // 💬 Dedicatorias de la peña: se intercalan con los avisos
+        var u4 = onSnapshot(collection(db, 'tablon'), function(s) {
+            var lista = s.docs.map(function(d){ return { id: d.id, ...d.data() }; })
+                .filter(function(m) { return !m.oculto && m.texto; })
+                .sort(function(a, b) {
+                    var ta = a.creadoEn && a.creadoEn.seconds ? a.creadoEn.seconds : 0;
+                    var tb = b.creadoEn && b.creadoEn.seconds ? b.creadoEn.seconds : 0;
+                    return tb - ta;
+                }).slice(0, 8);
+            setDedicatorias(lista);
+        }, function(){});
+        return function() { u1(); u2(); u3(); u4(); };
     }, [user]);
 
     useEffect(function() {
@@ -3736,9 +3992,29 @@ const MarquesinaAvisos = ({ user, onIr }) => {
             var total = Number(rifa.totalPapeletas || 100);
             if (vendidas < total) lista.push({ icono: '🎟️', texto: 'Rifa activa: quedan ' + (total - vendidas) + ' números libres', ir: 'rifas' });
         }
-        setAvisos(lista);
+        // 💬 Se intercalan las dedicatorias: una de cada dos posiciones, para
+        // que la marquesina alterne información y cariño de la peña.
+        var conDedicatorias = [];
+        var d = 0;
+        lista.forEach(function(a, i) {
+            conDedicatorias.push(a);
+            if (dedicatorias[d]) {
+                var ded = dedicatorias[d];
+                conDedicatorias.push({ icono: '💬', texto: ded.texto + ' — ' + ded.autor, ir: 'miJornada', esDedicatoria: true });
+                d++;
+            }
+        });
+        // Si no hay avisos pero sí dedicatorias, van solas
+        if (!lista.length) {
+            dedicatorias.forEach(function(ded) {
+                conDedicatorias.push({ icono: '💬', texto: ded.texto + ' — ' + ded.autor, ir: 'miJornada', esDedicatoria: true });
+            });
+            // Y una invitación a estrenar el tablón
+            if (!dedicatorias.length) conDedicatorias.push({ icono: '💬', texto: 'Deja tu dedicatoria en Mi Jornada — como la cámara del estadio', ir: 'miJornada', esDedicatoria: true });
+        }
+        setAvisos(conDedicatorias);
         setIdx(0);
-    }, [jornadaAct, misEstrellas, rifa, pagosU]);
+    }, [jornadaAct, misEstrellas, rifa, pagosU, dedicatorias]);
 
     // Ciclo: aparece 7 s, descansa 6 s, siguiente aviso
     useEffect(function() {
@@ -3753,10 +4029,12 @@ const MarquesinaAvisos = ({ user, onIr }) => {
     var a = avisos[idx] || avisos[0];
 
     return (
-        <div style={{height: visible ? 32 : 0, overflow:'hidden', transition:'height .45s ease', flexShrink:0}}>
+        <div style={{height: visible ? 34 : 0, overflow:'hidden', transition:'height .45s ease', flexShrink:0, position:'relative', zIndex:9}}>
             <div onClick={function(){ if (onIr && a.ir) onIr(a.ir); }}
-                style={{height:32, display:'flex', alignItems:'center', gap:8, padding:'0 14px', cursor:'pointer',
-                    background:'rgba(0,31,107,0.06)', borderTop:'1px solid rgba(0,31,107,0.1)', borderBottom:'1px solid rgba(0,31,107,0.1)',
+                style={{height:34, display:'flex', alignItems:'center', gap:8, padding:'0 14px', cursor:'pointer',
+                    background: a.esDedicatoria ? 'rgba(201,162,39,0.1)' : 'rgba(0,31,107,0.06)',
+                    borderTop:'1px solid ' + (a.esDedicatoria ? 'rgba(201,162,39,0.28)' : 'rgba(0,31,107,0.1)'),
+                    borderBottom:'1px solid ' + (a.esDedicatoria ? 'rgba(201,162,39,0.28)' : 'rgba(0,31,107,0.1)'),
                     opacity: visible ? 1 : 0, transition:'opacity .4s ease', overflow:'hidden'}}>
                 <span style={{fontSize:13, flexShrink:0}}>{a.icono}</span>
                 <div style={{flex:1, overflow:'hidden'}}>
@@ -4889,6 +5167,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                     misEstrellas={null} pagada={pagoJornadaHecho(jornada) || !!autoPagoInfo}
                     onIr={function(d){ if (d === 'pagos' && onIrAPagos) onIrAPagos(); }} />
                 <CronometroEstrellasMJ jornada={jornada} user={user} />
+                <TablonDedicatorias user={user} userProfiles={userProfiles} />
                 <PlazosCard tipo="porra" />
 
                 {/* 🔧 SOLO ADMIN · diagnóstico del EN VIVO */}
@@ -13604,6 +13883,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {seccion === 'jornadas' && (
                 <div>
+                    {/* 💬 Tablón: registro, reportes y bloqueos */}
+                    <TablonAdmin />
+
                     {/* 💰 Botes trasladados automáticamente */}
                     <BotesHeredadosAdmin jornadas={jornadas} />
 
@@ -14436,6 +14718,10 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
 // ============================================================================
 // --- EL OTRO — Pantalla de selección y gestión del equipo de Primera ---
 // ============================================================================
+// El draft de El Otro ya cumplió: todos tienen equipo. Se oculta con este
+// interruptor (queda el código por si hace falta en el re-draft de la J22).
+var DRAFT_EL_OTRO_ACTIVO = false;
+
 // Orden de elección de El Otro — basado en clasificación temporada 25/26
 // El primero de la clasificación elige primero
 // Los nuevos jugadores van al final (después de los 15 originales)
@@ -15405,7 +15691,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                 baja (activos o no) no se muestran — ni como "baja" ni como
                 "hueco libre": simplemente desaparecen de la lista, y su
                 posición la ocupa quien corresponda de forma natural. */}
-            <div style={{marginTop:24}}>
+            {DRAFT_EL_OTRO_ACTIVO && <div style={{marginTop:24}}>
                 <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:3,color:G.deepBlue,opacity:.4,textTransform:'uppercase',marginBottom:12}}>Estado del draft</p>
                 {ordenFinal.filter(function(jugador) {
                     return jugadoresInactivos.indexOf(jugador) === -1;
@@ -15516,7 +15802,7 @@ const ElOtroScreen = ({ currentUser, userProfiles, pagos, onIrAPagos, teamLogos 
                         </div>
                     );
                 })}
-            </div>
+            </div>}
             </div>
         </div>
     );
