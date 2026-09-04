@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-04.BU · compatibilidad teclado iPhone';
+const APP_BUILD = 'v2026-09-04.BV · APOSTAR ARREGLADO (sin marquesina)';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -5468,7 +5468,6 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoLocal.toUpperCase()}</p>
                                 <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={2}
                                     value={pronostico.golesLocal}
-                                    onFocus={function(e){ var el = e.target; setTimeout(function(){ try { el.scrollIntoView({block:'center',behavior:'smooth'}); } catch(err){} }, 320); }}
                                     onChange={function(e) { var v = e.target.value.replace(/[^0-9]/g, '').slice(0,2); setPronostico(function(p) { return {...p, golesLocal: v}; }); setGuardado(false); }}
                                     style={{width:64,height:64,textAlign:'center',border:'2px solid rgba(0,31,107,0.2)',borderRadius:14,
                                         fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:G.deepBlue,background:'#f8f9ff'}} />
@@ -5481,7 +5480,6 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoVisitante.toUpperCase()}</p>
                                 <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={2}
                                     value={pronostico.golesVisitante}
-                                    onFocus={function(e){ var el = e.target; setTimeout(function(){ try { el.scrollIntoView({block:'center',behavior:'smooth'}); } catch(err){} }, 320); }}
                                     onChange={function(e) { var v = e.target.value.replace(/[^0-9]/g, '').slice(0,2); setPronostico(function(p) { return {...p, golesVisitante: v}; }); setGuardado(false); }}
                                     style={{width:64,height:64,textAlign:'center',border:'2px solid rgba(0,31,107,0.2)',borderRadius:14,
                                         fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:G.deepBlue,background:'#f8f9ff'}} />
@@ -17728,41 +17726,8 @@ function App() {
     // El modo VIP manda sobre claro/oscuro mientras esté activo.
     const jornadaVipActiva = useModoVip();
     // Altura que ocupa la marquesina: el contenido baja lo justo para no quedar tapado.
-    const [alturaMarquesina, setAlturaMarquesina] = useState(0);
     const [tablonAbierto, setTablonAbierto] = useState(false);
-    // Alto realmente visible: en iPhone el teclado tapa parte de la pantalla y
-    // los contenedores fijos no se enteran. Con esto la app se ajusta y el
-    // campo enfocado queda siempre accesible.
-    const [altoVisible, setAltoVisible] = useState(0);
-    // Al enfocar cualquier campo, se sube a la zona visible. En iPhone el
-    // teclado tapa la mitad inferior y sin esto el campo queda escondido.
-    useEffect(function() {
-        if (typeof document === 'undefined') return;
-        var alEnfocar = function(ev) {
-            var t = ev.target;
-            if (!t || !t.tagName) return;
-            var etiqueta = t.tagName.toUpperCase();
-            if (etiqueta !== 'INPUT' && etiqueta !== 'TEXTAREA' && etiqueta !== 'SELECT') return;
-            setTimeout(function() {
-                try { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch(e) {}
-            }, 330);
-        };
-        document.addEventListener('focusin', alEnfocar);
-        return function() { document.removeEventListener('focusin', alEnfocar); };
-    }, []);
 
-    useEffect(function() {
-        if (typeof window === 'undefined' || !window.visualViewport) return;
-        var vv = window.visualViewport;
-        var ajustar = function() { setAltoVisible(Math.round(vv.height)); };
-        ajustar();
-        vv.addEventListener('resize', ajustar);
-        vv.addEventListener('scroll', ajustar);
-        return function() {
-            vv.removeEventListener('resize', ajustar);
-            vv.removeEventListener('scroll', ajustar);
-        };
-    }, []);
     const TEMA = jornadaVipActiva
         ? PALETA_VIP
         : (tema === 'oscuro'
@@ -17983,8 +17948,7 @@ function App() {
     if (isAdmin) TABS.push({ id: 'admin', label: 'Admin', icon: 'ti-settings', badge: avisosAdminCount > 0 ? avisosAdminCount : null });
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0,
-            height: altoVisible ? altoVisible + 'px' : '100dvh',
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
             background: TEMA.fondoApp, overflow: 'hidden', fontFamily: "'Teko', sans-serif" }}>
 
             {/* ⚙️ Vigilante de estados: abre, cierra y pone en vivo las
@@ -18027,12 +17991,8 @@ function App() {
                 </div>
             </div>
 
-            {/* 📢 Marquesina de avisos: fija bajo la cabecera, nunca tapa nada */}
-            <div style={{ position: 'absolute', top: 62, left: 0, right: 0, zIndex: 9 }}>
-                <MarquesinaAvisos user={currentUser} onIr={function(destino){ setActiveTab(destino); }}
-                    onAltura={function(h){ setAlturaMarquesina(h); }}
-                    onAbrirTablon={function(){ setTablonAbierto(true); }} />
-            </div>
+            {/* La marquesina queda DESACTIVADA: alteraba el layout y en iPhone
+                impedía escribir la apuesta. Lo primero es poder apostar. */}
 
             {/* 💬 Tablón como ventana, se abre desde la marquesina */}
             {tablonAbierto && (
@@ -18041,7 +18001,7 @@ function App() {
             )}
 
             {/* ── CONTENIDO PRINCIPAL ── */}
-            <div style={{ position: 'absolute', top: 62 + alturaMarquesina, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px' }}>
+            <div style={{ position: 'absolute', top: 62, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px', WebkitOverflowScrolling: 'touch' }}>
                 <div key={activeTab} style={{ animation: 'slideIn .22s ease both' }}>
                     {renderContent()}
                     {novedadOverlay}
