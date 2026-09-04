@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-01.BS · tablon en ventana + avisos coherentes';
+const APP_BUILD = 'v2026-09-02.BT · teclado arreglado + bloqueo El Otro por ronda';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -4069,15 +4069,18 @@ const MarquesinaAvisos = ({ user, onIr, onAltura, onAbrirTablon }) => {
 
     // Avisar al contenedor de cuánto espacio ocupa, para que el contenido
     // se desplace en vez de quedar tapado.
+    // La altura se reserva mientras HAYA avisos y no cambia al aparecer o
+    // desvanecerse el mensaje: mover el contenido mientras alguien escribe
+    // hacía que el teclado se cerrara y no se pudiera rellenar la apuesta.
     useEffect(function() {
-        if (onAltura) onAltura(avisos.length && visible ? 34 : 0);
-    }, [avisos, visible, onAltura]);
+        if (onAltura) onAltura(avisos.length ? 34 : 0);
+    }, [avisos, onAltura]);
 
     if (!avisos.length) return null;
     var a = avisos[idx] || avisos[0];
 
     return (
-        <div style={{height: visible ? 34 : 0, overflow:'hidden', transition:'height .45s ease', flexShrink:0, position:'relative', zIndex:9}}>
+        <div style={{height:34, overflow:'hidden', flexShrink:0, position:'relative', zIndex:9}}>
             <div onClick={function(){ if (a.tablon && onAbrirTablon) onAbrirTablon(); else if (onIr && a.ir) onIr(a.ir); }}
                 style={{height:34, display:'flex', alignItems:'center', gap:8, padding:'0 14px', cursor:'pointer',
                     background: a.esDedicatoria ? 'rgba(201,162,39,0.13)' : (a.urgente ? 'rgba(230,57,70,0.09)' : 'rgba(0,31,107,0.06)'),
@@ -4143,17 +4146,13 @@ function estadoQueTocaAhora(j, ahoraMs) {
 
 // Vigilante silencioso: vive en la app y aplica los cambios que tocan.
 const MotorEstadosJornada = ({ esAdmin }) => {
-    var [tick, setTick] = useState(0);
     var aplicandoRef = useRef({});
 
     useEffect(function() {
-        var iv = setInterval(function() { setTick(function(t) { return t + 1; }); }, 30000);
-        return function() { clearInterval(iv); };
-    }, []);
-
-    useEffect(function() {
         var vivo = true;
-        (async function() {
+        // Se revisa con un intervalo interno, SIN provocar repintados de la
+        // app: un setState cada 30 s repintaba todo y podía cerrar el teclado.
+        var revisar = async function() {
             try {
                 // Solo las jornadas que pueden cambiar de estado
                 var snap = await getDocs(query(collection(db, 'jornadas'),
@@ -4174,9 +4173,11 @@ const MotorEstadosJornada = ({ esAdmin }) => {
                     console.log('%c⚙️ Jornada ' + j.numeroJornada + ' → ' + toca + ' (automático)', 'color:#FFD700;background:#001F6B;padding:2px 6px;border-radius:4px');
                 }
             } catch(e) { /* sin permisos o sin red: se reintenta al siguiente ciclo */ }
-        })();
-        return function() { vivo = false; };
-    }, [tick]);
+        };
+        revisar();
+        var iv = setInterval(revisar, 30000);
+        return function() { vivo = false; clearInterval(iv); };
+    }, []);
 
     return null;
 };
@@ -4940,8 +4941,23 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var [primerPartidoPrimera, setPrimerPartidoPrimera] = useState(null);
     var [rondaPrimeraVigente, setRondaPrimeraVigente] = useState(null);
     useEffect(function() {
-        var refBusqueda = getFechaPartidoISO(jornada) || new Date().toISOString();
-        buscarJornadaCompletaPrimera(refBusqueda, 6).then(function(partidos) {
+        // Se pide la RONDA de Primera que corresponde a esta jornada: incluye
+        // partidos aplazados y no depende de ventanas de fechas.
+        var numRondaP = jornada && jornada.numeroJornada ? jornada.numeroJornada : null;
+        var promesaRonda = numRondaP && API_FOOTBALL_KEY
+            ? fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+                '&season=2026&round=' + encodeURIComponent('Regular Season - ' + numRondaP),
+                { headers: { 'x-apisports-key': API_FOOTBALL_KEY } })
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    return (d.response || []).map(function(p) {
+                        return { fixtureId: p.fixture.id, fecha: p.fixture.date,
+                            local: p.teams.home.name, visitante: p.teams.away.name,
+                            round: 'Regular Season - ' + numRondaP };
+                    });
+                })
+            : Promise.resolve([]);
+        promesaRonda.then(function(partidos) {
             if (!partidos || !partidos.length) return;
             var ahoraMs = Date.now();
             // Agrupar por ronda y quedarnos con la PRÓXIMA ronda que todavía
@@ -4960,14 +4976,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
               .sort(function(a, b) { return a.inicioMs - b.inicioMs; });
             // La vigente es la primera cuyo primer partido aún no ha empezado;
             // si todas empezaron, la última (jornada en curso).
-            // La ronda correcta es la MÁS CERCANA en el tiempo al partido de la
-            // UDLP de esta jornada (no "la próxima desde hoy", que se iba
-            // varias jornadas por delante cuando había parón o desfase).
-            var refMs = getKickoffMs(jornada) || ahoraMs;
-            if (isNaN(refMs)) refMs = ahoraMs;
-            var vigente = candidatas.slice().sort(function(a, b) {
-                return Math.abs(a.inicioMs - refMs) - Math.abs(b.inicioMs - refMs);
-            })[0];
+            // Ya viene filtrada por ronda: el primer partido es el más temprano.
+            var vigente = candidatas.slice().sort(function(a, b) { return a.inicioMs - b.inicioMs; })[0];
             if (vigente) {
                 setPrimerPartidoPrimera(vigente.primero);
                 setRondaPrimeraVigente(vigente.ronda);
@@ -17992,7 +18002,7 @@ function App() {
             )}
 
             {/* ── CONTENIDO PRINCIPAL ── */}
-            <div style={{ position: 'absolute', top: 62 + alturaMarquesina, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px', transition: 'top .45s ease' }}>
+            <div style={{ position: 'absolute', top: 62 + alturaMarquesina, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px' }}>
                 <div key={activeTab} style={{ animation: 'slideIn .22s ease both' }}>
                     {renderContent()}
                     {novedadOverlay}
