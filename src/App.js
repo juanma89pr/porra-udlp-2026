@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-04.BV · APOSTAR ARREGLADO (sin marquesina)';
+const APP_BUILD = 'v2026-09-04.BW · apuesta protegida (causa raiz resuelta)';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -4614,6 +4614,9 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     }, [necesitaAutoPago, jornadaAbiertaAuto, saldoJornadas, user]);
     var [loading, setLoading] = useState(true);
     var [pronostico, setPronostico] = useState({ golesLocal: '', golesVisitante: '', resultado1x2: '' });
+    // Mientras el jugador edita, NADA de fuera puede tocar su apuesta.
+    var edicionRef = useRef(false);
+    var jornadaCargadaRef = useRef(null);
     var [elOtroActivado, setElOtroActivado] = useState(false);
     var [partidoOtro, setPartidoOtro] = useState(null); // partido de Primera del Otro Equipo, cargado al saber la jornada
     var [cargandoPartidoOtro, setCargandoPartidoOtro] = useState(false);
@@ -4844,18 +4847,26 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 var seleccion = activa || reciente || null;
                 if (seleccion) {
                     setJornada(seleccion);
-                    getDoc(doc(db, "pronosticos", seleccion.id, "jugadores", user)).then(function(p) {
-                        if (p.exists()) {
-                            var d = p.data();
-                            setPronostico({ golesLocal: d.golesLocal ?? '', golesVisitante: d.golesVisitante ?? '', resultado1x2: d.resultado1x2 || '' });
-                            setElOtroActivado(d.elOtroActivado || false);
-                            setGuardado(true);
-                        } else {
-                            setPronostico({golesLocal:'',golesVisitante:'',resultado1x2:''});
-                            setElOtroActivado(false);
-                            setGuardado(false);
-                        }
-                    }).catch(function(){});
+                    // El pronóstico propio se carga UNA SOLA VEZ por jornada.
+                    // Antes se releía en cada snapshot y machacaba lo que el
+                    // jugador estaba tecleando (snapshot que salta cada vez que
+                    // alguien guarda, cambia un estado o llegan datos en vivo).
+                    if (jornadaCargadaRef.current !== seleccion.id) {
+                        jornadaCargadaRef.current = seleccion.id;
+                        getDoc(doc(db, "pronosticos", seleccion.id, "jugadores", user)).then(function(p) {
+                            if (edicionRef.current) return;   // está escribiendo: no tocar
+                            if (p.exists()) {
+                                var d = p.data();
+                                setPronostico({ golesLocal: d.golesLocal ?? '', golesVisitante: d.golesVisitante ?? '', resultado1x2: d.resultado1x2 || '' });
+                                setElOtroActivado(d.elOtroActivado || false);
+                                setGuardado(true);
+                            } else {
+                                setPronostico({golesLocal:'',golesVisitante:'',resultado1x2:''});
+                                setElOtroActivado(false);
+                                setGuardado(false);
+                            }
+                        }).catch(function(){});
+                    }
                     if (jornadaSuscritaMJ !== seleccion.id) {
                         if (unsubPronMJ) { unsubPronMJ(); unsubPronMJ = null; }
                         jornadaSuscritaMJ = seleccion.id;
@@ -4868,12 +4879,15 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                 } else {
                     if (unsubPronMJ) { unsubPronMJ(); unsubPronMJ = null; }
                     jornadaSuscritaMJ = null;
+                    jornadaCargadaRef.current = null;
                     setJornada(null);
                     setParticipantes([]);
                     setPronosticosTodos([]);
-                    setGuardado(false);
-                    setPronostico({golesLocal:'',golesVisitante:'',resultado1x2:''});
-                    setElOtroActivado(false);
+                    if (!edicionRef.current) {
+                        setGuardado(false);
+                        setPronostico({golesLocal:'',golesVisitante:'',resultado1x2:''});
+                        setElOtroActivado(false);
+                    }
                 }
                 setLoading(false);
             },
@@ -5050,6 +5064,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         // bloqueaba esperando un modal que no existía en esta vista).
         try {
             await escribirPronostico();
+            edicionRef.current = false;   // ya está guardado: puede volver a sincronizar
             setGuardado(true);
             if (!jornadaPagada && !autoPagoInfo) {
                 setMensaje('✅ Apuesta guardada. ⚠️ RECUERDA: para que cuente tienes que pagar la jornada por Bizum antes del cierre.');
@@ -5468,7 +5483,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoLocal.toUpperCase()}</p>
                                 <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={2}
                                     value={pronostico.golesLocal}
-                                    onChange={function(e) { var v = e.target.value.replace(/[^0-9]/g, '').slice(0,2); setPronostico(function(p) { return {...p, golesLocal: v}; }); setGuardado(false); }}
+                                    onFocus={function(){ edicionRef.current = true; }}
+                                    onChange={function(e) { edicionRef.current = true; var v = e.target.value.replace(/[^0-9]/g, '').slice(0,2); setPronostico(function(p) { return {...p, golesLocal: v}; }); setGuardado(false); }}
                                     style={{width:64,height:64,textAlign:'center',border:'2px solid rgba(0,31,107,0.2)',borderRadius:14,
                                         fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:G.deepBlue,background:'#f8f9ff'}} />
                             </div>
@@ -5480,7 +5496,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoVisitante.toUpperCase()}</p>
                                 <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={2}
                                     value={pronostico.golesVisitante}
-                                    onChange={function(e) { var v = e.target.value.replace(/[^0-9]/g, '').slice(0,2); setPronostico(function(p) { return {...p, golesVisitante: v}; }); setGuardado(false); }}
+                                    onFocus={function(){ edicionRef.current = true; }}
+                                    onChange={function(e) { edicionRef.current = true; var v = e.target.value.replace(/[^0-9]/g, '').slice(0,2); setPronostico(function(p) { return {...p, golesVisitante: v}; }); setGuardado(false); }}
                                     style={{width:64,height:64,textAlign:'center',border:'2px solid rgba(0,31,107,0.2)',borderRadius:14,
                                         fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:G.deepBlue,background:'#f8f9ff'}} />
                             </div>
@@ -5502,7 +5519,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                             {['Gana','Empata','Pierde'].map(function(op) {
                                 var sel = pronostico.resultado1x2 === op;
                                 return (
-                                    <button key={op} onClick={function() { setPronostico(function(p) { return {...p, resultado1x2: op}; }); setGuardado(false); }}
+                                    <button key={op} onClick={function() { edicionRef.current = true; setPronostico(function(p) { return {...p, resultado1x2: op}; }); setGuardado(false); }}
                                         style={{flex:1,padding:'12px 0',borderRadius:12,border: sel ? 'none' : '1.5px solid rgba(0,31,107,0.15)',
                                             background: sel ? '#001F6B' : '#f8f8f8',
                                             fontFamily:"'Teko',sans-serif",fontSize:17,fontWeight:700,letterSpacing:1,
@@ -18002,7 +18019,10 @@ function App() {
 
             {/* ── CONTENIDO PRINCIPAL ── */}
             <div style={{ position: 'absolute', top: 62, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px', WebkitOverflowScrolling: 'touch' }}>
-                <div key={activeTab} style={{ animation: 'slideIn .22s ease both' }}>
+                {/* Sin key dinámica ni animación: al re-renderizar (cosa que
+                    pasa con cada dato nuevo de Firebase) React desmontaba y
+                    volvía a montar la pantalla, provocando el salto. */}
+                <div>
                     {renderContent()}
                     {novedadOverlay}
                 </div>
