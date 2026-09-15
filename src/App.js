@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-04.BW · apuesta protegida (causa raiz resuelta)';
+const APP_BUILD = 'v2026-09-15.BY · bolsa del jugador + banco';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -1117,6 +1117,34 @@ function equipoEsLocal(equipo, nombreLocal) {
     return e === l || l.indexOf(e) !== -1 || e.indexOf(l) !== -1;
 }
 
+// Detecta qué jornada de PRIMERA corresponde a una jornada de la UDLP, por
+// cercanía de fechas (Segunda y Primera no van sincronizadas: parones de
+// selección, aplazados...). Devuelve el número de ronda o null.
+async function detectarRondaPrimera(jornada) {
+    if (!API_FOOTBALL_KEY) return null;
+    // Si el admin fijó la ronda a mano, manda
+    if (jornada && jornada.rondaPrimeraManual) return Number(jornada.rondaPrimeraManual);
+    var ko = getKickoffMs(jornada);
+    if (!ko) return null;
+    var desde = new Date(ko - 4 * 86400000).toISOString().slice(0, 10);
+    var hasta = new Date(ko + 4 * 86400000).toISOString().slice(0, 10);
+    try {
+        var r = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+            '&season=2026&from=' + desde + '&to=' + hasta, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+        var d = await r.json();
+        var cuenta = {};
+        (d.response || []).forEach(function(p) {
+            var m = String((p.league && p.league.round) || '').match(/(\d+)\s*$/);
+            if (!m) return;
+            var n = Number(m[1]);
+            cuenta[n] = (cuenta[n] || 0) + 1;
+        });
+        var mejor = null, max = 0;
+        Object.keys(cuenta).forEach(function(n) { if (cuenta[n] > max) { max = cuenta[n]; mejor = Number(n); } });
+        return mejor;
+    } catch(e) { return null; }
+}
+
 // Empareja el nombre de un equipo con una lista de partidos SIN falsos
 // positivos: primero busca coincidencia exacta y solo si no la hay acepta una
 // parcial, y únicamente cuando es la ÚNICA candidata posible.
@@ -1380,6 +1408,7 @@ async function convertirHeicSiHaceFalta(file) {
     return (
         <div style={{paddingBottom:40}}>
             <h2 style={styles.title}>MI PERFIL</h2>
+            <BolsaJugadorCard user={currentUser} />
 
             {/* Aviso automático: detectado apellido en el nombre registrado */}
             {tieneApellido && !perfil.apodo && (
@@ -3272,6 +3301,43 @@ function formatearCuentaAtras(ms) {
 const BoletoPagoJornada = ({ jornada, user, pronostico, elOtroActivado, onCerrar }) => {
     var [bizumCfg, setBizumCfg] = useState(null);
     var [enviando, setEnviando] = useState(false);
+    var [saldoBolsa, setSaldoBolsa] = useState(0);
+    useEffect(function() {
+        if (!user) return;
+        var u = onSnapshot(doc(db, 'saldos_jornadas', user), function(s) { setSaldoBolsa(s.exists() ? Number(s.data().saldo || 0) : 0); }, function(){});
+        return function() { u(); };
+    }, [user]);
+
+    // 💼 Pagar con la bolsa: descuenta y deja el pago CONFIRMADO al instante.
+    var pagarConBolsa = async function() {
+        if (enviando) return;
+        var importeB = jornada.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+        if (saldoBolsa < importeB - 0.001) return;
+        if (!window.confirm('PAGAR CON TU BOLSA\n\nSe descontarán ' + importeB.toFixed(2) + ' € de tu bolsa (tienes ' + saldoBolsa.toFixed(2) + ' €). Quedarán ' + (saldoBolsa - importeB).toFixed(2) + ' €.\n\nTu apuesta queda pagada al instante, sin Bizum ni espera.\n\n¿Confirmar?')) return;
+        setEnviando(true);
+        try {
+            await runTransaction(db, async function(tx) {
+                var ref = doc(db, 'saldos_jornadas', user);
+                var s = await tx.get(ref);
+                var act = s.exists() ? Number(s.data().saldo || 0) : 0;
+                if (act < importeB - 0.001) throw new Error('Saldo insuficiente.');
+                tx.set(ref, { saldo: Number((act - importeB).toFixed(2)), actualizadoEn: serverTimestamp() }, { merge: true });
+            });
+            await addDoc(collection(db, 'pagos'), {
+                jugador: user, pagoBy: 'bolsa',
+                tipo: jornada.esVip ? 'jornada_vip' : 'jornada_normal',
+                jornada: 'J' + jornada.numeroJornada, importe: importeB,
+                descripcion: 'Jornada ' + jornada.numeroJornada + ' · pagada con la bolsa',
+                metodo: 'bolsa', estado: 'confirmado', creadoEn: serverTimestamp(),
+            });
+            await addDoc(collection(db, 'saldos_jornadas', user, 'movimientos'), {
+                tipo: 'pago_jornada', importe: importeB, jornadaId: jornada.id, nota: 'J' + jornada.numeroJornada, fecha: serverTimestamp(),
+            });
+            alert('✅ Pagado con tu bolsa. Tu apuesta cuenta.');
+            onCerrar();
+        } catch(e) { alert('❌ ' + e.message); }
+        setEnviando(false);
+    };
     useEffect(function() {
         var u = onSnapshot(doc(db, 'configuracion', 'bizum'), function(s) { setBizumCfg(s.exists() ? s.data() : null); }, function(){});
         return function() { u(); };
@@ -3314,6 +3380,15 @@ const BoletoPagoJornada = ({ jornada, user, pronostico, elOtroActivado, onCerrar
                     <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.75)',lineHeight:1.7,marginBottom:10}}>
                         Para que tu apuesta CUENTE, haz el <strong>Bizum de {importe.toFixed(2)}€</strong>{bizumCfg && bizumCfg.telefono ? <span> al <strong>{bizumCfg.telefono}</strong>{bizumCfg.titular ? ' (' + bizumCfg.titular + ')' : ''}</span> : ''} con concepto <strong>"J{jornada.numeroJornada} · {user}"</strong> antes del cierre.
                     </p>
+                    {saldoBolsa >= importe - 0.001 && (
+                        <button onClick={pagarConBolsa} disabled={enviando}
+                            style={{width:'100%',border:'none',borderRadius:12,padding:13,background:'linear-gradient(135deg,#001F6B,#0035b8)',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,fontWeight:700,cursor:'pointer',marginBottom:8,boxShadow:'0 4px 14px rgba(0,31,107,0.3)'}}>
+                            💼 PAGAR CON MI BOLSA ({saldoBolsa.toFixed(2)} € disponibles)
+                        </button>
+                    )}
+                    {saldoBolsa > 0 && saldoBolsa < importe - 0.001 && (
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.55)',margin:'0 0 8px'}}>💼 Tienes {saldoBolsa.toFixed(2)} € en tu bolsa, no llega para esta jornada ({importe.toFixed(2)} €). Ingresa más desde tu perfil o paga por Bizum.</p>
+                    )}
                     <button onClick={declararBizum} disabled={enviando}
                         style={{width:'100%',border:'none',borderRadius:12,padding:13,background:'#10b981',color:'#fff',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,fontWeight:700,cursor:'pointer',marginBottom:8}}>
                         {enviando ? 'ENVIANDO…' : '✅ YA HE HECHO EL BIZUM'}
@@ -3902,6 +3977,182 @@ const TablonAdmin = () => {
     );
 };
 
+// ============================================================================
+// 💼 BOLSA DEL JUGADOR — caja interna con extracto
+// ============================================================================
+// Dos bolsas separadas por norma:
+//   · Bolsa de JORNADAS (saldos_jornadas): paga jornadas, se puede ingresar
+//     por adelantado y se puede retirar (con confirmación del admin).
+//   · Bolsa de RIFA (saldos_rifa): solo se canjea en rifas. No se retira.
+// Todo movimiento queda en el extracto con fecha, concepto y saldo resultante.
+function useBolsa(user) {
+    var [jornadas, setJornadas] = useState(0);
+    var [rifa, setRifa] = useState(0);
+    var [movs, setMovs] = useState([]);
+    var [pendientes, setPendientes] = useState([]);
+    var [papeletas, setPapeletas] = useState([]);
+    useEffect(function() {
+        if (!user) return;
+        var u1 = onSnapshot(doc(db, 'saldos_jornadas', user), function(s) { setJornadas(s.exists() ? Number(s.data().saldo || 0) : 0); }, function(){});
+        var u2 = onSnapshot(doc(db, 'saldos_rifa', user), function(s) { setRifa(s.exists() ? Number(s.data().saldo || 0) : 0); }, function(){});
+        var u3 = onSnapshot(collection(db, 'saldos_jornadas', user, 'movimientos'), function(s) {
+            var a = s.docs.map(function(d) { return { id: d.id, bolsa: 'jornadas', ...d.data() }; });
+            setMovs(function(prev) { return prev.filter(function(m){ return m.bolsa !== 'jornadas'; }).concat(a); });
+        }, function(){});
+        var u4 = onSnapshot(collection(db, 'saldos_rifa', user, 'movimientos'), function(s) {
+            var a = s.docs.map(function(d) { return { id: d.id, bolsa: 'rifa', ...d.data() }; });
+            setMovs(function(prev) { return prev.filter(function(m){ return m.bolsa !== 'rifa'; }).concat(a); });
+        }, function(){});
+        var u5 = onSnapshot(collection(db, 'pagos'), function(s) {
+            setPendientes(s.docs.map(function(d){ return { id: d.id, ...d.data() }; })
+                .filter(function(p){ return p.jugador === user && p.estado === 'pendiente_confirmacion'; }));
+        }, function(){});
+        var u6 = onSnapshot(collection(db, 'rifas'), function(s) {
+            var activas = s.docs.map(function(d){ return { id: d.id, ...d.data() }; })
+                .filter(function(r){ return r.estado !== 'entregada' && r.estado !== 'cerrada'; });
+            if (!activas.length) { setPapeletas([]); return; }
+            var r = activas[0];
+            onSnapshot(collection(db, 'rifas', r.id, 'papeletas'), function(ps) {
+                var mias = [];
+                ps.forEach(function(d) { var p = d.data() || {}; if (p.usuario === user) mias.push({ n: d.id, ok: !!p.pagoVerificado }); });
+                setPapeletas(mias);
+            }, function(){});
+        }, function(){});
+        return function() { u1(); u2(); u3(); u4(); u5(); u6(); };
+    }, [user]);
+    var ordenados = movs.slice().sort(function(a, b) {
+        var ta = a.fecha && a.fecha.seconds ? a.fecha.seconds : 0, tb = b.fecha && b.fecha.seconds ? b.fecha.seconds : 0;
+        return tb - ta;
+    });
+    return { jornadas: jornadas, rifa: rifa, movimientos: ordenados, pendientes: pendientes, papeletas: papeletas };
+}
+
+var ETIQUETAS_MOV = {
+    ingreso_premio: ['🏆', 'Premio de jornada'],
+    pago_jornada: ['⚽', 'Pago de jornada'],
+    ingreso_bizum: ['💳', 'Ingreso por Bizum'],
+    retirada: ['🏧', 'Retirada'],
+    reversion_admin: ['↩️', 'Ajuste del admin'],
+    ajuste_admin: ['✏️', 'Ajuste del admin'],
+    compra_papeletas: ['🎟️', 'Papeletas de rifa'],
+    destino_premio: ['🏆', 'Premio destinado a rifa'],
+};
+
+const BolsaJugadorCard = ({ user, compacta }) => {
+    var b = useBolsa(user);
+    var [verExtracto, setVerExtracto] = useState(false);
+    var [accion, setAccion] = useState(null); // 'ingresar' | 'retirar'
+    var [importe, setImporte] = useState('');
+    var [bizumCfg, setBizumCfg] = useState(null);
+    var [enviando, setEnviando] = useState(false);
+    useEffect(function() {
+        var u = onSnapshot(doc(db, 'configuracion', 'bizum'), function(s) { setBizumCfg(s.exists() ? s.data() : null); }, function(){});
+        return function() { u(); };
+    }, []);
+
+    var solicitar = async function(tipo) {
+        var n = Number(String(importe).replace(',', '.'));
+        if (!(n > 0)) { alert('Pon un importe válido.'); return; }
+        if (tipo === 'retirada_bolsa' && n > b.jornadas + 0.001) { alert('No puedes retirar más de lo que tienes (' + b.jornadas.toFixed(2) + ' €).'); return; }
+        var txt = tipo === 'ingreso_bolsa'
+            ? 'INGRESAR ' + n.toFixed(2) + ' € EN TU BOLSA\n\nHaz el Bizum' + (bizumCfg && bizumCfg.telefono ? ' al ' + bizumCfg.telefono : '') + ' con concepto "BOLSA · ' + user + '". En cuanto el admin lo confirme, tendrás el saldo para pagar jornadas sin pensar más.\n\n¿Confirmar?'
+            : 'RETIRAR ' + n.toFixed(2) + ' € DE TU BOLSA\n\nEl admin te hará el Bizum y descontará el importe al confirmarlo.\n\n¿Confirmar?';
+        if (!window.confirm(txt)) return;
+        setEnviando(true);
+        try {
+            await addDoc(collection(db, 'pagos'), {
+                jugador: user, pagoBy: user, tipo: tipo, jornada: 'BOLSA', importe: n,
+                descripcion: tipo === 'ingreso_bolsa' ? 'Ingreso en bolsa por Bizum' : 'Solicitud de retirada de bolsa',
+                metodo: 'bizum', estado: 'pendiente_confirmacion', creadoEn: serverTimestamp(),
+            });
+            alert(tipo === 'ingreso_bolsa' ? '✅ Registrado. Haz el Bizum y el admin lo confirmará.' : '✅ Solicitud enviada. El admin te hará el Bizum.');
+            setAccion(null); setImporte('');
+        } catch(e) { alert('❌ ' + e.message); }
+        setEnviando(false);
+    };
+
+    var Caja = function(props) {
+        return (
+            <div style={{flex:1,background:props.bg,borderRadius:12,padding:'10px 12px',border:'1px solid ' + props.borde}}>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:10.5,letterSpacing:1.5,color:props.color,margin:0,opacity:.75}}>{props.titulo}</p>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:24,fontWeight:700,color:props.color,margin:'2px 0 0',lineHeight:1}}>{props.valor.toFixed(2)} €</p>
+                {props.sub && <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:props.color,opacity:.6,margin:'3px 0 0'}}>{props.sub}</p>}
+            </div>
+        );
+    };
+
+    return (
+        <div style={{background:'#fff',border:'1px solid rgba(0,31,107,0.1)',borderRadius:16,padding:'13px 14px',marginBottom:14}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',margin:'0 0 9px'}}>💼 MI BOLSA</p>
+            <div style={{display:'flex',gap:8,marginBottom:9}}>
+                <Caja titulo="PARA JORNADAS" valor={b.jornadas} bg="rgba(0,31,107,0.05)" borde="rgba(0,31,107,0.12)" color="#001F6B" sub="paga jornadas · se puede retirar" />
+                <Caja titulo="PARA RIFAS" valor={b.rifa} bg="rgba(201,162,39,0.1)" borde="rgba(201,162,39,0.35)" color="#8a6a00" sub="solo se canjea en rifas" />
+            </div>
+
+            {b.papeletas.length > 0 && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#001F6B',background:'rgba(201,162,39,0.08)',borderRadius:8,padding:'7px 10px',margin:'0 0 8px'}}>
+                    🎟️ Tus números de la rifa: <strong>{b.papeletas.map(function(p){ return p.n + (p.ok ? '' : '⏳'); }).join(' · ')}</strong>
+                    {b.papeletas.some(function(p){ return !p.ok; }) && <span style={{opacity:.6}}> (⏳ pendiente de confirmar)</span>}
+                </p>
+            )}
+            {b.pendientes.length > 0 && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#8a6a00',background:'rgba(255,215,0,0.12)',borderRadius:8,padding:'7px 10px',margin:'0 0 8px'}}>
+                    ⏳ Pendiente de confirmar: {b.pendientes.map(function(p){ return (p.tipo === 'ingreso_bolsa' ? 'ingreso' : p.tipo === 'retirada_bolsa' ? 'retirada' : p.tipo === 'inscripcion' ? 'inscripción' : p.jornada) + ' ' + Number(p.importe||0).toFixed(2) + ' €'; }).join(' · ')}
+                </p>
+            )}
+
+            {!compacta && (
+                <>
+                {!accion ? (
+                    <div style={{display:'flex',gap:6,marginBottom:8}}>
+                        <button onClick={function(){ setAccion('ingresar'); }} style={{flex:1,border:'none',borderRadius:10,padding:'9px 8px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>💳 INGRESAR</button>
+                        <button onClick={function(){ setAccion('retirar'); }} disabled={b.jornadas <= 0} style={{flex:1,border:'1px solid rgba(0,31,107,0.2)',borderRadius:10,padding:'9px 8px',background:'#fff',color: b.jornadas > 0 ? '#001F6B' : 'rgba(0,31,107,0.3)',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>🏧 RETIRAR</button>
+                        <button onClick={function(){ setVerExtracto(!verExtracto); }} style={{flex:1,border:'1px solid rgba(0,31,107,0.2)',borderRadius:10,padding:'9px 8px',background:'#fff',color:'#001F6B',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>📄 EXTRACTO</button>
+                    </div>
+                ) : (
+                    <div style={{background:'rgba(0,31,107,0.04)',borderRadius:10,padding:'10px 11px',marginBottom:8}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,color:'#001F6B',margin:'0 0 6px'}}>{accion === 'ingresar' ? '💳 INGRESAR EN LA BOLSA' : '🏧 RETIRAR DE LA BOLSA'}</p>
+                        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                            <input type="tel" inputMode="decimal" value={importe} onChange={function(e){ setImporte(e.target.value.replace(/[^0-9.,]/g,'')); }} placeholder="0,00"
+                                style={{width:80,border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'8px 10px',fontSize:15,fontFamily:"'Teko',sans-serif",textAlign:'center'}} />
+                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,color:'#001F6B'}}>€</span>
+                            <button onClick={function(){ solicitar(accion === 'ingresar' ? 'ingreso_bolsa' : 'retirada_bolsa'); }} disabled={enviando}
+                                style={{flex:1,border:'none',borderRadius:8,padding:'8px 10px',background:'#10b981',color:'#fff',fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:1,cursor:'pointer'}}>{enviando ? '…' : 'CONFIRMAR'}</button>
+                            <button onClick={function(){ setAccion(null); setImporte(''); }} style={{border:'none',background:'transparent',color:'rgba(0,31,107,0.5)',fontSize:16,cursor:'pointer'}}>✕</button>
+                        </div>
+                        {accion === 'ingresar' && bizumCfg && bizumCfg.telefono && (
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.55)',margin:'6px 0 0'}}>Bizum al <strong>{bizumCfg.telefono}</strong> con concepto "BOLSA · {user}". Se activa cuando el admin lo confirme.</p>
+                        )}
+                    </div>
+                )}
+
+                {verExtracto && (
+                    <div style={{borderTop:'1px solid rgba(0,31,107,0.07)',paddingTop:8}}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:2,color:'rgba(0,31,107,0.4)',margin:'0 0 5px'}}>EXTRACTO</p>
+                        {b.movimientos.length === 0 && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',margin:0}}>Sin movimientos todavía.</p>}
+                        {b.movimientos.slice(0, 15).map(function(m) {
+                            var et = ETIQUETAS_MOV[m.tipo] || ['•', m.tipo || 'Movimiento'];
+                            var imp = Number(m.importe || 0);
+                            var esSalida = m.tipo === 'pago_jornada' || m.tipo === 'retirada' || m.tipo === 'compra_papeletas' || imp < 0;
+                            return (
+                                <div key={m.id} style={{display:'flex',alignItems:'center',gap:7,padding:'5px 0',borderBottom:'1px solid rgba(0,31,107,0.04)'}}>
+                                    <span style={{fontSize:12}}>{et[0]}</span>
+                                    <div style={{flex:1,minWidth:0}}>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#001F6B',margin:0}}>{et[1]}{m.nota ? ' · ' + m.nota : ''}</p>
+                                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:8.5,color:'rgba(0,31,107,0.4)',margin:0}}>{m.bolsa === 'rifa' ? 'bolsa rifa' : 'bolsa jornadas'}{m.fecha && m.fecha.seconds ? ' · ' + new Date(m.fecha.seconds*1000).toLocaleDateString('es-ES',{day:'numeric',month:'short'}) : ''}</p>
+                                    </div>
+                                    <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color: esSalida ? '#e63946' : '#0f8a61'}}>{esSalida ? '−' : '+'}{Math.abs(imp).toFixed(2)}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+                </>
+            )}
+        </div>
+    );
+};
+
 // ── Cabecera VIP: insignia con el baremo doble y el precio ──
 const CabeceraVip = ({ jornada }) => {
     if (!jornada) return null;
@@ -4238,6 +4489,18 @@ const HorariosJornadaAdmin = ({ jornadas }) => {
                             🔓 <strong>Abre:</strong> {fmt(h.apertura)} {j.aperturaManualMs ? '(MANUAL)' : '(72 h antes)'}<br/>
                             🔒 <strong>Cierra:</strong> {fmt(h.cierre)} {j.cierreManualMs ? '(MANUAL)' : '(5 min antes)'}<br/>
                             ⚙️ <strong>Estado que toca ahora:</strong> {estadoQueTocaAhora(j)} · actual: {j.estado}
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(0,31,107,0.6)',margin:'0 0 6px'}}>
+                            🔗 <strong>Jornada de Primera asociada:</strong> {j.rondaPrimeraManual ? 'J' + j.rondaPrimeraManual + ' (MANUAL)' : 'automática por fechas'}
+                            <button onClick={async function(){
+                                var v = window.prompt('Número de jornada de Primera para El Otro (vacío = automático por fechas):', j.rondaPrimeraManual || '');
+                                if (v === null) return;
+                                try {
+                                    var parche = {}; parche.rondaPrimeraManual = v.trim() ? Number(v.trim()) : deleteField();
+                                    await setDoc(doc(db, 'jornadas', j.id), parche, { merge: true });
+                                    alert('✅ Guardado.');
+                                } catch(e) { alert('❌ ' + e.message); }
+                            }} style={{marginLeft:8,border:'1px solid rgba(0,31,107,0.2)',borderRadius:6,padding:'3px 8px',background:'#fff',color:'#001F6B',fontFamily:"'Teko',sans-serif",fontSize:10,cursor:'pointer'}}>FIJAR</button>
                         </p>
                         <div style={{display:'flex',gap:6}}>
                             <button onClick={function(){ fijar('aperturaManualMs', 'APERTURA'); }} disabled={guardando}
@@ -4957,17 +5220,19 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     useEffect(function() {
         // Se pide la RONDA de Primera que corresponde a esta jornada: incluye
         // partidos aplazados y no depende de ventanas de fechas.
-        var numRondaP = jornada && jornada.numeroJornada ? jornada.numeroJornada : null;
-        var promesaRonda = numRondaP && API_FOOTBALL_KEY
-            ? fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+        var promesaRonda = jornada && API_FOOTBALL_KEY
+            ? detectarRondaPrimera(jornada).then(function(numRondaP) {
+                numRondaP = numRondaP || jornada.numeroJornada;
+                if (!numRondaP) return { json: function(){ return {}; } };
+                return fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
                 '&season=2026&round=' + encodeURIComponent('Regular Season - ' + numRondaP),
-                { headers: { 'x-apisports-key': API_FOOTBALL_KEY } })
+                { headers: { 'x-apisports-key': API_FOOTBALL_KEY } }); })
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
                     return (d.response || []).map(function(p) {
                         return { fixtureId: p.fixture.id, fecha: p.fixture.date,
                             local: p.teams.home.name, visitante: p.teams.away.name,
-                            round: 'Regular Season - ' + numRondaP };
+                            round: (p.league && p.league.round) || '' };
                     });
                 })
             : Promise.resolve([]);
@@ -9426,8 +9691,10 @@ async function resolverElOtroPendienteJornada(jornada) {
     });
     if (!pendientes.length) return { aplicados:0, pendientes:0, mensaje:'No hay activaciones de El Otro sin resolver en esta jornada.' };
 
-    // Ronda COMPLETA de Primera (incluye partidos aplazados)
-    var numRonda = jornada.numeroJornada || 1;
+    // Ronda COMPLETA de Primera (incluye partidos aplazados). La ronda se
+    // detecta por FECHAS: Segunda y Primera no van al mismo número.
+    var numRonda = await detectarRondaPrimera(jornada);
+    if (!numRonda) numRonda = jornada.numeroJornada || 1;
     var partidosRonda = [];
     try {
         var rr = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
@@ -10231,6 +10498,106 @@ const BuscadorApiIdsPlantilla = ({ plantilla }) => {
 // Los pagos de jornada e inscripción llegan constantemente: esta bandeja los
 // pone arriba del todo, con botón de confirmar o rechazar en un solo toque,
 // sin tener que rebuscar en el listado completo.
+// ============================================================================
+// 🏦 BANCO DEL ADMIN — todas las bolsas de un vistazo
+// ============================================================================
+const BancoAdmin = () => {
+    var [saldosJ, setSaldosJ] = useState({});
+    var [saldosR, setSaldosR] = useState({});
+    var [perfiles, setPerfiles] = useState({});
+    var [archivados, setArchivados] = useState([]);
+    var [aprobados, setAprobados] = useState([]);
+    var [ajustando, setAjustando] = useState('');
+
+    useEffect(function() {
+        var u1 = onSnapshot(collection(db, 'saldos_jornadas'), function(s) { var m = {}; s.forEach(function(d){ m[d.id] = Number((d.data()||{}).saldo || 0); }); setSaldosJ(m); }, function(){});
+        var u2 = onSnapshot(collection(db, 'saldos_rifa'), function(s) { var m = {}; s.forEach(function(d){ m[d.id] = Number((d.data()||{}).saldo || 0); }); setSaldosR(m); }, function(){});
+        var u3 = onSnapshot(collection(db, 'perfiles'), function(s) { var m = {}; s.forEach(function(d){ m[d.id] = d.data() || {}; }); setPerfiles(m); }, function(){});
+        var u4 = onSnapshot(doc(db, 'configuracion', 'jugadoresArchivados'), function(s) { setArchivados(s.exists() ? (s.data().nombres || []) : []); }, function(){});
+        var u5 = onSnapshot(doc(db, 'configuracion', 'jugadoresAprobados'), function(s) { setAprobados(s.exists() ? (s.data().nombres || []) : []); }, function(){});
+        return function() { u1(); u2(); u3(); u4(); u5(); };
+    }, []);
+
+    var universo = {};
+    JUGADORES_FUNDADORES.forEach(function(n){ universo[n] = true; });
+    aprobados.forEach(function(n){ universo[n] = true; });
+    Object.keys(saldosJ).forEach(function(n){ universo[n] = true; });
+    Object.keys(saldosR).forEach(function(n){ universo[n] = true; });
+    archivados.forEach(function(n){ delete universo[n]; });
+
+    var filas = Object.keys(universo).map(function(n) {
+        return { id: n, j: saldosJ[n] || 0, r: saldosR[n] || 0 };
+    }).sort(function(a, b) { return (b.j + b.r) - (a.j + a.r) || a.id.localeCompare(b.id); });
+
+    var totalJ = filas.reduce(function(a, f){ return a + f.j; }, 0);
+    var totalR = filas.reduce(function(a, f){ return a + f.r; }, 0);
+
+    var ajustar = async function(uid, bolsa) {
+        var v = window.prompt('AJUSTE MANUAL · ' + uid + ' · bolsa de ' + (bolsa === 'jornadas' ? 'JORNADAS' : 'RIFA') +
+            '\n\nImporte con signo (ej: 5 para sumar, -3 para restar):', '');
+        if (v === null) return;
+        var n = Number(String(v).replace(',', '.'));
+        if (!n) { alert('Importe no válido.'); return; }
+        var nota = window.prompt('Motivo (obligatorio, queda en el extracto del jugador):', '');
+        if (!nota || !nota.trim()) { alert('El motivo es obligatorio.'); return; }
+        setAjustando(uid);
+        try {
+            var col = bolsa === 'jornadas' ? 'saldos_jornadas' : 'saldos_rifa';
+            await runTransaction(db, async function(tx) {
+                var ref = doc(db, col, uid);
+                var s = await tx.get(ref);
+                var act = s.exists() ? Number(s.data().saldo || 0) : 0;
+                tx.set(ref, { saldo: Number((act + n).toFixed(2)), actualizadoEn: serverTimestamp() }, { merge: true });
+            });
+            await addDoc(collection(db, col, uid, 'movimientos'), {
+                tipo: 'ajuste_admin', importe: n, nota: nota.trim(), por: 'Juanma', fecha: serverTimestamp(),
+            });
+        } catch(e) { alert('❌ ' + e.message); }
+        setAjustando('');
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>🏦 Banco de la porra</p>
+
+            {/* Caja total: lo que el admin custodia */}
+            <div style={{display:'flex',gap:8,marginBottom:10}}>
+                <div style={{flex:1,background:'linear-gradient(135deg,#001F6B,#0035b8)',borderRadius:12,padding:'10px 12px'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:10.5,letterSpacing:1.5,color:'rgba(255,215,0,0.7)',margin:0}}>CAJA TOTAL EN CUSTODIA</p>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:26,fontWeight:700,color:'#FFD700',margin:'2px 0 0',lineHeight:1}}>{(totalJ + totalR).toFixed(2)} €</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(255,255,255,0.6)',margin:'3px 0 0'}}>jornadas {totalJ.toFixed(2)} € · rifa {totalR.toFixed(2)} €</p>
+                </div>
+            </div>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(0,31,107,0.5)',margin:'0 0 8px',lineHeight:1.5}}>Este dinero es de los jugadores y lo guardas tú. Debe existir en tu cuenta en todo momento.</p>
+
+            {/* Filas por jugador */}
+            <div style={{border:'1px solid rgba(0,31,107,0.08)',borderRadius:12,overflow:'hidden'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',background:'rgba(0,31,107,0.05)'}}>
+                    <span style={{width:28}}></span>
+                    <span style={{flex:1,fontFamily:"'Teko',sans-serif",fontSize:9.5,letterSpacing:1.5,color:'rgba(0,31,107,0.45)'}}>JUGADOR</span>
+                    <span style={{width:62,fontFamily:"'Teko',sans-serif",fontSize:9.5,letterSpacing:1,color:'rgba(0,31,107,0.45)',textAlign:'right'}}>JORNADAS</span>
+                    <span style={{width:52,fontFamily:"'Teko',sans-serif",fontSize:9.5,letterSpacing:1,color:'rgba(0,31,107,0.45)',textAlign:'right'}}>RIFA</span>
+                </div>
+                {filas.map(function(f) {
+                    var perf = perfiles[f.id] || {};
+                    var tiene = f.j > 0 || f.r > 0;
+                    return (
+                        <div key={f.id} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderBottom:'1px solid rgba(0,31,107,0.05)',opacity: tiene ? 1 : 0.5}}>
+                            <IconoPerfil perfil={perf} size={28} />
+                            <span style={{flex:1,minWidth:0,fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight: tiene ? 600 : 400,color:'#001F6B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nombreVisible(f.id, perf)}</span>
+                            <button onClick={function(){ ajustar(f.id, 'jornadas'); }} disabled={ajustando === f.id} title="Ajustar bolsa de jornadas"
+                                style={{width:62,textAlign:'right',border:'none',background:'transparent',cursor:'pointer',fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: f.j > 0 ? '#001F6B' : 'rgba(0,31,107,0.25)',padding:0}}>{f.j.toFixed(2)}</button>
+                            <button onClick={function(){ ajustar(f.id, 'rifa'); }} disabled={ajustando === f.id} title="Ajustar bolsa de rifa"
+                                style={{width:52,textAlign:'right',border:'none',background:'transparent',cursor:'pointer',fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color: f.r > 0 ? '#8a6a00' : 'rgba(0,31,107,0.25)',padding:0}}>{f.r.toFixed(2)}</button>
+                        </div>
+                    );
+                })}
+            </div>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:9.5,color:'rgba(0,31,107,0.45)',margin:'7px 0 0'}}>Toca cualquier cifra para hacer un ajuste manual (pide importe con signo y motivo; queda en el extracto del jugador).</p>
+        </div>
+    );
+};
+
 const PagosPendientesAdmin = () => {
     var [pendientes, setPendientes] = useState([]);
     var [procesando, setProcesando] = useState('');
@@ -10258,6 +10625,22 @@ const PagosPendientesAdmin = () => {
                 resueltoEn: serverTimestamp(),
                 resueltoPor: 'Juanma',
             }, { merge: true });
+            // 💼 Bolsa: al confirmar un ingreso se suma; una retirada se resta.
+            if (nuevoEstado === 'confirmado' && (pago.tipo === 'ingreso_bolsa' || pago.tipo === 'retirada_bolsa')) {
+                var signo = pago.tipo === 'ingreso_bolsa' ? 1 : -1;
+                var imp = Number(pago.importe || 0);
+                await runTransaction(db, async function(tx) {
+                    var ref = doc(db, 'saldos_jornadas', pago.jugador);
+                    var s = await tx.get(ref);
+                    var act = s.exists() ? Number(s.data().saldo || 0) : 0;
+                    var nuevo = act + signo * imp;
+                    if (nuevo < -0.001) throw new Error('Saldo insuficiente para la retirada (' + act.toFixed(2) + ' €).');
+                    tx.set(ref, { saldo: Number(nuevo.toFixed(2)), actualizadoEn: serverTimestamp() }, { merge: true });
+                });
+                await addDoc(collection(db, 'saldos_jornadas', pago.jugador, 'movimientos'), {
+                    tipo: pago.tipo === 'ingreso_bolsa' ? 'ingreso_bizum' : 'retirada', importe: imp, fecha: serverTimestamp(),
+                });
+            }
             // Si es un pago para cambiar de equipo, entra en la cola del draft
             // por delante de los pendientes, en orden de confirmación.
             if (nuevoEstado === 'confirmado' && pago.tipo === 'cambio_otro_equipo') {
@@ -10295,6 +10678,8 @@ const PagosPendientesAdmin = () => {
 
     var etiquetaTipo = function(p) {
         if (p.tipo === 'cambio_otro_equipo') return '🛡️ Cambio de equipo (draft)';
+        if (p.tipo === 'ingreso_bolsa') return '💼 INGRESO en bolsa';
+        if (p.tipo === 'retirada_bolsa') return '🏧 RETIRADA de bolsa (hazle el Bizum)';
         if (p.tipo === 'inscripcion') return '🎫 Inscripción';
         if (p.tipo === 'jornada_vip') return '💎 ' + (p.jornada || 'Jornada VIP');
         return '⚽ ' + (p.jornada || 'Jornada');
@@ -10493,7 +10878,8 @@ async function recalcularPuntosOficial(onLog) {
 
         // ¿Alguien tiene El Otro activado? Solo entonces se consulta Primera.
         var necesitaOtro = pSnap.docs.some(function(d) { return (d.data() || {}).elOtroActivado; });
-        var ronda = necesitaOtro ? await traerRonda(jd.numeroJornada || (i + 1)) : [];
+        var numRondaJ = necesitaOtro ? (await detectarRondaPrimera(jd) || jd.numeroJornada || (i + 1)) : null;
+        var ronda = necesitaOtro ? await traerRonda(numRondaJ) : [];
 
         var pendientesJ = [], resueltosJ = 0;
         var batch = writeBatch(db);
@@ -10674,7 +11060,7 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
             // Se pide la RONDA COMPLETA de Primera (no una ventana de fechas):
             // así entran también los partidos aplazados, que era justo el caso
             // que impedía resolver El Otro.
-            var numRonda = rondaSel || jd.numeroJornada || 1;
+            var numRonda = rondaSel ? Number(rondaSel) : (await detectarRondaPrimera(jd) || jd.numeroJornada || 1);
             var resR = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
                 '&season=2026&round=' + encodeURIComponent('Regular Season - ' + numRonda),
                 { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
@@ -14012,6 +14398,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                 <div>
                     {/* ♻️ Motor único de puntos */}
                     <RecalculoOficialAdmin />
+
+                    {/* 🏦 Banco: todas las bolsas */}
+                    <BancoAdmin />
 
                     {/* ⚡ Bandeja rápida: confirmar pagos en un toque */}
                     <PagosPendientesAdmin />
