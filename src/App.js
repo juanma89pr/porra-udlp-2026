@@ -34,7 +34,7 @@ const functions = getFunctions(app, "europe-west1");
 // Los nuevos jugadores hasta 20 se añaden dinámicamente desde Firestore
 // Sello de build — visible en la consola del navegador y en el panel admin
 // para comprobar en segundos qué versión está desplegada en Netlify.
-const APP_BUILD = 'v2026-09-15.BY · bolsa del jugador + banco';
+const APP_BUILD = 'v2026-09-17.CA · El Otro por partidos de la semana';
 console.log('%cPORRA UDLP · BUILD ' + APP_BUILD, 'background:#001F6B;color:#FFD700;padding:4px 10px;border-radius:6px;font-weight:bold');
 
 // Fotos oficiales de la camiseta 26/27 (producto limpio, incrustadas)
@@ -1115,6 +1115,38 @@ function equipoEsLocal(equipo, nombreLocal) {
     var e = normalizarNombreEquipo(equipo), l = normalizarNombreEquipo(nombreLocal);
     if (!e || !l) return false;
     return e === l || l.indexOf(e) !== -1 || e.indexOf(l) !== -1;
+}
+
+// Trae TODOS los partidos de Primera jugados la misma semana que el partido
+// de la UDLP (±4 días; si la semana está vacía por parón, ±9). Con esta lista
+// se empareja el equipo de cada jugador directamente, sin depender de cómo
+// numere la API las rondas — que es lo que fallaba con la J5.
+async function traerPartidosPrimeraSemana(jornada) {
+    if (!API_FOOTBALL_KEY) return { partidos: [], motivo: 'sin clave de API' };
+    var ko = getKickoffMs(jornada) || (jornada && jornada.fecha ? Date.parse(jornada.fecha) : null) || Date.now();
+    var pedir = async function(dias) {
+        var desde = new Date(ko - dias * 86400000).toISOString().slice(0, 10);
+        var hasta = new Date(ko + dias * 86400000).toISOString().slice(0, 10);
+        var r = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+            '&season=2026&from=' + desde + '&to=' + hasta, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+        var d = await r.json();
+        if (d.errors && Object.keys(d.errors).length) throw new Error('API: ' + JSON.stringify(d.errors));
+        return { lista: (d.response || []).map(function(p) {
+            return { local: p.teams.home.name, visitante: p.teams.away.name,
+                nombreLocal: p.teams.home.name, nombreVisitante: p.teams.away.name,
+                gl: p.goals.home, gv: p.goals.away, golesLocal: p.goals.home, golesVisitante: p.goals.away,
+                fin: ['FT','AET','PEN'].indexOf(p.fixture.status.short) !== -1,
+                finalizado: ['FT','AET','PEN'].indexOf(p.fixture.status.short) !== -1,
+                estadoCorto: p.fixture.status.short,
+                fecha: p.fixture.date, round: (p.league && p.league.round) || '' };
+        }), rango: desde + ' → ' + hasta };
+    };
+    try {
+        var r1 = await pedir(4);
+        if (r1.lista.length) return { partidos: r1.lista, motivo: r1.lista.length + ' partidos de Primera entre ' + r1.rango };
+        var r2 = await pedir(9);
+        return { partidos: r2.lista, motivo: r2.lista.length ? r2.lista.length + ' partidos (ventana ampliada) entre ' + r2.rango : 'la API no devolvió partidos de Primera entre ' + r2.rango };
+    } catch(e) { return { partidos: [], motivo: e.message }; }
 }
 
 // Detecta qué jornada de PRIMERA corresponde a una jornada de la UDLP, por
@@ -9691,25 +9723,25 @@ async function resolverElOtroPendienteJornada(jornada) {
     });
     if (!pendientes.length) return { aplicados:0, pendientes:0, mensaje:'No hay activaciones de El Otro sin resolver en esta jornada.' };
 
-    // Ronda COMPLETA de Primera (incluye partidos aplazados). La ronda se
-    // detecta por FECHAS: Segunda y Primera no van al mismo número.
-    var numRonda = await detectarRondaPrimera(jornada);
-    if (!numRonda) numRonda = jornada.numeroJornada || 1;
+    // Partidos de Primera de ESA SEMANA (no por número de ronda). Si el admin
+    // fijó una ronda a mano, se usa esa.
     var partidosRonda = [];
-    try {
+    if (jornada.rondaPrimeraManual) {
         var rr = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
-            '&season=2026&round=' + encodeURIComponent('Regular Season - ' + numRonda),
+            '&season=2026&round=' + encodeURIComponent('Regular Season - ' + jornada.rondaPrimeraManual),
             { headers:{'x-apisports-key':API_FOOTBALL_KEY} });
         var dr = await rr.json();
         partidosRonda = (dr.response || []).map(function(p){
-            return {
-                nombreLocal: p.teams.home.name, nombreVisitante: p.teams.away.name,
+            return { nombreLocal: p.teams.home.name, nombreVisitante: p.teams.away.name,
                 golesLocal: p.goals.home, golesVisitante: p.goals.away,
-                finalizado: ['FT','AET','PEN'].indexOf(p.fixture.status.short) !== -1,
-            };
+                finalizado: ['FT','AET','PEN'].indexOf(p.fixture.status.short) !== -1 };
         });
-    } catch(e) { throw new Error('No se pudo consultar la jornada ' + numRonda + ' de Primera: ' + e.message); }
-    if (!partidosRonda.length) throw new Error('La API no devolvió partidos de la jornada ' + numRonda + ' de Primera.');
+        if (!partidosRonda.length) throw new Error('La API no devolvió partidos de la jornada ' + jornada.rondaPrimeraManual + ' de Primera (fijada a mano).');
+    } else {
+        var semana = await traerPartidosPrimeraSemana(jornada);
+        partidosRonda = semana.partidos;
+        if (!partidosRonda.length) throw new Error('Sin partidos de Primera para esta jornada: ' + semana.motivo + '. Fija la ronda a mano en Horarios si hace falta.');
+    }
 
     var buscarPartidoDe = function(equipo) {
         return emparejarEquipoEnPartidos(equipo, partidosRonda, 'nombreLocal', 'nombreVisitante');
@@ -10836,24 +10868,29 @@ async function recalcularPuntosOficial(onLog) {
     var oSnap = await getDocs(collection(db, 'elOtro'));
     oSnap.forEach(function(d) { fichasOtro[d.id] = d.data() || {}; });
 
-    // Rondas de Primera cacheadas: una petición por ronda, reutilizable
-    var cacheRondas = {};
-    var traerRonda = async function(num) {
-        if (cacheRondas[num]) return cacheRondas[num];
+    // Partidos de Primera por jornada de la UDLP: los de ESA SEMANA, o los de
+    // la ronda fijada a mano por el admin. Cacheado por jornada.
+    var cacheSemana = {};
+    var traerPartidosDe = async function(jd) {
+        if (cacheSemana[jd.id]) return cacheSemana[jd.id];
+        var lista = [];
         try {
-            var r = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
-                '&season=2026&round=' + encodeURIComponent('Regular Season - ' + num),
-                { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
-            var d = await r.json();
-            cacheRondas[num] = (d.response || []).map(function(p) {
-                return {
-                    local: p.teams.home.name, visitante: p.teams.away.name,
-                    gl: p.goals.home, gv: p.goals.away,
-                    fin: ['FT','AET','PEN'].indexOf(p.fixture.status.short) !== -1,
-                };
-            });
-        } catch(e) { cacheRondas[num] = []; }
-        return cacheRondas[num];
+            if (jd.rondaPrimeraManual) {
+                var r = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+                    '&season=2026&round=' + encodeURIComponent('Regular Season - ' + jd.rondaPrimeraManual),
+                    { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+                var d = await r.json();
+                lista = (d.response || []).map(function(p) {
+                    return { local: p.teams.home.name, visitante: p.teams.away.name,
+                        gl: p.goals.home, gv: p.goals.away,
+                        fin: ['FT','AET','PEN'].indexOf(p.fixture.status.short) !== -1 };
+                });
+            } else {
+                lista = (await traerPartidosPrimeraSemana(jd)).partidos;
+            }
+        } catch(e) { lista = []; }
+        cacheSemana[jd.id] = lista;
+        return lista;
     };
     var partidoDe = function(lista, equipo) {
         return emparejarEquipoEnPartidos(equipo, lista, 'local', 'visitante');
@@ -10878,8 +10915,7 @@ async function recalcularPuntosOficial(onLog) {
 
         // ¿Alguien tiene El Otro activado? Solo entonces se consulta Primera.
         var necesitaOtro = pSnap.docs.some(function(d) { return (d.data() || {}).elOtroActivado; });
-        var numRondaJ = necesitaOtro ? (await detectarRondaPrimera(jd) || jd.numeroJornada || (i + 1)) : null;
-        var ronda = necesitaOtro ? await traerRonda(numRondaJ) : [];
+        var ronda = necesitaOtro ? await traerPartidosDe(jd) : [];
 
         var pendientesJ = [], resueltosJ = 0;
         var batch = writeBatch(db);
@@ -11036,6 +11072,109 @@ const RecalculoOficialAdmin = () => {
     );
 };
 
+// ============================================================================
+// 📡 DIAGNÓSTICO DE LA API — clave, plan, cupo y detección de ronda
+// ============================================================================
+const DiagnosticoApiAdmin = ({ jornadas }) => {
+    var [estado, setEstado] = useState(null);
+    var [prueba, setPrueba] = useState(null);
+    var [jSel, setJSel] = useState('');
+    var [cargando, setCargando] = useState(false);
+
+    var finalizadas = (jornadas || []).filter(function(j){ return j.estado === 'Finalizada'; })
+        .sort(function(a,b){ return (b.numeroJornada||0) - (a.numeroJornada||0); });
+
+    var comprobarCuenta = async function() {
+        setCargando(true); setEstado(null);
+        try {
+            if (!API_FOOTBALL_KEY) { setEstado({ error: 'No hay clave de API configurada (REACT_APP_API_FOOTBALL_KEY vacía en Netlify).' }); setCargando(false); return; }
+            var r = await fetch('https://v3.football.api-sports.io/status', { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+            var d = await r.json();
+            var errores = d.errors && Object.keys(d.errors).length ? d.errors : null;
+            if (errores) { setEstado({ error: 'La API rechaza la clave: ' + JSON.stringify(errores) }); setCargando(false); return; }
+            var acc = (d.response || {});
+            setEstado({
+                cuenta: acc.account ? (acc.account.firstname + ' ' + acc.account.lastname) : '—',
+                plan: acc.subscription ? acc.subscription.plan : '—',
+                activa: acc.subscription ? acc.subscription.active : false,
+                caduca: acc.subscription ? acc.subscription.end : '—',
+                usadas: acc.requests ? acc.requests.current : 0,
+                limite: acc.requests ? acc.requests.limit_day : 0,
+            });
+        } catch(e) { setEstado({ error: 'Sin conexión con la API: ' + e.message }); }
+        setCargando(false);
+    };
+
+    var probarJornada = async function(jid) {
+        if (!jid) return;
+        setCargando(true); setPrueba(null);
+        try {
+            var jd = finalizadas.find(function(j){ return j.id === jid; });
+            var ko = getKickoffMs(jd);
+            var ronda = await detectarRondaPrimera(jd);
+            var partidos = [];
+            if (ronda) {
+                var r = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA + '&season=2026&round=' + encodeURIComponent('Regular Season - ' + ronda), { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+                var d = await r.json();
+                partidos = (d.response || []).map(function(p) {
+                    return { txt: p.teams.home.name + ' ' + (p.goals.home === null ? '?' : p.goals.home) + '-' + (p.goals.away === null ? '?' : p.goals.away) + ' ' + p.teams.away.name, fin: ['FT','AET','PEN'].indexOf(p.fixture.status.short) !== -1, fecha: p.fixture.date };
+                });
+            }
+            setPrueba({
+                jornada: jd.numeroJornada,
+                saque: ko ? new Date(ko).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Atlantic/Canary'}) : 'SIN FECHA',
+                rondaManual: jd.rondaPrimeraManual || null,
+                ronda: ronda,
+                partidos: partidos,
+            });
+        } catch(e) { setPrueba({ error: e.message }); }
+        setCargando(false);
+    };
+
+    return (
+        <div style={ADMIN_STYLES.card}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:8,fontWeight:600}}>📡 Diagnóstico de la API</p>
+            <button onClick={comprobarCuenta} disabled={cargando}
+                style={{width:'100%',border:'none',borderRadius:10,padding:'10px 12px',background:'#001F6B',color:'#FFD700',fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,cursor:'pointer',marginBottom:9}}>
+                {cargando ? '⏳…' : '1 · COMPROBAR CLAVE, PLAN Y CUPO'}
+            </button>
+            {estado && estado.error && (
+                <p style={{fontFamily:"'Inter',sans-serif",fontSize:11.5,color:'#b02a35',background:'rgba(230,57,70,0.08)',borderRadius:8,padding:'8px 10px',margin:'0 0 9px',lineHeight:1.5}}>❌ {estado.error}</p>
+            )}
+            {estado && !estado.error && (
+                <div style={{background: estado.activa ? 'rgba(16,185,129,0.08)' : 'rgba(230,57,70,0.08)',borderRadius:10,padding:'9px 11px',marginBottom:9}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#001F6B',lineHeight:1.8,margin:0}}>
+                        {estado.activa ? '✅' : '❌'} <strong>Suscripción:</strong> {estado.plan} · {estado.activa ? 'ACTIVA' : 'INACTIVA / CADUCADA'}<br/>
+                        📅 <strong>Caduca:</strong> {estado.caduca}<br/>
+                        📊 <strong>Peticiones hoy:</strong> {estado.usadas} / {estado.limite} {estado.usadas >= estado.limite ? '— ⚠️ CUPO AGOTADO' : ''}<br/>
+                        👤 {estado.cuenta}
+                    </p>
+                </div>
+            )}
+
+            <select value={jSel} onChange={function(e){ setJSel(e.target.value); probarJornada(e.target.value); }}
+                style={{width:'100%',border:'1px solid rgba(0,31,107,0.2)',borderRadius:8,padding:'8px 10px',fontSize:12,marginBottom:8}}>
+                <option value="">2 · Probar detección de ronda para una jornada…</option>
+                {finalizadas.map(function(j){ return <option key={j.id} value={j.id}>J{j.numeroJornada} · {j.equipoLocal} vs {j.equipoVisitante}</option>; })}
+            </select>
+            {prueba && prueba.error && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#b02a35'}}>❌ {prueba.error}</p>}
+            {prueba && !prueba.error && (
+                <div style={{background:'rgba(0,31,107,0.04)',borderRadius:10,padding:'9px 11px'}}>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#001F6B',lineHeight:1.7,margin:'0 0 6px'}}>
+                        ⚽ J{prueba.jornada} UDLP · saque {prueba.saque}<br/>
+                        🔗 Ronda de Primera detectada: <strong>{prueba.ronda ? 'J' + prueba.ronda : '❌ NINGUNA'}</strong>{prueba.rondaManual ? ' (fijada a mano)' : ' (por fechas)'}
+                    </p>
+                    {prueba.partidos.length === 0 && prueba.ronda && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#b02a35',margin:0}}>La ronda existe pero la API no devuelve partidos: revisa el cupo o el plan.</p>}
+                    {prueba.partidos.length === 0 && !prueba.ronda && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#b02a35',margin:0}}>No se pudo detectar la ronda. Causas típicas: sin fecha de partido en la jornada, cupo agotado o clave inválida. Puedes fijar la ronda a mano en Horarios.</p>}
+                    {prueba.partidos.map(function(p, i) {
+                        return <p key={i} style={{fontFamily:"'Inter',sans-serif",fontSize:10.5,color: p.fin ? '#001F6B' : 'rgba(0,31,107,0.45)',margin:'0 0 2px'}}>{p.fin ? '✅' : '⏳'} {p.txt}</p>;
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ResolverElOtroManualAdmin = ({ jornadas }) => {
     const [jSel, setJSel] = useState('');
     const [filas, setFilas] = useState(null);
@@ -11060,22 +11199,28 @@ const ResolverElOtroManualAdmin = ({ jornadas }) => {
             // Se pide la RONDA COMPLETA de Primera (no una ventana de fechas):
             // así entran también los partidos aplazados, que era justo el caso
             // que impedía resolver El Otro.
-            var numRonda = rondaSel ? Number(rondaSel) : (await detectarRondaPrimera(jd) || jd.numeroJornada || 1);
-            var resR = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
-                '&season=2026&round=' + encodeURIComponent('Regular Season - ' + numRonda),
-                { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
-            var dataR = await resR.json();
-            var deLaRonda = (dataR.response || []).map(function(p) {
-                return {
-                    fixtureId: p.fixture.id, fecha: p.fixture.date,
-                    local: p.teams.home.name, visitante: p.teams.away.name,
-                    estadoCorto: p.fixture.status.short,
-                    golesLocal: p.goals.home, golesVisitante: p.goals.away,
-                };
-            });
+            var deLaRonda = [];
+            var etiquetaRonda = '';
+            var rondaForzada = rondaSel ? Number(rondaSel) : (jd.rondaPrimeraManual || null);
+            if (rondaForzada) {
+                var resR = await fetch('https://v3.football.api-sports.io/fixtures?league=' + LEAGUE_ID_PRIMERA +
+                    '&season=2026&round=' + encodeURIComponent('Regular Season - ' + rondaForzada),
+                    { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
+                var dataR = await resR.json();
+                deLaRonda = (dataR.response || []).map(function(p) {
+                    return { fixtureId: p.fixture.id, fecha: p.fixture.date,
+                        local: p.teams.home.name, visitante: p.teams.away.name,
+                        estadoCorto: p.fixture.status.short,
+                        golesLocal: p.goals.home, golesVisitante: p.goals.away };
+                });
+                etiquetaRonda = 'Jornada ' + rondaForzada + ' de Primera (fijada) · ' + deLaRonda.length + ' partidos';
+            } else {
+                var sem = await traerPartidosPrimeraSemana(jd);
+                deLaRonda = sem.partidos;
+                etiquetaRonda = sem.motivo;
+            }
             var sinJugar = deLaRonda.filter(function(p) { return ['FT','AET','PEN'].indexOf(p.estadoCorto) === -1; });
-            setInfoRonda('Jornada ' + numRonda + ' de Primera · ' + deLaRonda.length + ' partidos' +
-                (sinJugar.length ? ' · ⚠️ ' + sinJugar.length + ' sin terminar' : ' · todos finalizados ✅'));
+            setInfoRonda(etiquetaRonda + (deLaRonda.length ? (sinJugar.length ? ' · ⚠️ ' + sinJugar.length + ' sin terminar' : ' · todos finalizados ✅') : ''));
 
             var lista = [];
             pSnap.forEach(function(d) {
@@ -14854,6 +14999,9 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                             }} style={A.btnDanger}>Cerrar plazo</button>
                         </div>
                     </div>
+
+                    {/* 📡 Diagnóstico de la API */}
+                    <DiagnosticoApiAdmin jornadas={jornadas} />
 
                     {/* 🛡️ Resolución manual de El Otro */}
                     <ResolverElOtroManualAdmin jornadas={jornadas} />
