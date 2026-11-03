@@ -8138,10 +8138,19 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
 
     useEffect(function() {
         if (seccion !== 'rifas') return;
-        var unsub = onSnapshot(
-            query(collection(db, 'rifas'), orderBy('creadoEn', 'desc')),
-            function(snap) { setRifas(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; })); }
-        );
+        // SIN orderBy: Firestore excluye en silencio los documentos que no
+        // tienen el campo del orderBy (p. ej. una rifa creada a mano en la
+        // consola sin 'creadoEn'), y la rifa "desaparecía" de la lista.
+        // Leemos la colección entera y ordenamos en cliente.
+        var unsub = onSnapshot(collection(db, 'rifas'), function(snap) {
+            var lista = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+            lista.sort(function(a, b) {
+                var ta = a.creadoEn && a.creadoEn.toMillis ? a.creadoEn.toMillis() : 0;
+                var tb = b.creadoEn && b.creadoEn.toMillis ? b.creadoEn.toMillis() : 0;
+                return tb - ta;
+            });
+            setRifas(lista);
+        });
         return function() { unsub(); };
     }, [seccion]);
 
@@ -8183,6 +8192,24 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
     // de sus papeletas registradas en Firestore, marca la rifa como cancelada
     // y publica automáticamente la novedad anunciándolo. Idempotente: una
     // rifa ya cancelada no se puede volver a cancelar.
+    // Publica la novedad de cancelación de la rifa — reutilizable tanto desde
+    // la cancelación completa como desde el botón de respaldo (para cuando la
+    // rifa no está registrada en Firestore y las devoluciones van a mano).
+    var publicarNovedadRifaCancelada = async function() {
+        await setDoc(doc(db, 'configuracion', 'novedad_activa'), {
+            icono: '💼',
+            titulo: 'RIFA CANCELADA — TU DINERO VUELVE A TU BOLSA',
+            cuerpo: '🚫 La rifa queda CANCELADA.\n\n' +
+                '💼 Todo el dinero de las papeletas se devuelve ÍNTEGRO a cada participante en su BOLSA dentro de la app. Nadie pierde ni un céntimo.\n\n' +
+                '¿Qué es la bolsa?\n' +
+                'Es tu saldo personal en la Porra. Lo verás en la pantalla de Pagos, y a partir de ahora podrás usarlo para pagar tus jornadas sin tener que hacer Bizum: cuando vayas a pagar una jornada, pulsa "Pagar con mi bolsa" y listo.\n\n' +
+                'Lo que pusiste en la rifa lo tienes disponible para seguir jugando jornada a jornada. 💛💙',
+            version: 'rifa-cancelada-' + Date.now(),
+            activa: true,
+            actualizadoEn: serverTimestamp(),
+        });
+    };
+
     var cancelarRifaYDevolver = async function(rifa) {
         if (rifa.estado === 'cancelada') { setMsgBolsas('Esa rifa ya está cancelada.'); return; }
         if (!window.confirm('¿CANCELAR la rifa "' + rifa.titulo + '"?\n\n· Cada participante recibirá en su BOLSA el importe de sus papeletas registradas en la app.\n· La rifa quedará marcada como CANCELADA.\n· Se publicará automáticamente la novedad anunciándolo.\n\nSi vendiste papeletas a mano (fuera de la app), devuélvelas después con el abono manual de abajo.')) return;
@@ -8219,18 +8246,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
             await batch.commit();
 
             // Publicar la novedad de cancelación automáticamente
-            await setDoc(doc(db, 'configuracion', 'novedad_activa'), {
-                icono: '💼',
-                titulo: 'RIFA CANCELADA — TU DINERO VUELVE A TU BOLSA',
-                cuerpo: '🚫 La rifa queda CANCELADA.\n\n' +
-                    '💼 Todo el dinero de las papeletas se devuelve ÍNTEGRO a cada participante en su BOLSA dentro de la app. Nadie pierde ni un céntimo.\n\n' +
-                    '¿Qué es la bolsa?\n' +
-                    'Es tu saldo personal en la Porra. Lo verás en la pantalla de Pagos, y a partir de ahora podrás usarlo para pagar tus jornadas sin tener que hacer Bizum: cuando vayas a pagar una jornada, pulsa "Pagar con mi bolsa" y listo.\n\n' +
-                    'Lo que pusiste en la rifa lo tienes disponible para seguir jugando jornada a jornada. 💛💙',
-                version: 'rifa-cancelada-' + Date.now(),
-                activa: true,
-                actualizadoEn: serverTimestamp(),
-            });
+            await publicarNovedadRifaCancelada();
 
             var resumen = usuarios.length === 0
                 ? 'No había papeletas registradas en la app — usa el abono manual para las vendidas a mano.'
@@ -9014,6 +9030,31 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                     </div>
                                 );
                             })}
+                        </div>
+                    )}
+
+                    {/* Respaldo: cancelación sin rifa registrada en Firestore.
+                        Si la rifa se gestionó a mano (papeletas por WhatsApp/
+                        Bizum), aquí no hay nada que cancelar automáticamente:
+                        este botón publica la novedad, y las devoluciones se
+                        hacen con el abono manual de abajo. */}
+                    {rifas.length === 0 && (
+                        <div style={{...A.card,border:'1.5px solid rgba(230,57,70,0.25)',background:'rgba(230,57,70,0.03)'}}>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#e63946',textTransform:'uppercase',marginBottom:6,fontWeight:600}}>
+                                🚫 Cancelar rifa no registrada
+                            </p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.55)',marginBottom:12,lineHeight:1.6}}>
+                                No hay ninguna rifa registrada en la app. Si la rifa se gestionó a mano (papeletas vendidas por WhatsApp/Bizum), pulsa aquí para <strong>publicar la novedad de cancelación</strong> y después devuelve a cada participante lo suyo con el <strong>abono manual</strong> de abajo.
+                            </p>
+                            <button onClick={async function() {
+                                if (!window.confirm('¿Publicar la novedad anunciando que la rifa queda cancelada y que el dinero vuelve a la bolsa de cada participante?')) return;
+                                try {
+                                    await publicarNovedadRifaCancelada();
+                                    setMsgBolsas('✅ Novedad de cancelación publicada. Ahora devuelve las papeletas con el abono manual.');
+                                } catch (e) { setMsgBolsas('❌ Error: ' + e.message); }
+                            }} style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,background:'rgba(230,57,70,0.1)',color:'#e63946',border:'1.5px solid rgba(230,57,70,0.3)',borderRadius:10,padding:'9px 16px',cursor:'pointer'}}>
+                                🚫 Publicar novedad de cancelación
+                            </button>
                         </div>
                     )}
 
