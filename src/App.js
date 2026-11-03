@@ -3802,7 +3802,6 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
                 <div style={S.infoBox}><p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.7)',lineHeight:1.7,textAlign:'center'}}>
                     🏆 <strong>Top 3 de la porra con premio asegurado</strong> — el bote sale de las inscripciones (5€ × jugadores): <strong>65%</strong> para el 1º, <strong>25%</strong> para el 2º, <strong>10%</strong> para el 3º. El resto de premios (Estrellas, rifas...) salen de otros botes internos, no de este.<br/>
                     ❄️ <strong>Campeón de Invierno</strong> — reconocimiento propio a mitad de temporada.<br/>
-                    🎟️ <strong>Rifas</strong> durante toda la temporada, para todos.<br/>
                     ⭐ <strong>Liga de Estrellas</strong> — premio aparte, de alto valor, que iremos desvelando poco a poco.<br/>
                     ✨ Y más sorpresas según avance la temporada.
                 </p></div>
@@ -5029,7 +5028,6 @@ const ClasificacionScreen = ({ currentUser, userProfiles, onlineUsers, pagos }) 
                 </p>
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7,margin:0}}>
                     ❄️ <strong>Campeón de Invierno</strong> — quien vaya primero a mitad de temporada.<br/>
-                    🎟️ <strong>Rifas</strong> durante la temporada, con sus propios premios.<br/>
                     ⭐ Ganador de la <strong>Liga de Estrellas</strong> — premio aparte de alto valor.
                 </p>
             </div>
@@ -5054,6 +5052,9 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
     var [bizumInfo, setBizumInfo] = useState({ nombre: 'Juanma', telefono: '' });
     var [copiado, setCopiado] = useState(false);
     var [heEnviado, setHeEnviado] = useState(false);
+    var [miBolsa, setMiBolsa] = useState(null); // { saldo } — saldo interno del jugador
+    var [movimientosBolsa, setMovimientosBolsa] = useState([]);
+    var [pagandoConBolsa, setPagandoConBolsa] = useState(false);
 
     useEffect(function() {
         var unsub = onSnapshot(doc(db, 'configuracion', 'bizum'), function(snap) {
@@ -5061,6 +5062,24 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
         });
         return function() { unsub(); };
     }, []);
+
+    // Bolsa del jugador — saldo interno (devoluciones de rifa, abonos del
+    // admin) con el que puede pagar sus jornadas sin hacer Bizum.
+    useEffect(function() {
+        if (!currentUser) return;
+        var unsub1 = onSnapshot(doc(db, 'bolsas', currentUser), function(snap) {
+            setMiBolsa(snap.exists() ? snap.data() : null);
+        });
+        var unsub2 = onSnapshot(
+            query(collection(db, 'bolsas', currentUser, 'movimientos'), orderBy('creadoEn', 'desc'), limit(10)),
+            function(snap) {
+                setMovimientosBolsa(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
+            }
+        );
+        return function() { unsub1(); unsub2(); };
+    }, [currentUser]);
+
+    var saldoBolsa = miBolsa ? (parseFloat(miBolsa.saldo) || 0) : 0;
 
     // Si llegamos aquí desde el aviso de "falta pagar esta jornada" en Mi
     // Jornada, viene con el tipo y la jornada ya decididos — saltamos
@@ -5160,6 +5179,49 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
         }
     };
 
+    // Pagar con la BOLSA: descuenta el total del saldo interno del jugador y
+    // crea los pagos ya COMPLETADOS (no necesitan confirmación del admin,
+    // porque el dinero ya está en la banca desde la rifa/abono original).
+    // Solo para jornadas — la inscripción y otros conceptos siguen por Bizum.
+    var pagarConBolsa = async function() {
+        var totalAPagar = jugadoresPagando.length * precioUnitario;
+        if (saldoBolsa < totalAPagar) { setError('Tu bolsa no tiene saldo suficiente (' + saldoBolsa.toFixed(2) + '€).'); return; }
+        if (!window.confirm('¿Pagar ' + totalAPagar.toFixed(2) + '€ con tu bolsa?\n\nSaldo actual: ' + saldoBolsa.toFixed(2) + '€\nQuedará: ' + (saldoBolsa - totalAPagar).toFixed(2) + '€')) return;
+        setPagandoConBolsa(true);
+        setPaso('procesando');
+        try {
+            var batch = writeBatch(db);
+            jugadoresPagando.forEach(function(j) {
+                batch.set(doc(collection(db, 'pagos')), {
+                    jugador: j,
+                    pagoBy: currentUser,
+                    tipo: tipoPago,
+                    jornada: jornadaSel || null,
+                    importe: precioUnitario,
+                    descripcion: 'Jornada ' + (tipoPago === 'jornada_vip' ? 'VIP ' : '') + jornadaSel + ' (pagada con bolsa)',
+                    metodo: 'bolsa',
+                    estado: 'completado', // el dinero ya está en la banca — no hay Bizum que verificar
+                    creadoEn: serverTimestamp(),
+                });
+            });
+            batch.set(doc(db, 'bolsas', currentUser), {
+                saldo: increment(-totalAPagar), actualizadoEn: serverTimestamp(),
+            }, { merge: true });
+            batch.set(doc(collection(db, 'bolsas', currentUser, 'movimientos')), {
+                tipo: 'pago_jornada',
+                importe: -totalAPagar,
+                concepto: 'Pago jornada ' + (jornadaSel || '') + (jugadoresPagando.length > 1 ? ' (' + jugadoresPagando.length + ' jugadores)' : ''),
+                creadoEn: serverTimestamp(),
+            });
+            await batch.commit();
+            setPaso('ok');
+        } catch(e) {
+            setError('Error: ' + e.message);
+            setPaso('bizum');
+        }
+        setPagandoConBolsa(false);
+    };
+
     var misPagos = pagos.filter(function(p){return p.jugador===currentUser||p.pagoBy===currentUser;});
     var inscripcionPagada = jugadorHaPagado(currentUser, pagos);
     var S = {
@@ -5179,6 +5241,38 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
             <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.5)',marginBottom:20,lineHeight:1.6}}>
                 Paga tu inscripción y las jornadas. Puedes pagar por otros jugadores en un solo cobro.
             </p>
+
+            {/* Mi bolsa — saldo interno para pagar jornadas sin Bizum */}
+            {(saldoBolsa > 0 || movimientosBolsa.length > 0) && (
+                <div style={{...S.card,background:'linear-gradient(135deg,#001F6B,#003a9e)',border:'1px solid rgba(255,215,0,0.25)'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                        <div>
+                            <p style={{fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',marginBottom:2,fontWeight:700}}>💼 Tu bolsa</p>
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>
+                                Saldo para pagar tus jornadas sin hacer Bizum.
+                            </p>
+                        </div>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color: saldoBolsa > 0 ? '#FFD700' : 'rgba(255,255,255,0.3)'}}>
+                            {saldoBolsa.toFixed(2)}€
+                        </p>
+                    </div>
+                    {movimientosBolsa.length > 0 && (
+                        <div style={{borderTop:'1px solid rgba(255,255,255,0.1)',paddingTop:8}}>
+                            {movimientosBolsa.slice(0, 5).map(function(m) {
+                                var imp = parseFloat(m.importe) || 0;
+                                return (
+                                    <div key={m.id} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0'}}>
+                                        <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.6)'}}>{m.concepto || m.tipo}</span>
+                                        <span style={{fontFamily:"'Teko',sans-serif",fontSize:14,fontWeight:700,color: imp >= 0 ? '#10b981' : '#ff8a8a'}}>
+                                            {imp >= 0 ? '+' : ''}{imp.toFixed(2)}€
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Estado inscripción propia */}
             <div style={{...S.card,border:inscripcionPagada?'1.5px solid #10b981':'1.5px solid rgba(255,215,0,0.5)',background:inscripcionPagada?'rgba(16,185,129,0.04)':'rgba(255,215,0,0.04)'}}>
@@ -5357,6 +5451,21 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
                 <button onClick={confirmarEnvioBizum} disabled={!heEnviado} style={{...S.btnPrimary,opacity:heEnviado?1:0.5}}>
                     Confirmar pago →
                 </button>
+
+                {/* Alternativa: pagar con la bolsa (solo jornadas, si hay saldo) */}
+                {tipoPago !== 'inscripcion' && saldoBolsa >= total && total > 0 && (
+                    <button onClick={pagarConBolsa} disabled={pagandoConBolsa}
+                        style={{width:'100%',marginTop:10,fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,
+                            background:'rgba(255,215,0,0.12)',color:'#001F6B',border:'1.5px solid #FFD700',
+                            borderRadius:30,padding:'13px',cursor:'pointer',textTransform:'uppercase',fontWeight:700}}>
+                        {pagandoConBolsa ? 'Pagando...' : '💼 Pagar con mi bolsa (' + saldoBolsa.toFixed(2) + '€) — sin Bizum'}
+                    </button>
+                )}
+                {tipoPago !== 'inscripcion' && saldoBolsa > 0 && saldoBolsa < total && (
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.45)',textAlign:'center',marginTop:10}}>
+                        💼 Tienes {saldoBolsa.toFixed(2)}€ en tu bolsa, pero no llega para los {total}€ de este pago.
+                    </p>
+                )}
 
                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',textAlign:'center',marginTop:12,lineHeight:1.5}}>
                     Tu pago quedará "pendiente" hasta que {bizumInfo.nombre} lo confirme al verlo en el banco — normalmente el mismo día.
@@ -7952,6 +8061,12 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
     var [msgAdmin, setMsgAdmin] = useState('');
     var [rifas, setRifas] = useState([]);
     var [nuevaRifa, setNuevaRifa] = useState({ titulo:'', descripcion:'', precio:'', fecha:'' });
+    var [bolsasAdmin, setBolsasAdmin] = useState([]);
+    var [abonoJugador, setAbonoJugador] = useState('');
+    var [abonoImporte, setAbonoImporte] = useState('');
+    var [abonoConcepto, setAbonoConcepto] = useState('Devolución rifa cancelada');
+    var [msgBolsas, setMsgBolsas] = useState('');
+    var [cancelandoRifa, setCancelandoRifa] = useState(false);
     var [elOtroDatosAdmin, setElOtroDatosAdmin] = useState({});
 
     var [jugadoresInactivos, setJugadoresInactivos] = useState([]);
@@ -8029,6 +8144,101 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
         );
         return function() { unsub(); };
     }, [seccion]);
+
+    // Bolsas de los jugadores — saldo interno con el que pueden pagar jornadas
+    useEffect(function() {
+        if (seccion !== 'rifas') return;
+        var unsub = onSnapshot(collection(db, 'bolsas'), function(snap) {
+            var lista = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+            lista.sort(function(a, b) { return (b.saldo || 0) - (a.saldo || 0); });
+            setBolsasAdmin(lista);
+        });
+        return function() { unsub(); };
+    }, [seccion]);
+
+    // Abono manual a la bolsa de un jugador — para devoluciones de papeletas
+    // vendidas a mano (Bizum fuera de la app) que no están registradas en
+    // Firestore, o cualquier otro ajuste puntual.
+    var abonarABolsa = async function() {
+        var importe = parseFloat((abonoImporte || '').toString().replace(',', '.'));
+        if (!abonoJugador) { setMsgBolsas('Selecciona un jugador.'); return; }
+        if (!importe || isNaN(importe) || importe === 0) { setMsgBolsas('Pon un importe válido (puede ser negativo para corregir).'); return; }
+        if (!window.confirm('¿Abonar ' + importe.toFixed(2) + '€ a la bolsa de ' + abonoJugador + '?\n\nConcepto: ' + (abonoConcepto || 'Ajuste manual'))) return;
+        try {
+            await setDoc(doc(db, 'bolsas', abonoJugador), {
+                saldo: increment(importe), actualizadoEn: serverTimestamp(),
+            }, { merge: true });
+            await setDoc(doc(collection(db, 'bolsas', abonoJugador, 'movimientos')), {
+                tipo: importe > 0 ? 'abono_admin' : 'ajuste_admin',
+                importe: importe,
+                concepto: abonoConcepto || 'Ajuste manual',
+                creadoEn: serverTimestamp(),
+            });
+            setMsgBolsas('✅ ' + importe.toFixed(2) + '€ abonados a la bolsa de ' + abonoJugador + '.');
+            setAbonoImporte('');
+        } catch (e) { setMsgBolsas('❌ Error: ' + e.message); }
+    };
+
+    // Cancelar una rifa: devuelve a la BOLSA de cada participante el importe
+    // de sus papeletas registradas en Firestore, marca la rifa como cancelada
+    // y publica automáticamente la novedad anunciándolo. Idempotente: una
+    // rifa ya cancelada no se puede volver a cancelar.
+    var cancelarRifaYDevolver = async function(rifa) {
+        if (rifa.estado === 'cancelada') { setMsgBolsas('Esa rifa ya está cancelada.'); return; }
+        if (!window.confirm('¿CANCELAR la rifa "' + rifa.titulo + '"?\n\n· Cada participante recibirá en su BOLSA el importe de sus papeletas registradas en la app.\n· La rifa quedará marcada como CANCELADA.\n· Se publicará automáticamente la novedad anunciándolo.\n\nSi vendiste papeletas a mano (fuera de la app), devuélvelas después con el abono manual de abajo.')) return;
+        setCancelandoRifa(true);
+        setMsgBolsas('');
+        try {
+            var papsSnap = await getDocs(collection(db, 'rifas', rifa.id, 'papeletas'));
+            var porUsuario = {};
+            papsSnap.forEach(function(d) {
+                var p = d.data();
+                if (!p.usuario) return;
+                var precio = parseFloat(p.precio) || parseFloat(rifa.precio) || 0;
+                porUsuario[p.usuario] = (porUsuario[p.usuario] || 0) + precio;
+            });
+
+            var batch = writeBatch(db);
+            var usuarios = Object.keys(porUsuario);
+            usuarios.forEach(function(u) {
+                batch.set(doc(db, 'bolsas', u), {
+                    saldo: increment(porUsuario[u]), actualizadoEn: serverTimestamp(),
+                }, { merge: true });
+                batch.set(doc(collection(db, 'bolsas', u, 'movimientos')), {
+                    tipo: 'devolucion_rifa',
+                    importe: porUsuario[u],
+                    concepto: 'Devolución rifa cancelada: ' + rifa.titulo,
+                    rifaId: rifa.id,
+                    creadoEn: serverTimestamp(),
+                });
+            });
+            batch.set(doc(db, 'rifas', rifa.id), {
+                estado: 'cancelada', canceladaEn: serverTimestamp(),
+                devueltoABolsas: porUsuario,
+            }, { merge: true });
+            await batch.commit();
+
+            // Publicar la novedad de cancelación automáticamente
+            await setDoc(doc(db, 'configuracion', 'novedad_activa'), {
+                icono: '💼',
+                titulo: 'RIFA CANCELADA — TU DINERO VUELVE A TU BOLSA',
+                cuerpo: '🚫 La rifa queda CANCELADA.\n\n' +
+                    '💼 Todo el dinero de las papeletas se devuelve ÍNTEGRO a cada participante en su BOLSA dentro de la app. Nadie pierde ni un céntimo.\n\n' +
+                    '¿Qué es la bolsa?\n' +
+                    'Es tu saldo personal en la Porra. Lo verás en la pantalla de Pagos, y a partir de ahora podrás usarlo para pagar tus jornadas sin tener que hacer Bizum: cuando vayas a pagar una jornada, pulsa "Pagar con mi bolsa" y listo.\n\n' +
+                    'Lo que pusiste en la rifa lo tienes disponible para seguir jugando jornada a jornada. 💛💙',
+                version: 'rifa-cancelada-' + Date.now(),
+                activa: true,
+                actualizadoEn: serverTimestamp(),
+            });
+
+            var resumen = usuarios.length === 0
+                ? 'No había papeletas registradas en la app — usa el abono manual para las vendidas a mano.'
+                : usuarios.map(function(u) { return u + ': ' + porUsuario[u].toFixed(2) + '€'; }).join(' · ');
+            setMsgBolsas('✅ Rifa cancelada y novedad publicada. Devuelto: ' + resumen);
+        } catch (e) { setMsgBolsas('❌ Error: ' + e.message); }
+        setCancelandoRifa(false);
+    };
 
     var sincronizarConAPI = async function(jornada) {
         if (!API_FOOTBALL_KEY) { setMsgSync('⚠️ Configura REACT_APP_API_FOOTBALL_KEY en .env'); return; }
@@ -8775,7 +8985,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                         <button onClick={crearRifa} style={A.btnPrimary}>Crear rifa →</button>
                     </div>
 
-                    {/* Lista de rifas */}
+                    {/* Lista de rifas — con cancelación y devolución a bolsas */}
                     {rifas.length > 0 && (
                         <div>
                             <p style={{fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:10}}>Rifas creadas</p>
@@ -8788,13 +8998,62 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)'}}>{r.descripcion}</p>
                                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.4)',marginTop:4}}>Sorteo: {r.fecha} · {r.precio}€/ticket</p>
                                             </div>
-                                            <span style={A.tag(r.estado==='activa'?'#10b981':'rgba(0,31,107,0.4)')}>{r.estado}</span>
+                                            <span style={A.tag(r.estado==='activa'?'#10b981': r.estado==='cancelada' ? '#e63946' : 'rgba(0,31,107,0.4)')}>{r.estado}</span>
                                         </div>
+                                        {r.estado !== 'cancelada' && (
+                                            <button onClick={function(){cancelarRifaYDevolver(r);}} disabled={cancelandoRifa}
+                                                style={{marginTop:10,fontFamily:"'Teko',sans-serif",fontSize:13,letterSpacing:1,background:'rgba(230,57,70,0.1)',color:'#e63946',border:'1.5px solid rgba(230,57,70,0.3)',borderRadius:10,padding:'8px 14px',cursor:'pointer'}}>
+                                                {cancelandoRifa ? 'Cancelando...' : '🚫 Cancelar rifa y devolver a las bolsas'}
+                                            </button>
+                                        )}
+                                        {r.estado === 'cancelada' && r.devueltoABolsas && Object.keys(r.devueltoABolsas).length > 0 && (
+                                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.5)',marginTop:8}}>
+                                                Devuelto: {Object.keys(r.devueltoABolsas).map(function(u){ return u + ' ' + Number(r.devueltoABolsas[u]).toFixed(2) + '€'; }).join(' · ')}
+                                            </p>
+                                        )}
                                     </div>
                                 );
                             })}
                         </div>
                     )}
+
+                    {/* Bolsas de los jugadores */}
+                    <div style={A.card}>
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:6,fontWeight:600}}>
+                            💼 Bolsas de los jugadores
+                        </p>
+                        <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.5)',marginBottom:12,lineHeight:1.5}}>
+                            Saldo interno de cada jugador. Con él pueden pagar sus jornadas desde la pantalla de Pagos sin hacer Bizum. El abono manual sirve para devolver papeletas vendidas a mano (fuera de la app) o corregir saldos.
+                        </p>
+                        {bolsasAdmin.length > 0 ? (
+                            <div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:14}}>
+                                {bolsasAdmin.map(function(b) {
+                                    return (
+                                        <div key={b.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',background:'rgba(0,31,107,0.03)',borderRadius:8}}>
+                                            <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:12,color:'#001F6B',fontWeight:600}}>{b.id}</span>
+                                            <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:(b.saldo||0) > 0 ? '#10b981' : 'rgba(0,31,107,0.3)'}}>{Number(b.saldo||0).toFixed(2)}€</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.35)',marginBottom:14}}>Todavía no hay bolsas creadas.</p>
+                        )}
+                        <p style={{fontFamily:"'Teko',sans-serif",fontSize:12,letterSpacing:2,color:'rgba(0,31,107,0.5)',textTransform:'uppercase',marginBottom:8}}>Abono manual</p>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            <select value={abonoJugador} onChange={function(e){setAbonoJugador(e.target.value);}}
+                                style={{flex:1,minWidth:110,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}}>
+                                <option value="">Jugador...</option>
+                                {JUGADORES_LISTA.map(function(j) { return <option key={j} value={j}>{j}</option>; })}
+                            </select>
+                            <input value={abonoImporte} onChange={function(e){setAbonoImporte(e.target.value);}} placeholder="€ (ej: 4.50)"
+                                style={{width:90,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
+                            <input value={abonoConcepto} onChange={function(e){setAbonoConcepto(e.target.value);}} placeholder="Concepto"
+                                style={{flex:2,minWidth:140,padding:'8px 12px',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,fontFamily:"'Inter',sans-serif",fontSize:12}} />
+                            <button onClick={abonarABolsa} style={A.btnSuccess}>Abonar</button>
+                        </div>
+                        {msgBolsas && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msgBolsas.startsWith('✅') ? '#10b981' : '#e63946',marginTop:10,lineHeight:1.5}}>{msgBolsas}</p>}
+                    </div>
                 </div>
             )}
         </div>
