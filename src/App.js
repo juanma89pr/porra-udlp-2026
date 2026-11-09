@@ -113,6 +113,40 @@ function fechaAString(value) {
     return d ? d.toISOString() : '';
 }
 
+// Día en formato AAAA-MM-DD (hora canaria) — el ÚNICO formato que acepta el
+// parámetro date= de API-Football. Antes se le pasaba la fecha ISO completa
+// (2026-11-08T11:00:00.000Z) y la API no devolvía ningún partido.
+function fechaApiDia(value) {
+    var d = toJsDate(value);
+    if (!d) return '';
+    return d.toLocaleDateString('en-CA', { timeZone: 'Atlantic/Canary' });
+}
+
+// Jornada "en curso": abierta, en vivo, o CERRADA (apuestas cerradas por la
+// función automática 5 min antes del partido) mientras el partido sea
+// reciente o futuro. Antes "Cerrada" no contaba: la jornada desaparecía de
+// Mi Jornada / La Jornada justo antes del partido y el directo no arrancaba.
+// El límite de 6 h evita resucitar jornadas antiguas que nunca se finalizaron.
+function esJornadaEnCurso(j) {
+    if (!j) return false;
+    if (j.estado === 'Abierta' || j.estado === 'En vivo') return true;
+    if (j.estado !== 'Cerrada') return false;
+    var fp = toJsDate(j.fechaPartido) || toJsDate(j.fecha);
+    return !!fp && fp.getTime() > Date.now() - 6 * 60 * 60 * 1000;
+}
+
+// URL para pedir el partido de la UDLP de una jornada. Si ya conocemos el
+// fixtureId lo pedimos directo (exacto y una sola petición); si no, por el
+// día REAL del partido (fechaPartido), y solo como último recurso por la
+// fecha provisional del calendario sembrado.
+function urlFixtureJornadaUDLP(jornada) {
+    if (jornada && jornada.fixtureId) {
+        return 'https://v3.football.api-sports.io/fixtures?id=' + jornada.fixtureId;
+    }
+    var dia = fechaApiDia(jornada && (jornada.fechaPartido || jornada.fecha));
+    return 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&team=' + API_TEAM_ID_UDLP + '&date=' + dia;
+}
+
 function formatearFechaJornada(value) {
     var d = toJsDate(value);
     if (!d) return 'Fecha por confirmar';
@@ -2489,13 +2523,13 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
 
     // Sincronización automática con API cada 5 minutos cuando hay jornada en vivo
     useEffect(function() {
-        if (!jornada || (jornada.estado !== 'En vivo' && jornada.estado !== 'Abierta')) return;
+        if (!esJornadaEnCurso(jornada)) return;
         if (!API_FOOTBALL_KEY) return;
         var sincronizar = async function() {
             try {
                 // season=2026 confirmado directamente en el panel de API-Football
                 // para la Segunda División 26/27 — ya no hace falta probar dos.
-                var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + encodeURIComponent(fechaAString(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
+                var url = urlFixtureJornadaUDLP(jornada);
                 var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
                 var data = await res.json();
                 if (data.response && data.response.length > 0) {
@@ -2580,7 +2614,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             function(snap) {
                 var ahoraMs = Date.now();
                 var lista = snap.docs.map(function(d){ return { id:d.id, ...d.data() }; });
-                var activa = lista.find(function(j){ return j.estado === 'Abierta' || j.estado === 'En vivo'; });
+                var activa = lista.find(function(j){ return esJornadaEnCurso(j); });
                 var reciente = lista.find(function(j){ return j.estado === 'Finalizada' && jornadaDentroVentana72h(j, ahoraMs); });
                 var seleccion = activa || reciente || null;
                 if (seleccion) {
@@ -2709,6 +2743,11 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     });
 
     var guardar = async function() {
+        // Blindaje: si alguien tenía la pantalla abierta desde antes del
+        // cierre, no puede colar la apuesta después.
+        if (!jornada || jornada.estado !== 'Abierta' || timeLeft === 'CERRADO') {
+            setMensaje('⏰ Las apuestas de esta jornada ya están cerradas.'); return;
+        }
         if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || !pronostico.resultado1x2) {
             setMensaje('Rellena el marcador y el 1X2 antes de guardar.'); return;
         }
@@ -4028,7 +4067,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
         var q = query(collection(db, "jornadas"), orderBy("numeroJornada","desc"), limit(10));
         var unsub = onSnapshot(q, function(snap) {
             var lista = snap.docs.map(function(d){ return {id:d.id,...d.data()}; });
-            var activa = lista.find(function(j){ return j.estado === 'Abierta' || j.estado === 'En vivo'; });
+            var activa = lista.find(function(j){ return esJornadaEnCurso(j); });
             var reciente = lista.find(function(j){ return j.estado === 'Finalizada' && jornadaDentroVentana72h(j, Date.now()); });
             var j = activa || reciente || null;
             setJornada(j);
@@ -6124,6 +6163,8 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     const [fechaApertura, setFechaApertura] = useState(toInputFormat(jornada.fechaApertura));
     const [fechaCierre, setFechaCierre] = useState(toInputFormat(jornada.fechaCierre));
     const [fechaPartido, setFechaPartido] = useState(toInputFormat(jornada.fechaPartido));
+    const [fixtureIdAPI, setFixtureIdAPI] = useState(null); // partido real encontrado con "Auto (API)"
+    const [buscandoFechaAPI, setBuscandoFechaAPI] = useState(false);
 
     const [isUnlocked, setIsUnlocked] = useState(jornada.estado !== 'Finalizada');
     const [liveData, setLiveData] = useState({ golesLocal: 0, golesVisitante: 0, primerGoleador: '', isLive: false });
@@ -6170,6 +6211,19 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
     };
 
     const handleSaveChanges = async () => {
+        // Abrir una jornada con el cierre de apuestas ya vencido no sirve de
+        // nada: la app la muestra CERRADA y la función automática del
+        // servidor (cada 5 min) la devuelve a "Cerrada" sola. Avisamos antes.
+        if (estado === 'Abierta') {
+            if (!fechaCierre) {
+                alert('⚠️ Falta la fecha de "Cierre Apuestas".\n\nPulsa "⏱️ Auto (API)" para traer la fecha y hora reales del partido, o rellénala a mano.');
+                return;
+            }
+            if (new Date(fechaCierre) <= new Date()) {
+                alert('⏰ El "Cierre Apuestas" (' + new Date(fechaCierre).toLocaleString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + ') ya ha pasado.\n\nSi la abres así, nadie podrá apostar y el servidor la volverá a cerrar sola en menos de 5 minutos.\n\nPulsa "⏱️ Auto (API)" junto a "Cierre Apuestas" para traer la fecha y hora reales del partido y vuelve a guardar.');
+                return;
+            }
+        }
         const jornadaRef = doc(db, "jornadas", jornada.id);
         let ganadoresArray = [];
         
@@ -6377,8 +6431,13 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
         const updateData = { 
             estado, resultadoLocal, resultadoVisitante, esVip, tipoPartido, h2hInfo, goleador, desenlace, bote: parseFloat(bote) || 0,
-            fechaApertura: fechaApertura ? new Date(fechaApertura) : null, fechaCierre: fechaCierre ? new Date(fechaCierre) : null, fechaPartido: fechaPartido ? new Date(fechaPartido) : null 
+            fechaApertura: fechaApertura ? new Date(fechaApertura) : null, fechaCierre: fechaCierre ? new Date(fechaCierre) : null, fechaPartido: fechaPartido ? new Date(fechaPartido) : null
         };
+        // La fecha "oficial" de la jornada pasa a ser la del partido real:
+        // la sincronización en directo, El Otro y el calendario la usan para
+        // buscar el partido, y la del calendario sembrado es provisional.
+        if (fechaPartido) updateData.fecha = new Date(fechaPartido);
+        if (fixtureIdAPI) updateData.fixtureId = fixtureIdAPI;
 
         if (estado === 'Finalizada') {
             updateData.ganadores = ganadoresArray;
@@ -6470,24 +6529,50 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
 
                 <div><label style={styles.label}>Apertura Apuestas:</label><input type="datetime-local" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} style={styles.input} /></div>
                 <div><label style={styles.label}>Cierre Apuestas:</label><input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} style={styles.input} />
-                    <button type="button" onClick={async function() {
-                        if (!jornada.fecha) { alert('Pon primero la fecha del partido en el campo de arriba.'); return; }
+                    <button type="button" disabled={buscandoFechaAPI} onClick={async function() {
+                        // Las fechas del calendario sembrado son provisionales
+                        // (domingo 12:00); LaLiga fija después el día y hora
+                        // reales. Buscamos en una ventana de días alrededor y
+                        // nos quedamos con el partido de ESTA jornada por su
+                        // número de ronda ("Regular Season - 13").
+                        var base = toJsDate(jornada.fechaPartido) || toJsDate(jornada.fecha) || new Date();
+                        if (!API_FOOTBALL_KEY) { alert('Falta configurar REACT_APP_API_FOOTBALL_KEY.'); return; }
+                        setBuscandoFechaAPI(true);
                         try {
-                            var fmt2 = function(d) { return d.toISOString().slice(0,10); };
-                            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + fmt2(toJsDate(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
+                            var desde = new Date(base.getTime() - 4 * 86400000);
+                            var hasta = new Date(base.getTime() + 8 * 86400000);
+                            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&team=' + API_TEAM_ID_UDLP + '&from=' + fechaApiDia(desde) + '&to=' + fechaApiDia(hasta);
                             var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
                             var data = await res.json();
-                            if (data.response && data.response.length > 0) {
-                                var kickoff = new Date(data.response[0].fixture.date);
-                                kickoff.setMinutes(kickoff.getMinutes() - 5);
-                                setFechaCierre(toInputFormat(kickoff));
-                                alert('✅ Cierre establecido 5 min antes del kickoff: ' + kickoff.toLocaleString('es-ES', {timeZone:'Atlantic/Canary'}));
+                            var lista = data.response || [];
+                            var elegido = lista.find(function(x) {
+                                var ronda = (x.league && x.league.round) || '';
+                                var m = ronda.match(/(\d+)\s*$/);
+                                return m && parseInt(m[1], 10) === Number(jornada.numeroJornada);
+                            });
+                            if (!elegido && lista.length > 0) {
+                                // Sin coincidencia de ronda: el más cercano a la fecha provisional
+                                elegido = lista.slice().sort(function(a, b) {
+                                    return Math.abs(new Date(a.fixture.date) - base) - Math.abs(new Date(b.fixture.date) - base);
+                                })[0];
+                            }
+                            if (!elegido) {
+                                var errApi = data.errors && Object.keys(data.errors).length ? ' (API: ' + JSON.stringify(data.errors) + ')' : '';
+                                alert('No se encontró el partido de la UDLP de la J' + jornada.numeroJornada + ' en la API' + errApi + '.\n\nRellena a mano "Cierre Apuestas" y "Fecha Partido".');
                             } else {
-                                alert('No se encontró partido de la UDLP ese día en la API.');
+                                var kickoff = new Date(elegido.fixture.date);
+                                var cierre = new Date(kickoff.getTime() - 5 * 60 * 1000);
+                                setFechaPartido(toInputFormat({ seconds: Math.floor(kickoff.getTime() / 1000) }));
+                                setFechaCierre(toInputFormat({ seconds: Math.floor(cierre.getTime() / 1000) }));
+                                setFixtureIdAPI(elegido.fixture.id);
+                                alert('✅ ' + elegido.teams.home.name + ' – ' + elegido.teams.away.name +
+                                    '\n\nPartido: ' + kickoff.toLocaleString('es-ES', { timeZone: 'Atlantic/Canary', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + ' (hora canaria)' +
+                                    '\nCierre de apuestas: 5 min antes.\n\nRevisa los campos y pulsa GUARDAR.');
                             }
                         } catch(e) { alert('Error consultando API: ' + e.message); }
+                        setBuscandoFechaAPI(false);
                     }} style={{fontFamily:"'Teko',sans-serif",fontSize:11,letterSpacing:1,background:'rgba(0,31,107,0.06)',color:'#001F6B',border:'1px solid rgba(0,31,107,0.15)',borderRadius:8,padding:'4px 10px',cursor:'pointer',marginLeft:6}}>
-                        ⏱️ Auto (API)
+                        {buscandoFechaAPI ? 'Buscando...' : '⏱️ Auto (API)'}
                     </button>
                 </div>
                 <div><label style={styles.label}>Fecha Partido (H.Canaria):</label><input type="datetime-local" value={fechaPartido} onChange={(e) => setFechaPartido(e.target.value)} style={styles.input} /></div>
@@ -8261,7 +8346,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
         setSincronizando(true); setMsgSync('Consultando API-Football...');
         try {
             // season=2026 confirmado directamente en el panel de API-Football.
-            var url = 'https://v3.football.api-sports.io/fixtures?league=141&season=2026&date=' + encodeURIComponent(fechaAString(jornada.fecha)) + '&team=' + API_TEAM_ID_UDLP;
+            var url = urlFixtureJornadaUDLP(jornada);
             var res = await fetch(url, { headers: { 'x-apisports-key': API_FOOTBALL_KEY } });
             var data = await res.json();
             if (data.response && data.response.length > 0) {
@@ -8380,7 +8465,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
         tag: function(color) { return { background: color+'20', color: color, border:'1px solid '+color+'40', borderRadius:8, padding:'3px 10px', fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600 }; },
     };
 
-    var jornadaActiva = jornadas.find(function(j) { return j.estado === 'Abierta' || j.estado === 'En vivo'; });
+    var jornadaActiva = jornadas.find(function(j) { return esJornadaEnCurso(j); });
 
     return (
         <div style={{paddingBottom:60}}>
