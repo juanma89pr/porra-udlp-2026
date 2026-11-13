@@ -135,6 +135,28 @@ function esJornadaEnCurso(j) {
     return !!fp && fp.getTime() > Date.now() - 6 * 60 * 60 * 1000;
 }
 
+// Ordena jornadas de mayor a menor número (tolerante a número guardado como texto).
+function ordenarJornadasDesc(lista) {
+    return (lista || []).slice().sort(function(a, b) {
+        return (Number(b.numeroJornada) || 0) - (Number(a.numeroJornada) || 0);
+    });
+}
+
+// Elige la jornada que debe verse en Mi Jornada / La Jornada a partir de la
+// lista COMPLETA de jornadas: la que está en curso o, si no hay, la recién
+// finalizada (ventana de 72 h). ANTES se pedían a Firestore solo las 10 de
+// número más alto (orderBy desc + limit 10) y, como el calendario tiene las
+// 42 jornadas sembradas, eran siempre J33–J42 en "Pendiente": la jornada
+// real NUNCA entraba en la lista y el formulario de apuesta no aparecía.
+function seleccionarJornadaVisible(lista, ahoraMs) {
+    var orden = ordenarJornadasDesc(lista);
+    var activa = orden.find(function(j) { return esJornadaEnCurso(j); });
+    if (activa) return activa;
+    return orden.find(function(j) {
+        return j.estado === 'Finalizada' && jornadaDentroVentana72h(j, ahoraMs || Date.now());
+    }) || null;
+}
+
 // URL para pedir el partido de la UDLP de una jornada. Si ya conocemos el
 // fixtureId lo pedimos directo (exacto y una sola petición); si no, por el
 // día REAL del partido (fechaPartido), y solo como último recurso por la
@@ -2257,8 +2279,8 @@ const CierreJornadaTransicion = ({ user, jornada, userProfiles, teamLogos, onIrE
                     setPremio(esGanador && exactos.length ? (bote / exactos.length).toFixed(2) : '0.00');
                 }
 
-                var cobroSnap = await getDocs(query(collection(db,'premios_jornada'),where('jornadaId','==',jornada.id),where('usuario','==',user),limit(1)));
-                if (activo) setCobroConfirmado(!cobroSnap.empty && !!cobroSnap.docs[0].data().recibido);
+                var cobroSnap = await getDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user));
+                if (activo) setCobroConfirmado(cobroSnap.exists() && !!cobroSnap.data().recibido);
 
                 var estSnap = await getDocs(collection(db, 'estrellas_resultados', jornada.id, 'jugadores'));
                 var est = estSnap.docs.map(function(d){ return { id:d.id, ...d.data() }; })
@@ -2413,8 +2435,8 @@ const PremioMiJornadaCard = ({ user, jornada }) => {
                 var exactos=vals.filter(function(x){return parseInt(x.golesLocal)===parseInt(jornada.resultadoLocal)&&parseInt(x.golesVisitante)===parseInt(jornada.resultadoVisitante);});
                 var bote=parseFloat(jornada.bote||0)+vals.length*(jornada.esVip?APUESTA_VIP:APUESTA_NORMAL);
                 var mi=exactos.some(function(x){return x.id===user})&&exactos.length?Number((bote/exactos.length).toFixed(2)):0;
-                var cs=await getDocs(query(collection(db,'premios_jornada'),where('jornadaId','==',jornada.id),where('usuario','==',user),limit(1)));
-                if(activo){setImporte(mi);setConfirmado(!cs.empty&&!!cs.docs[0].data().recibido);setCargando(false);}
+                var cs=await getDoc(doc(db,'premios_jornada',jornada.id,'usuarios',user));
+                if(activo){setImporte(mi);setConfirmado(cs.exists()&&!!cs.data().recibido);setCargando(false);}
             }catch(e){if(activo)setCargando(false);}
         })(); return function(){activo=false;};
     },[user,jornada?.id,jornada?.resultadoLocal,jornada?.resultadoVisitante,jornada?.bote,jornada?.esVip]);
@@ -2459,10 +2481,12 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         var activo = true;
         (async function() {
             try {
-                var qh = query(collection(db,'jornadas'), orderBy('numeroJornada','desc'), limit(5));
-                var sh = await getDocs(qh);
-                var jornadasData = sh.docs.map(function(d){ return {id:d.id,...d.data()}; })
-                    .filter(function(j){ return j.estado === 'Finalizada'; });
+                // Colección completa: con orderBy desc + limit(5) salían siempre
+                // J42–J38 (sembradas en Pendiente) y el histórico quedaba vacío.
+                var sh = await getDocs(collection(db,'jornadas'));
+                var jornadasData = ordenarJornadasDesc(sh.docs.map(function(d){ return {id:d.id,...d.data()}; }))
+                    .filter(function(j){ return j.estado === 'Finalizada'; })
+                    .slice(0, 5);
                 var salida = [];
                 for (var i=0;i<jornadasData.length;i++) {
                     var jh = jornadasData[i];
@@ -2609,34 +2633,46 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     // mantiene visible en Mi Jornada.
     useEffect(function() {
         if (!user) return;
+        // Escuchamos la colección COMPLETA (son 42 documentos) y elegimos en
+        // el cliente — ver seleccionarJornadaVisible(). Las escuchas internas
+        // (mi pronóstico, participantes) solo se rehacen cuando CAMBIA la
+        // jornada elegida: si no, cada actualización del directo (cada 2 min)
+        // creaba escuchas nuevas sin cerrar las viejas y reiniciaba el
+        // formulario del jugador mientras escribía.
+        var idSeleccionado = null;
+        var unsubParticipantes = null;
         var unsub = onSnapshot(
-            query(collection(db, "jornadas"), orderBy("numeroJornada", "desc"), limit(10)),
+            collection(db, "jornadas"),
             function(snap) {
-                var ahoraMs = Date.now();
                 var lista = snap.docs.map(function(d){ return { id:d.id, ...d.data() }; });
-                var activa = lista.find(function(j){ return esJornadaEnCurso(j); });
-                var reciente = lista.find(function(j){ return j.estado === 'Finalizada' && jornadaDentroVentana72h(j, ahoraMs); });
-                var seleccion = activa || reciente || null;
+                var seleccion = seleccionarJornadaVisible(lista, Date.now());
+                var idNuevo = seleccion ? seleccion.id : null;
+                var cambioDeJornada = idNuevo !== idSeleccionado;
+                idSeleccionado = idNuevo;
                 if (seleccion) {
-                    setJornada(seleccion);
-                    getDoc(doc(db, "pronosticos", seleccion.id, "jugadores", user)).then(function(p) {
-                        if (p.exists()) {
-                            var d = p.data();
-                            setPronostico({ golesLocal: d.golesLocal ?? '', golesVisitante: d.golesVisitante ?? '', resultado1x2: d.resultado1x2 || '' });
-                            setElOtroActivado(d.elOtroActivado || false);
-                            setGuardado(true);
-                        } else {
-                            setPronostico({golesLocal:'',golesVisitante:'',resultado1x2:''});
-                            setElOtroActivado(false);
-                            setGuardado(false);
-                        }
-                    }).catch(function(){});
-                    onSnapshot(collection(db, "pronosticos", seleccion.id, "jugadores"), function(ps) {
-                        var docs = ps.docs.map(function(d) { return { id: d.id, ...d.data() }; });
-                        setParticipantes(docs.map(function(d) { return d.id; }));
-                        setPronosticosTodos(docs);
-                    }, function(){});
-                } else {
+                    setJornada(seleccion); // siempre: trae marcador en vivo y cambios de estado
+                    if (cambioDeJornada) {
+                        getDoc(doc(db, "pronosticos", seleccion.id, "jugadores", user)).then(function(p) {
+                            if (p.exists()) {
+                                var d = p.data();
+                                setPronostico({ golesLocal: d.golesLocal ?? '', golesVisitante: d.golesVisitante ?? '', resultado1x2: d.resultado1x2 || '' });
+                                setElOtroActivado(d.elOtroActivado || false);
+                                setGuardado(true);
+                            } else {
+                                setPronostico({golesLocal:'',golesVisitante:'',resultado1x2:''});
+                                setElOtroActivado(false);
+                                setGuardado(false);
+                            }
+                        }).catch(function(){});
+                        if (unsubParticipantes) unsubParticipantes();
+                        unsubParticipantes = onSnapshot(collection(db, "pronosticos", seleccion.id, "jugadores"), function(ps) {
+                            var docs = ps.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+                            setParticipantes(docs.map(function(d) { return d.id; }));
+                            setPronosticosTodos(docs);
+                        }, function(){});
+                    }
+                } else if (cambioDeJornada) {
+                    if (unsubParticipantes) { unsubParticipantes(); unsubParticipantes = null; }
                     setJornada(null);
                     setParticipantes([]);
                     setPronosticosTodos([]);
@@ -2653,13 +2689,20 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
         );
 
         // Cierre de una sola visualización: SOLO durante la ventana de 48 h.
+        // Colección completa + filtro en cliente: la consulta anterior
+        // (where estado + orderBy número) necesita un índice compuesto en
+        // Firestore y, sin él, fallaba en silencio.
+        var idCierreActual = null;
         var unsubCierre = onSnapshot(
-            query(collection(db,'jornadas'), where('estado','==','Finalizada'), orderBy('numeroJornada','desc'), limit(5)),
+            collection(db,'jornadas'),
             function(cs){
-                var candidatas = cs.docs.map(function(d){ return {id:d.id,...d.data()}; });
+                var candidatas = ordenarJornadasDesc(cs.docs.map(function(d){ return {id:d.id,...d.data()}; }))
+                    .filter(function(j){ return j.estado === 'Finalizada'; });
                 var cj = candidatas.find(function(j){ return jornadaDentroVentana72h(j, Date.now()); });
-                if (!cj) { setJornadaCierre(null); return; }
+                if (!cj) { idCierreActual = null; setJornadaCierre(null); return; }
                 setJornadaCierre(cj);
+                if (cj.id === idCierreActual) return; // el premio ya está calculado
+                idCierreActual = cj.id;
                 getDoc(doc(db,'pronosticos',cj.id,'jugadores',user)).then(function(ps){
                     if(ps.exists()){
                         var pd=ps.data();
@@ -2673,7 +2716,8 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                 setPremioMiJornada(pd && exactos.some(function(x){return x.id===user;}) ? premio : 0);
                             });
                         } else setPremioMiJornada(0);
-                        getDocs(query(collection(db,'premios_jornada'),where('jornadaId','==',cj.id),where('usuario','==',user),limit(1))).then(function(rc){setPremioCobradoMiJornada(!rc.empty&&!!rc.docs[0].data().recibido);}).catch(function(){});
+                        // El cobro se guarda en premios_jornada/{jornada}/usuarios/{jugador}
+                        getDoc(doc(db,'premios_jornada',cj.id,'usuarios',user)).then(function(rc){setPremioCobradoMiJornada(rc.exists()&&!!rc.data().recibido);}).catch(function(){});
                     }
                 }).catch(function(){});
             }
@@ -2683,7 +2727,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
             if (snap.exists()) setMiElOtro(snap.data());
             else setMiElOtro(null);
         });
-        return function() { unsub(); unsubOtro(); unsubCierre(); };
+        return function() { unsub(); unsubOtro(); unsubCierre(); if (unsubParticipantes) unsubParticipantes(); };
     }, [user]);
 
     // Buscar el partido de Primera del Otro Equipo en cuanto sepamos qué
@@ -4064,24 +4108,35 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
     }, []);
 
     useEffect(function() {
-        var q = query(collection(db, "jornadas"), orderBy("numeroJornada","desc"), limit(10));
-        var unsub = onSnapshot(q, function(snap) {
+        // Colección completa + selección en cliente (ver seleccionarJornadaVisible).
+        // Las escuchas internas solo se rehacen si cambia la jornada elegida.
+        var idSeleccionado = null;
+        var unsubPron = null;
+        var unsubEstr = null;
+        var unsub = onSnapshot(collection(db, "jornadas"), function(snap) {
             var lista = snap.docs.map(function(d){ return {id:d.id,...d.data()}; });
-            var activa = lista.find(function(j){ return esJornadaEnCurso(j); });
-            var reciente = lista.find(function(j){ return j.estado === 'Finalizada' && jornadaDentroVentana72h(j, Date.now()); });
-            var j = activa || reciente || null;
+            var j = seleccionarJornadaVisible(lista, Date.now());
             setJornada(j);
-            if (j) {
-                onSnapshot(collection(db, "pronosticos", j.id, "jugadores"), function(ps) {
-                    setParticipantes(ps.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
-                }, function(){});
-                onSnapshot(collection(db, "estrellas_seleccion", j.id, "jugadores"), function(es) {
-                    setSeleccionesEstrellasJornada(es.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
-                }, function(){});
-            } else {
-                setParticipantes([]);
-                setSeleccionesEstrellasJornada([]);
+            var idNuevo = j ? j.id : null;
+            if (idNuevo !== idSeleccionado) {
+                idSeleccionado = idNuevo;
+                if (unsubPron) { unsubPron(); unsubPron = null; }
+                if (unsubEstr) { unsubEstr(); unsubEstr = null; }
+                if (j) {
+                    unsubPron = onSnapshot(collection(db, "pronosticos", j.id, "jugadores"), function(ps) {
+                        setParticipantes(ps.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
+                    }, function(){});
+                    unsubEstr = onSnapshot(collection(db, "estrellas_seleccion", j.id, "jugadores"), function(es) {
+                        setSeleccionesEstrellasJornada(es.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
+                    }, function(){});
+                } else {
+                    setParticipantes([]);
+                    setSeleccionesEstrellasJornada([]);
+                }
             }
+            setLoading(false);
+        }, function(e) {
+            console.warn('La Jornada — jornadas:', e.message);
             setLoading(false);
         });
         // El Otro Equipo de todos los jugadores
@@ -4090,7 +4145,7 @@ const LaJornadaScreen = ({ userProfiles, onlineUsers, teamLogos }) => {
             snap.forEach(function(d) { m[d.id] = d.data(); });
             setElOtroTodos(m);
         });
-        return function() { unsub(); unsubOtro(); };
+        return function() { unsub(); unsubOtro(); if (unsubPron) unsubPron(); if (unsubEstr) unsubEstr(); };
     }, []);
 
     if (loading) return <LoadingSkeleton />;
@@ -6870,12 +6925,12 @@ const VerificarEstadisticasJugadoresAdmin = ({ plantilla }) => {
     useEffect(function() {
         var cargarJornadaReciente = async function() {
             try {
-                var q = query(collection(db, 'jornadas'), orderBy('numeroJornada', 'desc'), limit(1));
-                var snap = await getDocs(q);
-                if (!snap.empty) {
-                    var j = snap.docs[0].data();
-                    if (j.fixtureId) setFixtureIdInput(String(j.fixtureId));
-                }
+                // La jornada más reciente que TENGA partido vinculado (antes
+                // cogía siempre la J42 sembrada, que nunca tiene fixtureId).
+                var snap = await getDocs(collection(db, 'jornadas'));
+                var conFixture = ordenarJornadasDesc(snap.docs.map(function(d) { return d.data(); }))
+                    .find(function(j) { return !!j.fixtureId; });
+                if (conFixture) setFixtureIdInput(String(conFixture.fixtureId));
             } catch (e) { console.warn('No se pudo autodetectar el fixtureId:', e.message); }
         };
         cargarJornadaReciente();
@@ -9839,9 +9894,12 @@ const MisEstrellasScreen = ({ currentUser, plantilla, userProfiles, pagos, onIrA
     useEffect(() => {
         if (!currentUser) return;
         const unsubJornada = onSnapshot(
-            query(collection(db, "jornadas"), where("estado", "in", ["Abierta","En vivo"]), limit(1)),
+            query(collection(db, "jornadas"), where("estado", "in", ["Abierta","En vivo"])),
             (snap) => {
-                if (!snap.empty) setJornadaActual({ id: snap.docs[0].id, ...snap.docs[0].data() });
+                // La de número más alto: si alguna antigua se quedó "En vivo"
+                // sin finalizar, no debe tapar a la jornada real.
+                var masReciente = ordenarJornadasDesc(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; }))[0];
+                setJornadaActual(masReciente || null);
                 setLoading(false);
             }
         );
@@ -10910,11 +10968,19 @@ function App() {
             registrarNotificacionesPush(user);
 
             // Detectar jornada finalizada no vista → pantalla de fin de jornada
-            onSnapshot(query(collection(db, 'jornadas'), where('estado', '==', 'Finalizada'), orderBy('numeroJornada', 'desc'), limit(1)), function(snap) {
-                if (snap.empty) return;
-                var jf = { id: snap.docs[0].id, ...snap.docs[0].data() };
-                var yaVisto = localStorage.getItem('finJornada_visto_' + jf.id + '_' + user);
+            // Colección completa + filtro en cliente (la consulta con where +
+            // orderBy necesitaba un índice compuesto). Solo se muestra la
+            // última finalizada, dentro de su ventana de 72 h, y una vez.
+            var idFinPreparado = null;
+            onSnapshot(collection(db, 'jornadas'), function(snap) {
+                var jf = ordenarJornadasDesc(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; }))
+                    .find(function(j) { return j.estado === 'Finalizada'; });
+                if (!jf || !jornadaDentroVentana72h(jf, Date.now())) return;
+                if (jf.id === idFinPreparado) return;
+                var yaVisto = null;
+                try { yaVisto = localStorage.getItem('finJornada_visto_' + jf.id + '_' + user); } catch (e) {}
                 if (!yaVisto) {
+                    idFinPreparado = jf.id;
                     setJornadaFinData(jf);
                     getDocs(collection(db, 'pronosticos', jf.id, 'jugadores')).then(function(pSnap) {
                         setParticipantesFin(pSnap.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
