@@ -21,3 +21,7 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Llaves de Firebase: NUNCA al repo (es público)
+serviceAccount*.json
+*serviceAccount*.json*

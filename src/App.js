@@ -3386,7 +3386,7 @@ const TutorialEpico = ({ user, plantilla, onClose }) => {
 
     // Música épica de fondo — volumen bajo
     useEffect(function() {
-        var audio = new Audio('/intro.mp3');
+        var audio = new Audio('/intro.mp3?v=3');
         audio.volume = 0.18;
         audio.loop = true;
         audio.play().catch(function() {}); // silencia el error si el navegador bloquea autoplay
@@ -10549,7 +10549,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
 // y no depende de si "ese navegador" ya la vio con otro nombre antes.
 // Requiere que presentacion_porra.html esté en /public/presentacion_porra.html
 // ============================================================================
-const AUDIO_INTRO_URL = '/intro.mp3?v=2'; // el ?v=2 evita que el navegador sirva en caché la canción anterior
+const AUDIO_INTRO_URL = '/intro.mp3?v=3'; // UNA sola dirección en toda la app (15 nov 2026: con dos se bajaba dos veces); subir el número si cambia la canción
 
 // ¿Ya vio ESTE jugador la presentación? Comprueba local (rápido) + Firestore
 // (por si entra desde otro dispositivo, o el admin se la reseteó).
@@ -10635,7 +10635,7 @@ const IntroPresentacionGate = ({ onFinish, user }) => {
     return (
         <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 9999,
             display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <audio ref={audioRef} src={AUDIO_INTRO_URL} preload="auto" />
+            <audio ref={audioRef} src={AUDIO_INTRO_URL} preload="none" />
 
             {fase !== 'presentacion' && necesitaGesto && (
                 <button onClick={tocarParaActivar} style={{

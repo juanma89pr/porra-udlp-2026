@@ -727,7 +727,7 @@ document.addEventListener('touchend',function(e){
 
 updateUI();
 </script>
-<audio id="bgAudio" loop preload="auto"><source src="/intro.mp3" type="audio/mpeg"></audio>
+<audio id="bgAudio" loop preload="none"><source src="/intro.mp3?v=3" type="audio/mpeg"></audio>
 <script>
 var _audio=document.getElementById('bgAudio'),_audioStarted=false;
 function _startAudio(){if(_audioStarted)return;_audio.volume=0.18;_audio.play().then(function(){_audioStarted=true;}).catch(function(){});}
