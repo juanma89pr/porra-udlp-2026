@@ -2747,11 +2747,21 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     // concreto), porque la jornada afecta a todos los comodines a la vez.
     var [primerPartidoPrimera, setPrimerPartidoPrimera] = useState(null);
     useEffect(function() {
-        buscarJornadaCompletaPrimera(new Date().toISOString(), 5).then(function(partidos) {
-            if (partidos && partidos.length > 0) {
-                var primero = partidos.sort(function(a,b) { return new Date(a.fecha) - new Date(b.fecha); })[0];
-                setPrimerPartidoPrimera(primero);
-            }
+        // ANTES: se cogía el partido más antiguo de una ventana de ±5 días
+        // desde hoy, que siempre era uno YA JUGADO del fin de semana anterior
+        // → la app creía casi siempre que la jornada de Primera había
+        // empezado y RECHAZABA la apuesta entera de quien activaba El Otro.
+        // AHORA: la jornada de Primera en juego es la del próximo partido sin
+        // empezar, y su primer partido es el más temprano de ESA ronda.
+        buscarJornadaCompletaPrimera(new Date().toISOString(), 6).then(function(partidos) {
+            if (!partidos || partidos.length === 0) return;
+            var porFecha = partidos.slice().sort(function(a,b) { return new Date(a.fecha) - new Date(b.fecha); });
+            var pendiente = porFecha.find(function(p) { return p.estadoCorto === 'NS' || p.estadoCorto === 'TBD'; });
+            if (!pendiente) return; // sin partidos por jugar en la ventana: no bloqueamos
+            var deLaRonda = pendiente.round
+                ? porFecha.filter(function(p) { return p.round === pendiente.round; })
+                : [pendiente];
+            setPrimerPartidoPrimera(deLaRonda[0] || pendiente);
         }).catch(function(){});
     }, []);
 
@@ -2789,33 +2799,59 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
     var guardar = async function() {
         // Blindaje: si alguien tenía la pantalla abierta desde antes del
         // cierre, no puede colar la apuesta después.
+        // Los rechazos salen también como aviso emergente: antes eran un texto
+        // rojo pequeño encima del botón y había quien cerraba la app creyendo
+        // que su porra estaba guardada.
+        var rechazar = function(texto) { setMensaje(texto); alert(texto); };
         if (!jornada || jornada.estado !== 'Abierta' || timeLeft === 'CERRADO') {
-            setMensaje('⏰ Las apuestas de esta jornada ya están cerradas.'); return;
+            rechazar('⏰ Las apuestas de esta jornada ya están cerradas. Tu porra NO se ha guardado.'); return;
         }
-        if (pronostico.golesLocal === '' || pronostico.golesVisitante === '' || !pronostico.resultado1x2) {
-            setMensaje('Rellena el marcador y el 1X2 antes de guardar.'); return;
+        if (pronostico.golesLocal === '' || pronostico.golesVisitante === '') {
+            rechazar('⚠️ Tu porra NO se ha guardado: falta el marcador.'); return;
         }
+        if (!pronostico.resultado1x2) {
+            rechazar('⚠️ Tu porra NO se ha guardado: falta elegir el 1X2 (1, X o 2).'); return;
+        }
+        // El Otro fuera de plazo ya NO tumba la apuesta entera: se guarda la
+        // porra sin El Otro y se avisa. Antes se perdía todo.
+        var otroValido = elOtroActivado && !plazoActivacionSuperado;
         if (elOtroActivado && plazoActivacionSuperado) {
-            setMensaje('❌ Ya no puedes activar El Otro Equipo — su partido de Primera ya ha empezado.');
-            return;
+            alert('🛡️ El Otro Equipo ya no se puede activar en esta jornada (ha empezado la jornada de Primera).\n\nTu porra se guarda igualmente, SIN El Otro.');
+            setElOtroActivado(false);
         }
         try {
             await setDoc(doc(db, "pronosticos", jornada.id, "jugadores", user), {
                 golesLocal: Number(pronostico.golesLocal),
                 golesVisitante: Number(pronostico.golesVisitante),
                 resultado1x2: pronostico.resultado1x2,
-                elOtroActivado: elOtroActivado,
+                elOtroActivado: otroValido,
                 // Guardamos el partido exacto en el momento de activar, para
                 // que al cerrar la jornada no haya que adivinar cuál era.
-                elOtroFixtureId: elOtroActivado && partidoOtro ? partidoOtro.fixtureId : null,
-                elOtroEquipoUsado: elOtroActivado ? (miElOtro && miElOtro.equipo) : null,
+                elOtroFixtureId: otroValido && partidoOtro ? partidoOtro.fixtureId : null,
+                elOtroEquipoUsado: otroValido ? (miElOtro && miElOtro.equipo) : null,
                 guardadoEn: serverTimestamp(),
                 usuario: user,
                 puntosObtenidos: 0,
             }, { merge: true });
             setGuardado(true);
             setMensaje(jornadaPagada ? '✅ Apuesta guardada correctamente.' : '✅ Apuesta guardada — recuerda pagar esta jornada por Bizum para que cuente.');
-        } catch(e) { setMensaje('❌ Error al guardar: ' + e.message); }
+        } catch(e) { rechazar('❌ Tu porra NO se ha guardado. Error: ' + e.message + '\n\nVuelve a intentarlo o avisa a Juanma.'); }
+    };
+
+    // Con el marcador completo y el 1X2 sin elegir, se PRESELECCIONA el 1X2
+    // coherente con el marcador (desde el punto de vista de la UD, mismo
+    // criterio que el cálculo de puntos). El jugador puede cambiarlo. Evita
+    // el caso de quien pone el marcador, olvida el 1X2 y no se le guarda.
+    var sugerirUnoXDos = function(p) {
+        if (p.resultado1x2 || p.golesLocal === '' || p.golesVisitante === '' || !jornada) return p;
+        if (jornada.tipoPartido === 'vuelta_semi' || jornada.tipoPartido === 'vuelta_final') return p;
+        var l = Number(p.golesLocal), v = Number(p.golesVisitante);
+        if (isNaN(l) || isNaN(v)) return p;
+        var udLocal = jornada.equipoLocal === 'UD Las Palmas';
+        var udVisitante = jornada.equipoVisitante === 'UD Las Palmas';
+        if (!udLocal && !udVisitante) return p;
+        var gUd = udLocal ? l : v, gRival = udLocal ? v : l;
+        return { ...p, resultado1x2: gUd > gRival ? 'Gana' : (gUd < gRival ? 'Pierde' : 'Empata') };
     };
 
     // Multiplicador de El Otro según activaciones — versión única en getMultiplicadorOtro()
@@ -3081,7 +3117,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                     onError={function(e){e.target.style.display='none';}} />
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoLocal.toUpperCase()}</p>
                                 <input type="number" min="0" max="20" value={pronostico.golesLocal}
-                                    onChange={function(e) { setPronostico(function(p) { return {...p, golesLocal: e.target.value}; }); setGuardado(false); }}
+                                    onChange={function(e) { setPronostico(function(p) { return sugerirUnoXDos({...p, golesLocal: e.target.value}); }); setGuardado(false); }}
                                     style={{width:64,height:64,textAlign:'center',border:'2px solid rgba(0,31,107,0.2)',borderRadius:14,
                                         fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:G.deepBlue,background:'#f8f9ff'}} />
                             </div>
@@ -3092,7 +3128,7 @@ const MiJornadaScreen = ({ user, teamLogos, plantilla, userProfiles, onlineUsers
                                     onError={function(e){e.target.style.display='none';}} />
                                 <p style={{fontFamily:"'Inter',sans-serif",fontSize:9,color:G.deepBlue,opacity:.5,marginBottom:4}}>{jornada.equipoVisitante.toUpperCase()}</p>
                                 <input type="number" min="0" max="20" value={pronostico.golesVisitante}
-                                    onChange={function(e) { setPronostico(function(p) { return {...p, golesVisitante: e.target.value}; }); setGuardado(false); }}
+                                    onChange={function(e) { setPronostico(function(p) { return sugerirUnoXDos({...p, golesVisitante: e.target.value}); }); setGuardado(false); }}
                                     style={{width:64,height:64,textAlign:'center',border:'2px solid rgba(0,31,107,0.2)',borderRadius:14,
                                         fontFamily:"'Teko',sans-serif",fontSize:32,fontWeight:700,color:G.deepBlue,background:'#f8f9ff'}} />
                             </div>
@@ -8188,6 +8224,90 @@ const GestionNovedadesAdmin = () => {
     );
 };
 
+// Registrar a mano la porra de un jugador que no se le guardó (p. ej. la
+// app le rechazó la apuesta sin que se diera cuenta). Pensado para usarlo
+// SOLO con prueba de lo que apostó ANTES del partido (mensaje, captura).
+// Queda marcada como introducida por admin, con la nota de justificación.
+const ApuestaManualAdmin = ({ jornadas, jugadores }) => {
+    var candidatas = ordenarJornadasDesc(jornadas).filter(function(j) {
+        return j.estado !== 'Pendiente';
+    });
+    var [jornadaId, setJornadaId] = useState('');
+    var [jugador, setJugador] = useState('');
+    var [gL, setGL] = useState('');
+    var [gV, setGV] = useState('');
+    var [unoXDos, setUnoXDos] = useState('');
+    var [nota, setNota] = useState('');
+    var [msg, setMsg] = useState('');
+    var [guardando, setGuardando] = useState(false);
+    var jSel = candidatas.find(function(j) { return j.id === jornadaId; }) || candidatas[0] || null;
+
+    var guardar = async function() {
+        setMsg('');
+        if (!jSel) { setMsg('No hay jornada seleccionada.'); return; }
+        if (!jugador) { setMsg('Elige el jugador.'); return; }
+        if (gL === '' || gV === '' || !unoXDos) { setMsg('Rellena marcador y 1X2.'); return; }
+        if (!nota.trim()) { setMsg('Escribe la prueba/justificación (p. ej. "WhatsApp a Juanma 13:40").'); return; }
+        try {
+            var ref = doc(db, 'pronosticos', jSel.id, 'jugadores', jugador);
+            var previo = await getDoc(ref);
+            var aviso = previo.exists()
+                ? '\n\n⚠️ ' + jugador + ' YA tiene una apuesta guardada en esta jornada (' + previo.data().golesLocal + '-' + previo.data().golesVisitante + '). Se SUSTITUIRÁ.'
+                : '';
+            if (!window.confirm('¿Registrar la porra de ' + jugador + ' en la J' + jSel.numeroJornada + '?\n\n' + gL + '-' + gV + ' · ' + unoXDos + '\nPrueba: ' + nota + aviso)) return;
+            setGuardando(true);
+            await setDoc(ref, {
+                golesLocal: Number(gL), golesVisitante: Number(gV), resultado1x2: unoXDos,
+                elOtroActivado: false, elOtroFixtureId: null, elOtroEquipoUsado: null,
+                usuario: jugador, puntosObtenidos: 0, guardadoEn: serverTimestamp(),
+                introducidaPorAdmin: true, notaAdmin: nota.trim(),
+            }, { merge: true });
+            setMsg('✅ Porra de ' + jugador + ' registrada en la J' + jSel.numeroJornada + '.' +
+                (jSel.estado === 'Finalizada' ? ' La jornada ya está FINALIZADA: resetea sus puntos y vuelve a guardarla como Finalizada para que cuente.' : ''));
+            setGL(''); setGV(''); setUnoXDos(''); setNota('');
+        } catch (e) { setMsg('❌ Error: ' + e.message); }
+        setGuardando(false);
+    };
+
+    var inp = { padding:'8px 10px', border:'1px solid rgba(0,31,107,0.15)', borderRadius:8, fontFamily:"'Inter',sans-serif", fontSize:13 };
+    return (
+        <div style={{background:'#fff',border:'1.5px solid rgba(212,175,55,0.45)',borderRadius:14,padding:16,marginBottom:12}}>
+            <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
+                ✍️ Recuperar porra no guardada
+            </p>
+            <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(0,31,107,0.55)',marginBottom:12,lineHeight:1.5}}>
+                Para jugadores a los que la app no les guardó la apuesta. Úsalo <strong>solo con prueba de lo que apostaron antes del partido</strong> (mensaje, captura con hora). Queda registrada como introducida por admin, con tu nota. El Otro Equipo no se aplica en apuestas recuperadas.
+            </p>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
+                <select value={jSel ? jSel.id : ''} onChange={function(e){ setJornadaId(e.target.value); }} style={{...inp,flex:1,minWidth:150}}>
+                    {candidatas.map(function(j) { return <option key={j.id} value={j.id}>J{j.numeroJornada} · {j.equipoLocal} – {j.equipoVisitante} ({j.estado})</option>; })}
+                </select>
+                <select value={jugador} onChange={function(e){ setJugador(e.target.value); }} style={{...inp,flex:1,minWidth:110}}>
+                    <option value="">Jugador...</option>
+                    {jugadores.map(function(j) { return <option key={j} value={j}>{j}</option>; })}
+                </select>
+            </div>
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:8}}>
+                <input value={gL} onChange={function(e){ setGL(e.target.value.replace(/[^0-9]/g,'')); }} placeholder="Local" style={{...inp,width:64,textAlign:'center'}} />
+                <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,color:'#001F6B'}}>–</span>
+                <input value={gV} onChange={function(e){ setGV(e.target.value.replace(/[^0-9]/g,'')); }} placeholder="Visit." style={{...inp,width:64,textAlign:'center'}} />
+                {['Gana','Empata','Pierde'].map(function(op) {
+                    var sel = unoXDos === op;
+                    return <button key={op} type="button" onClick={function(){ setUnoXDos(op); }}
+                        style={{padding:'8px 12px',borderRadius:8,border: sel ? 'none' : '1px solid rgba(0,31,107,0.15)',background: sel ? '#001F6B' : '#f8f9ff',color: sel ? '#FFD700' : '#001F6B',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1,cursor:'pointer'}}>UD {op}</button>;
+                })}
+            </div>
+            <input value={nota} onChange={function(e){ setNota(e.target.value); }} placeholder='Prueba (ej: "me lo mandó por WhatsApp el domingo a las 13:40")'
+                style={{...inp,width:'100%',marginBottom:10,boxSizing:'border-box'}} />
+            <button onClick={guardar} disabled={guardando}
+                style={{background:'#001F6B',color:'#FFD700',border:'none',borderRadius:10,padding:'10px 18px',fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,cursor:'pointer',textTransform:'uppercase'}}>
+                {guardando ? 'Guardando...' : 'Registrar porra'}
+            </button>
+            {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,color: msg.startsWith('✅') ? '#10b981' : '#e63946',marginTop:10,lineHeight:1.5}}>{msg}</p>}
+        </div>
+    );
+};
+
 const AdminPanelScreen = ({ plantilla, teamLogos }) => {
     var [jornadas, setJornadas] = useState([]);
     var [expandida, setExpandida] = useState(null);
@@ -8904,6 +9024,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                     </div>
                     {herramientaSub === 'jugadores' && <div>
                     <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:3,color:'rgba(0,31,107,0.35)',textTransform:'uppercase',marginTop:28,marginBottom:10,fontWeight:700,borderBottom:'1px solid rgba(0,31,107,0.1)',paddingBottom:6}}>👤 Gestión de jugadores</p>
+                    <ApuestaManualAdmin jornadas={jornadas} jugadores={JUGADORES_LISTA} />
                     {/* Resetear tutorial */}
                     <div style={A.card}>
                         <p style={{fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,color:'#001F6B',textTransform:'uppercase',marginBottom:4,fontWeight:600}}>
