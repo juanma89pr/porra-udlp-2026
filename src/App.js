@@ -5318,7 +5318,7 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
         if (saldoBolsa < totalAPagar) { setError('Tu bolsa no tiene saldo suficiente (' + saldoBolsa.toFixed(2) + '€).'); return; }
         try {
             var cierreSnap = await getDoc(doc(db, 'configuracion', 'cierre_porra'));
-            if (cierreSnap.exists() && cierreSnap.data().activo) { setError('La Porra está cerrada: el saldo de tu bolsa se reclama desde el aviso de arriba.'); return; }
+            if (cierreSnap.exists() && cierreSnap.data().activo) { setError('La Porra está cerrada: el saldo de tu bolsa se solicita desde la pantalla principal.'); return; }
         } catch (e) { /* seguimos */ }
         if (!window.confirm('¿Pagar ' + totalAPagar.toFixed(2) + '€ con tu bolsa?\n\nSaldo actual: ' + saldoBolsa.toFixed(2) + '€\nQuedará: ' + (saldoBolsa - totalAPagar).toFixed(2) + '€')) return;
         setPagandoConBolsa(true);
@@ -8405,16 +8405,28 @@ async function descargarDatosTemporada() {
     descargarArchivoTexto('porra-udlp-2627-clasificacion.csv', csv, 'text/csv;charset=utf-8');
 }
 
+// Plazo para solicitar el reembolso: 30 días desde que se cierra la Porra.
+var CIERRE_PLAZO_DIAS = 30;
+
+function textoFechaLarga(d) {
+    return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', timeZone: 'Atlantic/Canary' });
+}
+
 // Texto del aviso de cierre que ven los jugadores al abrir la app.
-var TEXTO_NOVEDAD_CIERRE =
-    'Después de pensarlo mucho, la Porra UDLP 26/27 se cierra aquí. La poca participación de las últimas semanas, mi falta de tiempo y la de recursos para mantenerla hacen que no pueda seguir llevándola como se merece.\n\n' +
+function textoNovedadCierre(plazo) {
+    return 'Después de pensarlo mucho, la Porra UDLP 26/27 se cierra aquí. La poca participación de las últimas semanas, mi falta de tiempo y la de recursos para mantenerla hacen que no pueda seguir llevándola como se merece.\n\n' +
     '💼 TU DINERO, EN TU BOLSA\n' +
-    'Todo lo que la Porra te debe (5€ de la inscripción si la pagaste y seguías jugando, premios sin cobrar, devoluciones y saldo que ya tuvieras) está en tu BOLSA. Pulsa "Reclamar mi saldo" en el aviso de arriba y te lo paso por Bizum.\n\n' +
+    'Todo lo que la Porra te devuelve (5€ de la inscripción si la pagaste y seguías jugando, premios sin cobrar, devoluciones y saldo que ya tuvieras) está en tu BOLSA, en la pantalla principal. Pulsa "Solicitar mi pago" y te lo paso por Bizum. Ten paciencia: son muchos pagos y los hago uno a uno.\n\n' +
+    '📅 PLAZO: HASTA EL ' + textoFechaLarga(plazo).toUpperCase() + '\n' +
+    'Quien no solicite su pago antes de esa fecha pierde el derecho al reembolso.\n\n' +
+    '🤝 RENUNCIAR ES VOLUNTARIO\n' +
+    'Si prefieres dejar tu saldo para ayudar a cubrir lo que ha costado hacer la Porra, también puedes renunciar a tu bolsa. Es totalmente voluntario.\n\n' +
     '🏆 SIN PREMIOS POR CLASIFICACIÓN\n' +
     'Repartir los premios de la general con la liga a medias no sería justo para nadie, así que no habrá premios por clasificación.\n\n' +
     '📊 LOS DATOS SE QUEDAN\n' +
     'La app sigue abierta para consultar todo lo jugado. Si alguien quiere seguir la porra por su cuenta, le paso todos los datos de la temporada.\n\n' +
     'Gracias de corazón por haber jugado. Ojalá algún día la retomemos. 💛💙';
+}
 
 const CierrePorraAdmin = ({ jornadas, jugadores }) => {
     var [cierre, setCierre] = useState(null);
@@ -8476,6 +8488,8 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
         try {
             var actual = await getDoc(doc(db, CIERRE_DOC[0], CIERRE_DOC[1]));
             if (actual.exists() && actual.data().liquidacionVolcada) { setMsg('La liquidación ya se había volcado.'); setVolcando(false); return; }
+            var plazo = new Date(Date.now() + CIERRE_PLAZO_DIAS * 24 * 60 * 60 * 1000);
+            plazo.setHours(23, 59, 0, 0);
             var batch = writeBatch(db);
             incluidas.forEach(function(l) {
                 batch.set(doc(db, 'bolsas', l.jugador, 'movimientos', 'cierre_' + l.id), {
@@ -8486,13 +8500,13 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
                 batch.set(doc(db, 'bolsas', j), { saldo: increment(Number(porJugador[j].toFixed(2))), actualizadoEn: serverTimestamp() }, { merge: true });
             });
             batch.set(doc(db, CIERRE_DOC[0], CIERRE_DOC[1]), {
-                activo: true, liquidacionVolcada: true, volcadoEn: serverTimestamp(),
+                activo: true, liquidacionVolcada: true, volcadoEn: serverTimestamp(), plazoHasta: plazo,
                 jornadaFinalId: jFinal.id, jornadaFinalNumero: jFinal.numeroJornada,
                 finalSinGanador: !!calculo.finalSinGanador, totalLiquidado: Number(totalIncluido.toFixed(2)),
                 lineas: incluidas.map(function(l) { return { jugador: l.jugador, concepto: l.concepto, importe: l.importe }; }),
             }, { merge: true });
             batch.set(doc(db, 'configuracion', 'novedad_activa'), {
-                icono: '💛', titulo: 'CIERRE DE LA PORRA', cuerpo: TEXTO_NOVEDAD_CIERRE,
+                icono: '💛', titulo: 'CIERRE DE LA PORRA', cuerpo: textoNovedadCierre(plazo),
                 version: 'cierre-porra-' + Date.now(), activa: true, actualizadoEn: serverTimestamp(),
             });
             await batch.commit();
@@ -8531,8 +8545,15 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
 
     var reclPendientes = reclamaciones.filter(function(r) { return r.estado === 'pendiente'; });
     var reclamadosIds = reclPendientes.map(function(r) { return r.id; });
-    var sinReclamar = bolsas.filter(function(b) { return (b.saldo || 0) > 0.009 && reclamadosIds.indexOf(b.id) === -1; });
+    var plazoCierre = cierre ? toJsDate(cierre.plazoHasta) : null;
+    var plazoVencido = !!plazoCierre && Date.now() > plazoCierre.getTime();
+    var conSaldoSinReclamar = bolsas.filter(function(b) { return (b.saldo || 0) > 0.009 && reclamadosIds.indexOf(b.id) === -1; });
+    var sinReclamar = plazoVencido ? [] : conSaldoSinReclamar;
+    var caducados = plazoVencido ? conSaldoSinReclamar : [];
     var pagadas = reclamaciones.filter(function(r) { return r.estado === 'pagado'; });
+    var renuncias = reclamaciones.filter(function(r) { return r.estado === 'renuncia'; });
+    var totalRenuncias = renuncias.reduce(function(t, r) { return t + (Number(r.importe) || 0); }, 0);
+    var totalCaducado = caducados.reduce(function(t, b) { return t + (Number(b.saldo) || 0); }, 0);
 
     return (
         <div>
@@ -8615,8 +8636,9 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
                             </div>
                         );
                     })}
-                    <p style={{...titulo,marginTop:14}}>⏳ Con saldo sin reclamar ({sinReclamar.length})</p>
-                    {sinReclamar.length === 0 && <p style={texto}>Nadie más tiene saldo pendiente.</p>}
+                    {plazoCierre && <p style={{...texto,marginTop:10}}>📅 Plazo para solicitar: hasta el {textoFechaLarga(plazoCierre)}{plazoVencido ? ' (TERMINADO)' : ''}.</p>}
+                    <p style={{...titulo,marginTop:14}}>⏳ Con saldo sin solicitar ({sinReclamar.length})</p>
+                    {sinReclamar.length === 0 && <p style={texto}>{plazoVencido ? 'El plazo ha terminado: mira la lista de caducados.' : 'Nadie más tiene saldo pendiente.'}</p>}
                     {sinReclamar.map(function(b) {
                         return (
                             <div key={b.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
@@ -8626,6 +8648,18 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
                             </div>
                         );
                     })}
+                    <p style={{...titulo,marginTop:14}}>⌛ Caducados ({caducados.length}{caducados.length ? ' · ' + totalCaducado.toFixed(2) + '€' : ''})</p>
+                    <p style={texto}>{plazoVencido ? (caducados.length ? 'No lo solicitaron dentro del plazo: han perdido el derecho al reembolso. Su saldo se queda tal cual como registro.' : 'Nadie ha dejado caducar su saldo.') : 'Aparecerán aquí quienes no lo soliciten antes de que termine el plazo.'}</p>
+                    {caducados.map(function(b) {
+                        return (
+                            <div key={b.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(0,31,107,0.5)',flex:1}}>{b.id}</span>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:'rgba(0,31,107,0.5)'}}>{Number(b.saldo || 0).toFixed(2)}€</span>
+                            </div>
+                        );
+                    })}
+                    <p style={{...titulo,marginTop:14}}>🤝 Renuncias ({renuncias.length}{renuncias.length ? ' · ' + totalRenuncias.toFixed(2) + '€' : ''})</p>
+                    <p style={texto}>{renuncias.length ? renuncias.map(function(r) { return r.id + ' (' + Number(r.importe || 0).toFixed(2) + '€)'; }).join(', ') : 'Nadie ha renunciado a su bolsa por ahora.'}</p>
                     {pagadas.length > 0 && <p style={{...texto,marginTop:12}}>✅ Ya pagados: {pagadas.map(function(r) { return r.id; }).join(', ')}</p>}
                 </div>
             )}
@@ -8642,14 +8676,14 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
     );
 };
 
-// Aviso de cierre para los jugadores: aparece arriba en todas las pantallas
-// cuando la Porra está cerrada. Muestra el saldo de su bolsa y le deja
-// reclamarlo; el admin lo ve en Admin → Cierre y lo paga por Bizum.
+// Tarjeta de cierre para los jugadores (pantalla principal). Muestra lo que
+// la Porra le devuelve con su desglose, el plazo de 30 días, y le deja
+// solicitar el pago por Bizum o renunciar voluntariamente a su bolsa.
 const CierrePorraJugador = ({ currentUser }) => {
     var [cierre, setCierre] = useState(null);
     var [bolsa, setBolsa] = useState(null);
     var [recl, setRecl] = useState(null);
-    var [abierto, setAbierto] = useState(false);
+    var [modo, setModo] = useState('');
     var [telefono, setTelefono] = useState('');
     var [enviando, setEnviando] = useState(false);
     var [error, setError] = useState('');
@@ -8664,52 +8698,134 @@ const CierrePorraJugador = ({ currentUser }) => {
 
     if (!cierre || !cierre.activo) return null;
     var saldo = bolsa ? (parseFloat(bolsa.saldo) || 0) : 0;
-    var pendiente = recl && recl.estado === 'pendiente';
-    var pagado = recl && recl.estado === 'pagado' && saldo < 0.01;
+    var estado = recl ? recl.estado : '';
+    var plazo = toJsDate(cierre.plazoHasta);
+    var vencido = !!plazo && Date.now() > plazo.getTime();
+    var fechaPlazo = plazo ? textoFechaLarga(plazo) : '';
 
-    var reclamar = async function() {
+    // Desglose: líneas del cierre de este jugador + lo que ya tuviera en la bolsa.
+    var misLineas = (cierre.lineas || []).filter(function(l) { return l.jugador === currentUser; });
+    var sumaLineas = misLineas.reduce(function(t, l) { return t + (Number(l.importe) || 0); }, 0);
+    var desglose = misLineas.slice();
+    if (saldo - sumaLineas > 0.009) desglose.push({ concepto: 'Saldo que ya tenías en tu bolsa', importe: Number((saldo - sumaLineas).toFixed(2)) });
+
+    var solicitar = async function() {
         setError('');
-        if (saldo < 0.01) return;
+        if (saldo < 0.01 || vencido) return;
         setEnviando(true);
         try {
             await setDoc(doc(db, 'reclamaciones', currentUser), {
                 jugador: currentUser, importe: Number(saldo.toFixed(2)), telefono: telefono.trim(),
                 estado: 'pendiente', creadoEn: serverTimestamp(),
             });
-            setAbierto(false);
+            setModo('');
         } catch (e) { setError('No se pudo enviar: ' + e.message); }
         setEnviando(false);
     };
 
+    var renunciar = async function() {
+        setError('');
+        if (saldo < 0.01 || vencido) return;
+        setEnviando(true);
+        try {
+            var importe = Number(saldo.toFixed(2));
+            var batch = writeBatch(db);
+            batch.set(doc(db, 'reclamaciones', currentUser), {
+                jugador: currentUser, importe: importe, estado: 'renuncia', creadoEn: serverTimestamp(),
+            });
+            batch.set(doc(db, 'bolsas', currentUser), { saldo: increment(-importe), actualizadoEn: serverTimestamp() }, { merge: true });
+            batch.set(doc(collection(db, 'bolsas', currentUser, 'movimientos')), {
+                tipo: 'renuncia_cierre', importe: -importe, concepto: 'Renuncia voluntaria para cubrir gastos de la Porra', creadoEn: serverTimestamp(),
+            });
+            await batch.commit();
+            setModo('');
+        } catch (e) { setError('No se pudo completar: ' + e.message); }
+        setEnviando(false);
+    };
+
+    var importeMostrado = estado === 'pendiente' ? Number(recl.importe || saldo) : (estado === 'renuncia' || estado === 'pagado') ? 0 : saldo;
+    var titulo, sub;
+    if (estado === 'pendiente') { titulo = 'Solicitud enviada'; sub = 'Juanma te hará el Bizum en cuanto pueda. Gracias por tu paciencia.'; }
+    else if (estado === 'pagado' && saldo < 0.01) { titulo = 'Pago recibido'; sub = 'Tus ' + Number(recl.importe || 0).toFixed(2) + '€ ya están pagados. ¡Gracias por jugar! 💛💙'; }
+    else if (estado === 'renuncia') { titulo = 'Gracias de corazón'; sub = 'Has cedido tus ' + Number(recl.importe || 0).toFixed(2) + '€ para cubrir los gastos de la Porra. Un detallazo. 💛💙'; }
+    else if (saldo < 0.01) { titulo = 'La Porra ha cerrado'; sub = 'No tienes saldo pendiente. Gracias por haber jugado. 💛💙'; }
+    else if (vencido) { titulo = 'Plazo terminado'; sub = 'El plazo para solicitar el reembolso terminó el ' + fechaPlazo + '. Gracias por haber jugado. 💛💙'; }
+    else if (modo === 'solicitar') { titulo = 'Solicitar mi pago'; sub = 'Te lo paso por Bizum.'; }
+    else { titulo = 'La Porra ha cerrado'; sub = 'Esto es lo que la Porra te devuelve. Está en tu bolsa.'; }
+    var activo = saldo >= 0.01 && !vencido && estado !== 'pendiente' && estado !== 'renuncia';
+    var apagado = importeMostrado < 0.01 || (vencido && estado !== 'pendiente');
+
+    var C = {
+        card: {background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:16,marginBottom:16,border:'1px solid rgba(255,215,0,0.3)',color:'#fff'},
+        t: {fontFamily:"'Teko',sans-serif",fontSize:16,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',fontWeight:700,margin:0,lineHeight:1.1},
+        s: {fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.65)',margin:'4px 0 0',lineHeight:1.5},
+        big: {fontFamily:"'Teko',sans-serif",fontSize:34,fontWeight:700,margin:0,lineHeight:1},
+        desg: {background:'rgba(255,255,255,0.07)',borderRadius:10,padding:'8px 10px',marginTop:12},
+        l: {display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,fontFamily:"'Inter',sans-serif",fontSize:11.5,padding:'4px 0',color:'rgba(255,255,255,0.85)'},
+        n: {fontFamily:"'Teko',sans-serif",fontSize:15,fontWeight:700,color:'#fff'},
+        box: {background:'rgba(255,215,0,0.1)',border:'1px solid rgba(255,215,0,0.35)',borderRadius:10,padding:10,marginTop:12,fontFamily:"'Inter',sans-serif",fontSize:11.5,lineHeight:1.55,color:'rgba(255,255,255,0.9)'},
+        btn: {display:'block',width:'100%',marginTop:12,background:'#FFD700',color:'#001F6B',border:'none',borderRadius:24,padding:11,fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,fontWeight:700,cursor:'pointer'},
+        btn2: {display:'block',width:'100%',marginTop:8,background:'transparent',color:'rgba(255,255,255,0.75)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:24,padding:9,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:2,cursor:'pointer'},
+        note: {fontFamily:"'Inter',sans-serif",fontSize:10.5,color:'rgba(255,255,255,0.55)',margin:'8px 0 0',lineHeight:1.5,textAlign:'center'},
+    };
+
     return (
-        <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:'14px 16px',marginBottom:16,border:'1px solid rgba(255,215,0,0.3)'}}>
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
+        <div style={C.card}>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
                 <div style={{flex:1}}>
-                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',fontWeight:700,margin:0}}>La Porra está cerrada</p>
-                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.65)',margin:'2px 0 0',lineHeight:1.5}}>
-                        {pendiente ? 'Tu reclamación está enviada. Juanma te hará el Bizum.'
-                            : pagado ? 'Tu saldo ya está pagado. ¡Gracias por jugar!'
-                            : saldo >= 0.01 ? 'Tienes saldo en tu bolsa. Reclámalo y te lo pago por Bizum.'
-                            : 'No tienes saldo pendiente. Gracias por haber jugado.'}
-                    </p>
+                    <p style={C.t}>{titulo}</p>
+                    <p style={C.s}>{sub}</p>
                 </div>
-                <p style={{fontFamily:"'Teko',sans-serif",fontSize:26,fontWeight:700,color: saldo >= 0.01 ? '#FFD700' : 'rgba(255,255,255,0.35)',margin:0}}>{saldo.toFixed(2)}€</p>
+                <p style={{...C.big,color: apagado ? 'rgba(255,255,255,0.35)' : '#FFD700'}}>{importeMostrado.toFixed(2)}€</p>
             </div>
-            {saldo >= 0.01 && !pendiente && !abierto && (
-                <button onClick={function(){ setAbierto(true); }} style={{width:'100%',marginTop:10,background:'#FFD700',color:'#001F6B',border:'none',borderRadius:24,padding:'10px',fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,cursor:'pointer',fontWeight:700}}>
-                    💼 RECLAMAR MI SALDO
-                </button>
+
+            {estado === 'pendiente' && (
+                <div style={C.desg}><div style={C.l}><span>Estado</span><span style={{...C.n,color:'#FFD700'}}>PENDIENTE DE PAGO</span></div></div>
             )}
-            {abierto && (
-                <div style={{marginTop:10}}>
-                    <input value={telefono} onChange={function(e){ setTelefono(e.target.value); }} placeholder="Tu teléfono para el Bizum (opcional si Juanma ya lo tiene)"
-                        style={{width:'100%',boxSizing:'border-box',padding:'10px 12px',borderRadius:10,border:'none',fontFamily:"'Inter',sans-serif",fontSize:13,marginBottom:8}} />
-                    <button onClick={reclamar} disabled={enviando} style={{width:'100%',background:'#FFD700',color:'#001F6B',border:'none',borderRadius:24,padding:'10px',fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,cursor:'pointer',fontWeight:700}}>
-                        {enviando ? 'ENVIANDO...' : 'ENVIAR RECLAMACIÓN DE ' + saldo.toFixed(2) + '€'}
-                    </button>
-                    {error && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#ff8a8a',marginTop:6}}>{error}</p>}
+
+            {activo && modo === '' && (
+                <div>
+                    {desglose.length > 0 && (
+                        <div style={C.desg}>
+                            {desglose.map(function(l, i) {
+                                return <div key={i} style={C.l}><span>{l.concepto}</span><span style={C.n}>{Number(l.importe).toFixed(2)}€</span></div>;
+                            })}
+                            <div style={{...C.l,borderTop:'1px solid rgba(255,255,255,0.15)',marginTop:4,paddingTop:6}}>
+                                <strong>Total en tu bolsa</strong><span style={{...C.n,color:'#FFD700'}}>{saldo.toFixed(2)}€</span>
+                            </div>
+                        </div>
+                    )}
+                    {plazo && (
+                        <div style={{...C.box,marginTop:10}}>📅 <strong>Tienes hasta el {fechaPlazo}</strong> para solicitar tu pago. Si no lo solicitas antes de esa fecha, pierdes el derecho al reembolso.</div>
+                    )}
+                    <button onClick={function(){ setModo('solicitar'); setError(''); }} style={C.btn}>SOLICITAR MI PAGO</button>
+                    <button onClick={function(){ setModo('renunciar'); setError(''); }} style={C.btn2}>RENUNCIAR A MI BOLSA</button>
+                    <p style={C.note}>Renunciar es voluntario: ese dinero ayuda a cubrir lo que ha costado hacer la Porra.</p>
                 </div>
             )}
+
+            {activo && modo === 'solicitar' && (
+                <div>
+                    <input value={telefono} onChange={function(e){ setTelefono(e.target.value); }} placeholder="Tu teléfono de Bizum (opcional si Juanma ya lo tiene)"
+                        style={{width:'100%',boxSizing:'border-box',marginTop:12,padding:'10px 12px',borderRadius:10,border:'none',fontFamily:"'Inter',sans-serif",fontSize:13}} />
+                    <div style={C.box}>⏳ <strong>Ten un poco de paciencia.</strong> Se juntan muchos pagos a la vez y los voy haciendo uno a uno, así que puede tardar unos días. No hace falta que vuelvas a solicitarlo: tu solicitud queda guardada.</div>
+                    <button onClick={solicitar} disabled={enviando} style={C.btn}>{enviando ? 'ENVIANDO...' : 'ENVIAR SOLICITUD DE ' + saldo.toFixed(2) + '€'}</button>
+                    <button onClick={function(){ setModo(''); }} style={C.btn2}>VOLVER</button>
+                </div>
+            )}
+
+            {activo && modo === 'renunciar' && (
+                <div style={{background:'#fff',borderRadius:14,padding:14,marginTop:12,color:'#001F6B'}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:17,letterSpacing:2,fontWeight:700,margin:'0 0 6px'}}>¿RENUNCIAR A TUS {saldo.toFixed(2)}€?</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:12,lineHeight:1.55,color:'rgba(0,31,107,0.7)',margin:'0 0 12px'}}>Es totalmente voluntario. Si renuncias, este dinero se queda en la Porra para ayudar a cubrir los gastos que ha tenido hasta ahora. No se puede deshacer.</p>
+                    <div style={{display:'flex',gap:8}}>
+                        <button onClick={function(){ setModo(''); }} style={{flex:1,borderRadius:20,padding:9,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1.5,fontWeight:700,border:'none',background:'#eef1f7',color:'#001F6B',cursor:'pointer'}}>MEJOR NO</button>
+                        <button onClick={renunciar} disabled={enviando} style={{flex:1,borderRadius:20,padding:9,fontFamily:"'Teko',sans-serif",fontSize:14,letterSpacing:1.5,fontWeight:700,border:'none',background:'#001F6B',color:'#FFD700',cursor:'pointer'}}>{enviando ? '...' : 'SÍ, RENUNCIO'}</button>
+                    </div>
+                </div>
+            )}
+
+            {error && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#ff8a8a',marginTop:8}}>{error}</p>}
         </div>
     );
 };
@@ -11782,7 +11898,7 @@ function App() {
             {/* ── CONTENIDO PRINCIPAL ── */}
             <div style={{ position: 'absolute', top: 62, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px' }}>
                 <div key={activeTab} style={{ animation: 'slideIn .22s ease both' }}>
-                    <CierrePorraJugador currentUser={currentUser} />
+                    {activeTab === 'miJornada' && <CierrePorraJugador currentUser={currentUser} />}
                     {renderContent()}
                     {novedadOverlay}
                 </div>
