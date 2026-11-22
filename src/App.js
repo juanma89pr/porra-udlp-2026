@@ -8249,7 +8249,7 @@ var CIERRE_DOC = ['configuracion', 'cierre_porra'];
 
 // Devuelve las líneas de liquidación (qué se debe a quién y por qué) sin
 // escribir nada. El admin las revisa y desmarca lo ya pagado por fuera.
-async function calcularLiquidacionCierre(jornadas, jornadaFinalId, nAnteriores, devolucionInscripcion) {
+async function calcularLiquidacionCierre(jornadas, jornadaFinalId, nAnteriores, devolucionInscripcion, jugadoresActivos) {
     var lineas = [];
     var avisos = [];
     var orden = ordenarJornadasDesc(jornadas);
@@ -8336,11 +8336,17 @@ async function calcularLiquidacionCierre(jornadas, jornadaFinalId, nAnteriores, 
     // 3. Devolución de inscripción (opcional, importe por jugador).
     var importeIns = parseFloat(String(devolucionInscripcion || '0').replace(',', '.')) || 0;
     if (importeIns > 0) {
+        // Solo a quien pagó la inscripción y sigue jugando (no dado de baja).
         var inscritos = {};
-        pagos.filter(function(p) { return p.tipo === 'inscripcion'; }).forEach(function(p) { inscritos[p.jugador] = true; });
+        pagos.filter(function(p) { return p.tipo === 'inscripcion'; }).forEach(function(p) {
+            if (!inscritos[p.jugador] || p.estado === 'completado') inscritos[p.jugador] = p.estado;
+        });
         Object.keys(inscritos).forEach(function(jug) {
+            if (jugadoresActivos && jugadoresActivos.indexOf(jug) === -1) return;
+            var sinConfirmar = inscritos[jug] !== 'completado';
             lineas.push({ id: 'inscripcion_' + jug, jugador: jug, tipo: 'inscripcion',
-                concepto: 'Devolución de inscripción', importe: Number(importeIns.toFixed(2)), incluir: true });
+                concepto: 'Devolución de inscripción' + (sinConfirmar ? ' (pago sin confirmar: revísalo)' : ''),
+                importe: Number(importeIns.toFixed(2)), incluir: !sinConfirmar });
         });
     }
 
@@ -8403,7 +8409,7 @@ async function descargarDatosTemporada() {
 var TEXTO_NOVEDAD_CIERRE =
     'Después de pensarlo mucho, la Porra UDLP 26/27 se cierra aquí. La poca participación de las últimas semanas, mi falta de tiempo y la de recursos para mantenerla hacen que no pueda seguir llevándola como se merece.\n\n' +
     '💼 TU DINERO, EN TU BOLSA\n' +
-    'Todo lo que la Porra te debe (premios sin cobrar, devoluciones y saldo que ya tuvieras) está en tu BOLSA. Pulsa "Reclamar mi saldo" en el aviso de arriba y te lo paso por Bizum.\n\n' +
+    'Todo lo que la Porra te debe (5€ de la inscripción si la pagaste y seguías jugando, premios sin cobrar, devoluciones y saldo que ya tuvieras) está en tu BOLSA. Pulsa "Reclamar mi saldo" en el aviso de arriba y te lo paso por Bizum.\n\n' +
     '🏆 SIN PREMIOS POR CLASIFICACIÓN\n' +
     'Repartir los premios de la general con la liga a medias no sería justo para nadie, así que no habrá premios por clasificación.\n\n' +
     '📊 LOS DATOS SE QUEDAN\n' +
@@ -8414,7 +8420,7 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
     var [cierre, setCierre] = useState(null);
     var [jornadaFinalId, setJornadaFinalId] = useState('');
     var [nAnteriores, setNAnteriores] = useState(1);
-    var [devIns, setDevIns] = useState('0');
+    var [devIns, setDevIns] = useState('5');
     var [calculo, setCalculo] = useState(null);
     var [calculando, setCalculando] = useState(false);
     var [volcando, setVolcando] = useState(false);
@@ -8442,7 +8448,7 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
         if (!jFinal) return;
         setCalculando(true); setMsg(''); setCalculo(null);
         try {
-            var r = await calcularLiquidacionCierre(jornadas, jFinal.id, nAnteriores, devIns);
+            var r = await calcularLiquidacionCierre(jornadas, jFinal.id, nAnteriores, devIns, jugadores);
             setCalculo(r);
         } catch (e) { setMsg('❌ ' + e.message); }
         setCalculando(false);
@@ -8559,7 +8565,7 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
                                 {[0,1,2,3].map(function(n) { return <option key={n} value={n}>{n}</option>; })}
                             </select>{' '}jornada(s) anteriores cuyo bote se acumuló.
                         </label>
-                        <label style={texto}>Devolución de inscripción por jugador (€, 0 = no se devuelve):{' '}
+                        <label style={texto}>Devolución de inscripción por jugador que pagó y sigue jugando (€, 0 = no se devuelve):{' '}
                             <input value={devIns} onChange={function(e){ setDevIns(e.target.value); setCalculo(null); }} style={{...inp,width:80}} />
                         </label>
                     </div>
