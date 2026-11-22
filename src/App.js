@@ -5316,6 +5316,10 @@ const PagosScreen = ({ currentUser, contextoPago, onContextoPagoUsado }) => {
     var pagarConBolsa = async function() {
         var totalAPagar = jugadoresPagando.length * precioUnitario;
         if (saldoBolsa < totalAPagar) { setError('Tu bolsa no tiene saldo suficiente (' + saldoBolsa.toFixed(2) + '€).'); return; }
+        try {
+            var cierreSnap = await getDoc(doc(db, 'configuracion', 'cierre_porra'));
+            if (cierreSnap.exists() && cierreSnap.data().activo) { setError('La Porra está cerrada: el saldo de tu bolsa se reclama desde el aviso de arriba.'); return; }
+        } catch (e) { /* seguimos */ }
         if (!window.confirm('¿Pagar ' + totalAPagar.toFixed(2) + '€ con tu bolsa?\n\nSaldo actual: ' + saldoBolsa.toFixed(2) + '€\nQuedará: ' + (saldoBolsa - totalAPagar).toFixed(2) + '€')) return;
         setPagandoConBolsa(true);
         setPaso('procesando');
@@ -6306,6 +6310,13 @@ const JornadaAdminItem = ({ jornada, plantilla = [] }) => {
         // nada: la app la muestra CERRADA y la función automática del
         // servidor (cada 5 min) la devuelve a "Cerrada" sola. Avisamos antes.
         if (estado === 'Abierta') {
+            try {
+                var cierreSnap = await getDoc(doc(db, 'configuracion', 'cierre_porra'));
+                if (cierreSnap.exists() && cierreSnap.data().activo) {
+                    alert('🔒 La Porra está cerrada (Admin → Cierre). Ya no se pueden abrir jornadas.');
+                    return;
+                }
+            } catch (e) { /* sin conexión: seguimos con el resto de comprobaciones */ }
             if (!fechaCierre) {
                 alert('⚠️ Falta la fecha de "Cierre Apuestas".\n\nPulsa "⏱️ Auto (API)" para traer la fecha y hora reales del partido, o rellénala a mano.');
                 return;
@@ -8224,6 +8235,479 @@ const GestionNovedadesAdmin = () => {
     );
 };
 
+// ============================================================================
+// CIERRE DE LA PORRA — liquidación final a las bolsas y reclamación de saldos
+// ============================================================================
+// Decisión del admin (nov 2026): cierre anticipado por fuerza mayor. La última
+// jornada es la que se elija como "final". No hay premios por clasificación.
+// Todo lo que la Porra debe a cada jugador (premios no cobrados, devolución de
+// apuestas si la final queda sin ganador, devolución opcional de inscripción)
+// se vuelca a su BOLSA; el jugador lo reclama y el admin lo paga por Bizum.
+// Estado en configuracion/cierre_porra.
+
+var CIERRE_DOC = ['configuracion', 'cierre_porra'];
+
+// Devuelve las líneas de liquidación (qué se debe a quién y por qué) sin
+// escribir nada. El admin las revisa y desmarca lo ya pagado por fuera.
+async function calcularLiquidacionCierre(jornadas, jornadaFinalId, nAnteriores, devolucionInscripcion) {
+    var lineas = [];
+    var avisos = [];
+    var orden = ordenarJornadasDesc(jornadas);
+    var final = orden.find(function(j) { return j.id === jornadaFinalId; });
+    if (!final) throw new Error('No se encuentra la jornada final.');
+    var numFinal = Number(final.numeroJornada);
+
+    var pagosSnap = await getDocs(collection(db, 'pagos'));
+    var pagos = pagosSnap.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+        .filter(function(p) { return p.estado !== 'cancelado' && p.estado !== 'rechazado' && p.estado !== 'fallido'; });
+    var numDe = function(codigo) { return parseInt(String(codigo || '').replace(/[^0-9]/g, ''), 10); };
+    var leerApuestas = async function(j) {
+        var s = await getDocs(collection(db, 'pronosticos', j.id, 'jugadores'));
+        return s.docs.map(function(d) { return { id: d.id, ...d.data() }; })
+            .filter(function(x) { return !x.noContabilizado && !x.sinApuesta; });
+    };
+    var esExacto = function(x, j) {
+        return x.golesLocal !== undefined && x.golesLocal !== null &&
+            parseInt(x.golesLocal) === parseInt(j.resultadoLocal) && parseInt(x.golesVisitante) === parseInt(j.resultadoVisitante);
+    };
+
+    // 1. Premios de jornadas finalizadas que el ganador no ha marcado como cobrados.
+    //    Misma fórmula que Mi Jornada: (bote acumulado + apuestas × precio) / acertantes.
+    var finalSinGanador = false;
+    var finalizadas = orden.filter(function(j) { return j.estado === 'Finalizada' && Number(j.numeroJornada) <= numFinal; });
+    for (var i = 0; i < finalizadas.length; i++) {
+        const jf = finalizadas[i];
+        if (jf.resultadoLocal === undefined || jf.resultadoLocal === null || jf.resultadoLocal === '') continue;
+        const vals = await leerApuestas(jf);
+        const exactos = vals.filter(function(x) { return esExacto(x, jf); });
+        if (exactos.length === 0) {
+            if (jf.id === final.id) finalSinGanador = true;
+            continue;
+        }
+        var precio = jf.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+        var bote = (parseFloat(jf.bote) || 0) + vals.length * precio;
+        var premio = Number((bote / exactos.length).toFixed(2));
+        for (var w = 0; w < exactos.length; w++) {
+            var ganador = exactos[w].id;
+            var cobro = await getDoc(doc(db, 'premios_jornada', jf.id, 'usuarios', ganador));
+            if (cobro.exists() && cobro.data().recibido) continue;
+            lineas.push({ id: 'premio_' + jf.id + '_' + ganador, jugador: ganador, tipo: 'premio',
+                concepto: 'Premio J' + jf.numeroJornada + ' (sin cobrar)', importe: premio, incluir: true });
+        }
+    }
+
+    // 2. Final sin acertantes: se devuelve lo apostado en la final y en las
+    //    N jornadas anteriores cuyo bote se acumuló en ella.
+    if (final.estado !== 'Finalizada') {
+        avisos.push('La J' + numFinal + ' todavía no está FINALIZADA. Pon el resultado y finalízala antes de calcular la liquidación.');
+    } else if (finalSinGanador) {
+        var cadena = orden.filter(function(j) { return Number(j.numeroJornada) <= numFinal; }).slice(0, 1 + Number(nAnteriores || 0));
+        var devueltoAnteriores = 0;
+        for (var c = 0; c < cadena.length; c++) {
+            const jc = cadena[c];
+            const nJ = Number(jc.numeroJornada);
+            const pagosJ = pagos.filter(function(p) {
+                return (p.tipo === 'jornada_normal' || p.tipo === 'jornada_vip') && numDe(p.jornada) === nJ;
+            });
+            const porJug = {};
+            if (pagosJ.length > 0) {
+                pagosJ.forEach(function(p) { porJug[p.jugador] = (porJug[p.jugador] || 0) + (parseFloat(p.importe) || 0); });
+            } else {
+                const valsC = await leerApuestas(jc);
+                const precioC = jc.esVip ? APUESTA_VIP : APUESTA_NORMAL;
+                valsC.forEach(function(x) { porJug[x.id] = precioC; });
+                if (valsC.length > 0) avisos.push('J' + nJ + ': no hay pagos registrados en la app; la devolución se calcula por las apuestas guardadas. Revísala.');
+            }
+            const jugs = Object.keys(porJug);
+            for (let k = 0; k < jugs.length; k++) {
+                const jug = jugs[k];
+                if (!porJug[jug]) continue;
+                if (jc.id !== final.id) devueltoAnteriores += porJug[jug];
+                lineas.push({ id: 'devolucion_' + jc.id + '_' + jug, jugador: jug, tipo: 'devolucion',
+                    concepto: 'Devolución apuesta J' + nJ + ' (cierre sin acertante)', importe: Number(porJug[jug].toFixed(2)), incluir: true });
+            }
+        }
+        var boteFinal = parseFloat(final.bote) || 0;
+        if (Number(nAnteriores) > 0 && Math.abs(boteFinal - devueltoAnteriores) > 0.01) {
+            avisos.push('Control: el bote acumulado anotado en la J' + numFinal + ' es ' + boteFinal.toFixed(2) + '€ y lo que se devuelve de jornadas anteriores suma ' + devueltoAnteriores.toFixed(2) + '€. Si no cuadra, revisa los pagos de esas jornadas.');
+        }
+    }
+
+    // 3. Devolución de inscripción (opcional, importe por jugador).
+    var importeIns = parseFloat(String(devolucionInscripcion || '0').replace(',', '.')) || 0;
+    if (importeIns > 0) {
+        var inscritos = {};
+        pagos.filter(function(p) { return p.tipo === 'inscripcion'; }).forEach(function(p) { inscritos[p.jugador] = true; });
+        Object.keys(inscritos).forEach(function(jug) {
+            lineas.push({ id: 'inscripcion_' + jug, jugador: jug, tipo: 'inscripcion',
+                concepto: 'Devolución de inscripción', importe: Number(importeIns.toFixed(2)), incluir: true });
+        });
+    }
+
+    return { lineas: lineas, avisos: avisos, final: final, finalSinGanador: finalSinGanador };
+}
+
+// Descarga un archivo de texto en el navegador.
+function descargarArchivoTexto(nombre, contenido, tipo) {
+    var blob = new Blob([contenido], { type: tipo });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
+}
+
+// Copia completa de la temporada para quien quiera continuar la porra:
+// JSON con todo (jornadas, apuestas, clasificaciones) + CSV de clasificación.
+async function descargarDatosTemporada() {
+    var jornadasSnap = await getDocs(collection(db, 'jornadas'));
+    var jornadas = ordenarJornadasDesc(jornadasSnap.docs.map(function(d) { return { id: d.id, ...d.data() }; })).reverse();
+    var conApuestas = [];
+    for (var i = 0; i < jornadas.length; i++) {
+        var j = jornadas[i];
+        var item = { id: j.id, numero: j.numeroJornada, local: j.equipoLocal, visitante: j.equipoVisitante, estado: j.estado,
+            resultadoLocal: j.resultadoLocal === undefined ? null : j.resultadoLocal,
+            resultadoVisitante: j.resultadoVisitante === undefined ? null : j.resultadoVisitante,
+            fecha: fechaAString(j.fechaPartido || j.fecha), bote: j.bote || 0, ganadores: j.ganadores || [] };
+        if (j.estado !== 'Pendiente') {
+            var ps = await getDocs(collection(db, 'pronosticos', j.id, 'jugadores'));
+            item.apuestas = ps.docs.map(function(d) {
+                var p = d.data();
+                return { jugador: d.id, golesLocal: p.golesLocal === undefined ? null : p.golesLocal,
+                    golesVisitante: p.golesVisitante === undefined ? null : p.golesVisitante,
+                    resultado1x2: p.resultado1x2 || null, elOtroActivado: !!p.elOtroActivado,
+                    puntosObtenidos: p.puntosObtenidos || 0 };
+            });
+        }
+        conApuestas.push(item);
+    }
+    var clasifSnap = await getDocs(collection(db, 'clasificacion'));
+    var clasif = clasifSnap.docs.map(function(d) { return { jugador: d.id, puntosTotales: d.data().puntosTotales || 0, exactos: d.data().puntosResultadoExacto || 0 }; })
+        .sort(function(a, b) { return b.puntosTotales - a.puntosTotales; });
+    var estrSnap = await getDocs(collection(db, 'clasificacion_estrellas'));
+    var estrellas = estrSnap.docs.map(function(d) { return { jugador: d.id, puntosEstrellas: d.data().puntosEstrellas || 0 }; })
+        .sort(function(a, b) { return b.puntosEstrellas - a.puntosEstrellas; });
+
+    var datos = { porra: 'Porra UDLP 26/27', exportadoEn: new Date().toISOString(), clasificacion: clasif, ligaEstrellas: estrellas, jornadas: conApuestas };
+    descargarArchivoTexto('porra-udlp-2627-datos.json', JSON.stringify(datos, null, 2), 'application/json');
+
+    var estrPor = {};
+    estrellas.forEach(function(e) { estrPor[e.jugador] = e.puntosEstrellas; });
+    var csv = '﻿Posicion;Jugador;Puntos;Resultados exactos;Estrellas\n' + clasif.map(function(c, idx) {
+        return (idx + 1) + ';' + c.jugador + ';' + c.puntosTotales + ';' + c.exactos + ';' + (estrPor[c.jugador] || 0);
+    }).join('\n');
+    descargarArchivoTexto('porra-udlp-2627-clasificacion.csv', csv, 'text/csv;charset=utf-8');
+}
+
+// Texto del aviso de cierre que ven los jugadores al abrir la app.
+var TEXTO_NOVEDAD_CIERRE =
+    'Después de pensarlo mucho, la Porra UDLP 26/27 se cierra aquí. La poca participación de las últimas semanas, mi falta de tiempo y la de recursos para mantenerla hacen que no pueda seguir llevándola como se merece.\n\n' +
+    '💼 TU DINERO, EN TU BOLSA\n' +
+    'Todo lo que la Porra te debe (premios sin cobrar, devoluciones y saldo que ya tuvieras) está en tu BOLSA. Pulsa "Reclamar mi saldo" en el aviso de arriba y te lo paso por Bizum.\n\n' +
+    '🏆 SIN PREMIOS POR CLASIFICACIÓN\n' +
+    'Repartir los premios de la general con la liga a medias no sería justo para nadie, así que no habrá premios por clasificación.\n\n' +
+    '📊 LOS DATOS SE QUEDAN\n' +
+    'La app sigue abierta para consultar todo lo jugado. Si alguien quiere seguir la porra por su cuenta, le paso todos los datos de la temporada.\n\n' +
+    'Gracias de corazón por haber jugado. Ojalá algún día la retomemos. 💛💙';
+
+const CierrePorraAdmin = ({ jornadas, jugadores }) => {
+    var [cierre, setCierre] = useState(null);
+    var [jornadaFinalId, setJornadaFinalId] = useState('');
+    var [nAnteriores, setNAnteriores] = useState(1);
+    var [devIns, setDevIns] = useState('0');
+    var [calculo, setCalculo] = useState(null);
+    var [calculando, setCalculando] = useState(false);
+    var [volcando, setVolcando] = useState(false);
+    var [msg, setMsg] = useState('');
+    var [reclamaciones, setReclamaciones] = useState([]);
+    var [bolsas, setBolsas] = useState([]);
+    var [exportando, setExportando] = useState(false);
+
+    useEffect(function() {
+        var u1 = onSnapshot(doc(db, CIERRE_DOC[0], CIERRE_DOC[1]), function(s) { setCierre(s.exists() ? s.data() : null); });
+        var u2 = onSnapshot(collection(db, 'reclamaciones'), function(s) {
+            setReclamaciones(s.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
+        }, function() {});
+        var u3 = onSnapshot(collection(db, 'bolsas'), function(s) {
+            setBolsas(s.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
+        }, function() {});
+        return function() { u1(); u2(); u3(); };
+    }, []);
+
+    var candidatas = ordenarJornadasDesc(jornadas).filter(function(j) { return j.estado !== 'Pendiente'; });
+    var jFinal = candidatas.find(function(j) { return j.id === jornadaFinalId; }) || candidatas[0] || null;
+    var volcada = !!(cierre && cierre.liquidacionVolcada);
+
+    var calcular = async function() {
+        if (!jFinal) return;
+        setCalculando(true); setMsg(''); setCalculo(null);
+        try {
+            var r = await calcularLiquidacionCierre(jornadas, jFinal.id, nAnteriores, devIns);
+            setCalculo(r);
+        } catch (e) { setMsg('❌ ' + e.message); }
+        setCalculando(false);
+    };
+
+    var alternar = function(idLinea) {
+        setCalculo(function(c) {
+            if (!c) return c;
+            return { ...c, lineas: c.lineas.map(function(l) { return l.id === idLinea ? { ...l, incluir: !l.incluir } : l; }) };
+        });
+    };
+
+    var incluidas = calculo ? calculo.lineas.filter(function(l) { return l.incluir; }) : [];
+    var totalIncluido = incluidas.reduce(function(s, l) { return s + l.importe; }, 0);
+    var porJugador = {};
+    incluidas.forEach(function(l) { porJugador[l.jugador] = (porJugador[l.jugador] || 0) + l.importe; });
+
+    var volcarYCerrar = async function() {
+        if (!calculo || !jFinal) return;
+        if (volcada) { setMsg('La liquidación ya se volcó. No se puede repetir.'); return; }
+        if (jFinal.estado !== 'Finalizada') { setMsg('Finaliza primero la J' + jFinal.numeroJornada + '.'); return; }
+        var resumen = Object.keys(porJugador).map(function(j) { return j + ': ' + porJugador[j].toFixed(2) + '€'; }).join('\n');
+        if (!window.confirm('CERRAR LA PORRA DEFINITIVAMENTE\n\nJornada final: J' + jFinal.numeroJornada + '\nSe abona a las bolsas:\n' + (resumen || '(nada)') + '\n\nTOTAL: ' + totalIncluido.toFixed(2) + '€\n\nAdemás se publicará el aviso de cierre y no se podrán abrir más jornadas. ¿Continuar?')) return;
+        setVolcando(true); setMsg('');
+        try {
+            var actual = await getDoc(doc(db, CIERRE_DOC[0], CIERRE_DOC[1]));
+            if (actual.exists() && actual.data().liquidacionVolcada) { setMsg('La liquidación ya se había volcado.'); setVolcando(false); return; }
+            var batch = writeBatch(db);
+            incluidas.forEach(function(l) {
+                batch.set(doc(db, 'bolsas', l.jugador, 'movimientos', 'cierre_' + l.id), {
+                    tipo: 'cierre_' + l.tipo, importe: l.importe, concepto: l.concepto, creadoEn: serverTimestamp(),
+                });
+            });
+            Object.keys(porJugador).forEach(function(j) {
+                batch.set(doc(db, 'bolsas', j), { saldo: increment(Number(porJugador[j].toFixed(2))), actualizadoEn: serverTimestamp() }, { merge: true });
+            });
+            batch.set(doc(db, CIERRE_DOC[0], CIERRE_DOC[1]), {
+                activo: true, liquidacionVolcada: true, volcadoEn: serverTimestamp(),
+                jornadaFinalId: jFinal.id, jornadaFinalNumero: jFinal.numeroJornada,
+                finalSinGanador: !!calculo.finalSinGanador, totalLiquidado: Number(totalIncluido.toFixed(2)),
+                lineas: incluidas.map(function(l) { return { jugador: l.jugador, concepto: l.concepto, importe: l.importe }; }),
+            }, { merge: true });
+            batch.set(doc(db, 'configuracion', 'novedad_activa'), {
+                icono: '💛', titulo: 'CIERRE DE LA PORRA', cuerpo: TEXTO_NOVEDAD_CIERRE,
+                version: 'cierre-porra-' + Date.now(), activa: true, actualizadoEn: serverTimestamp(),
+            });
+            await batch.commit();
+            setMsg('✅ Porra cerrada. ' + totalIncluido.toFixed(2) + '€ volcados a las bolsas y aviso publicado.');
+            setCalculo(null);
+        } catch (e) { setMsg('❌ Error: ' + e.message); }
+        setVolcando(false);
+    };
+
+    // Marca un saldo como pagado por Bizum: deja la bolsa a 0 con su movimiento.
+    var marcarPagado = async function(jugador, importe, conReclamacion) {
+        if (!window.confirm('¿Has hecho el Bizum de ' + importe.toFixed(2) + '€ a ' + jugador + '? Se marcará como pagado y su bolsa quedará en 0.')) return;
+        try {
+            var batch = writeBatch(db);
+            if (conReclamacion) batch.set(doc(db, 'reclamaciones', jugador), { estado: 'pagado', pagadoEn: serverTimestamp() }, { merge: true });
+            batch.set(doc(db, 'bolsas', jugador), { saldo: increment(-importe), actualizadoEn: serverTimestamp() }, { merge: true });
+            batch.set(doc(collection(db, 'bolsas', jugador, 'movimientos')), {
+                tipo: 'liquidacion_pagada', importe: -importe, concepto: 'Pagado por Bizum (cierre de la Porra)', creadoEn: serverTimestamp(),
+            });
+            await batch.commit();
+            setMsg('✅ ' + jugador + ': ' + importe.toFixed(2) + '€ marcados como pagados.');
+        } catch (e) { setMsg('❌ Error: ' + e.message); }
+    };
+
+    var exportar = async function() {
+        setExportando(true);
+        try { await descargarDatosTemporada(); } catch (e) { setMsg('❌ Error al exportar: ' + e.message); }
+        setExportando(false);
+    };
+
+    var card = { background:'#fff', border:'1px solid rgba(0,31,107,0.1)', borderRadius:14, padding:16, marginBottom:12 };
+    var titulo = { fontFamily:"'Teko',sans-serif", fontSize:15, letterSpacing:2, color:'#001F6B', textTransform:'uppercase', marginBottom:6, fontWeight:700 };
+    var texto = { fontFamily:"'Inter',sans-serif", fontSize:12, color:'rgba(0,31,107,0.6)', lineHeight:1.6, marginBottom:10 };
+    var btn = function(color) { return { background: color, color: '#fff', border:'none', borderRadius:10, padding:'10px 16px', fontFamily:"'Teko',sans-serif", fontSize:14, letterSpacing:2, cursor:'pointer', textTransform:'uppercase' }; };
+    var inp = { padding:'8px 10px', border:'1px solid rgba(0,31,107,0.15)', borderRadius:8, fontFamily:"'Inter',sans-serif", fontSize:13 };
+
+    var reclPendientes = reclamaciones.filter(function(r) { return r.estado === 'pendiente'; });
+    var reclamadosIds = reclPendientes.map(function(r) { return r.id; });
+    var sinReclamar = bolsas.filter(function(b) { return (b.saldo || 0) > 0.009 && reclamadosIds.indexOf(b.id) === -1; });
+    var pagadas = reclamaciones.filter(function(r) { return r.estado === 'pagado'; });
+
+    return (
+        <div>
+            <div style={{...card, border:'1.5px solid rgba(230,57,70,0.3)', background: volcada ? 'rgba(16,185,129,0.05)' : 'rgba(230,57,70,0.03)'}}>
+                <p style={titulo}>{volcada ? '✅ Porra cerrada' : '🔒 Plan de cierre de la Porra'}</p>
+                {volcada ? (
+                    <p style={texto}>Cerrada con la J{cierre.jornadaFinalNumero} como jornada final. Total volcado a las bolsas: <strong>{Number(cierre.totalLiquidado || 0).toFixed(2)}€</strong>. Ya no se pueden abrir jornadas. Abajo tienes las reclamaciones para ir pagando.</p>
+                ) : (
+                    <div style={texto}>
+                        <strong>1.</strong> Al acabar el partido, finaliza la jornada final como siempre (Jornadas → resultado → Finalizada).<br/>
+                        <strong>2.</strong> Aquí: elige la jornada final, decide la devolución de inscripción y pulsa <strong>Calcular liquidación</strong>.<br/>
+                        <strong>3.</strong> Revisa la lista y <strong>desmarca lo que ya hayas pagado por fuera</strong>.<br/>
+                        <strong>4.</strong> Pulsa <strong>Volcar a las bolsas y cerrar la Porra</strong>: se abona todo, se publica el aviso de cierre y se bloquean las jornadas.<br/>
+                        <strong>5.</strong> Cada jugador reclama su saldo; tú le haces el Bizum y lo marcas como pagado.
+                    </div>
+                )}
+            </div>
+
+            {!volcada && (
+                <div style={card}>
+                    <p style={titulo}>Calcular liquidación</p>
+                    <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:10}}>
+                        <label style={texto}>Jornada final:{' '}
+                            <select value={jFinal ? jFinal.id : ''} onChange={function(e){ setJornadaFinalId(e.target.value); setCalculo(null); }} style={inp}>
+                                {candidatas.map(function(j) { return <option key={j.id} value={j.id}>J{j.numeroJornada} · {j.equipoLocal} – {j.equipoVisitante} ({j.estado})</option>; })}
+                            </select>
+                        </label>
+                        <label style={texto}>Si la final queda sin acertante, devolver también lo apostado en las{' '}
+                            <select value={nAnteriores} onChange={function(e){ setNAnteriores(Number(e.target.value)); setCalculo(null); }} style={inp}>
+                                {[0,1,2,3].map(function(n) { return <option key={n} value={n}>{n}</option>; })}
+                            </select>{' '}jornada(s) anteriores cuyo bote se acumuló.
+                        </label>
+                        <label style={texto}>Devolución de inscripción por jugador (€, 0 = no se devuelve):{' '}
+                            <input value={devIns} onChange={function(e){ setDevIns(e.target.value); setCalculo(null); }} style={{...inp,width:80}} />
+                        </label>
+                    </div>
+                    <button onClick={calcular} disabled={calculando || !jFinal} style={btn('#001F6B')}>{calculando ? 'Calculando...' : 'Calcular liquidación'}</button>
+
+                    {calculo && (
+                        <div style={{marginTop:14}}>
+                            {calculo.avisos.map(function(a, i) { return <p key={i} style={{...texto,color:'#b45309',background:'rgba(245,158,11,0.08)',borderRadius:8,padding:'8px 10px'}}>⚠️ {a}</p>; })}
+                            {calculo.final.estado === 'Finalizada' && (
+                                <p style={texto}>{calculo.finalSinGanador ? 'La J' + calculo.final.numeroJornada + ' ha quedado SIN acertante → se devuelven las apuestas.' : 'La J' + calculo.final.numeroJornada + ' tiene acertante(s) → su premio aparece como "sin cobrar" si aún no lo han confirmado.'}</p>
+                            )}
+                            {calculo.lineas.length === 0 ? (
+                                <p style={texto}>No hay nada pendiente de liquidar.</p>
+                            ) : (
+                                <div style={{border:'1px solid rgba(0,31,107,0.08)',borderRadius:10,overflow:'hidden',marginBottom:10}}>
+                                    {calculo.lineas.map(function(l) {
+                                        return (
+                                            <label key={l.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderBottom:'1px solid rgba(0,31,107,0.05)',cursor:'pointer',opacity: l.incluir ? 1 : 0.4}}>
+                                                <input type="checkbox" checked={l.incluir} onChange={function(){ alternar(l.id); }} />
+                                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,color:'#001F6B',minWidth:70}}>{l.jugador}</span>
+                                                <span style={{flex:1,fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(0,31,107,0.55)'}}>{l.concepto}</span>
+                                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:'#001F6B'}}>{l.importe.toFixed(2)}€</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            <p style={{...texto,fontWeight:700,color:'#001F6B'}}>Total a abonar: {totalIncluido.toFixed(2)}€ · {Object.keys(porJugador).length} jugador(es)</p>
+                            <button onClick={volcarYCerrar} disabled={volcando || calculo.final.estado !== 'Finalizada'} style={btn('#e63946')}>
+                                {volcando ? 'Cerrando...' : '🔒 Volcar a las bolsas y cerrar la Porra'}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {volcada && (
+                <div style={card}>
+                    <p style={titulo}>💸 Reclamaciones pendientes ({reclPendientes.length})</p>
+                    {reclPendientes.length === 0 && <p style={texto}>Nadie tiene reclamaciones pendientes ahora mismo.</p>}
+                    {reclPendientes.map(function(r) {
+                        return (
+                            <div key={r.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:'1px solid rgba(0,31,107,0.05)',flexWrap:'wrap'}}>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:600,color:'#001F6B',flex:1}}>{r.id}{r.telefono ? ' · Bizum ' + r.telefono : ''}</span>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:18,fontWeight:700,color:'#001F6B'}}>{Number(r.importe || 0).toFixed(2)}€</span>
+                                <button onClick={function(){ marcarPagado(r.id, Number(r.importe || 0), true); }} style={{...btn('#10b981'),padding:'6px 12px',fontSize:12}}>Marcar pagado</button>
+                            </div>
+                        );
+                    })}
+                    <p style={{...titulo,marginTop:14}}>⏳ Con saldo sin reclamar ({sinReclamar.length})</p>
+                    {sinReclamar.length === 0 && <p style={texto}>Nadie más tiene saldo pendiente.</p>}
+                    {sinReclamar.map(function(b) {
+                        return (
+                            <div key={b.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:'1px solid rgba(0,31,107,0.05)'}}>
+                                <span style={{fontFamily:"'Inter',sans-serif",fontSize:13,color:'#001F6B',flex:1}}>{b.id}</span>
+                                <span style={{fontFamily:"'Teko',sans-serif",fontSize:16,fontWeight:700,color:'#001F6B'}}>{Number(b.saldo || 0).toFixed(2)}€</span>
+                                <button onClick={function(){ marcarPagado(b.id, Number(b.saldo || 0), false); }} style={{...btn('rgba(0,31,107,0.55)'),padding:'6px 12px',fontSize:12}}>Pagado sin reclamar</button>
+                            </div>
+                        );
+                    })}
+                    {pagadas.length > 0 && <p style={{...texto,marginTop:12}}>✅ Ya pagados: {pagadas.map(function(r) { return r.id; }).join(', ')}</p>}
+                </div>
+            )}
+
+            <div style={card}>
+                <p style={titulo}>📊 Datos de la temporada</p>
+                <p style={texto}>Descarga toda la temporada (clasificación, Liga de Estrellas, jornadas y apuestas de cada uno) para guardarla o pasársela a quien quiera seguir la porra por su cuenta. Se descargan dos archivos: uno completo (.json) y la clasificación para Excel (.csv).</p>
+                <button onClick={exportar} disabled={exportando} style={btn('#001F6B')}>{exportando ? 'Preparando...' : '⬇️ Descargar datos'}</button>
+                {jugadores && jugadores.length > 0 && <p style={{...texto,marginTop:8,marginBottom:0}}>{jugadores.length} jugadores activos esta temporada.</p>}
+            </div>
+
+            {msg && <p style={{fontFamily:"'Inter',sans-serif",fontSize:13,color: msg.startsWith('✅') ? '#10b981' : '#e63946',marginTop:4,lineHeight:1.5}}>{msg}</p>}
+        </div>
+    );
+};
+
+// Aviso de cierre para los jugadores: aparece arriba en todas las pantallas
+// cuando la Porra está cerrada. Muestra el saldo de su bolsa y le deja
+// reclamarlo; el admin lo ve en Admin → Cierre y lo paga por Bizum.
+const CierrePorraJugador = ({ currentUser }) => {
+    var [cierre, setCierre] = useState(null);
+    var [bolsa, setBolsa] = useState(null);
+    var [recl, setRecl] = useState(null);
+    var [abierto, setAbierto] = useState(false);
+    var [telefono, setTelefono] = useState('');
+    var [enviando, setEnviando] = useState(false);
+    var [error, setError] = useState('');
+
+    useEffect(function() {
+        if (!currentUser) return;
+        var u1 = onSnapshot(doc(db, CIERRE_DOC[0], CIERRE_DOC[1]), function(s) { setCierre(s.exists() ? s.data() : null); }, function() {});
+        var u2 = onSnapshot(doc(db, 'bolsas', currentUser), function(s) { setBolsa(s.exists() ? s.data() : null); }, function() {});
+        var u3 = onSnapshot(doc(db, 'reclamaciones', currentUser), function(s) { setRecl(s.exists() ? s.data() : null); }, function() {});
+        return function() { u1(); u2(); u3(); };
+    }, [currentUser]);
+
+    if (!cierre || !cierre.activo) return null;
+    var saldo = bolsa ? (parseFloat(bolsa.saldo) || 0) : 0;
+    var pendiente = recl && recl.estado === 'pendiente';
+    var pagado = recl && recl.estado === 'pagado' && saldo < 0.01;
+
+    var reclamar = async function() {
+        setError('');
+        if (saldo < 0.01) return;
+        setEnviando(true);
+        try {
+            await setDoc(doc(db, 'reclamaciones', currentUser), {
+                jugador: currentUser, importe: Number(saldo.toFixed(2)), telefono: telefono.trim(),
+                estado: 'pendiente', creadoEn: serverTimestamp(),
+            });
+            setAbierto(false);
+        } catch (e) { setError('No se pudo enviar: ' + e.message); }
+        setEnviando(false);
+    };
+
+    return (
+        <div style={{background:'linear-gradient(135deg,#001F6B,#003a9e)',borderRadius:16,padding:'14px 16px',marginBottom:16,border:'1px solid rgba(255,215,0,0.3)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <div style={{flex:1}}>
+                    <p style={{fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,color:'#FFD700',textTransform:'uppercase',fontWeight:700,margin:0}}>La Porra está cerrada</p>
+                    <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,0.65)',margin:'2px 0 0',lineHeight:1.5}}>
+                        {pendiente ? 'Tu reclamación está enviada. Juanma te hará el Bizum.'
+                            : pagado ? 'Tu saldo ya está pagado. ¡Gracias por jugar!'
+                            : saldo >= 0.01 ? 'Tienes saldo en tu bolsa. Reclámalo y te lo pago por Bizum.'
+                            : 'No tienes saldo pendiente. Gracias por haber jugado.'}
+                    </p>
+                </div>
+                <p style={{fontFamily:"'Teko',sans-serif",fontSize:26,fontWeight:700,color: saldo >= 0.01 ? '#FFD700' : 'rgba(255,255,255,0.35)',margin:0}}>{saldo.toFixed(2)}€</p>
+            </div>
+            {saldo >= 0.01 && !pendiente && !abierto && (
+                <button onClick={function(){ setAbierto(true); }} style={{width:'100%',marginTop:10,background:'#FFD700',color:'#001F6B',border:'none',borderRadius:24,padding:'10px',fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,cursor:'pointer',fontWeight:700}}>
+                    💼 RECLAMAR MI SALDO
+                </button>
+            )}
+            {abierto && (
+                <div style={{marginTop:10}}>
+                    <input value={telefono} onChange={function(e){ setTelefono(e.target.value); }} placeholder="Tu teléfono para el Bizum (opcional si Juanma ya lo tiene)"
+                        style={{width:'100%',boxSizing:'border-box',padding:'10px 12px',borderRadius:10,border:'none',fontFamily:"'Inter',sans-serif",fontSize:13,marginBottom:8}} />
+                    <button onClick={reclamar} disabled={enviando} style={{width:'100%',background:'#FFD700',color:'#001F6B',border:'none',borderRadius:24,padding:'10px',fontFamily:"'Teko',sans-serif",fontSize:15,letterSpacing:2,cursor:'pointer',fontWeight:700}}>
+                        {enviando ? 'ENVIANDO...' : 'ENVIAR RECLAMACIÓN DE ' + saldo.toFixed(2) + '€'}
+                    </button>
+                    {error && <p style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:'#ff8a8a',marginTop:6}}>{error}</p>}
+                </div>
+            )}
+        </div>
+    );
+};
+
 // Registrar a mano la porra de un jugador que no se le guardó (p. ej. la
 // app le rechazó la apuesta sin que se diera cuenta). Pensado para usarlo
 // SOLO con prueba de lo que apostó ANTES del partido (mensaje, captura).
@@ -8664,6 +9148,7 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                     ['clasificacion','🏆 Clasificación', 0],
                     ['herramientas','⚙️ Gestión', 0],
                     ['rifas','🎟️ Extras', 0],
+                    ['cierre','🔒 Cierre', 0],
                 ].map(function(s) {
                     return (
                         <button key={s[0]} onClick={function(){setSeccion(s[0]);setMsgAdmin('');}} style={{...A.secBtn(s[0]),position:'relative'}}>
@@ -9222,6 +9707,10 @@ const AdminPanelScreen = ({ plantilla, teamLogos }) => {
                     </div>
                     </div>}
                 </div>
+            )}
+
+            {seccion === 'cierre' && (
+                <CierrePorraAdmin jornadas={jornadas} jugadores={JUGADORES_LISTA} />
             )}
 
             {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -11287,6 +11776,7 @@ function App() {
             {/* ── CONTENIDO PRINCIPAL ── */}
             <div style={{ position: 'absolute', top: 62, bottom: 0, left: 0, right: 0, overflowY: 'auto', padding: '16px' }}>
                 <div key={activeTab} style={{ animation: 'slideIn .22s ease both' }}>
+                    <CierrePorraJugador currentUser={currentUser} />
                     {renderContent()}
                     {novedadOverlay}
                 </div>
