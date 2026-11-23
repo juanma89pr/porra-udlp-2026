@@ -8418,13 +8418,13 @@ function textoNovedadCierre(plazo) {
     '💼 TU DINERO, EN TU BOLSA\n' +
     'Todo lo que la Porra te devuelve (5€ de la inscripción si la pagaste y seguías jugando, premios sin cobrar, devoluciones y saldo que ya tuvieras) está en tu BOLSA, en la pantalla principal. Pulsa "Solicitar mi pago" y te lo paso por Bizum. Ten paciencia: son muchos pagos y los hago uno a uno.\n\n' +
     '📅 PLAZO: HASTA EL ' + textoFechaLarga(plazo).toUpperCase() + '\n' +
-    'Quien no solicite su pago antes de esa fecha pierde el derecho al reembolso.\n\n' +
+    'Quien no solicite su pago antes de esa fecha pierde el derecho al reembolso. Mantener la app, la nube y los datos cuesta dinero, así que ese día la app se cierra definitivamente.\n\n' +
     '🤝 RENUNCIAR ES VOLUNTARIO\n' +
     'Si prefieres dejar tu saldo para ayudar a cubrir lo que ha costado hacer la Porra, también puedes renunciar a tu bolsa. Es totalmente voluntario.\n\n' +
     '🏆 SIN PREMIOS POR CLASIFICACIÓN\n' +
     'Repartir los premios de la general con la liga a medias no sería justo para nadie, así que no habrá premios por clasificación.\n\n' +
-    '📊 LOS DATOS SE QUEDAN\n' +
-    'La app sigue abierta para consultar todo lo jugado. Si alguien quiere seguir la porra por su cuenta, le paso todos los datos de la temporada.\n\n' +
+    '📊 LOS DATOS\n' +
+    'Hasta esa fecha pueden consultar todo lo jugado. Si alguien quiere seguir la porra por su cuenta, que me lo diga antes y le paso todos los datos de la temporada.\n\n' +
     'Gracias de corazón por haber jugado. Ojalá algún día la retomemos. 💛💙';
 }
 
@@ -8531,6 +8531,19 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
         } catch (e) { setMsg('❌ Error: ' + e.message); }
     };
 
+    var republicarAviso = async function() {
+        var plazo = cierre ? toJsDate(cierre.plazoHasta) : null;
+        if (!plazo) { setMsg('❌ No hay fecha de plazo guardada.'); return; }
+        if (!window.confirm('¿Volver a publicar el aviso de cierre con el texto actualizado? Les saldrá de nuevo a todos al abrir la app.')) return;
+        try {
+            await setDoc(doc(db, 'configuracion', 'novedad_activa'), {
+                icono: '💛', titulo: 'CIERRE DE LA PORRA', cuerpo: textoNovedadCierre(plazo),
+                version: 'cierre-porra-' + Date.now(), activa: true, actualizadoEn: serverTimestamp(),
+            });
+            setMsg('✅ Aviso de cierre actualizado y publicado.');
+        } catch (e) { setMsg('❌ Error: ' + e.message); }
+    };
+
     var exportar = async function() {
         setExportando(true);
         try { await descargarDatosTemporada(); } catch (e) { setMsg('❌ Error al exportar: ' + e.message); }
@@ -8560,7 +8573,10 @@ const CierrePorraAdmin = ({ jornadas, jugadores }) => {
             <div style={{...card, border:'1.5px solid rgba(230,57,70,0.3)', background: volcada ? 'rgba(16,185,129,0.05)' : 'rgba(230,57,70,0.03)'}}>
                 <p style={titulo}>{volcada ? '✅ Porra cerrada' : '🔒 Plan de cierre de la Porra'}</p>
                 {volcada ? (
-                    <p style={texto}>Cerrada con la J{cierre.jornadaFinalNumero} como jornada final. Total volcado a las bolsas: <strong>{Number(cierre.totalLiquidado || 0).toFixed(2)}€</strong>. Ya no se pueden abrir jornadas. Abajo tienes las reclamaciones para ir pagando.</p>
+                    <div>
+                        <p style={texto}>Cerrada con la J{cierre.jornadaFinalNumero} como jornada final. Total volcado a las bolsas: <strong>{Number(cierre.totalLiquidado || 0).toFixed(2)}€</strong>. Ya no se pueden abrir jornadas. Abajo tienes las reclamaciones para ir pagando.</p>
+                        <button onClick={republicarAviso} style={btn('#001F6B')}>📢 Republicar aviso de cierre</button>
+                    </div>
                 ) : (
                     <div style={texto}>
                         <strong>1.</strong> Al acabar el partido, finaliza la jornada final como siempre (Jornadas → resultado → Finalizada).<br/>
@@ -8796,7 +8812,7 @@ const CierrePorraJugador = ({ currentUser }) => {
                         </div>
                     )}
                     {plazo && (
-                        <div style={{...C.box,marginTop:10}}>📅 <strong>Tienes hasta el {fechaPlazo}</strong> para solicitar tu pago. Si no lo solicitas antes de esa fecha, pierdes el derecho al reembolso.</div>
+                        <div style={{...C.box,marginTop:10}}>📅 <strong>Tienes hasta el {fechaPlazo}</strong> para solicitar tu pago. Si no lo solicitas antes de esa fecha, pierdes el derecho al reembolso. Ese día la app se cierra definitivamente.</div>
                     )}
                     <button onClick={function(){ setModo('solicitar'); setError(''); }} style={C.btn}>SOLICITAR MI PAGO</button>
                     <button onClick={function(){ setModo('renunciar'); setError(''); }} style={C.btn2}>RENUNCIAR A MI BOLSA</button>
